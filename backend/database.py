@@ -22,11 +22,28 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+def resolve_database_url() -> str:
+    """Resolve database URL from environment.
+
+    Priority:
+    1) DATABASE_URL (full SQLAlchemy URL)
+    2) DB_ENGINE=sqlite with SQLITE_PATH
+    3) Default PostgreSQL async URL
+    """
+    explicit_url = os.getenv("DATABASE_URL")
+    if explicit_url:
+        return explicit_url
+
+    db_engine = os.getenv("DB_ENGINE", "postgresql").strip().lower()
+    if db_engine == "sqlite":
+        sqlite_path = os.getenv("SQLITE_PATH", "./erp_club.db")
+        return f"sqlite+aiosqlite:///{sqlite_path}"
+
+    return "postgresql+asyncpg://erp_club:password@localhost:5432/erp_club_db"
+
+
 # Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://erp_club:password@localhost:5432/erp_club_db"
-)
+DATABASE_URL = resolve_database_url()
 
 # Create async engine
 engine = create_async_engine(

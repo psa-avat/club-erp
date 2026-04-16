@@ -156,7 +156,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "service": "carnet-back",
+        "service": "CLUB ERP-back",
     }
 
 

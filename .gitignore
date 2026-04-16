@@ -1,2 +1,4 @@
 deploy/.env
 backend/venv
+*.pyc
+backend/erp_club.db
