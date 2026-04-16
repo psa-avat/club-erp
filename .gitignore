@@ -2,3 +2,6 @@ deploy/.env
 backend/venv
 *.pyc
 backend/erp_club.db
+backend/.env
+deploy/init-db/erp.sql
+backend/nohup.out

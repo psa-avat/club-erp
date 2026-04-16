@@ -11,21 +11,21 @@ services:
     networks:
       - default
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-erp_db}
+      POSTGRES_DB: ${POSTGRES_DB:-erp_club_db}
       POSTGRES_USER: ${POSTGRES_USER:-erpuser}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       TZ: Europe/Paris
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-db:/docker-entrypoint-initdb.d
-    expose:
-      - "5432"
+    ports:
+      - "5432:5432"
     labels:
-      - "dozzle.group=carnetdevol"
+      - "dozzle.group=erp_club"
       - "dozzle.name=PostgreSQL"
       - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erpuser} -d ${POSTGRES_DB:-erp_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erpuser} -d ${POSTGRES_DB:-erp_club _db}"]
       interval: 10s
       timeout: 5s
       retries: 5

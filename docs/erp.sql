@@ -3,25 +3,6 @@
 -- Copyright (C) 2026  SAFORCADA Patrick
 -- Licensed under GNU Affero General Public License v3.0
 
--- ============================================================================
--- Database Creation
--- ============================================================================
-
--- Drop existing database if it exists (for fresh installs)
--- Uncomment the line below to reset the database
--- DROP DATABASE IF EXISTS erp_club_db;
-
--- Create database
-CREATE DATABASE erp_club_db
-    WITH
-    ENCODING = 'UTF8'
-    LC_COLLATE = 'C'
-    LC_CTYPE = 'C'
-    TEMPLATE = template0;
-
--- Connect to the database
-\c erp_club_db;
-
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
