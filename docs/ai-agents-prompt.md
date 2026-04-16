@@ -4,6 +4,7 @@ The project uses a "Shell + Module" architecture.
 
 # Core Tech Stack
 - Backend: FastAPI (Python) + PostgreSQL (18).
+- Enumerate in database are stored in SMALLINT 
 - Frontend: Vite (React + TypeScript) using pnpm workspaces.
 - UI: Tailwind CSS + shadcn/ui.
 - Logic: TanStack Query (Data) + Zustand (Global State) + decimal.js (Math).
