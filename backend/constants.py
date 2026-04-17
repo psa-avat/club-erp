@@ -1,7 +1,7 @@
 """    
     ERP-CLUB - ERP pour Club de vol à voile 
     - Logiciel libre de gestion d'un club de vol à voile
-    - Backend API principale
+    - shared constants for auth, roles, and capabilities
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -18,76 +18,49 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
 
-"""Application-wide constants and mappings."""
-
-# User Role Codes (SMALLINT)
-ROLE_PILOT = 1      # Regular pilot user
-ROLE_ADMIN = 2      # Administrator with full access
-ROLE_CLUB = 3       # Club manager/staff account
-
-# Role code to string mapping (for display/logging)
-ROLE_CODE_TO_NAME = {
-    ROLE_PILOT: "pilot",
-    ROLE_ADMIN: "admin",
-    ROLE_CLUB: "club",
-}
-
-# Role string to code mapping (for input validation)
-ROLE_NAME_TO_CODE = {
-    "pilot": ROLE_PILOT,
-    "admin": ROLE_ADMIN,
-    "club": ROLE_CLUB,
-}
-
-# Role code to display name (French)
-ROLE_CODE_TO_DISPLAY = {
-    ROLE_PILOT: "Pilote",
-    ROLE_ADMIN: "Administrateur",
-    ROLE_CLUB: "Club",
-}
 
 
-def role_to_code(role_name: str) -> int:
-    """Convert role name string to numeric code.
-    
-    Args:
-        role_name: Role name string ('pilot', 'admin', 'club')
-        
-    Returns:
-        Numeric role code (1, 2, or 3)
-        
-    Raises:
-        ValueError: If role_name is not recognized
-    """
-    if role_name not in ROLE_NAME_TO_CODE:
-        raise ValueError(f"Unknown role: {role_name}. Valid roles: {list(ROLE_NAME_TO_CODE.keys())}")
-    return ROLE_NAME_TO_CODE[role_name]
+# Authentication levels
+AUTH_LEVEL_PRE_AUTH = 1
+AUTH_LEVEL_FULL_AUTH = 2
 
+# Token kinds
+TOKEN_KIND_PRE_AUTH = 1
+TOKEN_KIND_FULL_AUTH = 2
 
-def code_to_role(role_code: int) -> str:
-    """Convert numeric role code to name string.
-    
-    Args:
-        role_code: Numeric role code (1, 2, or 3)
-        
-    Returns:
-        Role name string ('pilot', 'admin', 'club')
-        
-    Raises:
-        ValueError: If role_code is not recognized
-    """
-    if role_code not in ROLE_CODE_TO_NAME:
-        raise ValueError(f"Unknown role code: {role_code}. Valid codes: {list(ROLE_CODE_TO_NAME.keys())}")
-    return ROLE_CODE_TO_NAME[role_code]
+# 2FA parameters
+PIN_LENGTH = 6
+PIN_EXPIRATION_MINUTES = 15
+PIN_MAX_ATTEMPTS = 5
+TRUSTED_DEVICE_DAYS = 30
+TRUSTED_DEVICE_COOKIE_NAME = "trusted_device"
 
+# Seed role codes (database source of truth)
+ROLE_CODE_ADMIN = 1
+ROLE_CODE_MEMBER = 2
+ROLE_CODE_FINANCE = 3
+ROLE_CODE_INSTRUCTOR = 4
+ROLE_CODE_MAINTENANCE = 5
 
-def get_display_name(role_code: int) -> str:
-    """Get display name (French) for a role code.
-    
-    Args:
-        role_code: Numeric role code (1, 2, or 3)
-        
-    Returns:
-        Display name in French
-    """
-    return ROLE_CODE_TO_DISPLAY.get(role_code, "Inconnu")
+ROLE_SEEDS = (
+    (ROLE_CODE_ADMIN, "admin", "Administrateur"),
+    (ROLE_CODE_MEMBER, "member", "Membre"),
+    (ROLE_CODE_FINANCE, "finance", "Finance"),
+    (ROLE_CODE_INSTRUCTOR, "instructor", "Instructeur"),
+    (ROLE_CODE_MAINTENANCE, "maintenance", "Maintenance"),
+)
+
+# Capability codes
+CAP_EDIT_FLIGHTS = "EDIT_FLIGHTS"
+CAP_MANAGE_PRICES = "MANAGE_PRICES"
+CAP_VIEW_FINANCIALS = "VIEW_FINANCIALS"
+CAP_MANAGE_USERS = "MANAGE_USERS"
+CAP_MEMBER_PORTAL = "MEMBER_PORTAL"
+
+CAPABILITY_SEEDS = (
+    (CAP_EDIT_FLIGHTS, "Gestion des vols"),
+    (CAP_MANAGE_PRICES, "Gestion des tarifs"),
+    (CAP_VIEW_FINANCIALS, "Lecture finance"),
+    (CAP_MANAGE_USERS, "Gestion des utilisateurs"),
+    (CAP_MEMBER_PORTAL, "Acces portail membre"),
+)

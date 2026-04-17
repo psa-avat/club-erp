@@ -1,85 +1,148 @@
 -- ERP-CLUB Database Schema for PostgreSQL
--- Logiciel libre de gestion d'un club de vol à voile
--- Copyright (C) 2026  SAFORCADA Patrick
--- Licensed under GNU Affero General Public License v3.0
+-- Clean break auth model: roles/capabilities + 2FA
 
--- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================================
--- Enumerations (using SMALLINT)
+-- Core identity
 -- ============================================================================
 
--- User Role Codes
--- 1 = pilot (regular pilot user)
--- 2 = admin (administrator with full access)
--- 3 = club (club manager/staff account)
-
--- ============================================================================
--- Tables
--- ============================================================================
-
--- Users table: User/Pilot accounts
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     nom VARCHAR(255),
     prenom VARCHAR(255),
-    role SMALLINT NOT NULL DEFAULT 1 CHECK (role IN (1, 2, 3)),
     auth_expiration_date DATE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT email_not_empty CHECK (email != '')
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT email_not_empty CHECK (email <> '')
 );
 
--- Create indexes on users table
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_is_active ON users(is_active);
-CREATE INDEX idx_users_role ON users(role);
 
--- UserSettings table: User-specific settings
+-- ============================================================================
+-- Authorization catalog
+-- ============================================================================
+
+CREATE TABLE roles (
+    id SERIAL PRIMARY KEY,
+    code SMALLINT NOT NULL UNIQUE,
+    slug VARCHAR(64) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_roles_code ON roles(code);
+CREATE INDEX idx_roles_slug ON roles(slug);
+
+CREATE TABLE capabilities (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(64) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_capabilities_code ON capabilities(code);
+
+CREATE TABLE user_roles (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_user_roles_user_role UNIQUE (user_id, role_id)
+);
+
+CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
+CREATE INDEX idx_user_roles_role_id ON user_roles(role_id);
+
+CREATE TABLE role_capabilities (
+    id SERIAL PRIMARY KEY,
+    role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    capability_id INTEGER NOT NULL REFERENCES capabilities(id) ON DELETE CASCADE,
+    scope VARCHAR(32) NOT NULL DEFAULT 'all' CHECK (scope IN ('all', 'own')),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_role_capabilities_role_cap UNIQUE (role_id, capability_id)
+);
+
+CREATE INDEX idx_role_capabilities_role_id ON role_capabilities(role_id);
+CREATE INDEX idx_role_capabilities_capability_id ON role_capabilities(capability_id);
+
+-- ============================================================================
+-- User settings
+-- ============================================================================
+
 CREATE TABLE user_settings (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     language VARCHAR(10) NOT NULL DEFAULT 'fr',
     timezone VARCHAR(50) NOT NULL DEFAULT 'Europe/Paris',
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_user_settings_user_id 
-        FOREIGN KEY (user_id) 
-        REFERENCES users(id) 
-        ON DELETE CASCADE
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes on user_settings table
 CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
 
--- SessionToken table: JWT session tokens for authentication
-CREATE TABLE session_tokens (
+-- ============================================================================
+-- 2FA and session model
+-- ============================================================================
+
+CREATE TABLE auth_challenges (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    token_hash VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    ip_address TEXT,
-    user_agent TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_session_tokens_user_id 
-        FOREIGN KEY (user_id) 
-        REFERENCES users(id) 
-        ON DELETE CASCADE
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pin_hash VARCHAR(255) NOT NULL,
+    attempts_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes on session_tokens table
+CREATE INDEX idx_auth_challenges_user_id ON auth_challenges(user_id);
+CREATE INDEX idx_auth_challenges_expires_at ON auth_challenges(expires_at);
+
+CREATE TABLE trusted_devices (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    device_name VARCHAR(255),
+    ip_address TEXT,
+    user_agent TEXT,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_trusted_devices_user_id ON trusted_devices(user_id);
+CREATE INDEX idx_trusted_devices_expires_at ON trusted_devices(expires_at);
+
+CREATE TABLE session_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    token_kind SMALLINT NOT NULL CHECK (token_kind IN (1, 2)),
+    auth_level SMALLINT NOT NULL CHECK (auth_level IN (1, 2)),
+    challenge_id INTEGER REFERENCES auth_challenges(id) ON DELETE SET NULL,
+    trusted_device_id INTEGER REFERENCES trusted_devices(id) ON DELETE SET NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    ip_address TEXT,
+    user_agent TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX idx_session_tokens_user_id ON session_tokens(user_id);
-CREATE INDEX idx_session_tokens_token_hash ON session_tokens(token_hash);
 CREATE INDEX idx_session_tokens_expires_at ON session_tokens(expires_at);
+CREATE INDEX idx_session_tokens_challenge_id ON session_tokens(challenge_id);
+CREATE INDEX idx_session_tokens_trusted_device_id ON session_tokens(trusted_device_id);
 
 -- ============================================================================
--- Triggers
+-- Generic updated_at trigger
 -- ============================================================================
 
--- Function to update updated_at timestamp on users table
-CREATE OR REPLACE FUNCTION update_users_updated_at()
+CREATE OR REPLACE FUNCTION touch_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
@@ -87,143 +150,120 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for users table
-CREATE TRIGGER trigger_users_updated_at
-BEFORE UPDATE ON users
-FOR EACH ROW
-EXECUTE FUNCTION update_users_updated_at();
-
--- Function to update updated_at timestamp on user_settings table
-CREATE OR REPLACE FUNCTION update_user_settings_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger for user_settings table
-CREATE TRIGGER trigger_user_settings_updated_at
-BEFORE UPDATE ON user_settings
-FOR EACH ROW
-EXECUTE FUNCTION update_user_settings_updated_at();
-
--- Function to update updated_at timestamp on session_tokens table
-CREATE OR REPLACE FUNCTION update_session_tokens_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger for session_tokens table
-CREATE TRIGGER trigger_session_tokens_updated_at
-BEFORE UPDATE ON session_tokens
-FOR EACH ROW
-EXECUTE FUNCTION update_session_tokens_updated_at();
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_capabilities_updated_at BEFORE UPDATE ON capabilities FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_user_roles_updated_at BEFORE UPDATE ON user_roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_role_capabilities_updated_at BEFORE UPDATE ON role_capabilities FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_user_settings_updated_at BEFORE UPDATE ON user_settings FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_auth_challenges_updated_at BEFORE UPDATE ON auth_challenges FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_trusted_devices_updated_at BEFORE UPDATE ON trusted_devices FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_session_tokens_updated_at BEFORE UPDATE ON session_tokens FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- ============================================================================
--- Views (optional, for common queries)
+-- Seed roles and capabilities
 -- ============================================================================
 
--- Active users view (with role text representation)
-CREATE OR REPLACE VIEW v_active_users AS
-SELECT 
-    u.id,
+INSERT INTO roles (code, slug, name)
+VALUES
+    (1, 'admin', 'Administrateur'),
+    (2, 'member', 'Membre'),
+    (3, 'finance', 'Finance'),
+    (4, 'instructor', 'Instructeur'),
+    (5, 'maintenance', 'Maintenance')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO capabilities (code, name, description)
+VALUES
+    ('EDIT_FLIGHTS', 'Gestion des vols', 'Creer et modifier des vols'),
+    ('MANAGE_PRICES', 'Gestion des tarifs', 'Modifier la tarification du club'),
+    ('VIEW_FINANCIALS', 'Lecture finance', 'Consulter les donnees financieres'),
+    ('MANAGE_USERS', 'Gestion des utilisateurs', 'Creer et administrer des comptes'),
+    ('MEMBER_PORTAL', 'Portail membre', 'Acces self-service du membre')
+ON CONFLICT (code) DO NOTHING;
+
+-- Admin gets all capabilities
+INSERT INTO role_capabilities (role_id, capability_id, scope)
+SELECT r.id, c.id, 'all'
+FROM roles r
+CROSS JOIN capabilities c
+WHERE r.slug = 'admin'
+ON CONFLICT (role_id, capability_id) DO NOTHING;
+
+-- Member capabilities (self scope)
+INSERT INTO role_capabilities (role_id, capability_id, scope)
+SELECT r.id, c.id, 'own'
+FROM roles r
+JOIN capabilities c ON c.code IN ('MEMBER_PORTAL', 'EDIT_FLIGHTS')
+WHERE r.slug = 'member'
+ON CONFLICT (role_id, capability_id) DO NOTHING;
+
+-- Finance capabilities
+INSERT INTO role_capabilities (role_id, capability_id, scope)
+SELECT r.id, c.id, 'all'
+FROM roles r
+JOIN capabilities c ON c.code IN ('VIEW_FINANCIALS')
+WHERE r.slug = 'finance'
+ON CONFLICT (role_id, capability_id) DO NOTHING;
+
+-- Instructor capabilities
+INSERT INTO role_capabilities (role_id, capability_id, scope)
+SELECT r.id, c.id, CASE WHEN c.code = 'MEMBER_PORTAL' THEN 'own' ELSE 'all' END
+FROM roles r
+JOIN capabilities c ON c.code IN ('EDIT_FLIGHTS', 'MEMBER_PORTAL')
+WHERE r.slug = 'instructor'
+ON CONFLICT (role_id, capability_id) DO NOTHING;
+
+-- Maintenance capabilities
+INSERT INTO role_capabilities (role_id, capability_id, scope)
+SELECT r.id, c.id, 'own'
+FROM roles r
+JOIN capabilities c ON c.code = 'MEMBER_PORTAL'
+WHERE r.slug = 'maintenance'
+ON CONFLICT (role_id, capability_id) DO NOTHING;
+
+-- ============================================================================
+-- Useful views
+-- ============================================================================
+
+CREATE OR REPLACE VIEW v_user_roles AS
+SELECT
+    u.id AS user_id,
     u.email,
-    u.nom,
-    u.prenom,
-    u.role,
-    CASE u.role 
-        WHEN 1 THEN 'pilot'
-        WHEN 2 THEN 'admin'
-        WHEN 3 THEN 'club'
-        ELSE 'unknown'
-    END AS role_name,
-    u.auth_expiration_date,
-    u.is_active,
-    u.updated_at
+    r.code AS role_code,
+    r.slug AS role_slug,
+    r.name AS role_name
 FROM users u
-WHERE u.is_active = TRUE;
+JOIN user_roles ur ON ur.user_id = u.id
+JOIN roles r ON r.id = ur.role_id;
 
--- User sessions view (not expired, with role text representation)
-CREATE OR REPLACE VIEW v_active_sessions AS
-SELECT 
+CREATE OR REPLACE VIEW v_user_capabilities AS
+SELECT DISTINCT
+    u.id AS user_id,
+    u.email,
+    c.code AS capability_code,
+    c.name AS capability_name,
+    rc.scope
+FROM users u
+JOIN user_roles ur ON ur.user_id = u.id
+JOIN roles r ON r.id = ur.role_id
+JOIN role_capabilities rc ON rc.role_id = r.id
+JOIN capabilities c ON c.id = rc.capability_id;
+
+CREATE OR REPLACE VIEW v_active_full_sessions AS
+SELECT
     st.id,
     st.user_id,
-    st.token_hash,
+    u.email,
     st.expires_at,
     st.ip_address,
     st.user_agent,
-    st.updated_at,
-    u.email,
-    u.nom,
-    u.prenom,
-    u.role,
-    CASE u.role 
-        WHEN 1 THEN 'pilot'
-        WHEN 2 THEN 'admin'
-        WHEN 3 THEN 'club'
-        ELSE 'unknown'
-    END AS role_name
+    td.device_name,
+    td.expires_at AS trusted_device_expires_at
 FROM session_tokens st
-JOIN users u ON st.user_id = u.id
-WHERE st.expires_at > CURRENT_TIMESTAMP;
-
--- ============================================================================
--- Grants (for application user)
--- ============================================================================
-
--- Uncomment and adjust as needed for production
--- CREATE ROLE erp_club WITH LOGIN PASSWORD 'secure_password_here';
--- GRANT CONNECT ON DATABASE erp_club_db TO erp_club;
--- GRANT USAGE ON SCHEMA public TO erp_club;
--- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO erp_club;
--- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO erp_club;
--- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO erp_club;
--- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO erp_club;
-
--- ============================================================================
--- Sample Data (optional, for testing)
--- ============================================================================
-
--- Uncomment below to insert sample data
--- INSERT INTO users (email, password_hash, nom, prenom, role, is_active)
--- VALUES 
---     ('admin@erp-club.local', '$argon2id$v=19$m=65540,t=3,p=4$...', 'Admin', 'Initial', 2, TRUE),
---     ('pilot@erp-club.local', '$argon2id$v=19$m=65540,t=3,p=4$...', 'Pilot', 'Test', 1, TRUE);
-
--- ============================================================================
--- Schema Documentation
--- ============================================================================
-
--- Table: users
--- Purpose: Store user/pilot account information
--- Relationships: One-to-One with user_settings, One-to-Many with session_tokens
--- Key fields:
---   - email: Unique identifier for login (email format)
---   - password_hash: Argon2 hashed password
---   - role: User type as SMALLINT (1=pilot, 2=admin, 3=club)
---   - is_active: Soft delete flag
---   - auth_expiration_date: License/subscription expiration
-
--- Table: user_settings
--- Purpose: Store user-specific preferences and settings
--- Relationships: Many-to-One with users (cascading delete)
--- Key fields:
---   - language: User interface language preference
---   - timezone: User's timezone for scheduling
-
--- Table: session_tokens
--- Purpose: Store active JWT session tokens for authentication
--- Relationships: Many-to-One with users (cascading delete)
--- Key fields:
---   - token_hash: SHA256 hash of JWT token for secure storage
---   - expires_at: Token expiration timestamp
---   - ip_address: Client IP address for security audit
---   - user_agent: Client user agent for security audit
-
--- ============================================================================
--- End of Schema
--- ============================================================================
+JOIN users u ON u.id = st.user_id
+LEFT JOIN trusted_devices td ON td.id = st.trusted_device_id
+WHERE st.auth_level = 2
+  AND st.token_kind = 2
+  AND st.revoked_at IS NULL
+  AND st.expires_at > CURRENT_TIMESTAMP;

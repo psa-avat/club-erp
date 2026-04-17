@@ -31,7 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, engine
-from api.security import get_current_user
+from api.security import get_current_user, get_user_capabilities, get_user_roles
 from api.routes import auth
 from models import User
 from gestionlog import LogConfig
@@ -180,8 +180,13 @@ async def health_check_db(db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/v1/info")
-async def api_info(current_user: User = Depends(get_current_user)):
+async def api_info(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """API version and information endpoint"""
+    roles = await get_user_roles(db=db, user_id=current_user.id)
+    capabilities = await get_user_capabilities(db=db, user_id=current_user.id)
     return {
         "name": APP_NAME,
         "version": API_VERSION,
@@ -189,7 +194,8 @@ async def api_info(current_user: User = Depends(get_current_user)):
         "user": {
             "id": current_user.id,
             "email": current_user.email,
-            "role": current_user.role,
+            "roles": roles,
+            "capabilities": capabilities,
         },
         "features": [
             "multi-user logbook",
