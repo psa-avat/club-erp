@@ -406,6 +406,7 @@ async def verify_pin(payload: VerifyPinRequest, request: Request, db: AsyncSessi
 async def logout(
     current_user: User = Depends(get_current_user),
     request: Request = None,
+    forget_device: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     response = Response(
@@ -417,8 +418,10 @@ async def logout(
     if auth_header and auth_header.lower().startswith("bearer "):
         await revoke_session_token(db, auth_header[7:])
 
+    # Keep trusted-device by default so users are not prompted for PIN on every logout/login cycle.
+    # Clients can explicitly revoke trusted-device with /logout?forget_device=true.
     trusted_cookie = request.cookies.get(TRUSTED_DEVICE_COOKIE_NAME) if request else None
-    if trusted_cookie:
+    if forget_device and trusted_cookie:
         await revoke_trusted_device(db=db, user_id=current_user.id, device_token=trusted_cookie)
         response.delete_cookie(TRUSTED_DEVICE_COOKIE_NAME, path="/")
 

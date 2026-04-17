@@ -58,9 +58,55 @@ export const fr = {
     },
   },
   admin: {
-    home: {
-      title: 'Module Admin',
-      description: 'Gestion des utilisateurs, roles, audit et configuration applicative seront centralises ici.',
+    management: {
+      title: 'Administration',
+      description: 'Gerez les utilisateurs, roles et capacites depuis cette interface.',
     },
+    tabs: {
+      users: 'Utilisateurs',
+      roles: 'Roles',
+      capabilities: 'Capacites',
+    },
+    users: {
+      email: 'Email',
+      password: 'Mot de passe',
+      passwordOptional: 'Laisser vide pour conserver le mot de passe actuel',
+      prenom: 'Prenom',
+      nom: 'Nom',
+      active: 'Utilisateur actif',
+      roleSlugs: 'Roles (liste separee par des virgules)',
+      roles: 'Roles',
+      name: 'Nom complet',
+    },
+    roles: {
+      code: 'Code',
+      slug: 'Slug',
+      name: 'Nom',
+      active: 'Role actif',
+      capabilities: 'Capacites (liste separee par des virgules)',
+    },
+    capabilities: {
+      code: 'Code',
+      name: 'Nom',
+      description: 'Description',
+    },
+    actions: {
+      title: 'Actions',
+      create: 'Creer',
+      update: 'Mettre a jour',
+      edit: 'Editer',
+      delete: 'Supprimer',
+      cancel: 'Annuler',
+      confirmTitle: 'Confirmer la suppression',
+      confirmMessage: 'Voulez-vous vraiment supprimer "{{label}}" ? Cette action est irreversible.',
+      confirmDelete: 'Confirmer la suppression',
+      deleting: 'Suppression...',
+    },
+    states: {
+      yes: 'Oui',
+      no: 'Non',
+    },
+    loading: 'Chargement des donnees...',
+    empty: 'Aucune donnee',
   },
 } as const

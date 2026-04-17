@@ -6,3 +6,4 @@ backend/.env
 deploy/init-db/erp.sql
 backend/nohup.out
 backend/conf_emails.json
+node_modules

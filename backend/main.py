@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, engine
 from api.security import get_current_user, get_user_capabilities, get_user_roles
-from api.routes import auth
+from api.routes import auth, admin
 from models import User
 from gestionlog import LogConfig
 
@@ -207,6 +207,7 @@ async def api_info(
 
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
 if __name__ == "__main__":

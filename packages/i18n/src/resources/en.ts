@@ -58,9 +58,55 @@ export const en = {
     },
   },
   admin: {
-    home: {
-      title: 'Admin Module',
-      description: 'User management, roles, audit and application configuration will be centralized here.',
+    management: {
+      title: 'Administration',
+      description: 'Manage users, roles, and capabilities from this interface.',
     },
+    tabs: {
+      users: 'Users',
+      roles: 'Roles',
+      capabilities: 'Capabilities',
+    },
+    users: {
+      email: 'Email',
+      password: 'Password',
+      passwordOptional: 'Leave blank to keep the current password',
+      prenom: 'First name',
+      nom: 'Last name',
+      active: 'Active user',
+      roleSlugs: 'Roles (comma-separated)',
+      roles: 'Roles',
+      name: 'Full name',
+    },
+    roles: {
+      code: 'Code',
+      slug: 'Slug',
+      name: 'Name',
+      active: 'Active role',
+      capabilities: 'Capabilities (comma-separated)',
+    },
+    capabilities: {
+      code: 'Code',
+      name: 'Name',
+      description: 'Description',
+    },
+    actions: {
+      title: 'Actions',
+      create: 'Create',
+      update: 'Update',
+      edit: 'Edit',
+      delete: 'Delete',
+      cancel: 'Cancel',
+      confirmTitle: 'Confirm deletion',
+      confirmMessage: 'Do you really want to delete "{{label}}"? This action cannot be undone.',
+      confirmDelete: 'Confirm delete',
+      deleting: 'Deleting...',
+    },
+    states: {
+      yes: 'Yes',
+      no: 'No',
+    },
+    loading: 'Loading data...',
+    empty: 'No data',
   },
 } as const

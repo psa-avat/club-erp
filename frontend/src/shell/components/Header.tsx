@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { useCurrentUser, useLogout } from '../../auth/api/useAuth'
@@ -10,6 +10,7 @@ type HeaderProps = {
 }
 
 export function Header({ onOpenMobileMenu }: HeaderProps) {
+  const navigate = useNavigate()
   const { i18n, t } = useTranslation('common')
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
@@ -72,8 +73,8 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               </Button>
             </>
           ) : (
-            <Button asChild size="sm">
-              <Link to="/login">{t('auth.login')}</Link>
+            <Button size="sm" onClick={() => navigate('/login')}>
+              {t('auth.login')}
             </Button>
           )}
         </div>
