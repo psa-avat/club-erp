@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "@club-erp/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@club-erp/api-client": "workspace:*",
+    "@club-erp/i18n": "workspace:*",
+    "@club-erp/ui": "workspace:*",
     "@tanstack/react-query": "^5.99.0",
+    "i18next": "^25.5.3",
+    "react-i18next": "^16.2.4",
     "@tanstack/react-table": "^8.21.3",
     "axios": "^1.15.0",
     "class-variance-authority": "^0.7.1",

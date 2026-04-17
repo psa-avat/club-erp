@@ -1,9 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import { useCurrentUser } from '../api/useAuth'
 import { useAuthStore } from '../store/authStore'
 
 export function ProtectedRoute() {
+  const { t } = useTranslation('common')
   const location = useLocation()
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
@@ -15,11 +17,7 @@ export function ProtectedRoute() {
   }
 
   if (isLoading) {
-    return (
-      <div className="grid min-h-screen place-items-center text-sm text-slate-600">
-        Verification of session...
-      </div>
-    )
+    return <div className="grid min-h-screen place-items-center text-sm text-slate-600">{t('auth.sessionVerification')}</div>
   }
 
   return <Outlet />

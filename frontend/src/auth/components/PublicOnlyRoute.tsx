@@ -6,7 +6,7 @@ export function PublicOnlyRoute() {
   const token = useAuthStore((state) => state.token)
 
   if (token) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   return <Outlet />

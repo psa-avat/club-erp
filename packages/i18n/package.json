@@ -1,0 +1,13 @@
+{
+  "name": "@club-erp/i18n",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "i18next": "^25.5.3",
+    "react-i18next": "^16.2.4"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

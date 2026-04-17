@@ -1,0 +1,1 @@
+export { useCapability } from './useCapability'

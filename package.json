@@ -1,0 +1,11 @@
+{
+  "name": "club-erp-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.5.2",
+  "scripts": {
+    "dev:web": "pnpm --filter @club-erp/web dev",
+    "build:web": "pnpm --filter @club-erp/web build",
+    "lint:web": "pnpm --filter @club-erp/web lint"
+  }
+}

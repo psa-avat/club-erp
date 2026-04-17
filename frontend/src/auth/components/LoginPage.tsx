@@ -22,6 +22,7 @@ import { AxiosError } from 'axios'
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../components/ui/alert'
 import { Button } from '../../components/ui/button'
@@ -36,6 +37,7 @@ interface LoginErrorResponse {
 }
 
 export function LoginPage() {
+  const { t } = useTranslation('common')
   const location = useLocation()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -73,7 +75,7 @@ export function LoginPage() {
     const targetPath =
       typeof location.state === 'object' && location.state !== null && 'from' in location.state
         ? String(location.state.from)
-        : '/'
+        : '/dashboard'
 
     navigate(targetPath, { replace: true })
   }
@@ -86,17 +88,17 @@ export function LoginPage() {
   const targetPath =
     typeof location.state === 'object' && location.state !== null && 'from' in location.state
       ? String(location.state.from)
-      : '/'
+      : '/dashboard'
 
   let errorMessage: string | null = null
   if (statusCode === 401) {
-    errorMessage = 'Identifiants invalides. Verifiez votre email et votre mot de passe.'
+    errorMessage = t('auth.invalidCredentials')
   } else if (statusCode === 403) {
-    errorMessage = 'Ce compte est inactif. Contactez un administrateur.'
+    errorMessage = t('auth.inactiveAccount')
   } else if (statusCode === 422) {
-    errorMessage = 'Le format de l\'email est invalide.'
+    errorMessage = t('auth.invalidEmail')
   } else if (rawError) {
-    errorMessage = rawError.response?.data?.detail ?? 'Connexion impossible. Reessayez dans un instant.'
+    errorMessage = rawError.response?.data?.detail ?? t('auth.loginFailed')
   }
 
   const isSubmitting = loginMutation.isPending || verifyPinMutation.isPending
@@ -106,7 +108,7 @@ export function LoginPage() {
       <div className="absolute inset-0" onClick={() => navigate(targetPath, { replace: true })} />
       <Card className="relative w-full max-w-md border-slate-200 bg-white/95 shadow-2xl">
         <button
-          aria-label="Fermer la fenetre de connexion"
+          aria-label={t('auth.closeLoginModal')}
           className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
           type="button"
           onClick={() => navigate(targetPath, { replace: true })}
@@ -114,18 +116,16 @@ export function LoginPage() {
           <X className="h-4 w-4" />
         </button>
         <CardHeader>
-          <CardTitle>Club ERP</CardTitle>
+          <CardTitle>{t('app.name')}</CardTitle>
           <CardDescription>
-            {authState === 'pre_auth'
-              ? 'Entrez le code PIN recu par email pour terminer la connexion.'
-              : 'Connexion securisee a votre espace club.'}
+            {authState === 'pre_auth' ? t('auth.enterPin') : t('auth.secureLogin')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
             {authState === 'pre_auth' ? (
               <div className="space-y-2">
-                <Label htmlFor="pin">Code PIN</Label>
+                <Label htmlFor="pin">{t('auth.pinLabel')}</Label>
                 <Input
                   id="pin"
                   inputMode="numeric"
@@ -141,7 +141,7 @@ export function LoginPage() {
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t('auth.email')}</Label>
                   <Input
                     autoComplete="username"
                     id="email"
@@ -153,7 +153,7 @@ export function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Mot de passe</Label>
+                  <Label htmlFor="password">{t('auth.password')}</Label>
                   <Input
                     autoComplete="current-password"
                     id="password"
@@ -170,10 +170,10 @@ export function LoginPage() {
 
             <Button className="w-full" disabled={isSubmitting} type="submit">
               {isSubmitting
-                ? 'Connexion en cours...'
+                ? t('auth.loginInProgress')
                 : authState === 'pre_auth'
-                  ? 'Verifier le code'
-                  : 'Se connecter'}
+                  ? t('auth.verifyPin')
+                  : t('auth.login')}
             </Button>
           </form>
         </CardContent>
