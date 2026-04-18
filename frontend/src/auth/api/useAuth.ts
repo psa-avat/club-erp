@@ -21,8 +21,8 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 import { useAuthStore } from '../store/authStore'
-import type { LoginRequest, VerifyPinRequest } from '../types'
-import { loginRequest, logoutRequest, meRequest, verifyPinRequest } from './authApi'
+import type { ChangePasswordRequest, LoginRequest, VerifyPinRequest } from '../types'
+import { changePasswordRequest, loginRequest, logoutRequest, meRequest, verifyPinRequest } from './authApi'
 
 export function useLogin() {
   const setSession = useAuthStore((state) => state.setSession)
@@ -107,4 +107,10 @@ export function useCurrentUser(enabled: boolean) {
   }, [query.error, clearSession])
 
   return query
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (payload: ChangePasswordRequest) => changePasswordRequest(payload),
+  })
 }

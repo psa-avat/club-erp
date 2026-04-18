@@ -142,6 +142,7 @@ class UserSettings(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
     language = Column(String(10), default="fr")
     timezone = Column(String(50), default="Europe/Paris")
+    can_change_password = Column(Boolean, default=True, nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

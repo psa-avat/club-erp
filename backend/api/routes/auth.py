@@ -25,7 +25,7 @@ from typing import Optional
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,7 +65,7 @@ from constants import (
     TRUSTED_DEVICE_COOKIE_NAME,
     TRUSTED_DEVICE_DAYS,
 )
-from models import AuthChallenge, Capability, Role, RoleCapability, User, UserRole
+from models import AuthChallenge, Capability, Role, RoleCapability, User, UserRole, UserSettings
 from services.email import send_pin_email
 
 router = APIRouter()
@@ -432,6 +432,11 @@ async def logout(
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     roles = await get_user_roles(db=db, user_id=current_user.id)
     capabilities = await get_user_capabilities(db=db, user_id=current_user.id)
+    settings_result = await db.execute(
+        select(UserSettings).where(UserSettings.user_id == current_user.id)
+    )
+    settings = settings_result.scalar_one_or_none()
+    can_change_password = settings.can_change_password if settings is not None else True
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -443,4 +448,38 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         "auth_expiration_date": current_user.auth_expiration_date.isoformat()
         if current_user.auth_expiration_date
         else None,
+        "can_change_password": can_change_password,
     }
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    settings_result = await db.execute(
+        select(UserSettings).where(UserSettings.user_id == current_user.id)
+    )
+    settings = settings_result.scalar_one_or_none()
+    can_change = settings.can_change_password if settings is not None else True
+
+    if not can_change:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change is not allowed for this account",
+        )
+
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(payload.new_password)
+    await db.commit()

@@ -52,4 +52,10 @@ export interface VerifyPinRequest {
 export interface MeResponse extends AuthUser {
   is_active: boolean
   auth_expiration_date: string | null
+  can_change_password: boolean
+}
+
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
 }

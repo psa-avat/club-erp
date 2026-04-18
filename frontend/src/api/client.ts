@@ -2,8 +2,10 @@ import axios, { AxiosError } from 'axios'
 
 import { useAuthStore } from '../auth/store/authStore'
 
-const resolvedApiBaseUrl = import.meta.env.VITE_API_URL
-  ?? `${window.location.protocol}//${window.location.hostname}:8000`
+const configuredApiBaseUrl = import.meta.env.VITE_API_URL?.trim()
+const resolvedApiBaseUrl = configuredApiBaseUrl && configuredApiBaseUrl.length > 0
+  ? configuredApiBaseUrl
+  : window.location.origin
 
 export const apiClient = axios.create({
   baseURL: resolvedApiBaseUrl,

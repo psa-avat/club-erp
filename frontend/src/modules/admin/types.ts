@@ -6,6 +6,7 @@ export type AdminUser = {
   is_active: boolean
   roles: string[]
   capabilities: string[]
+  can_change_password: boolean
 }
 
 export type AdminRole = {
@@ -33,7 +34,9 @@ export type CreateAdminUserPayload = {
   role_slugs: string[]
 }
 
-export type UpdateAdminUserPayload = Partial<CreateAdminUserPayload>
+export type UpdateAdminUserPayload = Partial<CreateAdminUserPayload> & {
+  can_change_password?: boolean
+}
 
 export type CreateAdminRolePayload = {
   code: number

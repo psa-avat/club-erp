@@ -18,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { apiClient } from '../../api/client'
-import type { LoginRequest, LoginResponse, MeResponse, VerifyPinRequest } from '../types'
+import type { ChangePasswordRequest, LoginRequest, LoginResponse, MeResponse, VerifyPinRequest } from '../types'
 
 export async function loginRequest(payload: LoginRequest): Promise<LoginResponse> {
   const { data } = await apiClient.post<LoginResponse>('/api/v1/auth/login', payload)
@@ -37,4 +37,8 @@ export async function verifyPinRequest(payload: VerifyPinRequest): Promise<Login
 export async function meRequest(): Promise<MeResponse> {
   const { data } = await apiClient.get<MeResponse>('/api/v1/auth/me')
   return data
+}
+
+export async function changePasswordRequest(payload: ChangePasswordRequest): Promise<void> {
+  await apiClient.post('/api/v1/auth/change-password', payload)
 }

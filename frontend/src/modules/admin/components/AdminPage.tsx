@@ -148,6 +148,7 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
   const [prenom, setPrenom] = useState('')
   const [nom, setNom] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [canChangePassword, setCanChangePassword] = useState(true)
   const [roleSlugsInput, setRoleSlugsInput] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null)
 
@@ -160,6 +161,7 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
     setPrenom('')
     setNom('')
     setIsActive(true)
+    setCanChangePassword(true)
     setRoleSlugsInput('')
   }
 
@@ -175,6 +177,7 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
     setPrenom(user.prenom ?? '')
     setNom(user.nom ?? '')
     setIsActive(user.is_active)
+    setCanChangePassword(user.can_change_password)
     setRoleSlugsInput(user.roles.join(', '))
   }
 
@@ -187,6 +190,7 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
       nom: nom || undefined,
       is_active: isActive,
       role_slugs: parseCsvList(roleSlugsInput),
+      can_change_password: canChangePassword,
       ...(password ? { password } : {}),
     }
 
@@ -248,6 +252,10 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
           <input checked={isActive} type="checkbox" onChange={(event) => setIsActive(event.target.checked)} />
           {t('users.active')}
         </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
+          <input checked={canChangePassword} type="checkbox" onChange={(event) => setCanChangePassword(event.target.checked)} />
+          {t('users.canChangePassword')}
+        </label>
         <div className="flex gap-2 md:col-span-2">
           <Button disabled={createUserMutation.isPending || updateUserMutation.isPending} type="submit">
             {editingUserId ? t('actions.update') : t('actions.create')}
@@ -267,6 +275,7 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
           t('users.email'),
           t('users.name'),
           t('users.active'),
+          t('users.canChangePassword'),
           t('users.roles'),
           t('actions.title'),
         ]}
@@ -274,6 +283,7 @@ function UsersCrudPanel({ roles, users }: { users: ReturnType<typeof useAdminUse
           user.email,
           `${user.prenom ?? ''} ${user.nom ?? ''}`.trim() || '-',
           user.is_active ? t('states.yes') : t('states.no'),
+          user.can_change_password ? t('states.yes') : t('states.no'),
           user.roles.join(', ') || '-',
           <div className="flex gap-2" key={`actions-${user.id}`}>
             <Button size="sm" type="button" variant="secondary" onClick={() => startEdit(user.id)}>

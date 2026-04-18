@@ -33,7 +33,7 @@ from api.security import (
     require_capability,
 )
 from constants import CAP_MANAGE_USERS
-from models import Capability, Role, RoleCapability, User, UserRole
+from models import Capability, Role, RoleCapability, User, UserRole, UserSettings
 
 router = APIRouter()
 admin_guard = Depends(require_capability(CAP_MANAGE_USERS))
@@ -47,6 +47,7 @@ class AdminUserResponse(BaseModel):
     is_active: bool
     roles: list[str]
     capabilities: list[str]
+    can_change_password: bool = True
 
 
 class AdminUserCreateRequest(BaseModel):
@@ -65,6 +66,7 @@ class AdminUserUpdateRequest(BaseModel):
     nom: Optional[str] = None
     is_active: Optional[bool] = None
     role_slugs: Optional[list[str]] = None
+    can_change_password: Optional[bool] = None
 
 
 class CapabilityResponse(BaseModel):
@@ -114,6 +116,8 @@ class RoleUpdateRequest(BaseModel):
 async def _build_user_response(db: AsyncSession, user: User) -> AdminUserResponse:
     roles = await get_user_roles(db=db, user_id=user.id)
     capabilities = await get_user_capabilities(db=db, user_id=user.id)
+    settings_result = await db.execute(select(UserSettings).where(UserSettings.user_id == user.id))
+    settings = settings_result.scalar_one_or_none()
     return AdminUserResponse(
         id=user.id,
         email=user.email,
@@ -122,6 +126,7 @@ async def _build_user_response(db: AsyncSession, user: User) -> AdminUserRespons
         is_active=user.is_active,
         roles=roles,
         capabilities=capabilities,
+        can_change_password=settings.can_change_password if settings is not None else True,
     )
 
 
@@ -248,6 +253,14 @@ async def update_user(
         await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
         for role in roles:
             db.add(UserRole(user_id=user_id, role_id=role.id))
+
+    if payload.can_change_password is not None:
+        settings_result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        settings = settings_result.scalar_one_or_none()
+        if settings is None:
+            db.add(UserSettings(user_id=user_id, can_change_password=payload.can_change_password))
+        else:
+            settings.can_change_password = payload.can_change_password
 
     await db.commit()
     await db.refresh(user)
