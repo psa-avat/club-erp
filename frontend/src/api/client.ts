@@ -2,6 +2,20 @@ import axios, { AxiosError } from 'axios'
 
 import { useAuthStore } from '../auth/store/authStore'
 
+function getPersistedToken(): string | null {
+  try {
+    const raw = sessionStorage.getItem('club-erp-auth')
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw) as { state?: { token?: string | null } }
+    return parsed.state?.token ?? null
+  } catch {
+    return null
+  }
+}
+
 const configuredApiBaseUrl = import.meta.env.VITE_API_URL?.trim()
 const resolvedApiBaseUrl = configuredApiBaseUrl && configuredApiBaseUrl.length > 0
   ? configuredApiBaseUrl
@@ -16,8 +30,9 @@ export const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
+  const token = useAuthStore.getState().token ?? getPersistedToken()
   if (token) {
+    config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${token}`
   }
 

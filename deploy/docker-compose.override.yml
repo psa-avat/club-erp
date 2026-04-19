@@ -1,0 +1,111 @@
+# ==============================================================================
+#  docker-compose.override.yml   –   LOCAL DEVELOPMENT
+#
+#  Automatically merged by Docker Compose when you run `docker compose up`.
+#  Adds a local postgres, Dozzle log viewer, builds images from source instead
+#  of pulling from the registry, and exposes ports for direct tool access.
+#
+#  Usage (from the deploy/ directory):
+#    Start:  docker compose up -d
+#    Stop:   docker compose down
+#    Rebuild after code changes:
+#            docker compose build && docker compose up -d
+#
+#  Dozzle log viewer → http://localhost:9999
+# ==============================================================================
+
+networks:
+  # In dev we don't have an external web_network – create a local one instead
+  web_network:
+    external: false
+    name: erp_dev_network
+  # In dev we also keep the backend/database bridge local to avoid requiring
+  # a pre-created external network from the production topology.
+  db_network:
+    external: false
+    name: erp_dev_db_network
+
+services:
+  # ── Local Postgres (dev only) ───────────────────────────────────────────────
+  erp-db:
+    image: postgres:18-alpine
+    container_name: erp-db-dev
+    restart: unless-stopped
+    networks:
+      - web_network
+      - db_network
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erp_club_db}
+      POSTGRES_USER: ${POSTGRES_USER:-erpuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      TZ: Europe/Paris
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    # Expose so DB tools (DBeaver, psql, etc.) can connect from host
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erpuser} -d ${POSTGRES_DB:-erp_club_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "dozzle.group=erp_club"
+      - "dozzle.name=PostgreSQL"
+
+  # ── Backend: build from source in dev ──────────────────────────────────────
+  erp-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: club-erp-backend:dev
+    environment:
+      ENVIRONMENT: DEV
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-erpuser}:${POSTGRES_PASSWORD:-devpassword}@erp-db:5432/${POSTGRES_DB:-erp_club_db}
+    depends_on:
+      erp-db:
+        condition: service_healthy
+    # Expose directly so you can hit the API without going through Nginx
+    ports:
+      - "8000:8000"
+    labels:
+      - "traefik.enable=false"
+      - "dozzle.group=erp_club"
+      - "dozzle.name=ERP Backend"
+
+  # ── Frontend: build from monorepo root in dev ──────────────────────────────
+  erp-frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    image: club-erp-frontend:dev
+    # Expose on 8080 to avoid conflicts with other local services on :80
+    ports:
+      - "8080:80"
+    labels:
+      - "traefik.enable=false"
+      - "dozzle.group=erp_club"
+      - "dozzle.name=ERP Frontend"
+
+  # ── Dozzle – log viewer (http://localhost:9999) ─────────────────────────────
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: erp-dozzle-dev
+    restart: unless-stopped
+    networks:
+      - web_network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "9999:8080"
+    environment:
+      # Only display containers labelled with dozzle.group=erp_club
+      DOZZLE_FILTER: "label=dozzle.group=erp_club"
+      DOZZLE_LEVEL: debug
+    labels:
+      - "dozzle.enable=false"   # don't show Dozzle itself in its own UI
+
+volumes:
+  pgdata_dev:
+    driver: local

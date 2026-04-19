@@ -1,35 +1,80 @@
+# ==============================================================================
+#  docker-compose.yml   –   PRODUCTION (VPS)
+#
+#  Topology:
+#    web_network  – external, shared with Traefik / Dozzle / carnet stack
+#    db_network   – external, shared bridge between carnet-db and erp-backend
+#                   (see README §5 — create once on the VPS)
+#
+#  The frontend Nginx proxies /api → erp-backend:8000 internally,
+#  so only one public hostname is needed: avat.erp-club.psa-avat.fr
+#
+#  Usage:
+#    First deploy:  docker compose pull && docker compose up -d
+#    Update:        docker compose pull && docker compose up -d
+#    Logs:          docker compose logs -f
+# ==============================================================================
+
 networks:
+  # Traefik + Dozzle live here — provides public routing
   web_network:
     external: true
     name: web_network
+  # Shared bridge so erp-backend can reach carnet-db without exposing the DB
+  db_network:
+    external: true
+    name: db_network
 
 services:
-  erp-db:
-    image: postgres:18-alpine
-    container_name: erp-db
+  # ── Backend (FastAPI / uvicorn) ─────────────────────────────────────────────
+  erp-backend:
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_IMAGE_BACKEND:-psa-avat/club-erp-backend}:${IMAGE_TAG:-latest}
+    container_name: erp-backend
     restart: unless-stopped
     networks:
-      - default
+      - web_network   # reachable by erp-frontend nginx on the same network
+      - db_network    # reaches carnet-db
+    env_file: .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-erp_club_db}
-      POSTGRES_USER: ${POSTGRES_USER:-erpuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      TZ: Europe/Paris
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init-db:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
+      ENVIRONMENT: PROD
     labels:
       - "dozzle.group=erp_club"
-      - "dozzle.name=PostgreSQL"
+      - "dozzle.name=ERP Backend"
       - "com.centurylinklabs.watchtower.enable=true"
+      # Backend is NOT exposed via Traefik — the frontend Nginx proxies /api internally
+      - "traefik.enable=false"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erpuser} -d ${POSTGRES_DB:-erp_club _db}"]
-      interval: 10s
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').getcode() == 200 else 1)",
+        ]
+      interval: 15s
       timeout: 5s
-      retries: 5
-      
-volumes:
-  pgdata:
-    driver: local
+      retries: 3
+      start_period: 10s
+
+  # ── Frontend (Nginx serving Vite build + /api proxy) ───────────────────────
+  erp-frontend:
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_IMAGE_FRONTEND:-psa-avat/club-erp-frontend}:${IMAGE_TAG:-latest}
+    container_name: erp-frontend
+    restart: unless-stopped
+    networks:
+      - web_network   # for Traefik routing and reaching erp-backend by service name
+    depends_on:
+      erp-backend:
+        condition: service_healthy
+    labels:
+      - "dozzle.group=erp_club"
+      - "dozzle.name=ERP Frontend"
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "traefik.enable=true"
+      - "traefik.docker.network=web_network"
+      - "traefik.http.routers.erp-front.rule=Host(`${ERP_HOST:-avat.erp-club.psa-avat.fr}`)"
+      - "traefik.http.routers.erp-front.entrypoints=websecure"
+      - "traefik.http.routers.erp-front.tls=true"
+      - "traefik.http.routers.erp-front.tls.certresolver=myresolver"
+      - "traefik.http.routers.erp-front.service=erp-front"
+      - "traefik.http.services.erp-front.loadbalancer.server.port=80"

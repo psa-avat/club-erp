@@ -29,7 +29,7 @@ interface AuthState {
   expiresAt: string | null
   user: AuthUser | null
   setPreAuthSession: (session: { preAuthToken: string; expiresAt: string }) => void
-  setSession: (session: { token: string; expiresAt: string; user: AuthUser }) => void
+  setSession: (session: { token: string; expiresAt: string; user?: AuthUser | null }) => void
   setUser: (user: AuthUser) => void
   clearSession: () => void
 }
@@ -46,7 +46,7 @@ export const useAuthStore = create<AuthState>()(
         set({ authState: 'pre_auth', preAuthToken, expiresAt, token: null, user: null })
       },
       setSession: ({ token, expiresAt, user }) => {
-        set({ authState: 'full_auth', token, preAuthToken: null, expiresAt, user })
+        set({ authState: 'full_auth', token, preAuthToken: null, expiresAt, user: user ?? null })
       },
       setUser: (user) => {
         set({ user })

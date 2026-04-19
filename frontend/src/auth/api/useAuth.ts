@@ -31,11 +31,11 @@ export function useLogin() {
   return useMutation({
     mutationFn: (payload: LoginRequest) => loginRequest(payload),
     onSuccess: (data) => {
-      if (data.auth_state === 'full_auth' && data.access_token && data.user) {
+      if (data.auth_state === 'full_auth' && data.access_token) {
         setSession({
           token: data.access_token,
           expiresAt: data.expires_at,
-          user: data.user,
+          user: data.user ?? null,
         })
       } else if (data.auth_state === 'pre_auth' && data.pre_auth_token) {
         setPreAuthSession({
@@ -53,11 +53,11 @@ export function useVerifyPin() {
   return useMutation({
     mutationFn: (payload: VerifyPinRequest) => verifyPinRequest(payload),
     onSuccess: (data) => {
-      if (data.auth_state === 'full_auth' && data.access_token && data.user) {
+      if (data.auth_state === 'full_auth' && data.access_token) {
         setSession({
           token: data.access_token,
           expiresAt: data.expires_at,
-          user: data.user,
+          user: data.user ?? null,
         })
       }
     },

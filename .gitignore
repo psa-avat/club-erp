@@ -1,9 +1,27 @@
+# ── Secrets & environments ────────────────────────────────────────────────────
 deploy/.env
-backend/venv
-*.pyc
-backend/erp_club.db
 backend/.env
-deploy/init-db/erp.sql
+frontend/.env
+
+# ── Dev-only compose override (has local secrets / port bindings) ─────────────
+# Commit this only if your team shares the same dev setup
+# deploy/docker-compose.override.yml
+
+# ── Python ────────────────────────────────────────────────────────────────────
+backend/venv
+__pycache__/
+*.pyc
+*.pyo
+backend/erp_club.db
 backend/nohup.out
 backend/conf_emails.json
-node_modules
+
+# ── DB init SQL (generated, keep template only) ───────────────────────────────
+deploy/init-db/erp.sql
+
+# ── Node ──────────────────────────────────────────────────────────────────────
+node_modules/
+frontend/nohup.out
+
+# ── Build artefacts ───────────────────────────────────────────────────────────
+frontend/dist/
