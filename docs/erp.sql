@@ -80,6 +80,7 @@ CREATE TABLE user_settings (
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     language VARCHAR(10) NOT NULL DEFAULT 'fr',
     timezone VARCHAR(50) NOT NULL DEFAULT 'Europe/Paris',
+    can_change_password BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

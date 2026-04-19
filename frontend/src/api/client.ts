@@ -16,6 +16,23 @@ function getPersistedToken(): string | null {
   }
 }
 
+export function getAuthToken(): string | null {
+  const token = useAuthStore.getState().token ?? getPersistedToken()
+  const normalizedToken = token?.trim()
+  return normalizedToken && normalizedToken.length > 0 ? normalizedToken : null
+}
+
+export function getAuthRequestConfig() {
+  const token = getAuthToken()
+  return token
+    ? {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    : undefined
+}
+
 const configuredApiBaseUrl = import.meta.env.VITE_API_URL?.trim()
 const resolvedApiBaseUrl = configuredApiBaseUrl && configuredApiBaseUrl.length > 0
   ? configuredApiBaseUrl
@@ -30,10 +47,15 @@ export const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token ?? getPersistedToken()
-  if (token) {
-    config.headers = config.headers ?? {}
-    config.headers.Authorization = `Bearer ${token}`
+  const normalizedToken = getAuthToken()
+
+  if (normalizedToken) {
+    if (config.headers && typeof config.headers.set === 'function') {
+      config.headers.set('Authorization', `Bearer ${normalizedToken}`)
+    } else {
+      config.headers = config.headers ?? {}
+      config.headers.Authorization = `Bearer ${normalizedToken}`
+    }
   }
 
   return config

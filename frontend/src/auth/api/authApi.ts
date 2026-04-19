@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { apiClient } from '../../api/client'
+import { apiClient, getAuthRequestConfig } from '../../api/client'
 import type { ChangePasswordRequest, LoginRequest, LoginResponse, MeResponse, VerifyPinRequest } from '../types'
 
 export async function loginRequest(payload: LoginRequest): Promise<LoginResponse> {
@@ -26,7 +26,7 @@ export async function loginRequest(payload: LoginRequest): Promise<LoginResponse
 }
 
 export async function logoutRequest(): Promise<void> {
-  await apiClient.post('/api/v1/auth/logout')
+  await apiClient.post('/api/v1/auth/logout', undefined, getAuthRequestConfig())
 }
 
 export async function verifyPinRequest(payload: VerifyPinRequest): Promise<LoginResponse> {
@@ -35,10 +35,10 @@ export async function verifyPinRequest(payload: VerifyPinRequest): Promise<Login
 }
 
 export async function meRequest(): Promise<MeResponse> {
-  const { data } = await apiClient.get<MeResponse>('/api/v1/auth/me')
+  const { data } = await apiClient.get<MeResponse>('/api/v1/auth/me', getAuthRequestConfig())
   return data
 }
 
 export async function changePasswordRequest(payload: ChangePasswordRequest): Promise<void> {
-  await apiClient.post('/api/v1/auth/change-password', payload)
+  await apiClient.post('/api/v1/auth/change-password', payload, getAuthRequestConfig())
 }
