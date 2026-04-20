@@ -1,0 +1,242 @@
+"""Pydantic schemas for the members module."""
+
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class MemberRoleFlags(BaseModel):
+    """Operational flags that can coexist on a member."""
+
+    is_instructor: bool = False
+    is_employee: bool = False
+    is_executive: bool = False
+    is_board_member: bool = False
+
+
+class MemberBase(MemberRoleFlags):
+    """Shared mutable member fields."""
+
+    genre: int = Field(default=0, ge=0, le=3)
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    date_of_birth: Optional[date] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(default=None, max_length=50)
+    member_category: int = Field(ge=1, le=6)
+    seniority: Optional[int] = Field(default=None, ge=0)
+    ffvp_id: Optional[int] = Field(default=None, ge=1)
+    photo_url: Optional[str] = None
+    is_active: bool = True
+    status: int = Field(default=1, ge=1, le=4)
+    registration_status: int = Field(default=1, ge=1, le=4)
+    can_fly: bool = False
+    external_auth_enabled: bool = False
+    last_registration_year: Optional[int] = Field(default=None, ge=2000, le=9999)
+    notes: Optional[str] = None
+
+
+class MemberCreateRequest(MemberBase):
+    """Payload for member creation."""
+
+    account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
+
+
+class MemberUpdateRequest(BaseModel):
+    """Payload for member updates."""
+
+    genre: Optional[int] = Field(default=None, ge=0, le=3)
+    first_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    date_of_birth: Optional[date] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(default=None, max_length=50)
+    member_category: Optional[int] = Field(default=None, ge=1, le=6)
+    seniority: Optional[int] = Field(default=None, ge=0)
+    ffvp_id: Optional[int] = Field(default=None, ge=1)
+    account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
+    photo_url: Optional[str] = None
+    is_active: Optional[bool] = None
+    status: Optional[int] = Field(default=None, ge=1, le=4)
+    registration_status: Optional[int] = Field(default=None, ge=1, le=4)
+    is_instructor: Optional[bool] = None
+    is_employee: Optional[bool] = None
+    is_executive: Optional[bool] = None
+    is_board_member: Optional[bool] = None
+    can_fly: Optional[bool] = None
+    external_auth_enabled: Optional[bool] = None
+    last_registration_year: Optional[int] = Field(default=None, ge=2000, le=9999)
+    notes: Optional[str] = None
+
+
+class MemberListFilters(BaseModel):
+    """Filter contract for member list queries."""
+
+    search: Optional[str] = None
+    status: Optional[int] = Field(default=None, ge=1, le=4)
+    member_category: Optional[int] = Field(default=None, ge=1, le=6)
+    registration_status: Optional[int] = Field(default=None, ge=1, le=4)
+    committee_uuid: Optional[UUID] = None
+    can_fly: Optional[bool] = None
+    is_instructor: Optional[bool] = None
+    is_employee: Optional[bool] = None
+    is_executive: Optional[bool] = None
+    is_board_member: Optional[bool] = None
+    is_active: Optional[bool] = None
+    year: Optional[int] = Field(default=None, ge=2000, le=9999)
+
+
+class CommitteeCreateRequest(BaseModel):
+    """Payload for committee creation."""
+
+    code: str = Field(min_length=1, max_length=32)
+    description: str = Field(min_length=1, max_length=255)
+    budget_amount: Optional[Decimal] = Field(default=None, ge=0)
+    manager_member_uuid: Optional[UUID] = None
+    is_active: bool = True
+
+
+class CommitteeUpdateRequest(BaseModel):
+    """Payload for committee updates."""
+
+    code: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    description: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    budget_amount: Optional[Decimal] = Field(default=None, ge=0)
+    manager_member_uuid: Optional[UUID] = None
+    is_active: Optional[bool] = None
+
+
+class CommitteeMembershipReplaceRequest(BaseModel):
+    """Full replacement of a committee roster for a year."""
+
+    member_uuids: list[UUID] = Field(default_factory=list)
+
+
+class MemberSheetUpsertRequest(BaseModel):
+    """Payload for yearly member sheet upsert."""
+
+    licence_number: Optional[str] = Field(default=None, max_length=100)
+    fare_type: int = Field(ge=1, le=5)
+    hours_count: Decimal = Field(default=Decimal("0"), ge=0)
+    packs_bought_count: int = Field(default=0, ge=0)
+    hours_done_in_pack: Decimal = Field(default=Decimal("0"), ge=0)
+    remaining_hours_in_pack: Decimal = Field(default=Decimal("0"), ge=0)
+    expense_access_enabled: bool = False
+
+
+class RegistrationCompletionRequest(BaseModel):
+    """Payload for registration completion."""
+
+    year: int = Field(ge=2000, le=9999)
+
+
+class CommitteeMembershipResponse(BaseModel):
+    """Serialized yearly committee membership."""
+
+    committee_uuid: UUID
+    member_uuid: UUID
+    membership_year: int
+    assigned_at: datetime
+    assigned_by: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CommitteeResponse(BaseModel):
+    """Serialized committee."""
+
+    uuid: UUID
+    code: str
+    description: str
+    budget_amount: Optional[Decimal] = None
+    manager_member_uuid: Optional[UUID] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MemberSheetResponse(BaseModel):
+    """Serialized yearly member sheet."""
+
+    uuid: UUID
+    member_uuid: UUID
+    year: int
+    licence_number: Optional[str] = None
+    fare_type: int
+    hours_count: Decimal
+    packs_bought_count: int
+    hours_done_in_pack: Decimal
+    remaining_hours_in_pack: Decimal
+    expense_access_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MemberSummaryResponse(BaseModel):
+    """Serialized member summary for list views."""
+
+    uuid: UUID
+    account_id: str
+    first_name: str
+    last_name: str
+    email: Optional[EmailStr] = None
+    member_category: int
+    is_active: bool
+    status: int
+    registration_status: int
+    can_fly: bool
+    is_instructor: bool
+    is_employee: bool
+    is_executive: bool
+    is_board_member: bool
+    committee_count: int = 0
+    has_member_sheet_for_year: bool = False
+
+
+class MemberDetailResponse(BaseModel):
+    """Serialized member detail."""
+
+    uuid: UUID
+    genre: int
+    first_name: str
+    last_name: str
+    date_of_birth: Optional[date] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    member_category: int
+    seniority: Optional[int] = None
+    ffvp_id: Optional[int] = None
+    account_id: str
+    photo_url: Optional[str] = None
+    is_active: bool
+    status: int
+    registration_status: int
+    is_instructor: bool
+    is_employee: bool
+    is_executive: bool
+    is_board_member: bool
+    can_fly: bool
+    external_auth_enabled: bool
+    last_registration_year: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    committees: list[CommitteeMembershipResponse] = Field(default_factory=list)
+    member_sheets: list[MemberSheetResponse] = Field(default_factory=list)
+
+
+class ExpenseAccessResponse(BaseModel):
+    """Response returned after expense access token operations."""
+
+    member_uuid: UUID
+    year: int
+    expense_access_enabled: bool
+    generated_token: Optional[str] = None
+

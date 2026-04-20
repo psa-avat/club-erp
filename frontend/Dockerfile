@@ -6,7 +6,7 @@
 FROM node:22-alpine AS builder
 
 # Install pnpm via corepack (matches the packageManager field in package.json)
-RUN corepack enable && corepack prepare pnpm@10.5.2 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 WORKDIR /workspace
 

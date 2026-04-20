@@ -565,3 +565,18 @@ docker inspect carnet-db --format '{{range $k,$v := .NetworkSettings.Networks}}{
 
 docker exec -it erp-db-dev psql -U erpuser -d erp_club_db
 ```
+docker exec carnet-db pg_dump -U erpuser -d erp_club_db -Fc --no-owner --no-privileges > /opt/backups/erp_$(date +%Y%m%d_%H%M%S).pgdump
+
+docker exec carnet-db pg_dump -U erpuser -d erp_club_db --no-owner --no-privileges > /opt/backups/erp_$(date +%Y%m%d_%H%M%S).sql
+
+docker exec -i carnet-db psql -U erpuser -d erp_club_db < /opt/backups/erp_YYYYMMDD_HHMMSS.sql
+
+Restore from .pgdump (custom format):
+docker exec -i carnet-db pg_restore -U erpuser -d erp_club_db --no-owner --no-privileges < /opt/backups/erp_YYYYMMDD_HHMMSS.pgdump
+
+If you need a full reset before restore (destructive):
+docker exec -it carnet-db psql -U erpuser -d erp_club_db -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker exec -i carnet-db psql -U erpuser -d erp_club_db < /opt/backups/erp_YYYYMMDD_HHMMSS.sql
+
+Quick verify after restore:
+docker exec -it carnet-db psql -U erpuser -d erp_club_db -c "\dt"

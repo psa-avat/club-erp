@@ -1,0 +1,277 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { apiClient, getAuthRequestConfig } from '../../../api/client'
+import type {
+  Committee,
+  CommitteeMembership,
+  CreateCommitteePayload,
+  CreateMemberPayload,
+  ExpenseAccessResponse,
+  MemberDetail,
+  MemberFilters,
+  MemberSheet,
+  MemberSummary,
+  RegistrationCompletionPayload,
+  ReplaceCommitteeMembersPayload,
+  UpdateCommitteePayload,
+  UpdateMemberPayload,
+  UpsertMemberSheetPayload,
+} from '../types'
+
+export const membersQueryKeys = {
+  root: ['members'] as const,
+  lists: ['members', 'list'] as const,
+  list: (filters: MemberFilters) => ['members', 'list', filters] as const,
+  detail: (memberUuid: string) => ['members', 'detail', memberUuid] as const,
+  committees: ['members', 'committees'] as const,
+  committeeMembers: (committeeUuid: string, year: number) => ['members', 'committee-members', committeeUuid, year] as const,
+  sheets: (memberUuid: string) => ['members', 'sheets', memberUuid] as const,
+}
+
+function compactParams(filters: MemberFilters | Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+  )
+}
+
+export function useMembersQuery(filters: MemberFilters) {
+  return useQuery({
+    queryKey: membersQueryKeys.list(filters),
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberSummary[]>('/api/v1/members', {
+        ...getAuthRequestConfig(),
+        params: compactParams(filters),
+      })
+      return data
+    },
+  })
+}
+
+export function useMemberQuery(memberUuid: string | null) {
+  return useQuery({
+    queryKey: membersQueryKeys.detail(memberUuid ?? 'new'),
+    enabled: Boolean(memberUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberDetail>(`/api/v1/members/${memberUuid}`, getAuthRequestConfig())
+      return data
+    },
+  })
+}
+
+export function useCreateMemberMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: CreateMemberPayload) => {
+      const { data } = await apiClient.post<MemberDetail>('/api/v1/members', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+    },
+  })
+}
+
+export function useUpdateMemberMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ memberUuid, payload }: { memberUuid: string; payload: UpdateMemberPayload }) => {
+      const { data } = await apiClient.patch<MemberDetail>(`/api/v1/members/${memberUuid}`, payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.sheets(variables.memberUuid) })
+    },
+  })
+}
+
+export function useCompleteRegistrationMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      memberUuid,
+      payload,
+    }: {
+      memberUuid: string
+      payload: RegistrationCompletionPayload
+    }) => {
+      const { data } = await apiClient.post<MemberDetail>(
+        `/api/v1/members/${memberUuid}/complete-registration`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+    },
+  })
+}
+
+export function useCommitteesQuery(activeOnly?: boolean) {
+  return useQuery({
+    queryKey: [...membersQueryKeys.committees, activeOnly ?? 'all'] as const,
+    queryFn: async () => {
+      const { data } = await apiClient.get<Committee[]>('/api/v1/members/committees', {
+        ...getAuthRequestConfig(),
+        params: compactParams({ active_only: activeOnly }),
+      })
+      return data
+    },
+  })
+}
+
+export function useCreateCommitteeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: CreateCommitteePayload) => {
+      const { data } = await apiClient.post<Committee>('/api/v1/members/committees', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+    },
+  })
+}
+
+export function useUpdateCommitteeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ committeeUuid, payload }: { committeeUuid: string; payload: UpdateCommitteePayload }) => {
+      const { data } = await apiClient.patch<Committee>(
+        `/api/v1/members/committees/${committeeUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+    },
+  })
+}
+
+export function useCommitteeMembersQuery(committeeUuid: string | null, year: number) {
+  return useQuery({
+    queryKey: membersQueryKeys.committeeMembers(committeeUuid ?? 'none', year),
+    enabled: Boolean(committeeUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberSummary[]>('/api/v1/members', {
+        ...getAuthRequestConfig(),
+        params: compactParams({ committee_uuid: committeeUuid, year }),
+      })
+      return data
+    },
+  })
+}
+
+export function useReplaceCommitteeMembersMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      committeeUuid,
+      year,
+      payload,
+    }: {
+      committeeUuid: string
+      year: number
+      payload: ReplaceCommitteeMembersPayload
+    }) => {
+      const { data } = await apiClient.put<CommitteeMembership[]>(
+        `/api/v1/members/committees/${committeeUuid}/members/${year}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.committeeMembers(variables.committeeUuid, variables.year) })
+    },
+  })
+}
+
+export function useMemberSheetsQuery(memberUuid: string | null) {
+  return useQuery({
+    queryKey: membersQueryKeys.sheets(memberUuid ?? 'none'),
+    enabled: Boolean(memberUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberSheet[]>(`/api/v1/members/${memberUuid}/sheets`, getAuthRequestConfig())
+      return data
+    },
+  })
+}
+
+export function useUpsertMemberSheetMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      memberUuid,
+      year,
+      payload,
+    }: {
+      memberUuid: string
+      year: number
+      payload: UpsertMemberSheetPayload
+    }) => {
+      const { data } = await apiClient.put<MemberSheet>(
+        `/api/v1/members/${memberUuid}/sheets/${year}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.sheets(variables.memberUuid) })
+    },
+  })
+}
+
+export function useEnableExpenseAccessMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ memberUuid, year }: { memberUuid: string; year: number }) => {
+      const { data } = await apiClient.post<ExpenseAccessResponse>(
+        `/api/v1/members/${memberUuid}/sheets/${year}/expense-access`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.sheets(variables.memberUuid) })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+    },
+  })
+}
+
+export function useDisableExpenseAccessMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ memberUuid, year }: { memberUuid: string; year: number }) => {
+      const { data } = await apiClient.delete<ExpenseAccessResponse>(
+        `/api/v1/members/${memberUuid}/sheets/${year}/expense-access`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.sheets(variables.memberUuid) })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+    },
+  })
+}
+

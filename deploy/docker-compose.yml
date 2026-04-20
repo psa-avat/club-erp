@@ -36,7 +36,10 @@ services:
       - db_network    # reaches carnet-db
     env_file: .env
     environment:
-      ENVIRONMENT: PROD
+      - CONF_EMAIL_FILE=/config/conf_emails.json
+      - ENVIRONMENT=PROD
+      # Variable spécifique pour identifier le club côté Back
+      - CLUB_SLUG=avat
     labels:
       - "dozzle.group=erp_club"
       - "dozzle.name=ERP Backend"
@@ -55,6 +58,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    volumes:
+      - ./config:/config
 
   # ── Frontend (Nginx serving Vite build + /api proxy) ───────────────────────
   erp-frontend:

@@ -18,12 +18,29 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
 
-"""SQLAlchemy models for authentication, authorization, and user settings."""
+"""SQLAlchemy models for authentication, authorization, user settings, and members."""
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, SmallInteger, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    PrimaryKeyConstraint,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 from database import Base
 
@@ -51,6 +68,10 @@ class User(Base):
     user_roles = relationship("UserRole", back_populates="user")
     auth_challenges = relationship("AuthChallenge", back_populates="user")
     trusted_devices = relationship("TrustedDevice", back_populates="user")
+    updated_members = relationship("Member", back_populates="updated_by_user")
+    updated_committees = relationship("Committee", back_populates="updated_by_user")
+    assigned_committee_memberships = relationship("CommitteeMember", back_populates="assigned_by_user")
+    updated_member_sheets = relationship("MemberSheet", back_populates="updated_by_user")
 
     def __repr__(self):
         return f"<User id={self.id} {self.prenom} {self.nom}>"
@@ -229,4 +250,185 @@ class SessionToken(Base):
     def __repr__(self):
         return f"<SessionToken user={self.user_id} expires={self.expires_at}>"
 
+
+class MemberAccountCounter(Base):
+    """Yearly counter used to generate member account ids."""
+
+    __tablename__ = "member_account_counters"
+
+    year = Column(SmallInteger, primary_key=True)
+    next_value = Column(Integer, nullable=False, default=1)
+
+
+class Member(Base):
+    """Club member master record."""
+
+    __tablename__ = "members"
+    __table_args__ = (
+        CheckConstraint("genre BETWEEN 0 AND 3", name="chk_members_genre"),
+        CheckConstraint("member_category BETWEEN 1 AND 6", name="chk_members_category"),
+        CheckConstraint("status BETWEEN 1 AND 4", name="chk_members_status"),
+        CheckConstraint("registration_status BETWEEN 1 AND 4", name="chk_members_registration_status"),
+        CheckConstraint("seniority IS NULL OR seniority >= 0", name="chk_members_seniority"),
+        CheckConstraint(
+            "last_registration_year IS NULL OR last_registration_year BETWEEN 2000 AND 9999",
+            name="chk_members_last_registration_year",
+        ),
+        CheckConstraint("NOT (is_employee AND is_executive)", name="chk_members_role_employee_executive"),
+        CheckConstraint("NOT (is_employee AND is_board_member)", name="chk_members_role_employee_board"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    genre = Column(SmallInteger, nullable=False, default=0)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    date_of_birth = Column(Date, nullable=True)
+    email = Column(String(255), nullable=True, unique=True, index=True)
+    phone = Column(String(50), nullable=True)
+    member_category = Column(SmallInteger, nullable=False, index=True)
+    seniority = Column(SmallInteger, nullable=True)
+    ffvp_id = Column(BigInteger, nullable=True, unique=True, index=True)
+    account_id = Column(String(32), nullable=False, unique=True, index=True)
+    photo_url = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    status = Column(SmallInteger, nullable=False, default=1, index=True)
+    registration_status = Column(SmallInteger, nullable=False, default=1, index=True)
+    is_instructor = Column(Boolean, default=False, nullable=False)
+    is_employee = Column(Boolean, default=False, nullable=False)
+    is_executive = Column(Boolean, default=False, nullable=False)
+    is_board_member = Column(Boolean, default=False, nullable=False)
+    can_fly = Column(Boolean, default=False, nullable=False, index=True)
+    external_auth_enabled = Column(Boolean, default=False, nullable=False)
+    last_registration_year = Column(SmallInteger, nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    updated_by_user = relationship("User", back_populates="updated_members")
+    managed_committees = relationship("Committee", back_populates="manager_member")
+    committee_memberships = relationship("CommitteeMember", back_populates="member", cascade="all, delete-orphan")
+    member_sheets = relationship("MemberSheet", back_populates="member", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Member uuid={self.uuid} account_id={self.account_id} {self.first_name} {self.last_name}>"
+
+
+class Committee(Base):
+    """Committee definition with optional manager and budget."""
+
+    __tablename__ = "committees"
+    __table_args__ = (
+        CheckConstraint("budget_amount IS NULL OR budget_amount >= 0", name="chk_committees_budget_amount"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(32), nullable=False, unique=True, index=True)
+    description = Column(String(255), nullable=False)
+    budget_amount = Column(Numeric(12, 2), nullable=True)
+    manager_member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    manager_member = relationship("Member", back_populates="managed_committees")
+    updated_by_user = relationship("User", back_populates="updated_committees")
+    memberships = relationship("CommitteeMember", back_populates="committee", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Committee uuid={self.uuid} code={self.code}>"
+
+
+class CommitteeMember(Base):
+    """Yearly assignment of a member to a committee."""
+
+    __tablename__ = "committee_members"
+    __table_args__ = (
+        PrimaryKeyConstraint("committee_uuid", "member_uuid", "membership_year", name="pk_committee_members"),
+        CheckConstraint("membership_year BETWEEN 2000 AND 9999", name="chk_committee_members_membership_year"),
+    )
+
+    committee_uuid = Column(UUID(as_uuid=True), ForeignKey("committees.uuid", ondelete="CASCADE"), nullable=False)
+    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False)
+    membership_year = Column(SmallInteger, nullable=False)
+    assigned_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    assigned_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    committee = relationship("Committee", back_populates="memberships")
+    member = relationship("Member", back_populates="committee_memberships")
+    assigned_by_user = relationship("User", back_populates="assigned_committee_memberships")
+
+    def __repr__(self):
+        return (
+            f"<CommitteeMember committee_uuid={self.committee_uuid} "
+            f"member_uuid={self.member_uuid} year={self.membership_year}>"
+        )
+
+
+class MemberSheet(Base):
+    """Yearly flying summary and expense access state for a member."""
+
+    __tablename__ = "member_sheets"
+    __table_args__ = (
+        UniqueConstraint("member_uuid", "year", name="uq_member_sheets_member_year"),
+        CheckConstraint("year BETWEEN 2000 AND 9999", name="chk_member_sheets_year"),
+        CheckConstraint("fare_type BETWEEN 1 AND 5", name="chk_member_sheets_fare_type"),
+        CheckConstraint("hours_count >= 0", name="chk_member_sheets_hours_count"),
+        CheckConstraint("packs_bought_count >= 0", name="chk_member_sheets_packs_bought_count"),
+        CheckConstraint("hours_done_in_pack >= 0", name="chk_member_sheets_hours_done_in_pack"),
+        CheckConstraint("remaining_hours_in_pack >= 0", name="chk_member_sheets_remaining_hours_in_pack"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    year = Column(SmallInteger, nullable=False, index=True)
+    licence_number = Column(String(100), nullable=True)
+    fare_type = Column(SmallInteger, nullable=False)
+    hours_count = Column(Numeric(8, 2), nullable=False, default=0)
+    packs_bought_count = Column(Integer, nullable=False, default=0)
+    hours_done_in_pack = Column(Numeric(8, 2), nullable=False, default=0)
+    remaining_hours_in_pack = Column(Numeric(8, 2), nullable=False, default=0)
+    expense_access_token_hash = Column(String(255), nullable=True)
+    expense_access_enabled = Column(Boolean, nullable=False, default=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    member = relationship("Member", back_populates="member_sheets")
+    updated_by_user = relationship("User", back_populates="updated_member_sheets")
+
+    def __repr__(self):
+        return f"<MemberSheet uuid={self.uuid} member_uuid={self.member_uuid} year={self.year}>"
 

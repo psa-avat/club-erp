@@ -25,3 +25,4 @@ frontend/nohup.out
 
 # ── Build artefacts ───────────────────────────────────────────────────────────
 frontend/dist/
+deploy/config/conf_emails.json
