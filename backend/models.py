@@ -460,7 +460,6 @@ class AccountingFiscalYear(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     accounting_entries = relationship("AccountingEntry", back_populates="fiscal_year")
-    accounting_lines = relationship("AccountingLine", back_populates="fiscal_year")
 
     def __repr__(self):
         return f"<AccountingFiscalYear code={self.code} year={self.year} state={self.state}>"
@@ -572,7 +571,7 @@ class AccountingLine(Base):
     )
 
     uuid = Column(UUID(as_uuid=True), nullable=False, default=uuid4, index=True)
-    fiscal_year_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)
+    fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid"), nullable=False, index=True)
     entry_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)
     account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
     # Member dimension
@@ -591,7 +590,6 @@ class AccountingLine(Base):
     tax_base = Column(Numeric(10, 4), nullable=True)
     tax_amount = Column(Numeric(10, 4), nullable=True)
 
-    fiscal_year = relationship("AccountingFiscalYear", back_populates="accounting_lines")
     entry = relationship("AccountingEntry", back_populates="lines")
     account = relationship("AccountingAccount", back_populates="entries_lines")
 
