@@ -31,6 +31,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Numeric,
     PrimaryKeyConstraint,
@@ -431,4 +432,169 @@ class MemberSheet(Base):
 
     def __repr__(self):
         return f"<MemberSheet uuid={self.uuid} member_uuid={self.member_uuid} year={self.year}>"
+
+
+# ============================================================================
+# Accounting Module Models
+# ============================================================================
+
+
+class AccountingFiscalYear(Base):
+    """Fiscal year for accounting: posting period, locking, partitioning key."""
+
+    __tablename__ = "accounting_fiscal_years"
+    __table_args__ = (
+        CheckConstraint("end_date > start_date", name="chk_fy_dates"),
+        CheckConstraint("state IN (1, 2, 3)", name="chk_fy_state"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(16), nullable=False, unique=True, index=True)
+    label = Column(String(64), nullable=False)
+    year = Column(SmallInteger, nullable=False, unique=True, index=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    state = Column(SmallInteger, nullable=False, default=1)  # 1=Open, 2=Closed, 3=Reopened
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    closed_by = Column(Integer, nullable=True)  # references users.id
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    accounting_entries = relationship("AccountingEntry", back_populates="fiscal_year")
+    accounting_lines = relationship("AccountingLine", back_populates="fiscal_year")
+
+    def __repr__(self):
+        return f"<AccountingFiscalYear code={self.code} year={self.year} state={self.state}>"
+
+
+class AccountingJournal(Base):
+    """Journal classification for accounting entries."""
+
+    __tablename__ = "accounting_journals"
+    __table_args__ = (CheckConstraint("type IN (1, 2, 3, 4, 5, 6)", name="chk_journal_type"),)
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(10), nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    type = Column(SmallInteger, nullable=False)  # 1=Sale,2=Purchase,3=Bank,4=Cash,5=General,6=Opening
+    default_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    entries = relationship("AccountingEntry", back_populates="journal")
+
+    def __repr__(self):
+        return f"<AccountingJournal code={self.code} name={self.name}>"
+
+
+class AccountingAccount(Base):
+    """Chart of accounts: PCG-based hierarchical account structure."""
+
+    __tablename__ = "accounting_accounts"
+    __table_args__ = (
+        CheckConstraint("type IN (1, 2, 3, 4, 5)", name="chk_account_type"),
+        CheckConstraint("normal_balance IN (1, 2)", name="chk_account_normal_balance"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(32), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    type = Column(SmallInteger, nullable=False)  # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue
+    parent_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+    is_posting_allowed = Column(Boolean, nullable=False, default=True)
+    normal_balance = Column(SmallInteger, nullable=False)  # 1=Debit, 2=Credit
+    is_reconcilable = Column(Boolean, nullable=False, default=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    replacement_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+
+    entries_lines = relationship("AccountingLine", back_populates="account")
+
+    def __repr__(self):
+        return f"<AccountingAccount code={self.code} name={self.name}>"
+
+
+class AccountingEntry(Base):
+    """Accounting transaction header: double-entry ledger entry."""
+
+    __tablename__ = "accounting_entries"
+    __table_args__ = (
+        PrimaryKeyConstraint("uuid", "fiscal_year_uuid", name="pk_accounting_entries"),
+        CheckConstraint("state IN (1, 2, 3)", name="chk_entry_state"),
+        UniqueConstraint("fiscal_year_uuid", "sequence_number", name="uix_entry_sequence"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), nullable=False, default=uuid4, index=True)
+    fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid"), nullable=False, index=True)
+    journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False, index=True)
+    entry_date = Column(Date, nullable=False)
+    sequence_number = Column(String(64), nullable=True)  # assigned on posting, immutable
+    reference = Column(String(255), nullable=True)
+    source_document_ref = Column(String(255), nullable=True)
+    source_document_date = Column(Date, nullable=True)
+    description = Column(String(255), nullable=False)
+    state = Column(SmallInteger, nullable=False, default=1)  # 1=Draft, 2=Posted, 3=Cancelled
+    # Provenance
+    source_system = Column(String(64), nullable=True)
+    external_id = Column(String(255), nullable=True)
+    import_batch_id = Column(String(64), nullable=True, index=True)
+    original_created_at = Column(DateTime(timezone=True), nullable=True)
+    original_posted_at = Column(DateTime(timezone=True), nullable=True)
+    # Reversal
+    reversal_of_entry_uuid = Column(UUID(as_uuid=True), nullable=True)  # no DB FK; enforced at app layer
+    reversal_reason = Column(String(255), nullable=True)
+    # Audit
+    posted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    fiscal_year = relationship("AccountingFiscalYear", back_populates="accounting_entries")
+    journal = relationship("AccountingJournal", back_populates="entries")
+    lines = relationship("AccountingLine", back_populates="entry", cascade="all, delete-orphan")
+    created_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<AccountingEntry uuid={self.uuid} fiscal_year={self.fiscal_year_uuid} state={self.state}>"
+
+
+class AccountingLine(Base):
+    """Double-entry ledger line: debit or credit side of an entry."""
+
+    __tablename__ = "accounting_lines"
+    __table_args__ = (
+        PrimaryKeyConstraint("uuid", "fiscal_year_uuid", name="pk_accounting_lines"),
+        ForeignKeyConstraint(
+            ["entry_uuid", "fiscal_year_uuid"],
+            ["accounting_entries.uuid", "accounting_entries.fiscal_year_uuid"],
+            name="fk_lines_entry",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("debit >= 0 AND credit >= 0", name="chk_line_amounts_positive"),
+        CheckConstraint("debit > 0 OR credit > 0", name="chk_line_at_least_one_amount"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), nullable=False, default=uuid4, index=True)
+    fiscal_year_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)
+    entry_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)
+    account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
+    # Member dimension
+    member_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)  # references members.uuid
+    member_account_id_snapshot = Column(String(32), nullable=True)
+    # Analytical dimension
+    analytical_asset_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
+    # Amounts
+    debit = Column(Numeric(10, 4), nullable=False, default=0.0)
+    credit = Column(Numeric(10, 4), nullable=False, default=0.0)
+    description = Column(String(255), nullable=True)
+    # VAT snapshot
+    tax_id = Column(UUID(as_uuid=True), nullable=True)
+    tax_code = Column(String(64), nullable=True)
+    tax_rate = Column(Numeric(10, 4), nullable=True)
+    tax_base = Column(Numeric(10, 4), nullable=True)
+    tax_amount = Column(Numeric(10, 4), nullable=True)
+
+    fiscal_year = relationship("AccountingFiscalYear", back_populates="accounting_lines")
+    entry = relationship("AccountingEntry", back_populates="lines")
+    account = relationship("AccountingAccount", back_populates="entries_lines")
+
+    def __repr__(self):
+        return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"
 

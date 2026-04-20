@@ -95,6 +95,47 @@ The member sheet stores annual flying-related data for members who can fly.
 
 There is at most one member sheet per member per year.
 
+### 6. Member Registration (yearly)
+
+The yearly registration is a distinct workflow that runs once per member per calendar year.
+
+It is separate from `registration_status`, which tracks the overall member lifecycle (draft → completed).
+
+A yearly registration record:
+
+- marks the member as registered for a given year
+- triggers the creation of accounting writings based on the applicable price list entries
+- creates or confirms the member sheet for that year if `can_fly = true`
+- records who performed the registration and when
+
+Only one registration record may exist per `(member_uuid, year)` pair.
+
+### 7. Price List
+
+The price list defines the fees applicable per member category for a given year.
+
+Each price list entry:
+
+- belongs to a specific year
+- targets a specific member category (or is universal)
+- carries a label and a unit amount
+- contributes one row in `accounting_writings` when the registration is executed
+
+The price list is managed by authorised staff before the registration campaign begins.
+
+### 8. Accounting Writings
+
+Accounting writings record the financial consequences of a registration event.
+
+Each accounting writing:
+
+- is linked to the `member_registration` that triggered it
+- copies the price list entry label and amount at the time of registration (snapshot, not a live FK)
+- expresses a debit on the member's ledger account (`account_id`)
+- is immutable once created; cancellation produces a reversal row
+
+The accounting module integration is out of scope for v1, but the table must be created so that data is available when the ledger module is built.
+
 ## Enumerations
 
 All enumerations are stored as `SMALLINT`, consistent with project rules.
@@ -274,6 +315,100 @@ References:
 - `member_uuid` references `members.uuid`
 - `updated_by` references `users.id`
 
+### Table: `member_registrations`
+
+Tracks one yearly registration event per member.
+
+Required columns:
+
+- `uuid UUID PRIMARY KEY`
+- `member_uuid UUID NOT NULL`
+- `year SMALLINT NOT NULL`
+- `registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- `registered_by INTEGER NOT NULL`
+- `notes TEXT NULL`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+
+Constraints:
+
+- unique on `(member_uuid, year)` — only one registration per member per year
+
+References:
+
+- `member_uuid` references `members.uuid`
+- `registered_by` references `users.id`
+
+Notes:
+
+- creating this row triggers generation of `accounting_writings` and creation/confirmation of `member_sheets`
+- the row itself is immutable; corrections require a reversal workflow (v1.1)
+
+### Table: `price_list`
+
+Defines the fees applicable to each registration.
+
+Required columns:
+
+- `uuid UUID PRIMARY KEY`
+- `year SMALLINT NOT NULL`
+- `member_category SMALLINT NULL` — NULL means applicable to all categories
+- `label VARCHAR(255) NOT NULL` — snapshot label copied to accounting writings
+- `amount NUMERIC(12,2) NOT NULL`
+- `is_active BOOLEAN NOT NULL DEFAULT TRUE`
+- `sort_order SMALLINT NOT NULL DEFAULT 0` — display order in UI and writing generation order
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- `updated_by INTEGER NULL`
+
+Constraints:
+
+- `amount >= 0`
+- check valid `member_category` when not null
+
+References:
+
+- `updated_by` references `users.id`
+
+Notes:
+
+- multiple rows may share the same year (one row per fee line, e.g. membership fee + insurance + licence)
+- rows are selected at registration time by matching `year` and `member_category` (or `member_category IS NULL`)
+- once a registration has been executed for a year, modifying the price list for that year has no retroactive effect
+
+### Table: `accounting_writings`
+
+Immutable ledger rows produced by registration events.
+
+Required columns:
+
+- `uuid UUID PRIMARY KEY`
+- `member_registration_uuid UUID NOT NULL`
+- `member_uuid UUID NOT NULL`
+- `account_id VARCHAR(32) NOT NULL` — snapshot of member account_id at registration time
+- `year SMALLINT NOT NULL`
+- `label VARCHAR(255) NOT NULL` — snapshot of price_list.label
+- `amount NUMERIC(12,2) NOT NULL`
+- `is_reversal BOOLEAN NOT NULL DEFAULT FALSE`
+- `reversed_writing_uuid UUID NULL` — filled for reversal rows only
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- `created_by INTEGER NOT NULL`
+
+Constraints:
+
+- `amount >= 0`
+
+References:
+
+- `member_registration_uuid` references `member_registrations.uuid`
+- `member_uuid` references `members.uuid`
+- `reversed_writing_uuid` references `accounting_writings.uuid`
+- `created_by` references `users.id`
+
+Notes:
+
+- rows are never updated or deleted; corrections produce reversal rows
+- the `account_id` snapshot ensures the ledger remains coherent even if the member record changes
+
 ## Account ID Rules
 
 `account_id` is the stable business key for members and must also be used by the ledger.
@@ -294,13 +429,51 @@ Behavior:
 
 ## Registration Rules
 
-Registration completion is tracked with `registration_status`.
+### Member Lifecycle Registration (`registration_status`)
+
+Registration completion is tracked with `registration_status` on the `members` table.
 
 Rules:
 
 - draft members can exist without committee assignment
 - a member cannot be marked `Completed` unless at least one committee membership exists for the relevant registration year
 - yearly committee membership should be renewed explicitly, not inferred forever from previous years
+
+### Annual Re-Registration Workflow
+
+Each year, active members who were previously fully registered must go through the annual re-registration workflow.
+
+This workflow is distinct from the initial member lifecycle and may be triggered by authorised staff at any point during the year.
+
+#### Preconditions
+
+The following must be true before a yearly registration is accepted:
+
+- member `status` is `Active`
+- member `registration_status` is `Completed`
+- no `member_registrations` row exists for `(member_uuid, current_year)`
+- at least one active `price_list` row exists for the target year (matching the member's category or universal)
+
+#### Workflow Steps (atomic transaction)
+
+1. **Resolve applicable price list entries** — select all active `price_list` rows where `year = target_year` and (`member_category = member.member_category` OR `member_category IS NULL`), ordered by `sort_order`.
+2. **Create `member_registrations` row** — records the event with `year`, `registered_by`, and `registered_at`.
+3. **Create `accounting_writings` rows** — one row per resolved price list entry, snapshotting `label`, `amount`, and `account_id`.
+4. **Create or confirm `member_sheets` row** — if `can_fly = true` and no sheet exists for `(member_uuid, year)`, create it with default values.
+5. **Update `members.last_registration_year`** — set to the target year.
+
+All five steps execute inside a single database transaction. If any step fails, the entire workflow rolls back.
+
+#### Post-conditions
+
+- one `member_registrations` row exists for the year
+- one or more `accounting_writings` rows exist
+- if `can_fly`, one `member_sheets` row exists for the year
+- `members.last_registration_year` reflects the current year
+
+#### Cancellation (v1.1, not in scope for v1)
+
+Cancelling a registration produces reversal `accounting_writings` rows (one per original writing, with `is_reversal = true`) and removes the `member_registrations` row. The member sheet is not automatically deleted.
 
 ## Flying Rules
 
@@ -390,6 +563,7 @@ Filters for list endpoint:
 - `is_executive`
 - `is_board_member`
 - `is_active`
+- `last_registration_year` — filter by year of last registration
 
 #### Committees
 
@@ -406,6 +580,25 @@ Filters for list endpoint:
 - `PUT /api/v1/members/{member_uuid}/sheets/{year}`
 - `POST /api/v1/members/{member_uuid}/sheets/{year}/expense-access`
 - `DELETE /api/v1/members/{member_uuid}/sheets/{year}/expense-access`
+
+#### Annual Registrations
+
+- `POST /api/v1/members/{member_uuid}/registrations` — execute the annual registration workflow for a given year (body: `{ "year": 2026 }`)
+- `GET /api/v1/members/{member_uuid}/registrations` — list all yearly registration records for a member
+- `GET /api/v1/members/{member_uuid}/registrations/{year}` — detail of one yearly registration including its accounting writings
+
+#### Price List
+
+- `GET /api/v1/price-list` — list all entries (filter: `year`, `member_category`, `is_active`)
+- `POST /api/v1/price-list` — create a new price list entry
+- `GET /api/v1/price-list/{uuid}` — retrieve a single entry
+- `PATCH /api/v1/price-list/{uuid}` — update label, amount, sort_order, is_active
+- `DELETE /api/v1/price-list/{uuid}` — soft-delete (sets `is_active = false`) only if no registration has used it yet
+
+#### Accounting Writings
+
+- `GET /api/v1/accounting-writings` — list all writings (filter: `member_uuid`, `year`, `is_reversal`)
+- `GET /api/v1/members/{member_uuid}/accounting-writings` — writings scoped to one member
 
 ### Validation Rules
 
@@ -451,19 +644,33 @@ Create a dedicated module:
 - `frontend/src/modules/members/components/MemberDetail.tsx`
 - `frontend/src/modules/members/components/CommitteePanel.tsx`
 - `frontend/src/modules/members/components/MemberSheetPanel.tsx`
+- `frontend/src/modules/members/components/RegistrationPanel.tsx`
+- `frontend/src/modules/members/components/AccountingWritingsPanel.tsx`
 - `frontend/src/modules/members/types/index.ts`
 - `frontend/src/modules/members/store/index.ts` if needed
+
+Create a dedicated price-list module:
+
+- `frontend/src/modules/price-list/index.ts`
+- `frontend/src/modules/price-list/api/index.ts`
+- `frontend/src/modules/price-list/components/PriceListPage.tsx`
+- `frontend/src/modules/price-list/components/PriceListForm.tsx`
+- `frontend/src/modules/price-list/types/index.ts`
 
 The shell must only import from `frontend/src/modules/members/index.ts`.
 
 ### UI Scope
 
-The first version should include one module page with four major areas:
+The first version should include one module page with six major areas:
 
 1. member list and filters
 2. create or edit member form
 3. committee management
 4. yearly member sheet management
+5. annual registration panel
+6. accounting writings panel (read-only)
+
+The price list is a separate admin page in the shell navigation.
 
 ### Members List
 
@@ -486,6 +693,7 @@ Capabilities:
 - edit member
 - open member detail
 - quick active toggle if allowed
+- visual indicator when a member is not yet registered for the current year (`last_registration_year < current_year`)
 
 ### Member Form
 
@@ -546,6 +754,26 @@ Must support:
 - edit hours and pack fields
 - enable or disable expense access
 
+### Registration Panel UI
+
+Displayed in the member detail view. Must support:
+
+- list all yearly registrations for the member (year, registered_at, registered_by, number of writings)
+- action button "Register for YYYY" — enabled only when preconditions are met
+- confirmation dialog showing the resolved price list entries and total amount before executing
+- after execution: refresh the list, sheet panel, and member header
+- display of the accounting writings produced by each registration (read-only table)
+
+### Price List Page UI
+
+Stand-alone page in the shell navigation under administration:
+
+- list price list entries with year filter
+- create entry form (year, member_category, label, amount, sort_order)
+- inline edit for amount, label, sort_order, is_active
+- delete (soft) with guard when entries have been used in registrations
+- bulk duplicate: copy all entries from year N to year N+1
+
 ## Permissions
 
 The detailed capability model can be added later, but the backend should already separate read and write concerns.
@@ -589,13 +817,27 @@ Must cover:
 
 ## Delivery Order
 
-1. create `docs/members.sql`
+1. create `docs/members.sql` — includes `members`, `committees`, `committee_members`, `member_sheets`, `member_registrations`, `price_list`, `accounting_writings`
 2. add SQLAlchemy models
 3. add backend schemas and services
+   a. member CRUD service
+   b. price list service
+   c. registration service (atomic workflow)
+   d. accounting writings read service
 4. add members routes and route registration
+   a. members router
+   b. price-list router
+   c. registrations router
+   d. accounting-writings router
 5. build frontend members module
-6. connect module into shell navigation and routing
-7. add tests and seed data
+   a. members list and form
+   b. committee panel
+   c. member sheet panel
+   d. registration panel
+   e. accounting writings panel (read-only)
+6. build frontend price-list module
+7. connect both modules into shell navigation and routing
+8. add tests and seed data
 
 ## Open Follow-Ups
 
@@ -605,3 +847,7 @@ These are not blockers for v1 but should be clarified later:
 - whether committee budgets belong in this module or a finance module
 - whether external pilots need additional federation metadata
 - whether member expense access should be token-only or password-based in v1.1
+- exact price list structure: are insurance and FFVP fees separate line items or rolled into one?
+- whether a member can be registered for a past year (back-registration) and if so what validation applies
+- whether accounting writings feed directly into a future general ledger module or remain standalone
+- cancellation/reversal workflow priority for v1.1
