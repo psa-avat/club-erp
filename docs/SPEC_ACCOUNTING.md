@@ -1,259 +1,481 @@
 # Accounting Module Specification
 
-## Purpose
+## 1. Purpose
 
-This document defines the implementation specification for the Accounting module of the gliding club ERP.
-It defines a double-entry ledger system tailored for a French "Association loi 1901" using the Plan Comptable Général (PCG) Association structure.
-The target model must support normal ERP operations and later ingestion of historical accounting data without changing the meaning of imported records.
-VAT is not actively calculated in the initial version, but the schema must preserve tax-bearing history when present.
+This document defines the target specification for the Accounting module of the ERP for a French gliding club association.
 
-## Design Decisions
+It consolidates:
+- current implemented V1 ledger behavior,
+- existing database design decisions (including fiscal-year partitioning),
+- new business requirements impacting accounting (global settings, pricing linkage, budget lifecycle, projects/subventions, employee scheduling costs, and flight synchronization).
 
-1. **Double-Entry Ledger:** All financial movements must balance. For a given accounting entry, the sum of debits must exactly equal the sum of credits.
-2. **French PCG (Associations):** The chart of accounts uses the French standard for associations.
-3. **Fiscal Year First-Class:** Accounting data must explicitly identify the fiscal year. Fiscal year is not inferred only from `entry_date`.
-4. **Partition-Ready Ledger:** Main transactional accounting tables are designed to support PostgreSQL partitioning by fiscal year.
-5. **Member Sub-Ledger:** Member receivables use a collective class `411` control account combined with member identity dimensions (`member_uuid` and `member_account_id_snapshot`).
-6. **Generalized Analytical Accounting:** Expenses and revenues can be tagged with an `analytical_asset_uuid` to track the profitability and costs of specific club assets (e.g., gliders, tow planes, winches, buildings).
-7. **Draft-First Immutability:** Entries can remain in a `Draft` state for extended periods to allow treasurer review and adjustment. Once `Posted`, accounting data becomes immutable. Corrections must be represented by reversal or correction entries, not in-place edits. Historical imported data also becomes immutable on arrival.
-8. **Decimals:** All financial amounts are stored as `NUMERIC(10,4)` in PostgreSQL to handle exact fractional amounts natively, matching frontend `decimal.js` usage.
+Accounting is the financial source of truth and must preserve strict auditability.
 
-## Domain Model
+## 2. Core Principles
 
-### 1. Fiscal Year
-Represents the accounting year used for posting, locking, carry-forward, and partitioning.
-- Has a stable identifier and year label.
-- Defines `start_date` and `end_date`.
-- Tracks operational state: open, closed, or reopened.
-- Controls whether new entries may be posted into the year.
-- Is explicitly stored on accounting entries.
+1. Double-entry ledger is mandatory: for each entry, total debit equals total credit.
+2. French PCG (association-oriented) drives chart-of-accounts structure.
+3. Fiscal year is explicit and first-class; it is not inferred only from entry date.
+4. Draft-first workflow is allowed for review; posted entries are immutable.
+5. Corrections on posted entries are represented by reversal/correction entries only.
+6. Monetary precision uses NUMERIC(10,4) in SQL and Decimal/decimal.js in backend/frontend.
+7. Historical imports preserve original meaning and provenance, then become immutable.
 
-### 2. Account (Chart of Accounts)
-Represents a PCG accounting code.
-- Uses a hierarchical code structure (e.g., `4`, `41`, `411`).
-- Contains the account type (Asset, Liability, Equity, Expense, Revenue).
-- Defines whether the account is posting-allowed or only a grouping account.
-- Defines whether the account is reconcilable (e.g., members, suppliers, banks).
-- Preserves archived accounts for historical visibility even if they can no longer be selected for new postings.
-- May optionally point to a replacement account for operational guidance.
+## 3. Domain Model
 
-### 3. Journal
-Categorises entries based on their nature. Typical journals:
-- `VT` (Ventes / Sales): Flight billing, club memberships.
-- `HA` (Achats / Purchases): Supplier invoices.
-- `BQ` (Banque / Bank): Bank movements.
-- `CS` (Caisse / Cash): Cash register.
-- `AN` (À Nouveaux / Opening): Opening balances and carry-forward entries.
-- `OD` (Opérations Diverses / Misc): Year-end operations, payroll adjustments, manual corrections.
+### 3.1 Fiscal Year
 
-### 4. Accounting Entry (Transaction Header)
-Represents an atomic financial transaction.
-- Tied to a Journal.
-- Belongs to exactly one Fiscal Year.
-- Has an `entry_date` that must fall within the fiscal year boundaries.
-- Contains a human description plus traceable business references.
-- Status: `Draft`, `Posted`, `Cancelled`.
-- Once `Posted`, becomes immutable.
-- May be linked to a reversal or correction chain.
+- Identified by UUID, business code, and year.
+- Defines start_date and end_date boundaries.
+- State values: Open (1), Closed (2), Reopened (3).
+- Controls posting authorization and partition lifecycle.
 
-### 5. Accounting Line
-The core double-entry line item.
-- Belongs to an Entry and is tagged with an Account.
-- Stores `debit` and `credit` columns for clarity.
-- **Member Dimension:** Tracks `member_uuid` and `member_account_id_snapshot` for individual member balances and historical stability.
-- **Asset Dimension:** Tracks `analytical_asset_uuid` for assigning costs/revenues to specific club equipment (gliders, tow planes, winches, buildings).
-- May store tax snapshot information even if no active VAT engine is used.
-- Must remain historically stable even if the related member or account master changes later.
+### 3.2 Account (Chart of Accounts)
 
-### 6. Opening Balance Entry
-Represents the start-of-year carry-forward or imported opening position of one fiscal year.
-- Uses journal `AN`.
-- Belongs to exactly one Fiscal Year.
-- Is posted directly or generated from the prior fiscal year close, depending on operational workflow.
-- Preserves imported opening positions when history is loaded from a legacy system.
+- Hierarchical code structure (for example 4, 41, 411).
+- Account type enum values:
+  - 1 = Asset
+  - 2 = Liability
+  - 3 = Equity
+  - 4 = Expense
+  - 5 = Revenue
+- Supports posting-allowed/grouping behavior, reconciliation flag, archive state, and replacement account.
 
-## Fiscal Year Rules
+### 3.3 Journal
 
-- A fiscal year must be explicitly created before entries can be posted into it.
-- `entry_date` must be between the fiscal year's `start_date` and `end_date`.
-- `Posted` entries may only be created in an open or reopened fiscal year.
-- Closing a fiscal year prevents new postings and modifications of draft entries in that year.
-- Reopening a fiscal year is an explicit privileged action and must be auditable.
-- Opening balances for fiscal year `N` originate from the closing state of fiscal year `N-1` or from a controlled import.
+Minimum journal codes:
+- VT (sales)
+- HA (purchases)
+- BQ (bank)
+- CS (cash)
+- OD (misc operations)
+- AN (opening/carry-forward)
 
-## Accounting Rules
+Journal type enum values:
+- 1 = Sale
+- 2 = Purchase
+- 3 = Bank
+- 4 = Cash
+- 5 = General
+- 6 = Opening
 
-- **Balance Constraint:** For each entry, `SUM(debit) = SUM(credit)`.
-- **Positive Amounts:** `debit >= 0` and `credit >= 0`.
-- **Non-Empty Lines:** Each line must carry a non-zero accounting amount.
-- **Immutability:** Once an Entry is `Posted`, neither the header nor its lines may be modified or deleted.
-- **Correction by Reversal:** Any correction of a posted entry requires a reversal or correction entry linked to the original entry.
-- **Draft Flexibility:** While an Entry is in `Draft` state, its header and lines may be edited, added to, or removed to facilitate treasurer review.
-- **Historical Fidelity:** Imported historical entries retain their original posting dates, references, and provenance, then become immutable in the ERP.
-- **Analytical Recommendation:** All lines using Class 6 (Expenses) or Class 7 (Revenue) accounts should carry an `analytical_asset_uuid` when the transaction relates to club equipment.
+### 3.4 Accounting Entry (Header)
 
-- **Integrity & Hashing Workflow :** Transition to Posted: When calling PATCH /post, the system verifies the balance.
-Sealing: The backend concatenates the entry details and line amounts into a canonical string and generates a SHA-256 hash.
-Locking: The entry_hash and sequence_number are saved, and the state is set to Posted. The database triggers then prevent any further changes.
+- Belongs to one fiscal year and one journal.
+- Carries description, references, and provenance fields.
+- State values:
+  - 1 = Draft
+  - 2 = Posted
+  - 3 = Cancelled
+- sequence_number is assigned and locked at posting.
+- Supports reversal chain via reversal_of_entry_uuid and reversal_reason.
 
-## Partitioning Strategy
+### 3.5 Accounting Line
 
-`accounting_entries` and `accounting_lines` are implemented as PostgreSQL `PARTITION BY LIST (fiscal_year_uuid)` tables. A new partition is created for each fiscal year when it is opened.
+- Belongs to one entry and one account.
+- Stores debit and credit in NUMERIC(10,4).
+- Member sub-ledger dimensions:
+  - member_uuid
+  - member_account_id_snapshot
+- Analytical asset dimension:
+  - analytical_asset_uuid
+- Optional tax snapshot fields are preserved when provided.
 
-**Implications for schema design:**
+### 3.6 Project/Special Action Dimension
 
-- PostgreSQL requires the partition key to be part of every `PRIMARY KEY` and `UNIQUE` constraint on a partitioned table. Therefore both tables use **composite primary keys**: `(uuid, fiscal_year_uuid)`.
-- The foreign key from `accounting_lines` to `accounting_entries` becomes composite: `(entry_uuid, fiscal_year_uuid)` → `(uuid, fiscal_year_uuid)`. This also enforces fiscal-year consistency between lines and their parent entry at the database level, removing the need for a separate trigger.
-- The self-referential `reversal_of_entry_uuid` column on `accounting_entries` **cannot** carry a database-level FK constraint on a partitioned table (cross-partition self-references are not supported by PostgreSQL). Referential integrity for reversal chains is enforced at the application layer.
-- A `DEFAULT` partition exists on both tables to receive rows before a year-specific partition is created. Rows must be migrated to the correct partition once the year partition is created.
-- Indexes defined on the parent table automatically propagate to all child partitions.
-- `accounting_fiscal_years`, `accounting_accounts`, and `accounting_journals` are **not** partitioned; they are master tables referenced normally by FK from the partitioned tables.
+Special actions (subventions, camps, events) must be reportable across fiscal years.
 
-**Partition lifecycle:**
-1. When a fiscal year is opened, the application creates `accounting_entries_<code>` and `accounting_lines_<code>` partitions `FOR VALUES IN ('<fiscal_year_uuid>')` before any entries are posted.
-2. Rows that landed in the `DEFAULT` partition (e.g. from seeding) must be migrated to the correct year partition.
-3. When a fiscal year is closed, its partition may be moved to a read-only tablespace for archival.
-4. Historical years can be detached and archived without schema migration.
+Decision:
+- Keep fiscal-year partitioning on ledger tables.
+- Add an optional project dimension on lines (project_uuid).
+- Keep project master data in a dedicated module/table.
 
-## VAT Readiness
+## 4. Ledger Rules
 
-Although VAT is not operationally calculated in the initial version, readiness is achieved by:
-- Including standard PCG VAT accounts in the seed data, notably class `4456` and `4457` accounts as needed.
-- Preserving optional tax snapshot fields on accounting lines.
-- Allowing imported history to keep tax code, tax rate, tax base, and tax amount when present.
+1. debit >= 0 and credit >= 0.
+2. Each line has at least one non-zero amount.
+3. entry_date must be inside fiscal year boundaries.
+4. Entry must be balanced (sum debit = sum credit) before posting.
+5. Draft entries can be updated (header and lines).
+6. Posted entries and lines are immutable.
+7. Business cancellation is represented through reversal entries.
+8. Fiscal-year reopen is privileged and auditable.
 
-## Provenance and Traceability
+## 5. Partitioning and Integrity
 
-Imported or generated accounting data must remain traceable.
+accounting_entries and accounting_lines are partitioned by LIST(fiscal_year_uuid).
 
-- Entries may carry a `source_system` value identifying their origin.
-- Entries may carry an `external_id` or `original_id` used by the source system.
-- Entries may carry an `import_batch_id` for idempotent controlled imports.
-- Entries may store original business timestamps separately from ERP creation timestamps.
-- Posted numbering and business references must remain immutable.
-- Reversal relationships must remain queryable.
+Implications:
+- Composite primary keys on partitioned tables: (uuid, fiscal_year_uuid).
+- Composite line-to-entry foreign key: (entry_uuid, fiscal_year_uuid).
+- Parent-table indexes propagate to year partitions.
+- Master tables (fiscal years/accounts/journals) are not partitioned.
 
-## Database Specification
+Partition lifecycle:
+1. Create year-specific partitions when fiscal year opens.
+2. Move rows from default partition to year partition when required.
+3. Optionally archive closed-year partitions to read-only storage.
 
-The database design handles the requirements defined above.
+## 6. Security and Permissions
 
-### Table: `accounting_fiscal_years`
-- `uuid UUID PRIMARY KEY`
-- `code VARCHAR(16) NOT NULL UNIQUE` (e.g. `FY2026`)
-- `label VARCHAR(64) NOT NULL` (e.g. `Exercice 2026`)
-- `year SMALLINT NOT NULL UNIQUE`
-- `start_date DATE NOT NULL`
-- `end_date DATE NOT NULL`
-- `state SMALLINT NOT NULL DEFAULT 1` (1=Open, 2=Closed, 3=Reopened)
-- `closed_at TIMESTAMPTZ NULL`
-- `closed_by INTEGER NULL`
-- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+Authorization is capability-based.
 
-### Table: `accounting_journals`
-- `uuid UUID PRIMARY KEY`
-- `code VARCHAR(10) NOT NULL UNIQUE` (e.g. `VT`, `BQ`, `AN`)
-- `name VARCHAR(100) NOT NULL`
-- `type SMALLINT NOT NULL` (1=Sale, 2=Purchase, 3=Bank, 4=Cash, 5=General, 6=Opening)
-- `default_account_uuid UUID NULL` (e.g. link to `512xxx` for a bank journal)
-- `is_active BOOLEAN NOT NULL DEFAULT TRUE`
+Accounting-relevant capabilities:
+- VIEW_FINANCIALS
+- POST_ACCOUNTING_ENTRIES
+- MANAGE_PRICES
+- MANAGE_BUDGET
+- MANAGE_ACCOUNTING_SETTINGS
 
-### Table: `accounting_accounts`
-- `uuid UUID PRIMARY KEY`
-- `code VARCHAR(32) NOT NULL UNIQUE` (PCG code)
-- `name VARCHAR(255) NOT NULL`
-- `type SMALLINT NOT NULL` (1=Asset, 2=Liability, 3=Equity, 4=Expense, 5=Revenue)
-- `parent_account_uuid UUID NULL`
-- `is_posting_allowed BOOLEAN NOT NULL DEFAULT TRUE`
-- `normal_balance SMALLINT NOT NULL` (1=Debit, 2=Credit)
-- `is_reconcilable BOOLEAN NOT NULL DEFAULT FALSE`
-- `is_active BOOLEAN NOT NULL DEFAULT TRUE`
-- `archived_at TIMESTAMPTZ NULL`
-- `replacement_account_uuid UUID NULL`
+Controls:
+- Posting and fiscal-year close/reopen require privileged capability checks.
+- Sensitive integration credentials must not be logged in clear text.
 
-### Table: `accounting_entries`
-- `uuid UUID PRIMARY KEY`
-- `fiscal_year_uuid UUID NOT NULL` References `accounting_fiscal_years`
-- `journal_uuid UUID NOT NULL` References `accounting_journals`
-- `entry_date DATE NOT NULL`
-- `sequence_number VARCHAR(64) NULL` (immutable once posted)
-- `reference VARCHAR(255) NULL` (business reference shown to users)
-- `source_document_ref VARCHAR(255) NULL`
-- `source_document_date DATE NULL`
-- `description VARCHAR(255) NOT NULL`
-- `state SMALLINT NOT NULL DEFAULT 1` (1=Draft, 2=Posted, 3=Cancelled)
-- `source_system VARCHAR(64) NULL`
-- `external_id VARCHAR(255) NULL`
-- `import_batch_id VARCHAR(64) NULL`
-- `original_created_at TIMESTAMPTZ NULL`
-- `original_posted_at TIMESTAMPTZ NULL`
-- `reversal_of_entry_uuid UUID NULL` References `accounting_entries`
-- `reversal_reason VARCHAR(255) NULL`
-- `posted_at TIMESTAMPTZ NULL`
-- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-- `created_by INTEGER NOT NULL`
+## 7. Global Settings
 
-### Table: `accounting_lines`
-- `uuid UUID PRIMARY KEY`
-- `fiscal_year_uuid UUID NOT NULL` References `accounting_fiscal_years`
-- `entry_uuid UUID NOT NULL` References `accounting_entries`
-- `account_uuid UUID NOT NULL` References `accounting_accounts`
-- `member_uuid UUID NULL` References `members.uuid`
-- `member_account_id_snapshot VARCHAR(32) NULL`
-- `analytical_asset_uuid UUID NULL` References `club_assets.uuid` (future; used to track costs/revenues by asset)
-- `debit NUMERIC(10,4) NOT NULL DEFAULT 0.0000`
-- `credit NUMERIC(10,4) NOT NULL DEFAULT 0.0000`
-- `description VARCHAR(255) NULL`
-- `tax_id UUID NULL` (future tax catalog integration)
-- `tax_code VARCHAR(64) NULL`
-- `tax_rate NUMERIC(10,4) NULL`
-- `tax_base NUMERIC(10,4) NULL`
-- `tax_amount NUMERIC(10,4) NULL`
+A central settings model is required for module-level configuration.
 
-**Integrity Constraints:**
-- `debit >= 0` and `credit >= 0`
-- `debit > 0 OR credit > 0`
-- `fiscal_year_uuid` on a line must match the fiscal year of its parent entry
-- `entry_date` must fall inside the referenced fiscal year boundaries
-- `SUM(debit) = SUM(credit)` for a given `entry_uuid` when state transitions to `Posted`
-- once `state = Posted`, the entry header and all related lines become immutable
+Decision:
+- Add system_settings table with:
+  - module_name (unique key)
+  - settings (JSONB)
+  - audit timestamps/user fields
 
-## Opening Balance and Carry-Forward Rules
+Usage:
+- Each module owns one settings section.
+- Each module exposes an interface to manage its own settings.
+- Accounting reads only relevant keys (posting options, numbering, exports, integrations).
 
-- Each fiscal year may contain one or more opening balance entries in journal `AN`.
-- Opening balances may be generated from the previous fiscal year close or loaded from controlled import data.
-- Opening balances are ledger entries, not attributes of account masters.
-- Carry-forward behavior depends on account family and club accounting rules.
-- Member receivable balances may be carried forward while preserving member identity snapshots.
+## 8. PCG Seed Strategy (Association)
 
-## Member Sub-ledger Integration
+The database must be seeded with a practical association-focused PCG subset.
 
-Member financial balances are calculated dynamically by aggregating `debit - credit` on `accounting_lines` for the member dimension.
+Requirements:
+- Preserve hierarchy and account-type mapping.
+- Mark grouping accounts as non-postable.
+- Include minimum operational coverage:
+  - member receivables (411)
+  - bank/cash (512, 530)
+  - membership/flight revenues (706x)
+  - fuel/maintenance/insurance expenses (60x, 61x)
+  - subvention/fonds dedies flow (194, 689, 789)
+  - optional boutique/meals flow (607x/707x) when needed
 
-Canonical model:
-- the general ledger uses a collective `411` control account for member receivables
-- each member-linked line stores `member_uuid`
-- each member-linked line also stores `member_account_id_snapshot` so imported and historical entries remain stable even if the member record later changes
+VAT:
+- Keep VAT account support and tax snapshot fields for historical compatibility.
 
-For member registrations, the system auto-generates `accounting_entries` linked to the Sales (`VT`) journal and credits the appropriate `7*` class account depending on the price mapping, whilst debiting the `411` member receivable control account with the member dimensions filled.
+## 9. Pricing and Registration Linkage
 
-This model must remain aligned with the members specification, where `account_id` is the stable business key used by the member domain.
+### 9.1 Price Versioning Decision
 
-## Reversal and Correction Rules
+Prices are versioned with from_date/to_date and associated to fiscal year.
 
-- A posted entry is never edited in place.
-- A reversal entry references the original entry through `reversal_of_entry_uuid`.
-- Reversal entries preserve auditability and may be generated by users or controlled import.
-- A cancelled business event is represented by accounting reversal, not physical deletion of ledger data.
-- Imported historical correction chains must be preserved using the same linkage model where possible.
+Decision:
+- Keep both fiscal_year_uuid and date range.
 
-## Endpoints Scope
+Rationale:
+- fiscal_year_uuid enforces annual accounting governance,
+- date range supports in-year price changes with full traceability.
 
-V1 backend should support:
-- `POST /api/v1/accounting/fiscal-years` (creates a new fiscal year, ready for posting)
-- `GET /api/v1/accounting/fiscal-years` (lists all fiscal years)
-- `GET /api/v1/accounting/accounts` (lists chart of accounts)
-- `GET /api/v1/accounting/journals` (lists journals)
-- `POST /api/v1/accounting/entries` (creates entry and lines atomically in Draft state)
-- `GET /api/v1/accounting/entries/{uuid}` (retrieves entry with lines)
-- `PUT /api/v1/accounting/entries/{uuid}` (updates header and lines while entry is in Draft)
-- `PATCH /api/v1/accounting/entries/{uuid}/post` (validates balance and fiscal year rules, then locks the entry)
+### 9.2 Subscription Workflow Impact
+
+During member registration:
+- User selects one or more applicable price items.
+- System generates a Draft accounting entry in journal VT.
+- Canonical accounting pattern:
+  - debit 411 (with member dimensions)
+  - credit applicable revenue accounts (7061, 7062, 7063, 707x, etc.)
+
+## 10. Budget Management
+
+Budget is a dedicated module with tight accounting integration.
+
+Requirements:
+1. Year N+1 budget is prepared during year N.
+2. Initial budget can be derived from previous actuals.
+3. At fiscal-year opening, selected prepared budget is activated/copied as current budget.
+4. In-year budget revisions require dedicated capability.
+5. KPI and reports compare actual vs budget by account and optional dimensions.
+
+Data model direction:
+- Budget lines should mirror accounting dimensions where possible:
+  - fiscal_year_uuid
+  - account_uuid
+  - optional project_uuid
+  - optional analytical_asset_uuid
+
+## 11. Special Actions and Subventions
+
+Special actions are project-centric budgets and accounting flows.
+
+Requirements:
+- Link budget lines and accounting lines to projects.
+- Support multi-year follow-up of grants/subventions.
+- Provide reports for project budget, actual, variance, and carry-forward.
+
+## 12. Employees and Schedule Financial Impact
+
+Employee scheduling is a separate module, but accounting integration is required.
+
+Requirements affecting accounting:
+- Employee identity may be linked to member identity (hybrid member/employee profiles).
+- Leave/work-hour events can feed payroll/cost accrual accounting workflows.
+- Employee financial data access is restricted by capability.
+
+Committees and events:
+- Committees can create events in a shared schedule visible to members.
+- Events with financial impact (for example meals) follow standard draft-to-posted accounting flow.
+
+## 13. Flight Synchronization Financial Workflow
+
+Flights are sourced from an external FastAPI application.
+
+Target workflow:
+1. Synchronize pilots/assets as required.
+2. Pull validated flights into ERP.
+3. Preserve validated flights as billable evidence.
+4. Generate draft sales accounting entries based on ERP pricing rules.
+5. Send selected activity data to external tracking systems.
+6. Track outbound send status flags and sync/reporting errors.
+
+Settings requirements:
+- Store endpoints, credentials, retry policy, and feature flags in module settings.
+
+## 14. API Scope
+
+### 14.1 Implemented V1 Accounting Endpoints
+
+- POST /api/v1/accounting/fiscal-years
+- GET /api/v1/accounting/fiscal-years
+- GET /api/v1/accounting/accounts
+- GET /api/v1/accounting/journals
+- POST /api/v1/accounting/entries
+- GET /api/v1/accounting/entries/{entry_uuid} (with fiscal_year_uuid)
+- PUT /api/v1/accounting/entries/{entry_uuid} (draft only)
+- PATCH /api/v1/accounting/entries/{entry_uuid}/post
+
+### 14.2 Next Accounting-Adjacent Endpoints
+
+- Module settings endpoints (per module, capability-scoped).
+- Pricing lifecycle endpoints (year + date-range versioning).
+- Budget lifecycle/reporting endpoints.
+- Project/subvention reporting endpoints.
+- Flight sync monitoring and error reporting endpoints.
+
+### 14.3 Validation Error Contract Examples
+
+V1 accounting endpoints return FastAPI standard error envelopes:
+
+- `{"detail": "<human-readable message>"}`
+
+Examples for posting and fiscal-year violations:
+
+```json
+{
+  "detail": "Cannot post entry into closed fiscal year FY2026"
+}
+```
+
+```json
+{
+  "detail": "Entry is not balanced: debit=10.0000 != credit=9.0000"
+}
+```
+
+```json
+{
+  "detail": "Entry date 2027-01-01 is outside fiscal year [2026-01-01, 2026-12-31]"
+}
+```
+
+```json
+{
+  "detail": "Can only reopen a closed fiscal year (state=2), current=1"
+}
+```
+
+The OpenAPI operation definitions for V1 accounting endpoints include these examples under `400`, `404`, and `409` responses.
+
+## 15. Audit and Traceability
+
+Mandatory:
+- immutable posted records,
+- deterministic posting numbering,
+- provenance fields for imports,
+- reversible correction chain,
+- user/action timestamps.
+
+Recommended hardening:
+- entry_hash sealing at posting,
+- verification tooling for integrity checks.
+
+## 16. Out of Scope for V1 Core Ledger
+
+Handled by dedicated modules/services (must remain accounting-compatible):
+- full payroll engine,
+- full VAT computation engine,
+- advanced stock valuation,
+- external orchestration beyond sync status and draft generation.
+
+## 17. Specification Acceptance Criteria
+
+1. No contradictory enum/state/field definitions.
+2. Draft/post immutability and reversal policy are explicit.
+3. Fiscal-year partitioning constraints are explicit and technically consistent.
+4. Pricing decision (fiscal year + date range) is explicit.
+5. Budget and project/subvention requirements are linked to accounting dimensions.
+6. Flight-sync accounting workflow is explicit and auditable.
+7. Capability-based authorization expectations are explicit.
+
+## 18. Phased Implementation Checklist
+
+This checklist translates the specification into executable work packages.
+
+### Phase 1: Ledger Hardening and Baseline Data
+
+Goal: finalize the accounting core as a stable platform for dependent modules.
+
+Backend and database:
+- [ ] Verify all accounting enums and state transitions are consistent in models, schemas, and SQL.
+- [x] Enforce posting immutability and draft-only update behavior with tests.
+- [x] Confirm fiscal-year boundary and balance validation at service and SQL levels.
+- [x] Ensure partition creation/migration routine exists for fiscal-year opening.
+- [x] Add and validate PCG seed loader for association-focused account subset.
+
+API and contracts:
+- [x] Stabilize V1 accounting endpoints and response payloads.
+- [x] Add validation error contract examples for posting and fiscal-year violations.
+
+Frontend:
+- [ ] Complete draft-entry create/edit/post flow with explicit read-only state after post.
+- [ ] Show clear posting validation errors and immutable-state UI locks.
+
+Permissions and security:
+- [x] Enforce capability checks for post/close/reopen operations.
+- [x] Audit log all privileged accounting actions.
+
+Testing and release:
+- [x] Add integration tests for create draft, update draft, post, and reversal chain.
+- [x] Add seed verification test (required account codes available and postability flags correct).
+
+### Phase 2: Global Settings and Pricing Governance
+
+Goal: make module configuration and pricing lifecycle operationally manageable.
+
+Backend and database:
+- [x] Create system_settings table (module_name, settings JSONB, audit fields).
+- [x] Implement settings service with per-module schema validation.
+- [x] Implement pricing versioning with both fiscal_year_uuid and from/to range constraints.
+
+API and contracts:
+- [x] Add settings endpoints with module-scoped read/update operations.
+- [x] Add pricing CRUD/list endpoints with overlap checks for date ranges.
+
+Frontend:
+- [ ] Build settings screens per module section.
+- [ ] Build pricing management screen for fiscal year with version timeline.
+- [ ] Integrate registration workflow to select applicable price items and preview accounting outcome.
+
+Permissions and security:
+- [ ] Restrict settings editing to MANAGE_ACCOUNTING_SETTINGS (and module-specific capability as needed).
+- [ ] Restrict price management to MANAGE_PRICES.
+
+Testing and release:
+- [ ] Add pricing overlap and fiscal-year mismatch tests.
+- [ ] Add end-to-end test for registration -> draft accounting entry generation.
+
+### Phase 3: Budget Lifecycle and KPI Reporting
+
+Goal: support annual preparation, in-year revisions, and variance reporting.
+
+Backend and database:
+- [ ] Add budget tables aligned with accounting dimensions (fiscal year, account, optional asset/project).
+- [ ] Implement initialize-from-actuals routine.
+- [ ] Implement activate-prepared-budget at fiscal-year opening.
+- [ ] Implement revision model (version or change log) for in-year controlled adjustments.
+
+API and contracts:
+- [ ] Add endpoints for prepare, activate, revise, and reporting queries.
+- [ ] Add KPI endpoints for actual vs budget by account, asset, and project.
+
+Frontend:
+- [ ] Build budget preparation UI for N+1 during year N.
+- [ ] Build revision workflow UI and variance dashboards.
+- [ ] Add export/report view for finance committee.
+
+Permissions and security:
+- [ ] Restrict revisions to MANAGE_BUDGET.
+- [ ] Keep budget publication/activation auditable.
+
+Testing and release:
+- [ ] Add tests for initialization, activation, revision authorization, and KPI correctness.
+
+### Phase 4: Projects/Subventions and Employee Cost Signals
+
+Goal: track special actions across years and prepare HR-linked financial data.
+
+Backend and database:
+- [ ] Add project master table and optional project_uuid dimensions on budget and accounting lines.
+- [ ] Implement project-level carry-forward and subvention reporting views.
+- [ ] Define employee-to-member linkage policy for hybrid profiles.
+- [ ] Define accounting hooks for leave/work-hour events to payroll/accrual staging.
+
+API and contracts:
+- [ ] Add project CRUD/list and project financial reporting endpoints.
+- [ ] Add employee schedule event APIs needed by downstream accounting hooks.
+
+Frontend:
+- [ ] Build project/subvention tracking screens with multi-year view.
+- [ ] Build restricted employee section for schedule and activity inputs.
+
+Permissions and security:
+- [ ] Restrict employee section and data access to dedicated capability.
+- [ ] Restrict project budget/subvention edits to authorized users.
+
+Testing and release:
+- [ ] Add tests for project multi-year aggregation and access control.
+
+### Phase 5: Flight Synchronization and External Dispatch Monitoring
+
+Goal: automate billing inputs from validated flights and monitor integration reliability.
+
+Backend and database:
+- [ ] Implement flight sync adapters (pilots/assets push, validated flights pull).
+- [ ] Store validated flights as auditable billable sources.
+- [ ] Implement pricing application engine for flight-generated draft accounting entries.
+- [ ] Add outbound dispatch queue/status flags for external tracking systems.
+
+API and contracts:
+- [ ] Add sync trigger/status/error endpoints.
+- [ ] Add reconciliation endpoints (flight totals vs generated accounting entries).
+
+Frontend:
+- [ ] Build sync monitoring dashboard (last run, errors, pending retries).
+- [ ] Build review screen for generated draft entries before posting.
+
+Permissions and security:
+- [ ] Restrict sync execution and connector setting updates to authorized capabilities.
+- [ ] Protect credentials in settings and operational logs.
+
+Testing and release:
+- [ ] Add contract tests for external API adapters.
+- [ ] Add end-to-end tests for validated flight -> draft entry generation -> posting.
+
+## 19. Cross-Phase Definition of Done
+
+Each phase is complete only when all conditions below are true:
+- [ ] Database migration scripts are deterministic and reversible.
+- [ ] API contracts are documented and backward compatibility is respected unless explicitly approved.
+- [ ] Capability checks are enforced server-side and covered by tests.
+- [ ] UI states reflect backend locks (especially posted and closed-year constraints).
+- [ ] Monitoring/logging is actionable and excludes sensitive secrets.
+- [ ] Regression tests pass for accounting create/update/post/reversal critical paths.
+
+## 20. Suggested Execution Order by Team Track
+
+To parallelize delivery with low risk:
+- [ ] Track A (Backend/Core): Phase 1 then Phase 2 backend items.
+- [ ] Track B (Frontend): Phase 1 screens then settings/pricing UI from Phase 2.
+- [ ] Track C (Data/Finance): PCG seed validation and budget model from Phase 3.
+- [ ] Track D (Integrations): Flight sync foundation from Phase 5 once Phase 2 settings are available.
+

@@ -76,6 +76,44 @@ CREATE TABLE accounting_journals (
 );
 
 -----------------------------------------------------------
+-- Module Global Settings
+-----------------------------------------------------------
+
+CREATE TABLE system_settings (
+    id           BIGSERIAL      PRIMARY KEY,
+    module_name  VARCHAR(64)    NOT NULL UNIQUE,
+    settings     JSONB          NOT NULL DEFAULT '{}'::jsonb,
+    created_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    updated_by   INTEGER        NULL
+);
+
+CREATE INDEX ix_system_settings_module_name ON system_settings(module_name);
+
+-----------------------------------------------------------
+-- Pricing Versions (phase 2 governance)
+-----------------------------------------------------------
+
+CREATE TABLE pricing_versions (
+    uuid               UUID         PRIMARY KEY,
+    fiscal_year_uuid   UUID         NOT NULL REFERENCES accounting_fiscal_years(uuid),
+    name               VARCHAR(100) NOT NULL,
+    from_date          DATE         NOT NULL,
+    to_date            DATE         NULL,
+    status             SMALLINT     NOT NULL DEFAULT 1, -- 1=Draft,2=Active,3=Archived
+    is_locked          BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    created_by         INTEGER      NULL,
+
+    CONSTRAINT chk_pricing_version_status CHECK (status IN (1, 2, 3)),
+    CONSTRAINT chk_pricing_version_dates CHECK (to_date IS NULL OR to_date >= from_date)
+);
+
+CREATE INDEX ix_pricing_versions_fiscal_year ON pricing_versions(fiscal_year_uuid);
+CREATE INDEX ix_pricing_versions_dates ON pricing_versions(fiscal_year_uuid, from_date, to_date);
+
+-----------------------------------------------------------
 -- Accounting Entries (Transaction Headers)
 -- Partitioned by fiscal_year_uuid (PARTITION BY LIST).
 -- PK is composite (uuid, fiscal_year_uuid): PostgreSQL requires the
@@ -197,8 +235,8 @@ BEGIN
             NEW.entry_date, fy_start, fy_end;
     END IF;
 
-    -- Prevent posting into a closed fiscal year (state=2)
-    IF NEW.state = 2 AND fy_state = 2 THEN
+    -- Allow posting only in Open/Reopened fiscal years (1/3)
+    IF NEW.state = 2 AND fy_state NOT IN (1, 3) THEN
         RAISE EXCEPTION
             'Cannot post entry into closed fiscal year %', NEW.fiscal_year_uuid;
     END IF;

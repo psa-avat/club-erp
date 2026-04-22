@@ -56,6 +56,7 @@ from api.security import (
 from constants import (
     AUTH_LEVEL_FULL_AUTH,
     AUTH_LEVEL_PRE_AUTH,
+    CAPABILITY_SEEDS,
     PIN_EXPIRATION_MINUTES,
     PIN_MAX_ATTEMPTS,
     ROLE_CODE_ADMIN,
@@ -105,16 +106,9 @@ async def ensure_seeded_roles_and_capabilities(db: AsyncSession) -> None:
     if db.new:
         await db.commit()
 
-    capabilities = [
-        ("EDIT_FLIGHTS", "Gestion des vols"),
-        ("MANAGE_PRICES", "Gestion des tarifs"),
-        ("VIEW_FINANCIALS", "Lecture finance"),
-        ("MANAGE_USERS", "Gestion des utilisateurs"),
-        ("MEMBER_PORTAL", "Acces portail membre"),
-    ]
     existing_caps_result = await db.execute(select(Capability.code))
     existing_caps = set(existing_caps_result.scalars().all())
-    for code, name in capabilities:
+    for code, name in CAPABILITY_SEEDS:
         if code not in existing_caps:
             db.add(Capability(code=code, name=name))
 

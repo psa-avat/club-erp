@@ -32,6 +32,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    JSON,
     Integer,
     Numeric,
     PrimaryKeyConstraint,
@@ -175,6 +176,33 @@ class UserSettings(Base):
 
     def __repr__(self):
         return f"<UserSettings user={self.user_id}>"
+
+
+class SystemSetting(Base):
+    """Module-scoped global settings payload."""
+
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_name = Column(String(64), nullable=False, unique=True, index=True)
+    settings = Column(JSON, nullable=False, default=dict)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    updated_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<SystemSetting module_name={self.module_name}>"
 
 
 class AuthChallenge(Base):
@@ -465,6 +493,42 @@ class AccountingFiscalYear(Base):
         return f"<AccountingFiscalYear code={self.code} year={self.year} state={self.state}>"
 
 
+class PricingVersion(Base):
+    """Pricing version scoped by fiscal year with date validity window."""
+
+    __tablename__ = "pricing_versions"
+    __table_args__ = (
+        CheckConstraint("status IN (1, 2, 3)", name="chk_pricing_version_status"),
+        CheckConstraint("to_date IS NULL OR to_date >= from_date", name="chk_pricing_version_dates"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    from_date = Column(Date, nullable=False)
+    to_date = Column(Date, nullable=True)
+    status = Column(SmallInteger, nullable=False, default=1)  # 1=Draft, 2=Active, 3=Archived
+    is_locked = Column(Boolean, nullable=False, default=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    fiscal_year = relationship("AccountingFiscalYear")
+    created_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<PricingVersion uuid={self.uuid} fiscal_year={self.fiscal_year_uuid} from={self.from_date} to={self.to_date}>"
+
+
 class AccountingJournal(Base):
     """Journal classification for accounting entries."""
 
@@ -540,6 +604,7 @@ class AccountingEntry(Base):
     # Reversal
     reversal_of_entry_uuid = Column(UUID(as_uuid=True), nullable=True)  # no DB FK; enforced at app layer
     reversal_reason = Column(String(255), nullable=True)
+    entry_hash = Column(String(64), nullable=True)
     # Audit
     posted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

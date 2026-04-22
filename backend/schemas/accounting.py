@@ -19,7 +19,7 @@
  """
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -180,6 +180,7 @@ class AccountingEntryResponse(AccountingEntryBase):
     import_batch_id: Optional[str] = None
     reversal_of_entry_uuid: Optional[UUID] = None
     reversal_reason: Optional[str] = None
+    entry_hash: Optional[str] = None
     posted_at: Optional[datetime] = None
     created_at: datetime
     created_by: int
@@ -192,3 +193,67 @@ class AccountingEntryResponse(AccountingEntryBase):
 class AccountingEntryPostRequest(BaseModel):
     """Request to post (lock) a Draft entry."""
     pass
+
+
+class AccountingEntryReverseRequest(BaseModel):
+    """Request to create a reversal Draft entry from a Posted entry."""
+    fiscal_year_uuid: UUID
+    reversal_reason: str = Field(min_length=1, max_length=255)
+    entry_date: Optional[date] = None
+
+
+class SeedPcgResponse(BaseModel):
+    """Response summary for PCG seed operation."""
+    inserted: int
+    updated: int
+    total: int
+
+
+class SystemSettingUpdateRequest(BaseModel):
+    """Upsert request for module-scoped global settings."""
+    settings: dict[str, Any]
+
+
+class SystemSettingResponse(BaseModel):
+    """Module-scoped global settings response."""
+    module_name: str
+    settings: dict[str, Any]
+    updated_at: datetime
+    updated_by: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PricingVersionCreateRequest(BaseModel):
+    """Create request for pricing version governance."""
+    fiscal_year_uuid: UUID
+    name: str = Field(min_length=1, max_length=100)
+    from_date: date
+    to_date: Optional[date] = None
+    status: int = Field(default=1, ge=1, le=3)  # 1=Draft, 2=Active, 3=Archived
+
+
+class PricingVersionResponse(BaseModel):
+    """Pricing version response."""
+    uuid: UUID
+    fiscal_year_uuid: UUID
+    name: str
+    from_date: date
+    to_date: Optional[date] = None
+    status: int
+    is_locked: bool
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PricingVersionUpdateRequest(BaseModel):
+    """Update request for pricing version governance."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    from_date: Optional[date] = None
+    to_date: Optional[date] = None
+    status: Optional[int] = Field(default=None, ge=1, le=3)

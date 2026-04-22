@@ -17,12 +17,14 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
+import hashlib
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -32,6 +34,8 @@ from models import (
     AccountingFiscalYear,
     AccountingJournal,
     AccountingLine,
+    PricingVersion,
+    SystemSetting,
     User,
 )
 from schemas.accounting import (
@@ -39,7 +43,358 @@ from schemas.accounting import (
     AccountingEntryUpdateRequest,
     AccountingLineCreateRequest,
     FiscalYearCreateRequest,
+    PricingVersionCreateRequest,
+    PricingVersionUpdateRequest,
+    SystemSettingUpdateRequest,
 )
+
+
+PCG_ASSOCIATION_SEED = [
+    {"code": "1", "name": "Capitaux permanents", "type": 2, "is_posting_allowed": False},
+    {"code": "102", "name": "Fonds associatif sans droit de reprise", "type": 2, "is_posting_allowed": True},
+    {"code": "19", "name": "Fonds dedies", "type": 2, "is_posting_allowed": False},
+    {"code": "194", "name": "Fonds dedies sur projets", "type": 2, "is_posting_allowed": True},
+    {"code": "4", "name": "Comptes de tiers", "type": 1, "is_posting_allowed": False},
+    {"code": "41", "name": "Membres et usagers", "type": 1, "is_posting_allowed": False},
+    {"code": "411", "name": "Membres - Creances", "type": 1, "is_posting_allowed": True, "is_reconcilable": True},
+    {"code": "445", "name": "Etat - Taxes sur le CA", "type": 1, "is_posting_allowed": False},
+    {"code": "44566", "name": "TVA sur autres biens et services", "type": 1, "is_posting_allowed": True},
+    {"code": "44571", "name": "TVA collectee", "type": 2, "is_posting_allowed": True},
+    {"code": "5", "name": "Comptes financiers", "type": 1, "is_posting_allowed": False},
+    {"code": "512", "name": "Banque", "type": 1, "is_posting_allowed": True, "is_reconcilable": True},
+    {"code": "530", "name": "Caisse", "type": 1, "is_posting_allowed": True, "is_reconcilable": True},
+    {"code": "6", "name": "Comptes de charges", "type": 4, "is_posting_allowed": False},
+    {"code": "6063", "name": "Carburants", "type": 4, "is_posting_allowed": True},
+    {"code": "615", "name": "Entretien et reparations", "type": 4, "is_posting_allowed": True},
+    {"code": "616", "name": "Primes d'assurances", "type": 4, "is_posting_allowed": True},
+    {"code": "641", "name": "Remunerations du personnel", "type": 4, "is_posting_allowed": True},
+    {"code": "689", "name": "Engagements a realiser sur fonds dedies", "type": 4, "is_posting_allowed": True},
+    {"code": "7", "name": "Comptes de produits", "type": 5, "is_posting_allowed": False},
+    {"code": "7061", "name": "Cotisations et adhesions", "type": 5, "is_posting_allowed": True},
+    {"code": "7062", "name": "Activite vol", "type": 5, "is_posting_allowed": True},
+    {"code": "7063", "name": "Lancements", "type": 5, "is_posting_allowed": True},
+    {"code": "7071", "name": "Ventes boutique", "type": 5, "is_posting_allowed": True},
+    {"code": "7072", "name": "Ventes bar et repas", "type": 5, "is_posting_allowed": True},
+    {"code": "74", "name": "Subventions d'exploitation", "type": 5, "is_posting_allowed": True},
+    {"code": "789", "name": "Report des ressources non utilisees", "type": 5, "is_posting_allowed": True},
+]
+
+
+def _safe_partition_suffix(fiscal_year_code: str) -> str:
+    """Produce a safe SQL identifier suffix for partition table names."""
+    return re.sub(r"[^a-z0-9_]", "_", fiscal_year_code.lower())
+
+
+async def ensure_fiscal_year_partitions(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+    fiscal_year_code: str,
+) -> None:
+    """Create and migrate year partitions when running on PostgreSQL."""
+    bind = db.get_bind()
+    if bind is None or bind.dialect.name != "postgresql":
+        return
+
+    suffix = _safe_partition_suffix(fiscal_year_code)
+    fy_uuid_str = str(fiscal_year_uuid)
+
+    await db.execute(
+        text(
+            f"CREATE TABLE IF NOT EXISTS accounting_entries_{suffix} "
+            f"PARTITION OF accounting_entries FOR VALUES IN ('{fy_uuid_str}')"
+        )
+    )
+    await db.execute(
+        text(
+            f"CREATE TABLE IF NOT EXISTS accounting_lines_{suffix} "
+            f"PARTITION OF accounting_lines FOR VALUES IN ('{fy_uuid_str}')"
+        )
+    )
+
+    await db.execute(
+        text(
+            "WITH moved AS ("
+            " DELETE FROM ONLY accounting_entries_default"
+            " WHERE fiscal_year_uuid = :fy_uuid RETURNING *"
+            ") INSERT INTO accounting_entries SELECT * FROM moved"
+        ),
+        {"fy_uuid": fy_uuid_str},
+    )
+    await db.execute(
+        text(
+            "WITH moved AS ("
+            " DELETE FROM ONLY accounting_lines_default"
+            " WHERE fiscal_year_uuid = :fy_uuid RETURNING *"
+            ") INSERT INTO accounting_lines SELECT * FROM moved"
+        ),
+        {"fy_uuid": fy_uuid_str},
+    )
+
+
+def _normal_balance_for_account_type(account_type: int) -> int:
+    """Return default normal balance for account type enum."""
+    return 1 if account_type in (1, 4) else 2
+
+
+def _parent_code(code: str, existing_codes: set[str]) -> str | None:
+    """Find the closest hierarchical parent code by prefix."""
+    for i in range(len(code) - 1, 0, -1):
+        candidate = code[:i]
+        if candidate in existing_codes:
+            return candidate
+    return None
+
+
+async def seed_association_pcg_accounts(db: AsyncSession) -> dict:
+    """Seed a baseline French association PCG subset into accounting_accounts."""
+    existing_result = await db.execute(select(AccountingAccount))
+    existing_accounts = {account.code: account for account in existing_result.scalars().all()}
+
+    inserted = 0
+    updated = 0
+
+    for item in sorted(PCG_ASSOCIATION_SEED, key=lambda row: len(row["code"])):
+        code = item["code"]
+        account = existing_accounts.get(code)
+        parent_code = _parent_code(code, set(existing_accounts.keys()) | {row["code"] for row in PCG_ASSOCIATION_SEED})
+        parent_uuid = existing_accounts[parent_code].uuid if parent_code and parent_code in existing_accounts else None
+
+        if account is None:
+            account = AccountingAccount(
+                uuid=uuid4(),
+                code=code,
+                name=item["name"],
+                type=item["type"],
+                parent_account_uuid=parent_uuid,
+                is_posting_allowed=item.get("is_posting_allowed", True),
+                normal_balance=_normal_balance_for_account_type(item["type"]),
+                is_reconcilable=item.get("is_reconcilable", False),
+                is_active=True,
+            )
+            db.add(account)
+            await db.flush()
+            existing_accounts[code] = account
+            inserted += 1
+        else:
+            account.name = item["name"]
+            account.type = item["type"]
+            account.parent_account_uuid = parent_uuid
+            account.is_posting_allowed = item.get("is_posting_allowed", True)
+            account.normal_balance = _normal_balance_for_account_type(item["type"])
+            account.is_reconcilable = item.get("is_reconcilable", False)
+            updated += 1
+
+    await db.commit()
+    return {"inserted": inserted, "updated": updated, "total": len(PCG_ASSOCIATION_SEED)}
+
+
+async def upsert_system_setting(
+    db: AsyncSession,
+    module_name: str,
+    request: SystemSettingUpdateRequest,
+    user_id: int,
+) -> SystemSetting:
+    """Create or update one module settings payload."""
+    normalized_module = module_name.strip().lower()
+    if not normalized_module:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="module_name must not be empty",
+        )
+
+    result = await db.execute(select(SystemSetting).where(SystemSetting.module_name == normalized_module))
+    setting = result.scalar_one_or_none()
+
+    if setting is None:
+        setting = SystemSetting(
+            module_name=normalized_module,
+            settings=request.settings,
+            updated_by=user_id,
+        )
+        db.add(setting)
+    else:
+        setting.settings = request.settings
+        setting.updated_by = user_id
+
+    await db.commit()
+    await db.refresh(setting)
+    return setting
+
+
+async def get_system_setting(db: AsyncSession, module_name: str) -> SystemSetting:
+    """Get one module settings payload by module name."""
+    normalized_module = module_name.strip().lower()
+    result = await db.execute(select(SystemSetting).where(SystemSetting.module_name == normalized_module))
+    setting = result.scalar_one_or_none()
+    if setting is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"System setting module '{normalized_module}' not found",
+        )
+    return setting
+
+
+async def list_system_settings(db: AsyncSession) -> list[SystemSetting]:
+    """List all module settings payloads."""
+    result = await db.execute(select(SystemSetting).order_by(SystemSetting.module_name.asc()))
+    return result.scalars().all()
+
+
+async def create_pricing_version(
+    db: AsyncSession,
+    request: PricingVersionCreateRequest,
+    user_id: int,
+) -> PricingVersion:
+    """Create pricing version with fiscal-year and date overlap constraints."""
+    fy = await get_or_create_fiscal_year(db, request.fiscal_year_uuid)
+
+    if request.to_date is not None and request.to_date < request.from_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="to_date must be greater than or equal to from_date",
+        )
+
+    if request.from_date < fy.start_date or request.from_date > fy.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"from_date {request.from_date} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
+        )
+
+    if request.to_date is not None and (request.to_date < fy.start_date or request.to_date > fy.end_date):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"to_date {request.to_date} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
+        )
+
+    existing_result = await db.execute(
+        select(PricingVersion).where(PricingVersion.fiscal_year_uuid == request.fiscal_year_uuid)
+    )
+    existing_versions = existing_result.scalars().all()
+
+    candidate_end = request.to_date or fy.end_date
+    for version in existing_versions:
+        existing_end = version.to_date or fy.end_date
+        overlaps = request.from_date <= existing_end and candidate_end >= version.from_date
+        if overlaps:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Pricing version date range overlaps with existing version {version.uuid} "
+                    f"[{version.from_date}, {version.to_date or fy.end_date}]"
+                ),
+            )
+
+    version = PricingVersion(
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        name=request.name,
+        from_date=request.from_date,
+        to_date=request.to_date,
+        status=request.status,
+        created_by=user_id,
+    )
+
+    db.add(version)
+    await db.commit()
+    await db.refresh(version)
+    return version
+
+
+async def get_pricing_version(db: AsyncSession, version_uuid: UUID) -> PricingVersion:
+    """Get one pricing version by UUID."""
+    result = await db.execute(select(PricingVersion).where(PricingVersion.uuid == version_uuid))
+    version = result.scalar_one_or_none()
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pricing version {version_uuid} not found",
+        )
+    return version
+
+
+def _pricing_ranges_overlap(start_a, end_a, start_b, end_b) -> bool:
+    return start_a <= end_b and end_a >= start_b
+
+
+async def update_pricing_version(
+    db: AsyncSession,
+    version_uuid: UUID,
+    request: PricingVersionUpdateRequest,
+) -> PricingVersion:
+    """Update pricing version and enforce fiscal-year and overlap constraints."""
+    version = await get_pricing_version(db, version_uuid)
+    fy = await get_or_create_fiscal_year(db, version.fiscal_year_uuid)
+
+    next_from = request.from_date if request.from_date is not None else version.from_date
+    next_to = request.to_date if request.to_date is not None else version.to_date
+
+    if next_to is not None and next_to < next_from:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="to_date must be greater than or equal to from_date",
+        )
+
+    if next_from < fy.start_date or next_from > fy.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"from_date {next_from} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
+        )
+
+    if next_to is not None and (next_to < fy.start_date or next_to > fy.end_date):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"to_date {next_to} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
+        )
+
+    existing_result = await db.execute(
+        select(PricingVersion).where(PricingVersion.fiscal_year_uuid == version.fiscal_year_uuid)
+    )
+    existing_versions = existing_result.scalars().all()
+    candidate_end = next_to or fy.end_date
+
+    for existing in existing_versions:
+        if existing.uuid == version.uuid:
+            continue
+
+        existing_end = existing.to_date or fy.end_date
+        overlaps = _pricing_ranges_overlap(next_from, candidate_end, existing.from_date, existing_end)
+        if overlaps:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Pricing version date range overlaps with existing version {existing.uuid} "
+                    f"[{existing.from_date}, {existing.to_date or fy.end_date}]"
+                ),
+            )
+
+    if request.name is not None:
+        version.name = request.name
+    if request.from_date is not None:
+        version.from_date = request.from_date
+    if request.to_date is not None:
+        version.to_date = request.to_date
+    if request.status is not None:
+        version.status = request.status
+
+    await db.commit()
+    await db.refresh(version)
+    return version
+
+
+async def delete_pricing_version(db: AsyncSession, version_uuid: UUID) -> None:
+    """Delete one pricing version by UUID."""
+    version = await get_pricing_version(db, version_uuid)
+    await db.delete(version)
+    await db.commit()
+
+
+async def list_pricing_versions(db: AsyncSession, fiscal_year_uuid: UUID | None = None) -> list[PricingVersion]:
+    """List pricing versions, optionally filtered by fiscal year."""
+    stmt = select(PricingVersion)
+    if fiscal_year_uuid is not None:
+        stmt = stmt.where(PricingVersion.fiscal_year_uuid == fiscal_year_uuid)
+    stmt = stmt.order_by(PricingVersion.from_date.asc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
 async def create_fiscal_year(
@@ -86,6 +441,51 @@ async def create_fiscal_year(
     )
     
     db.add(fy)
+    await db.flush()
+    await ensure_fiscal_year_partitions(db, fy.uuid, fy.code)
+    await db.commit()
+    await db.refresh(fy)
+    return fy
+
+
+async def close_fiscal_year(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+    user_id: int,
+) -> AccountingFiscalYear:
+    """Close a fiscal year: blocks posting operations."""
+    fy = await get_or_create_fiscal_year(db, fiscal_year_uuid)
+
+    if fy.state == 2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Fiscal year {fy.code} is already closed",
+        )
+
+    fy.state = 2
+    fy.closed_at = datetime.now(timezone.utc)
+    fy.closed_by = user_id
+
+    await db.commit()
+    await db.refresh(fy)
+    return fy
+
+
+async def reopen_fiscal_year(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+) -> AccountingFiscalYear:
+    """Reopen a fiscal year: allows posting operations."""
+    fy = await get_or_create_fiscal_year(db, fiscal_year_uuid)
+
+    if fy.state != 2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Can only reopen a closed fiscal year (state=2), current={fy.state}",
+        )
+
+    fy.state = 3
+
     await db.commit()
     await db.refresh(fy)
     return fy
@@ -103,14 +503,53 @@ async def get_or_create_fiscal_year(db: AsyncSession, fiscal_year_uuid: UUID) ->
 
 
 async def validate_fiscal_year_open(db: AsyncSession, fiscal_year_uuid: UUID) -> AccountingFiscalYear:
-    """Ensure fiscal year exists and is open (state=1)."""
+    """Ensure fiscal year exists and allows posting operations (Open/Reopened)."""
     fy = await get_or_create_fiscal_year(db, fiscal_year_uuid)
-    if fy.state != 1:
+    if fy.state == 2:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Fiscal year {fy.code} is not open (state={fy.state})",
+            detail=f"Fiscal year {fy.code} is closed (state={fy.state})",
         )
     return fy
+
+
+def _canonical_decimal(value: Decimal) -> str:
+    return f"{Decimal(value):.4f}"
+
+
+def compute_entry_hash(entry: AccountingEntry) -> str:
+    """Generate a deterministic SHA-256 digest for a posted entry and its lines."""
+    header = [
+        str(entry.uuid),
+        str(entry.fiscal_year_uuid),
+        str(entry.journal_uuid),
+        str(entry.entry_date),
+        str(entry.sequence_number or ""),
+        str(entry.reference or ""),
+        str(entry.description or ""),
+        str(entry.state),
+    ]
+
+    lines = sorted(entry.lines, key=lambda line: str(line.uuid))
+    line_payloads: list[str] = []
+    for line in lines:
+        line_payloads.append(
+            "|".join(
+                [
+                    str(line.uuid),
+                    str(line.account_uuid),
+                    _canonical_decimal(line.debit),
+                    _canonical_decimal(line.credit),
+                    str(line.member_uuid or ""),
+                    str(line.member_account_id_snapshot or ""),
+                    str(line.analytical_asset_uuid or ""),
+                    str(line.description or ""),
+                ]
+            )
+        )
+
+    payload = "\n".join(["|".join(header)] + line_payloads)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 async def get_journal(db: AsyncSession, journal_uuid: UUID) -> AccountingJournal:
@@ -158,6 +597,8 @@ async def validate_entry_balance(lines_data: list[AccountingLineCreateRequest]) 
         )
 
 
+
+
 async def create_accounting_entry(
     db: AsyncSession,
     request: AccountingEntryCreateRequest,
@@ -179,6 +620,8 @@ async def create_accounting_entry(
     
     # Validate balance
     await validate_entry_balance(request.lines)
+
+
     
     # Create entry
     entry_uuid = uuid4()
@@ -268,6 +711,11 @@ async def update_accounting_entry(
     
     # Fetch fiscal year once
     fy = entry.fiscal_year or await get_or_create_fiscal_year(db, fiscal_year_uuid)
+    if fy.state == 2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot update entry in closed fiscal year {fy.code}",
+        )
     
     # Update scalar fields if provided
     if request.journal_uuid is not None:
@@ -275,6 +723,8 @@ async def update_accounting_entry(
         entry.journal_uuid = request.journal_uuid
     
     if request.entry_date is not None:
+
+
         await validate_entry_date_in_fy(request.entry_date, fy)
         entry.entry_date = request.entry_date
     
@@ -384,6 +834,7 @@ async def post_accounting_entry(
     entry.sequence_number = f"{fy.code}-{seq_num:03d}"
     entry.state = 2  # Posted
     entry.posted_at = datetime.now(timezone.utc)
+    entry.entry_hash = compute_entry_hash(entry)
     
     await db.commit()
     await db.refresh(entry, ["fiscal_year", "journal", "lines"])
@@ -395,6 +846,72 @@ async def list_fiscal_years(db: AsyncSession, skip: int = 0, limit: int = 100) -
     stmt = select(AccountingFiscalYear).offset(skip).limit(limit).order_by(AccountingFiscalYear.year.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+async def create_reversal_entry(
+    db: AsyncSession,
+    entry_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    reversal_reason: str,
+    user_id: int,
+    entry_date=None,
+) -> AccountingEntry:
+    """Create a reversal Draft entry for a Posted source entry."""
+    original = await get_accounting_entry(db, entry_uuid, fiscal_year_uuid)
+
+    if original.state != 2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Can only reverse a Posted entry (state=2), current={original.state}",
+        )
+
+    fy = original.fiscal_year or await get_or_create_fiscal_year(db, fiscal_year_uuid)
+    if fy.state == 2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot create reversal in closed fiscal year {fy.code}",
+        )
+
+    reversal_uuid = uuid4()
+    effective_date = entry_date or original.entry_date
+    await validate_entry_date_in_fy(effective_date, fy)
+
+    reversal = AccountingEntry(
+        uuid=reversal_uuid,
+        fiscal_year_uuid=original.fiscal_year_uuid,
+        journal_uuid=original.journal_uuid,
+        entry_date=effective_date,
+        reference=original.reference,
+        description=f"Reversal of {original.sequence_number or original.uuid}",
+        state=1,
+        reversal_of_entry_uuid=original.uuid,
+        reversal_reason=reversal_reason,
+        created_by=user_id,
+    )
+
+    for line in original.lines:
+        reversal_line = AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=original.fiscal_year_uuid,
+            entry_uuid=reversal_uuid,
+            account_uuid=line.account_uuid,
+            member_uuid=line.member_uuid,
+            member_account_id_snapshot=line.member_account_id_snapshot,
+            analytical_asset_uuid=line.analytical_asset_uuid,
+            debit=line.credit,
+            credit=line.debit,
+            description=line.description,
+            tax_code=line.tax_code,
+            tax_rate=line.tax_rate,
+            tax_base=line.tax_base,
+            tax_amount=line.tax_amount,
+        )
+        reversal.lines.append(reversal_line)
+
+    db.add(reversal)
+    await db.commit()
+    await db.refresh(reversal, ["fiscal_year", "journal", "lines"])
+    return reversal
 
 
 async def list_accounts(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[AccountingAccount]:
