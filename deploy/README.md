@@ -425,10 +425,28 @@ Useful psql meta-commands:
 \q               – quit
 ```
 
-### 9.5 Re-run the schema init script (idempotent)
+### 9.5 Re-apply accounting SQL safely vs full reset
 
-All seed inserts use `ON CONFLICT DO NOTHING` — safe to re-run at any time:
+Use this quick decision table:
 
+| Goal | Script | Data impact |
+|---|---|---|
+| Apply missing/updated accounting objects on an existing DB | `/opt/club-erp/docs/account.safe.sql` | Non-destructive |
+| Rebuild accounting schema from scratch (empty DB/local reset) | `/opt/club-erp/docs/account.sql` | Destructive for accounting tables |
+
+**Safe re-apply (recommended on existing DB):**
+```bash
+docker exec -i carnet-db psql -U erpuser -d erp_club_db \
+  < /opt/club-erp/docs/account.safe.sql
+```
+
+**Full reset/rebuild (only when you intentionally want a clean slate):**
+```bash
+docker exec -i carnet-db psql -U erpuser -d erp_club_db \
+  < /opt/club-erp/docs/account.sql
+```
+
+If you still use the legacy bootstrap script, this remains valid:
 ```bash
 docker exec -i carnet-db psql -U erpuser -d erp_club_db \
   < /opt/club-erp/deploy/init-db/erp.sql
