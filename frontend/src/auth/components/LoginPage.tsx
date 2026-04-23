@@ -102,6 +102,7 @@ export function LoginPage() {
   }
 
   const isSubmitting = loginMutation.isPending || verifyPinMutation.isPending
+  const pinDeliveryWarning = loginMutation.data?.pin_delivery_warning === true
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-10 backdrop-blur-sm">
@@ -167,6 +168,11 @@ export function LoginPage() {
             )}
 
             {errorMessage ? <Alert>{errorMessage}</Alert> : null}
+            {authState === 'pre_auth' && pinDeliveryWarning ? (
+              <Alert className="border-amber-300 bg-amber-50 text-amber-800">
+                {t('auth.pinDeliveryWarning')}
+              </Alert>
+            ) : null}
 
             <Button className="w-full" disabled={isSubmitting} type="submit">
               {isSubmitting

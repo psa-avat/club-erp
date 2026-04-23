@@ -30,11 +30,12 @@ from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import init_db, engine
+from database import AsyncSessionLocal, init_db, engine
 from api.security import get_current_user, get_user_capabilities, get_user_roles
 from api.routes import auth, admin, members, accounting
 from models import User
 from gestionlog import LogConfig
+from services.accounting import ensure_default_system_settings
 
 
 
@@ -70,6 +71,14 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("Database initialized successfully")
+
+        async with AsyncSessionLocal() as db:
+            settings_seed_result = await ensure_default_system_settings(db)
+            logger.info(
+                "Default system settings ensured: inserted={} total_defaults={}",
+                settings_seed_result.get("inserted"),
+                settings_seed_result.get("total_defaults"),
+            )
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise

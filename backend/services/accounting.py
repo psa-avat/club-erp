@@ -19,7 +19,7 @@
  """
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -78,6 +78,49 @@ PCG_ASSOCIATION_SEED = [
     {"code": "74", "name": "Subventions d'exploitation", "type": 5, "is_posting_allowed": True},
     {"code": "789", "name": "Report des ressources non utilisees", "type": 5, "is_posting_allowed": True},
 ]
+
+
+DEFAULT_SYSTEM_SETTINGS: dict[str, dict] = {
+    "accounting": {
+        "posting": {
+            "allow_reopen": True,
+            "sequence_format": "{fy_code}-{seq:03d}",
+            "hash_algorithm": "sha256",
+        },
+        "exports": {
+            "default_format": "csv",
+            "include_entry_hash": True,
+        },
+    },
+    "pricing": {
+        "versioning": {
+            "overlap_policy": "forbidden",
+            "require_fiscal_year": True,
+        },
+        "rounding": {
+            "mode": "half_up",
+            "scale": 4,
+        },
+    },
+    "budget": {
+        "lifecycle": {
+            "allow_revision": True,
+            "activation_mode": "manual",
+        },
+        "kpi": {
+            "default_granularity": "account",
+        },
+    },
+    "integrations": {
+        "flight_sync": {
+            "enabled": False,
+            "retry_max": 3,
+        },
+        "dispatch": {
+            "enabled": False,
+        },
+    },
+}
 
 
 def _safe_partition_suffix(fiscal_year_code: str) -> str:
@@ -240,6 +283,37 @@ async def list_system_settings(db: AsyncSession) -> list[SystemSetting]:
     return result.scalars().all()
 
 
+async def ensure_default_system_settings(db: AsyncSession) -> dict:
+    """Ensure default module settings exist for first-run UX."""
+    expected_modules = tuple(DEFAULT_SYSTEM_SETTINGS.keys())
+    existing_result = await db.execute(
+        select(SystemSetting).where(SystemSetting.module_name.in_(expected_modules))
+    )
+    existing = {row.module_name for row in existing_result.scalars().all()}
+
+    inserted = 0
+    for module_name, payload in DEFAULT_SYSTEM_SETTINGS.items():
+        if module_name in existing:
+            continue
+
+        db.add(
+            SystemSetting(
+                module_name=module_name,
+                settings=dict(payload),
+                updated_by=None,
+            )
+        )
+        inserted += 1
+
+    if inserted > 0:
+        await db.commit()
+
+    return {
+        "inserted": inserted,
+        "total_defaults": len(DEFAULT_SYSTEM_SETTINGS),
+    }
+
+
 async def create_pricing_version(
     db: AsyncSession,
     request: PricingVersionCreateRequest,
@@ -395,6 +469,106 @@ async def list_pricing_versions(db: AsyncSession, fiscal_year_uuid: UUID | None 
     stmt = stmt.order_by(PricingVersion.from_date.asc())
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+async def copy_pricing_versions_from_year(
+    db: AsyncSession,
+    source_fy_uuid: UUID,
+    target_fy_uuid: UUID,
+    user_id: int,
+) -> dict:
+    """Copy all pricing versions from source fiscal year to target fiscal year as Draft.
+
+    Dates are shifted by the year difference between the two fiscal years.
+    Versions that would fall outside the target FY boundary are clamped to it.
+    Versions already present in the target FY are skipped (no duplicates).
+    """
+    source_fy = await get_or_create_fiscal_year(db, source_fy_uuid)
+    target_fy = await get_or_create_fiscal_year(db, target_fy_uuid)
+
+    if source_fy_uuid == target_fy_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source and target fiscal years must be different",
+        )
+
+    year_delta = target_fy.year - source_fy.year
+
+    source_versions_result = await db.execute(
+        select(PricingVersion)
+        .where(PricingVersion.fiscal_year_uuid == source_fy_uuid)
+        .order_by(PricingVersion.from_date.asc())
+    )
+    source_versions = source_versions_result.scalars().all()
+
+    # Get existing target versions to detect overlaps before inserting
+    target_versions_result = await db.execute(
+        select(PricingVersion).where(PricingVersion.fiscal_year_uuid == target_fy_uuid)
+    )
+    existing_target = target_versions_result.scalars().all()
+
+    created: list[PricingVersion] = []
+    skipped = 0
+
+    for sv in source_versions:
+        # Shift dates by year delta
+        try:
+            new_from = sv.from_date.replace(year=sv.from_date.year + year_delta)
+        except ValueError:
+            # Edge case: Feb 29 shift to non-leap year → clamp to Feb 28
+            new_from = sv.from_date.replace(year=sv.from_date.year + year_delta, day=28)
+
+        new_to: "date | None" = None
+        if sv.to_date is not None:
+            try:
+                new_to = sv.to_date.replace(year=sv.to_date.year + year_delta)
+            except ValueError:
+                new_to = sv.to_date.replace(year=sv.to_date.year + year_delta, day=28)
+
+        # Clamp to target FY boundaries
+        new_from = max(new_from, target_fy.start_date)
+        if new_to is not None:
+            new_to = min(new_to, target_fy.end_date)
+        else:
+            new_to = None  # keep open-ended
+
+        # Check if shifted range fits within target FY
+        if new_from > target_fy.end_date:
+            skipped += 1
+            continue
+
+        # Check overlap with already-existing target versions
+        eff_end = new_to or target_fy.end_date
+        has_overlap = any(
+            _pricing_ranges_overlap(
+                new_from, eff_end,
+                tv.from_date, tv.to_date or target_fy.end_date,
+            )
+            for tv in existing_target + created
+        )
+        if has_overlap:
+            skipped += 1
+            continue
+
+        new_version = PricingVersion(
+            fiscal_year_uuid=target_fy_uuid,
+            name=sv.name,
+            from_date=new_from,
+            to_date=new_to,
+            status=1,  # always reset to Draft
+            is_locked=False,
+            created_by=user_id,
+        )
+        db.add(new_version)
+        await db.flush()
+        created.append(new_version)
+
+    if created:
+        await db.commit()
+        for v in created:
+            await db.refresh(v)
+
+    return {"copied": len(created), "skipped": skipped, "versions": created}
 
 
 async def create_fiscal_year(

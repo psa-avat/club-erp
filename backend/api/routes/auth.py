@@ -88,6 +88,7 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: str
     user: Optional[dict] = None
+    pin_delivery_warning: bool = False
 
 
 class VerifyPinRequest(BaseModel):
@@ -192,6 +193,32 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
         await db.refresh(bootstrap_user)
         await ensure_user_has_admin_role(db=db, user=bootstrap_user)
         user = bootstrap_user
+        # First-ever login: skip 2FA — the person doing initial setup has server access.
+        roles = await get_user_roles(db=db, user_id=user.id)
+        capabilities = await get_user_capabilities(db=db, user_id=user.id)
+        token, expires_at = create_access_token(
+            user_id=user.id,
+            token_kind=TOKEN_KIND_FULL_AUTH,
+            auth_level=AUTH_LEVEL_FULL_AUTH,
+            roles=roles,
+            capabilities=capabilities,
+        )
+        await store_session_token(
+            db=db,
+            user_id=user.id,
+            token=token,
+            expires_at=expires_at,
+            token_kind=TOKEN_KIND_FULL_AUTH,
+            auth_level=AUTH_LEVEL_FULL_AUTH,
+            ip_address=get_request_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+        return LoginResponse(
+            auth_state="full_auth",
+            access_token=token,
+            expires_at=expires_at.isoformat(),
+            user=await build_user_payload(db=db, user=user),
+        )
     else:
         result = await db.execute(select(User).where(User.email == payload.email))
         user = result.scalar_one_or_none()
@@ -272,15 +299,21 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
 
     pin_sent = await send_pin_email(email_to=user.email, pin_code=pin_code)
     if not pin_sent:
-        # Log warning but allow pre-auth to continue - client can still verify PIN manually
-        # or admin can help with verification
-        logger.warning(f"Failed to send PIN email to {user.email}, but allowing pre-auth to continue")
+        # Email not configured: log the PIN to stdout so the admin can retrieve it via
+        # `docker logs` or console during initial setup. Never log in production with email working.
+        logger.warning(
+            "[SETUP] Email not configured. PIN for {} (expires in {} min): {}",
+            user.email,
+            PIN_EXPIRATION_MINUTES,
+            pin_code,
+        )
 
     return LoginResponse(
         auth_state="pre_auth",
         pre_auth_token=pre_auth_token,
         requires_pin=True,
         expires_at=expires_at.isoformat(),
+        pin_delivery_warning=not pin_sent,
     )
 
 

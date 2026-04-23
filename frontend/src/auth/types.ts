@@ -41,6 +41,7 @@ export interface LoginResponse {
   token_type: 'bearer'
   expires_at: string
   user?: AuthUser
+  pin_delivery_warning?: boolean
 }
 
 export interface VerifyPinRequest {

@@ -257,3 +257,16 @@ class PricingVersionUpdateRequest(BaseModel):
     from_date: Optional[date] = None
     to_date: Optional[date] = None
     status: Optional[int] = Field(default=None, ge=1, le=3)
+
+
+class CopyPricingVersionsRequest(BaseModel):
+    """Request to copy pricing versions from one fiscal year to another as Draft."""
+    source_fiscal_year_uuid: UUID
+    target_fiscal_year_uuid: UUID
+
+
+class CopyPricingVersionsResponse(BaseModel):
+    """Summary of pricing version copy operation."""
+    copied: int
+    skipped: int
+    versions: list[PricingVersionResponse]

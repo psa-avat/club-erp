@@ -28,7 +28,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from schemas.accounting import PricingVersionCreateRequest, SystemSettingUpdateRequest
-from services.accounting import create_pricing_version, upsert_system_setting
+from services.accounting import create_pricing_version, ensure_default_system_settings, upsert_system_setting
 
 
 class _FakeResult:
@@ -69,6 +69,31 @@ class _FakeDb:
 
 
 class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
+    async def test_default_settings_initializer_inserts_missing_modules(self):
+        existing = SimpleNamespace(module_name="accounting")
+        db = _FakeDb(execute_results=[_FakeResult([existing])])
+
+        result = await ensure_default_system_settings(db)
+
+        self.assertEqual(result["inserted"], 3)
+        self.assertEqual(result["total_defaults"], 4)
+        self.assertEqual(len(db.added), 3)
+        self.assertTrue(db.committed)
+
+    async def test_default_settings_initializer_noop_when_all_exist(self):
+        existing_modules = [
+            SimpleNamespace(module_name="accounting"),
+            SimpleNamespace(module_name="pricing"),
+            SimpleNamespace(module_name="budget"),
+            SimpleNamespace(module_name="integrations"),
+        ]
+        db = _FakeDb(execute_results=[_FakeResult(existing_modules)])
+
+        result = await ensure_default_system_settings(db)
+
+        self.assertEqual(result["inserted"], 0)
+        self.assertEqual(len(db.added), 0)
+
     async def test_upsert_system_setting_creates_row(self):
         db = _FakeDb(execute_results=[_FakeResult([])])
 

@@ -34,6 +34,8 @@ from schemas.accounting import (
     AccountingEntryResponse,
     AccountingEntryUpdateRequest,
     AccountResponse,
+    CopyPricingVersionsRequest,
+    CopyPricingVersionsResponse,
     FiscalYearCreateRequest,
     FiscalYearResponse,
     JournalResponse,
@@ -46,6 +48,7 @@ from schemas.accounting import (
 )
 from services.accounting import (
     close_fiscal_year,
+    copy_pricing_versions_from_year,
     create_accounting_entry,
     create_fiscal_year,
     create_pricing_version,
@@ -424,6 +427,38 @@ async def delete_pricing_version_endpoint(
         pricing_version_uuid=version_uuid,
     )
     return None
+
+
+@router.post(
+    "/pricing/versions/copy",
+    response_model=CopyPricingVersionsResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def copy_pricing_versions_endpoint(
+    request: CopyPricingVersionsRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Copy all pricing versions from a source fiscal year to a target fiscal year as Draft.
+
+    Dates are shifted by the year difference. Overlapping versions are skipped.
+    """
+    result = await copy_pricing_versions_from_year(
+        db,
+        source_fy_uuid=request.source_fiscal_year_uuid,
+        target_fy_uuid=request.target_fiscal_year_uuid,
+        user_id=current_user.id,
+    )
+    _log_accounting_audit(
+        action="copy_pricing_versions",
+        user_id=current_user.id,
+        source_fiscal_year_uuid=request.source_fiscal_year_uuid,
+        target_fiscal_year_uuid=request.target_fiscal_year_uuid,
+        copied=result["copied"],
+        skipped=result["skipped"],
+    )
+    return result
 
 
 @router.post(

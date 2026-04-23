@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { LoginPage, ProtectedRoute, PublicOnlyRoute } from './auth'
 import { AdminPage } from './modules/admin'
-import { BanquePage } from './modules/banque'
+import { BanquePage, BanqueSettingsPage, BankPricingPage } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersPage } from './modules/members'
 import { PlanningPage } from './modules/planning'
@@ -24,6 +24,8 @@ function App() {
           <Route path="/club" element={<MembersPage />} />
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/banque" element={<BanquePage />} />
+          <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
+                    <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/pricing" element={<PricingPage />} />
         </Route>

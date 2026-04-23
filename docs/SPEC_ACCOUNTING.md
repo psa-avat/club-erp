@@ -372,7 +372,7 @@ API and contracts:
 - [x] Add pricing CRUD/list endpoints with overlap checks for date ranges.
 
 Frontend:
-- [ ] Build settings screens per module section.
+- [x] Build settings screens per module section.
 - [ ] Build pricing management screen for fiscal year with version timeline.
 - [ ] Integrate registration workflow to select applicable price items and preview accounting outcome.
 
