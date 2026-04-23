@@ -34,6 +34,7 @@ i18n.use(initReactI18next).init({
       planning: fr.planning,
       banque: fr.banque,
       admin: fr.admin,
+      assets: fr.assets,
     },
     en: {
       common: en.common,
@@ -43,6 +44,7 @@ i18n.use(initReactI18next).init({
       planning: en.planning,
       banque: en.banque,
       admin: en.admin,
+      assets: en.assets,
     },
   },
   lng: detectInitialLanguage(),
@@ -51,7 +53,7 @@ i18n.use(initReactI18next).init({
     escapeValue: false,
   },
   defaultNS: 'common',
-  ns: ['common', 'dashboard', 'members', 'club', 'planning', 'banque', 'admin'],
+  ns: ['common', 'dashboard', 'members', 'club', 'planning', 'banque', 'admin', 'assets'],
 })
 
 void i18n.on('languageChanged', (newLanguage) => {

@@ -20,7 +20,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -34,6 +34,8 @@ from schemas.accounting import (
     AccountingEntryResponse,
     AccountingEntryUpdateRequest,
     AccountResponse,
+    CopyCostProvisionRulesRequest,
+    CopyCostProvisionRulesResponse,
     CopyPricingVersionsRequest,
     CopyPricingVersionsResponse,
     FiscalYearCreateRequest,
@@ -43,11 +45,14 @@ from schemas.accounting import (
     PricingVersionResponse,
     PricingVersionUpdateRequest,
     SeedPcgResponse,
+    PcgSeedExportResponse,
+    PcgSeedImportRequest,
     SystemSettingResponse,
     SystemSettingUpdateRequest,
 )
 from services.accounting import (
     close_fiscal_year,
+    copy_cost_provision_rules_from_year,
     copy_pricing_versions_from_year,
     create_accounting_entry,
     create_fiscal_year,
@@ -65,6 +70,9 @@ from services.accounting import (
     post_accounting_entry,
     reopen_fiscal_year,
     seed_association_pcg_accounts,
+    export_pcg_seed,
+    import_pcg_seed,
+    validate_pcg_seed_items,
     upsert_system_setting,
     update_pricing_version,
     update_accounting_entry,
@@ -296,6 +304,38 @@ async def seed_pcg_accounts_endpoint(
     return result
 
 
+@router.get("/accounts/pcg-seed", response_model=PcgSeedExportResponse)
+async def export_pcg_seed_endpoint(
+    _: User = settings_guard,
+):
+    """Export the current PCG seed file as JSON."""
+    items = export_pcg_seed()
+    return {"items": items, "total": len(items)}
+
+
+@router.put("/accounts/pcg-seed", response_model=PcgSeedExportResponse)
+async def import_pcg_seed_endpoint(
+    request: PcgSeedImportRequest,
+    _: User = settings_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Replace the PCG seed file with the provided items."""
+    items_payload = [item.model_dump() for item in request.items]
+    validation_errors = validate_pcg_seed_items(items_payload)
+    if validation_errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"errors": validation_errors},
+        )
+    import_pcg_seed(items_payload)
+    _log_accounting_audit(
+        action="import_pcg_seed",
+        user_id=current_user.id,
+        total=len(items_payload),
+    )
+    return {"items": items_payload, "total": len(items_payload)}
+
+
 @router.get("/settings", response_model=list[SystemSettingResponse])
 async def list_system_settings_endpoint(
     db: AsyncSession = Depends(get_db),
@@ -334,7 +374,6 @@ async def update_system_setting_endpoint(
     )
     return setting
 
-
 @router.get("/journals", response_model=list[JournalResponse])
 async def list_journals_endpoint(
     db: AsyncSession = Depends(get_db),
@@ -357,11 +396,13 @@ async def list_journals_endpoint(
 async def create_pricing_version_endpoint(
     request: PricingVersionCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = prices_guard,
+    _: User = prices_guard, # This guard should be for MANAGE_PRICES
     current_user: User = Depends(get_current_user),
 ):
-    """Create a pricing version for a fiscal year with non-overlapping dates."""
-    version = await create_pricing_version(db, request, current_user.id)
+    """Create a pricing version for a fiscal year with non-overlapping dates.
+    Optionally, link to an asset type for asset-specific pricing.
+    """
+    version = await create_pricing_version(db, request, current_user.id, request.asset_type_uuid)
     _log_accounting_audit(
         action="create_pricing_version",
         user_id=current_user.id,
@@ -374,12 +415,13 @@ async def create_pricing_version_endpoint(
 @router.get("/pricing/versions", response_model=list[PricingVersionResponse])
 async def list_pricing_versions_endpoint(
     fiscal_year_uuid: UUID | None = None,
+    asset_type_uuid: UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = prices_guard,
+    _: User = prices_guard, # This guard should be for MANAGE_PRICES
     current_user: User = Depends(get_current_user),
 ):
-    """List pricing versions, optionally filtered by fiscal year."""
-    return await list_pricing_versions(db, fiscal_year_uuid)
+    """List pricing versions, optionally filtered by fiscal year and/or asset type."""
+    return await list_pricing_versions(db, fiscal_year_uuid, asset_type_uuid)
 
 
 @router.get("/pricing/versions/{version_uuid}", response_model=PricingVersionResponse)
@@ -398,11 +440,13 @@ async def update_pricing_version_endpoint(
     version_uuid: UUID,
     request: PricingVersionUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = prices_guard,
+    _: User = prices_guard, # This guard should be for MANAGE_PRICES
     current_user: User = Depends(get_current_user),
 ):
-    """Update one pricing version and enforce date overlap constraints."""
-    version = await update_pricing_version(db, version_uuid, request)
+    """Update one pricing version and enforce date overlap constraints.
+    Can also update the associated asset type.
+    """
+    version = await update_pricing_version(db, version_uuid, request, request.asset_type_uuid)
     _log_accounting_audit(
         action="update_pricing_version",
         user_id=current_user.id,
@@ -452,6 +496,39 @@ async def copy_pricing_versions_endpoint(
     )
     _log_accounting_audit(
         action="copy_pricing_versions",
+        user_id=current_user.id,
+        source_fiscal_year_uuid=request.source_fiscal_year_uuid,
+        target_fiscal_year_uuid=request.target_fiscal_year_uuid,
+        copied=result["copied"],
+        skipped=result["skipped"],
+    )
+    return result
+
+
+@router.post(
+    "/cost-provision-rules/copy",
+    response_model=CopyCostProvisionRulesResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def copy_cost_provision_rules_endpoint(
+    request: CopyCostProvisionRulesRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Copy cost provision rules from a source fiscal year to a target fiscal year.
+
+    Copied rules are set to inactive (is_active=False) so they can be reviewed
+    before being activated. Rules already present in the target FY are skipped.
+    """
+    result = await copy_cost_provision_rules_from_year(
+        db,
+        source_fy_uuid=request.source_fiscal_year_uuid,
+        target_fy_uuid=request.target_fiscal_year_uuid,
+        user_id=current_user.id,
+    )
+    _log_accounting_audit(
+        action="copy_cost_provision_rules",
         user_id=current_user.id,
         source_fiscal_year_uuid=request.source_fiscal_year_uuid,
         target_fiscal_year_uuid=request.target_fiscal_year_uuid,

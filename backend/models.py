@@ -504,6 +504,8 @@ class PricingVersion(Base):
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid"), nullable=False, index=True)
+    # NULL = global pricing; set to scope this version to a specific asset type
+    asset_type_uuid = Column(UUID(as_uuid=True), ForeignKey("asset_types.uuid", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(100), nullable=False)
     from_date = Column(Date, nullable=False)
     to_date = Column(Date, nullable=True)
@@ -523,10 +525,70 @@ class PricingVersion(Base):
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     fiscal_year = relationship("AccountingFiscalYear")
+    asset_type = relationship("AssetType")
     created_by_user = relationship("User")
+    items = relationship("PricingItem", back_populates="pricing_version", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<PricingVersion uuid={self.uuid} fiscal_year={self.fiscal_year_uuid} from={self.from_date} to={self.to_date}>"
+
+
+class PricingItem(Base):
+    """Individual priced item within a pricing version."""
+
+    __tablename__ = "pricing_items"
+    __table_args__ = (
+        CheckConstraint("unit IN (1, 2, 3, 4, 5)", name="chk_pricing_items_unit"),
+        CheckConstraint("base_price >= 0", name="chk_pricing_items_base_price"),
+        CheckConstraint(
+            "(threshold_unit_count IS NULL AND threshold_price IS NULL) OR "
+            "(threshold_unit_count IS NOT NULL AND threshold_price IS NOT NULL)",
+            name="chk_pricing_items_threshold_pair",
+        ),
+        CheckConstraint(
+            "(pack_unit_count IS NULL AND pack_price IS NULL) OR "
+            "(pack_unit_count IS NOT NULL AND pack_price IS NOT NULL)",
+            name="chk_pricing_items_pack_pair",
+        ),
+        CheckConstraint("threshold_unit_count IS NULL OR threshold_unit_count > 0", name="chk_pricing_items_threshold_count"),
+        CheckConstraint("pack_unit_count IS NULL OR pack_unit_count > 0", name="chk_pricing_items_pack_count"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    pricing_version_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("pricing_versions.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # NULL = applies to all flight types; set to restrict to a specific flight type
+    flight_type_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("asset_flight_types.uuid", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name = Column(String(120), nullable=False)
+    # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
+    unit = Column(SmallInteger, nullable=False)
+    base_price = Column(Numeric(10, 4), nullable=False)
+    threshold_unit_count = Column(Integer, nullable=True)
+    threshold_price = Column(Numeric(10, 4), nullable=True)
+    pack_price = Column(Numeric(10, 4), nullable=True)
+    pack_unit_count = Column(Integer, nullable=True)
+    include_insurance = Column(Boolean, nullable=False, default=False)
+    include_fuel = Column(Boolean, nullable=False, default=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    pricing_version = relationship("PricingVersion", back_populates="items")
+    flight_type = relationship("FlightType")
+
+    def __repr__(self):
+        return f"<PricingItem uuid={self.uuid} version={self.pricing_version_uuid} unit={self.unit}>"
 
 
 class AccountingJournal(Base):
@@ -660,4 +722,222 @@ class AccountingLine(Base):
 
     def __repr__(self):
         return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"
+
+
+# ---------------------------------------------------------------------------
+# Assets module
+# ---------------------------------------------------------------------------
+
+class AssetType(Base):
+    """Asset type catalog: glider, tow plane, winch, trailer, engine, …"""
+
+    __tablename__ = "asset_types"
+    __table_args__ = (
+        CheckConstraint("category IN (1, 2, 3, 4, 5)", name="chk_asset_types_category"),
+        CheckConstraint("pricing_strategy IN (1, 2, 3, 4, 5, 6)", name="chk_asset_types_pricing_strategy"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(32), nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    # 1=Aircraft, 2=LaunchEquipment, 3=Support, 4=Consumable, 5=Service
+    category = Column(SmallInteger, nullable=False, default=1)
+    # 1=FlightHours, 2=EngineTime, 3=PerFlight, 4=PerDuration, 5=PerUnit, 6=FlatRate
+    pricing_strategy = Column(SmallInteger, nullable=False, default=1)
+    is_active = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    assets = relationship("Asset", back_populates="asset_type")
+    flight_types = relationship("FlightType", back_populates="asset_type", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<AssetType code={self.code} name={self.name}>"
+
+
+class FlightType(Base):
+    """Flight/usage sub-types per asset type (e.g. tow, ferry, cable-break, exercise)."""
+
+    __tablename__ = "asset_flight_types"
+    __table_args__ = (
+        UniqueConstraint("asset_type_uuid", "code", name="uq_asset_flight_types_code_per_type"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    asset_type_uuid = Column(UUID(as_uuid=True), ForeignKey("asset_types.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(String(32), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(String(255), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    asset_type = relationship("AssetType", back_populates="flight_types")
+
+    def __repr__(self):
+        return f"<FlightType code={self.code} asset_type={self.asset_type_uuid}>"
+
+
+class Asset(Base):
+    """Individual asset record: glider, tow plane, winch, trailer, engine, etc."""
+
+    __tablename__ = "assets"
+    __table_args__ = (
+        CheckConstraint("status IN (1, 2, 3, 4)", name="chk_asset_status"),
+        CheckConstraint("ownership IN (1, 2)", name="chk_asset_ownership"),
+        CheckConstraint(
+            "ownership <> 2 OR owner_member_uuid IS NOT NULL",
+            name="chk_asset_private_owner_required",
+        ),
+        CheckConstraint(
+            "purchase_price IS NULL OR purchase_price >= 0",
+            name="chk_assets_price_positive",
+        ),
+        CheckConstraint(
+            "residual_value IS NULL OR residual_value >= 0",
+            name="chk_assets_residual_positive",
+        ),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    asset_type_uuid = Column(UUID(as_uuid=True), ForeignKey("asset_types.uuid"), nullable=False, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(150), nullable=False)
+    registration = Column(String(32), nullable=True, unique=True, index=True)
+    serial_number = Column(String(100), nullable=True)
+    manufacturer = Column(String(100), nullable=True)
+    model = Column(String(100), nullable=True)
+    year_of_manufacture = Column(SmallInteger, nullable=True)
+    # 1=Club, 2=Private
+    ownership = Column(SmallInteger, nullable=False, default=1)
+    owner_member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True)
+    # 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed
+    status = Column(SmallInteger, nullable=False, default=1, index=True)
+    # Accounting integration (immobilisation)
+    acquisition_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True)
+    accounting_account_code_snapshot = Column(String(32), nullable=True)
+    # Financial tracking
+    purchase_date = Column(Date, nullable=True)
+    purchase_price = Column(Numeric(10, 4), nullable=True)
+    depreciation_start_date = Column(Date, nullable=True)
+    depreciation_years = Column(SmallInteger, nullable=True)
+    residual_value = Column(Numeric(10, 4), nullable=True)
+    useful_life_years = Column(SmallInteger, nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    asset_type = relationship("AssetType", back_populates="assets")
+    owner_member = relationship("Member")
+    acquisition_account = relationship("AccountingAccount")
+    updated_by_user = relationship("User")
+    status_history = relationship("AssetStatusHistory", back_populates="asset", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Asset code={self.code} registration={self.registration} status={self.status}>"
+
+
+class AssetStatusHistory(Base):
+    """Immutable audit trail for asset status changes."""
+
+    __tablename__ = "asset_status_history"
+    __table_args__ = (
+        CheckConstraint("status IN (1, 2, 3, 4)", name="chk_asset_sh_status"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    asset_uuid = Column(UUID(as_uuid=True), ForeignKey("assets.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    # 1=Operational, 2=UnderMaintenance, 3=OutOfService, 4=Disposed
+    status = Column(SmallInteger, nullable=False)
+    reason = Column(String(255), nullable=True)
+    changed_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    changed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    asset = relationship("Asset", back_populates="status_history")
+    changed_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<AssetStatusHistory asset={self.asset_uuid} status={self.status} at={self.changed_at}>"
+
+
+class CostProvisionRule(Base):
+    """Rule that drives cost accrual per asset type, metric, and fiscal year."""
+
+    __tablename__ = "cost_provision_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "metric_name IN ('engine_hours','winch_launches','flight_hours','landings')",
+            name="chk_cost_rules_metric",
+        ),
+        CheckConstraint("cost_per_unit > 0", name="chk_cost_rules_cost_per_unit"),
+        CheckConstraint("accrual_method IN (1,2,3)", name="chk_cost_rules_accrual_method"),
+        CheckConstraint(
+            "gl_account_debit_uuid <> gl_account_credit_uuid",
+            name="chk_cost_rules_distinct_gl",
+        ),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    asset_type_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("asset_types.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    fiscal_year_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # engine_hours, winch_launches, flight_hours, landings
+    metric_name = Column(String(32), nullable=False)
+    cost_per_unit = Column(Numeric(10, 4), nullable=False)
+    gl_account_debit_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="RESTRICT"), nullable=False
+    )
+    gl_account_credit_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="RESTRICT"), nullable=False
+    )
+    # 1=RealTime, 2=BatchDaily, 3=BatchMonthly
+    accrual_method = Column(SmallInteger, nullable=False, default=1)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    asset_type = relationship("AssetType")
+    fiscal_year = relationship("AccountingFiscalYear")
+    gl_account_debit = relationship("AccountingAccount", foreign_keys=[gl_account_debit_uuid])
+    gl_account_credit = relationship("AccountingAccount", foreign_keys=[gl_account_credit_uuid])
+
+    def __repr__(self):
+        return f"<CostProvisionRule asset_type={self.asset_type_uuid} metric={self.metric_name} fy={self.fiscal_year_uuid}>"
 

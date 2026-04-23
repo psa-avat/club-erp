@@ -143,10 +143,10 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
         )
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
-            with self.assertRaises(HTTPException) as ctx:
-                await create_pricing_version(db, request, user_id=7)
+            with self.assertRaises(HTTPException) as cm:
+                await create_pricing_version(db, request, user_id=7, asset_type_uuid=None)
 
-        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(cm.exception.status_code, 400)
 
     async def test_create_pricing_version_rejects_overlap(self):
         fiscal_year_uuid = uuid4()
@@ -171,10 +171,10 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
         )
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
-            with self.assertRaises(HTTPException) as ctx:
-                await create_pricing_version(db, request, user_id=7)
+            with self.assertRaises(HTTPException) as cm:
+                await create_pricing_version(db, request, user_id=7, asset_type_uuid=None)
 
-        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(cm.exception.status_code, 409)
 
     async def test_create_pricing_version_success(self):
         fiscal_year_uuid = uuid4()
@@ -194,7 +194,7 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
         )
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
-            version = await create_pricing_version(db, request, user_id=7)
+            version = await create_pricing_version(db, request, user_id=7, asset_type_uuid=None)
 
         self.assertEqual(version.name, "Pricing 2026")
         self.assertEqual(version.status, 2)

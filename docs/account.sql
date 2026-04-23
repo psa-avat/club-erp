@@ -112,6 +112,7 @@ CREATE INDEX ix_system_settings_module_name ON system_settings(module_name);
 CREATE TABLE pricing_versions (
     uuid               UUID         PRIMARY KEY,
     fiscal_year_uuid   UUID         NOT NULL REFERENCES accounting_fiscal_years(uuid),
+    asset_type_uuid    UUID         NULL, -- references asset_types.uuid when assets schema is installed
     name               VARCHAR(100) NOT NULL,
     from_date          DATE         NOT NULL,
     to_date            DATE         NULL,
@@ -127,6 +128,46 @@ CREATE TABLE pricing_versions (
 
 CREATE INDEX ix_pricing_versions_fiscal_year ON pricing_versions(fiscal_year_uuid);
 CREATE INDEX ix_pricing_versions_dates ON pricing_versions(fiscal_year_uuid, from_date, to_date);
+CREATE INDEX ix_pricing_versions_asset_type ON pricing_versions(asset_type_uuid);
+
+-----------------------------------------------------------
+-- Pricing Items (shared by accounting and assets)
+-- pricing_version_uuid controls fiscal governance and lock lifecycle.
+-- flight_type_uuid is nullable and used only for asset-specific pricing.
+-----------------------------------------------------------
+
+CREATE TABLE pricing_items (
+    uuid                    UUID           PRIMARY KEY,
+    pricing_version_uuid    UUID           NOT NULL REFERENCES pricing_versions(uuid) ON DELETE CASCADE,
+    flight_type_uuid        UUID           NULL, -- references asset_flight_types.uuid when assets schema is installed
+    name                    VARCHAR(120)   NOT NULL,
+    unit                    SMALLINT       NOT NULL, -- 1=Hour,2=Flight,3=Minute,4=Kilometer,5=Unit
+    base_price              NUMERIC(10,4)  NOT NULL,
+    threshold_unit_count    INTEGER        NULL,
+    threshold_price         NUMERIC(10,4)  NULL,
+    pack_price              NUMERIC(10,4)  NULL,
+    pack_unit_count         INTEGER        NULL,
+    include_insurance       BOOLEAN        NOT NULL DEFAULT FALSE,
+    include_fuel            BOOLEAN        NOT NULL DEFAULT FALSE,
+    created_at              TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_pricing_items_unit CHECK (unit IN (1, 2, 3, 4, 5)),
+    CONSTRAINT chk_pricing_items_base_price CHECK (base_price >= 0),
+    CONSTRAINT chk_pricing_items_threshold_pair CHECK (
+        (threshold_unit_count IS NULL AND threshold_price IS NULL) OR
+        (threshold_unit_count IS NOT NULL AND threshold_price IS NOT NULL)
+    ),
+    CONSTRAINT chk_pricing_items_pack_pair CHECK (
+        (pack_unit_count IS NULL AND pack_price IS NULL) OR
+        (pack_unit_count IS NOT NULL AND pack_price IS NOT NULL)
+    ),
+    CONSTRAINT chk_pricing_items_threshold_count CHECK (threshold_unit_count IS NULL OR threshold_unit_count > 0),
+    CONSTRAINT chk_pricing_items_pack_count CHECK (pack_unit_count IS NULL OR pack_unit_count > 0)
+);
+
+CREATE INDEX ix_pricing_items_pricing_version ON pricing_items(pricing_version_uuid);
+CREATE INDEX ix_pricing_items_flight_type ON pricing_items(flight_type_uuid) WHERE flight_type_uuid IS NOT NULL;
 
 -----------------------------------------------------------
 -- Accounting Entries (Transaction Headers)

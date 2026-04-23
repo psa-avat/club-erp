@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS pricing_versions (
     from_date          DATE         NOT NULL,
     to_date            DATE         NULL,
     status             SMALLINT     NOT NULL DEFAULT 1,
+    asset_type_uuid    UUID         NULL, -- FK to assets.asset_types
     is_locked          BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

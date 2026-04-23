@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
@@ -9,18 +9,22 @@ import {
   useAdminCapabilitiesQuery,
   useAdminRolesQuery,
   useAdminUsersQuery,
+  useApplyPcgSeedMutation,
   useCreateAdminCapabilityMutation,
   useCreateAdminRoleMutation,
   useCreateAdminUserMutation,
   useDeleteAdminCapabilityMutation,
   useDeleteAdminRoleMutation,
   useDeleteAdminUserMutation,
+  useImportPcgSeedMutation,
+  usePcgSeedQuery,
   useUpdateAdminCapabilityMutation,
   useUpdateAdminRoleMutation,
   useUpdateAdminUserMutation,
 } from '../api'
+import type { PcgSeedItem } from '../types'
 
-type AdminTab = 'users' | 'roles' | 'capabilities'
+type AdminTab = 'users' | 'roles' | 'capabilities' | 'pcg'
 
 function parseCsvList(value: string): string[] {
   return value
@@ -59,13 +63,15 @@ export function AdminPage() {
   const usersQuery = useAdminUsersQuery()
   const rolesQuery = useAdminRolesQuery()
   const capabilitiesQuery = useAdminCapabilitiesQuery()
+  const pcgSeedQuery = usePcgSeedQuery()
 
   const users = usersQuery.data ?? []
   const roles = rolesQuery.data ?? []
   const capabilities = capabilitiesQuery.data ?? []
+  const pcgSeedItems = pcgSeedQuery.data?.items ?? []
 
-  const loading = usersQuery.isLoading || rolesQuery.isLoading || capabilitiesQuery.isLoading
-  const loadingError = usersQuery.error ?? rolesQuery.error ?? capabilitiesQuery.error
+  const loading = usersQuery.isLoading || rolesQuery.isLoading || capabilitiesQuery.isLoading || pcgSeedQuery.isLoading
+  const loadingError = usersQuery.error ?? rolesQuery.error ?? capabilitiesQuery.error ?? pcgSeedQuery.error
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -83,6 +89,9 @@ export function AdminPage() {
         </TabButton>
         <TabButton active={activeTab === 'capabilities'} onClick={() => setActiveTab('capabilities')}>
           {t('tabs.capabilities')}
+        </TabButton>
+        <TabButton active={activeTab === 'pcg'} onClick={() => setActiveTab('pcg')}>
+          {t('tabs.pcgSeed')}
         </TabButton>
       </div>
 
@@ -107,6 +116,8 @@ export function AdminPage() {
           ) : null}
 
           {activeTab === 'capabilities' ? <CapabilitiesCrudPanel capabilities={capabilities} /> : null}
+
+          {activeTab === 'pcg' ? <PcgSeedPanel items={pcgSeedItems} /> : null}
         </>
       ) : null}
     </section>
@@ -606,6 +617,211 @@ function CapabilitiesCrudPanel({
           void confirmDelete()
         }}
       />
+    </div>
+  )
+}
+
+function PcgSeedPanel({ items }: { items: PcgSeedItem[] }) {
+  const { t } = useTranslation('admin')
+  const importMutation = useImportPcgSeedMutation()
+  const applyMutation = useApplyPcgSeedMutation()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [draftItems, setDraftItems] = useState<PcgSeedItem[]>(items)
+  const [jsonText, setJsonText] = useState('')
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraftItems(items)
+  }, [items])
+
+  function updateItem(index: number, patch: Partial<PcgSeedItem>) {
+    setDraftItems((prev) => prev.map((item, idx) => (idx === index ? { ...item, ...patch } : item)))
+  }
+
+  function addRow() {
+    setDraftItems((prev) => [
+      ...prev,
+      {
+        code: '',
+        name: '',
+        type: 1,
+        is_posting_allowed: true,
+        is_reconcilable: false,
+      },
+    ])
+  }
+
+  function removeRow(index: number) {
+    setDraftItems((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  async function saveToServer() {
+    setLocalError(null)
+    if (draftItems.length === 0) {
+      setLocalError(t('pcg.emptyImportError'))
+      return
+    }
+    await importMutation.mutateAsync({ items: draftItems })
+  }
+
+  async function applySeedToDatabase() {
+    await applyMutation.mutateAsync()
+  }
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(draftItems, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'pcg_seed.json'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function _parseAndSetItems(raw: string): void {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) {
+        setLocalError(t('pcg.invalidJsonError'))
+        return
+      }
+      const normalized = parsed.map((row) => {
+        const item = row as Record<string, unknown>
+        return {
+          code: String(item.code ?? ''),
+          name: String(item.name ?? ''),
+          type: Number(item.type ?? 1),
+          is_posting_allowed: Boolean(item.is_posting_allowed ?? true),
+          is_reconcilable: Boolean(item.is_reconcilable ?? false),
+        } satisfies PcgSeedItem
+      })
+      setDraftItems(normalized)
+    } catch {
+      setLocalError(t('pcg.invalidJsonError'))
+    }
+  }
+
+  function loadJsonFromText() {
+    setLocalError(null)
+    _parseAndSetItems(jsonText)
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setLocalError(null)
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      _parseAndSetItems((e.target?.result as string) ?? '')
+    }
+    reader.readAsText(file, 'utf-8')
+    // Reset input so the same file can be reloaded if needed
+    event.target.value = ''
+  }
+
+  const combinedError = importMutation.error ?? applyMutation.error
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" onClick={addRow}>
+          {t('pcg.addRow')}
+        </Button>
+        <Button disabled={importMutation.isPending} type="button" onClick={() => void saveToServer()}>
+          {t('pcg.saveJson')}
+        </Button>
+        <Button disabled={applyMutation.isPending} type="button" onClick={() => void applySeedToDatabase()}>
+          {t('pcg.applyToDb')}
+        </Button>
+        <Button type="button" onClick={exportJson}>
+          {t('pcg.exportJson')}
+        </Button>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.code')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.name')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.type')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.posting')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.reconcilable')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('actions.title')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {draftItems.map((item, index) => (
+              <tr key={`${item.code}-${index}`}>
+                <td className="px-3 py-2">
+                  <Input value={item.code} onChange={(event) => updateItem(index, { code: event.target.value })} />
+                </td>
+                <td className="px-3 py-2">
+                  <Input value={item.name} onChange={(event) => updateItem(index, { name: event.target.value })} />
+                </td>
+                <td className="px-3 py-2">
+                  <Input
+                    min={1}
+                    max={5}
+                    type="number"
+                    value={String(item.type)}
+                    onChange={(event) => updateItem(index, { type: Number(event.target.value) || 1 })}
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    checked={item.is_posting_allowed}
+                    type="checkbox"
+                    onChange={(event) => updateItem(index, { is_posting_allowed: event.target.checked })}
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    checked={item.is_reconcilable}
+                    type="checkbox"
+                    onChange={(event) => updateItem(index, { is_reconcilable: event.target.checked })}
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <Button type="button" onClick={() => removeRow(index)}>
+                    {t('actions.delete')}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="pcg-json">{t('pcg.importLabel')}</Label>
+        <textarea
+          id="pcg-json"
+          className="min-h-44 w-full rounded-md border border-slate-300 p-2 text-sm"
+          placeholder='[{"code":"411","name":"Membres - Creances","type":1,"is_posting_allowed":true,"is_reconcilable":true}]'
+          value={jsonText}
+          onChange={(event) => setJsonText(event.target.value)}
+        />
+        <div className="flex gap-2">
+          <Button type="button" onClick={loadJsonFromText}>
+            {t('pcg.importFromText')}
+          </Button>
+          <Button type="button" onClick={() => fileInputRef.current?.click()}>
+            {t('pcg.uploadButton')}
+          </Button>
+          <input
+            ref={fileInputRef}
+            accept=".json,application/json"
+            className="hidden"
+            type="file"
+            onChange={handleFileChange}
+          />
+        </div>
+      </div>
+
+      {localError ? <Alert>{localError}</Alert> : null}
+      {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
     </div>
   )
 }

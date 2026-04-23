@@ -5,6 +5,7 @@ import { AdminPage } from './modules/admin'
 import { BanquePage, BanqueSettingsPage, BankPricingPage } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersPage } from './modules/members'
+import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { PricingPage } from './modules/pricing'
 import { AppShell } from './shell/components'
@@ -28,6 +29,11 @@ function App() {
                     <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/assets" element={<AssetsListPage />} />
+          <Route path="/assets/new" element={<AssetFormPage />} />
+          <Route path="/assets/:uuid" element={<AssetDetailPage />} />
+          <Route path="/assets/:uuid/edit" element={<AssetFormPage />} />
+          <Route path="/assets/:uuid/pricing" element={<AssetPricingPage />} />
         </Route>
       </Route>
 

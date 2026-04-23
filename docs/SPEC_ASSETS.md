@@ -1,0 +1,305 @@
+# Assets Module Specification
+
+## 1. Purpose
+
+This document defines the target specification for the Assets module of the ERP for a French gliding club association. It consolidates asset lifecycle management (acquisition, maintenance, depreciation, disposal), pricing strategies per asset type with versioning and flight-type variants, stock tracking for consumables, and accounting integration.
+
+## 2. Core Principles
+
+1. **Asset ownership is explicit**: club-owned vs. privately owned (with owner identity).
+2. **Pricing is versioned and strategy-based**: differs by asset type, flight type, and time period.
+3. **Cost provisioning is automatic**: maintenance/reserve costs accrue based on usage metrics (engine hours, launches, flights, landings).
+4. **Monetary precision**: NUMERIC(10,4) in SQL, Decimal/decimal.js in application.
+5. **Accounting ledger integration**: all asset transactions generate or reference accounting entries.
+6. **Immobilization tracking**: fixed assets carry accounting account mappings for balance-sheet depreciation.
+7. **Flight-type pricing**: tow planes, winches support pricing variants (tow vs. ferry, normal vs. cable break).
+8. **Consumable stock management**: fuel, maintenance products with FIFO/weighted-average cost methods.
+
+## 3. Domain Model
+
+### 3.1 Asset Type
+- `uuid`, `code` (unique), `name`
+- `category` (Aircraft, Launch Equipment, Support, Consumable, Service)
+- `pricing_strategy` (Flight Hours, Engine Time, Per Flight, Per Duration, Per Unit, Flat Rate)
+- `is_trackable_in_ledger` (boolean): for depreciation
+- `standard_depreciation_years` (int, nullable)
+- Timestamps
+
+### 3.2 Flight Type
+- `uuid`, `asset_type_uuid` (FK)
+- `code`, `name`, `description`
+- `is_active`
+- Examples: TOW, FERRY, TRAINING, NORMAL, CABLE_BREAK, EXERCISE
+
+### 3.3 Asset (Master)
+- `uuid`, `asset_type_uuid` (FK)
+- `code` (unique, e.g., F-CGVX), `name`, `serial_number`
+- `ownership` (1=Club, 2=Private), `owner_member_uuid` (FK, if private)
+- `purchase_date`, `purchase_price` (NUMERIC(10,4))
+- `acquisition_account_uuid` (FK → AccountingAccount, if trackable)
+- `status` (1=Operational, 2=Under Maintenance, 3=Out of Service, 4=Disposed)
+- `depreciation_start_date`, `depreciation_years`, `residual_value`
+- `is_active`
+- Timestamps & `updated_by`
+
+### 3.4 Asset Account Snapshot
+- `uuid`, `asset_uuid` (FK), `account_uuid` (FK)
+- `account_code`, `account_name` (snapshot)
+- `captured_at`
+
+### 3.5 Pricing Version (Unified with Accounting Module)
+
+**Reuses the `PricingVersion` model from SPEC_ACCOUNTING**, with one addition:
+
+- `uuid` (PK)
+- `fiscal_year_uuid` (FK → AccountingFiscalYear)
+- `name`, `from_date`, `to_date` (date, nullable)
+- `status` (1=Draft, 2=Active, 3=Archived)
+- `is_locked` (boolean)
+- **`asset_type_uuid` (FK → AssetType, nullable)** ← if NULL → global/membership pricing; if set → asset-specific pricing
+- `created_at`, `updated_at`, `created_by` (FK → User)
+
+**Constraint**: For a given `(asset_type_uuid, fiscal_year_uuid)` pair, pricing versions must not overlap in date ranges.
+
+**Examples**:
+- `asset_type_uuid=NULL, from_date=2026-01-01, to_date=2026-12-31`: Membership pricing for 2026
+- `asset_type_uuid=<glider-uuid>, from_date=2026-01-01, to_date=2026-06-30`: Glider pricing (first half 2026)
+- `asset_type_uuid=<tow-plane-uuid>, from_date=2026-07-01, to_date=NULL`: Tow plane pricing (from July onward)
+
+### 3.6 Pricing Item
+
+**Reuses the `PricingItem` model structure** (from SPEC_ACCOUNTING):
+
+- `uuid` (PK)
+- `pricing_version_uuid` (FK)
+- `name`, `unit` (1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit)
+- `base_price` (NUMERIC(10,4))
+- `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
+- `pack_price`, `pack_unit_count` (both or neither): bundle/discount
+- **`flight_type_uuid` (FK → FlightType, nullable)** ← Only used for asset-specific pricing; NULL for global pricing
+- `include_insurance`, `include_fuel` (booleans) ← Only meaningful for asset-specific pricing
+- `created_at`, `updated_at`
+
+**Context-dependent fields**:
+
+| Field | Asset Pricing | Membership Pricing |
+|-------|---|---|
+| `flight_type_uuid` | Optional (e.g., FERRY, CABLE_BREAK) | Unused (NULL) |
+| `include_insurance` | Relevant | Not relevant (NULL/false) |
+| `include_fuel` | Relevant | Not relevant (NULL/false) |
+| `unit` | Hour, Flight, Minute, Kilometer, Unit | Hour, Flight, or flat Unit |
+
+### 3.7 Product / Service
+- `uuid`, `code` (unique), `name`
+- `category` (Consumable, Service, Fee)
+- `unit_type`, `unit_price` (NUMERIC(10,4))
+- `asset_type_uuid` (FK, nullable)
+- `is_active`
+- Timestamps
+
+### 3.8 Stock Item
+- `uuid`, `product_uuid` (FK), `asset_type_uuid` (FK, nullable)
+- `quantity_on_hand` (NUMERIC(10,4)), `unit` (liter, unit, etc.)
+- `cost_method` (1=FIFO, 2=Weighted Average, 3=Standard Cost)
+- `standard_cost_per_unit`, `reorder_point`, `storage_location`
+- `last_restocked_date`
+- Timestamps
+
+### 3.9 Stock Entry (Ledger)
+- `uuid`, `stock_item_uuid` (FK)
+- `transaction_type` (1=Purchase, 2=Issue, 3=Return, 4=Adjustment, 5=Write-off)
+- `quantity_delta` (NUMERIC(10,4)), `unit_cost`
+- `reference_document` (e.g., PO-2026-001, FLIGHT-12345)
+- `notes`, `transaction_date`
+- `created_at`, `created_by` (FK)
+
+### 3.10 Depreciation Schedule
+- `uuid`, `asset_uuid` (FK), `fiscal_year_uuid` (FK)
+- `depreciation_amount`, `accumulated_depreciation`, `net_book_value` (all NUMERIC(10,4))
+- `accounting_entry_uuid` (FK, nullable)
+- `status` (1=Draft, 2=Posted)
+- Timestamps
+
+## 4. Asset Management Workflow
+
+**Acquisition**: Create asset → if trackable, link to accounting account + generate immobilization entry  
+**Usage**: Flight/maintenance triggers pricing lookup → generates revenue entry or stock deduction  
+**Cost Provisioning**: Flight metrics (engine hours, launches, landings) trigger cost accrual → auto-generates maintenance reserve entries  
+**Depreciation**: Annual cycle at FY start → generate schedules → approve → post to ledger  
+**Disposal**: Mark as disposed → compute gain/loss → generate disposal entry
+
+## 5. Pricing and Cost Structure
+
+The Assets module integrates with the Accounting module's **unified pricing and cost provisioning system** (SPEC_ACCOUNTING sections 9 and 11).
+
+### 5.1 Revenue Pricing (Member Charges)
+
+Reuses `PricingVersion` (with optional `asset_type_uuid`) and `PricingItem`:
+- **asset_type_uuid = NULL**: Global/membership pricing
+- **asset_type_uuid = <asset-uuid>**: Asset-specific pricing (what to charge for flights using this asset)
+
+Example pricing items:
+- Glider ASK21, unit=Hour, base_price=€45, include_insurance=true, include_fuel=false
+- Tow Plane, unit=Flight, base_price=€120, include_fuel=true
+- Winch, unit=Launch, base_price=€15 (charged to member)
+
+Version workflow: Draft → Active (when published) → Archived (when superseded).
+
+Date-range versioning allows in-year price changes (e.g., seasonal summer rates).
+
+### 5.2 Cost Provisioning (Maintenance & Operating Reserves)
+
+Reuses `CostProvisionRule` from SPEC_ACCOUNTING (section 11):
+- Automatically accrues maintenance/operating costs based on asset usage
+- Examples:
+  - Glider engine: €10/engine_hour → Debit 681, Credit 281 (maintenance reserve)
+  - Tow Plane: €25/flight_hour → Debit 605, Credit 406 (fuel accrual)
+  - Winch: €5/winch_launch → Debit 686, Credit 287 (equipment reserve)
+
+Accrual methods:
+- **Real-time**: Posted immediately when flight is recorded (if metric available on-the-fly)
+- **Batch-daily**: Aggregated each night
+- **Batch-monthly**: Consolidated at month-end close
+
+Integration: When a flight is recorded with asset metrics (engine hours, launches), the cost provisioning system automatically generates accounting entries per active rules.
+
+## 6. Accounting Integration
+
+- **Acquisition**: debit 212 (Fixed Asset), credit 512/530 (Bank/Cash)
+- **Flight Revenue**: debit 411 (Member Receivable), credit 706x (Revenue)
+- **Cost Provision (Engine Hours)**: debit 681 (Maintenance), credit 281 (Maintenance reserve)
+- **Cost Provision (Winch Launches)**: debit 686 (Equipment maintenance), credit 287 (Equipment reserve)
+- **Cost Provision (Fuel)**: debit 605 (Fuel costs), credit 406 (Accrued fuel)
+- **Depreciation**: debit 68x (Depreciation Expense), credit 28x (Accumulated Depreciation)
+- **Disposal**: debit 512 (Bank), debit 28x (Accumulated), credit 212 (Asset), credit 75x/65x (Gain/Loss)
+- **Stock Issue**: debit 60x (Expense), credit 3x (Stock Inventory)
+
+## 7. Depreciation (Straight-Line)
+
+**Formula**: (Purchase Price − Residual Value) / Useful Life  
+**Annual Generation**: At fiscal year start for all fixed assets  
+**States**: Draft → Approve → Posted (immutable)  
+**Mid-year Adjustment**: Configurable (full year / half year / prorated monthly)
+
+## 8. API Scope
+
+**Assets**: POST/GET/PATCH /api/v1/assets, /api/v1/assets/types, /api/v1/assets/types/{type_uuid}/flight-types  
+**Pricing**: POST/GET/PATCH /api/v1/accounting/pricing/versions, /api/v1/accounting/pricing/versions/{version_uuid}/items  
+**Cost Provision Rules**: POST/GET/PATCH /api/v1/accounting/cost-provision-rules  
+**Cost Accrual Staging**: GET /api/v1/accounting/cost-accrual-staging, POST /api/v1/accounting/cost-accrual-staging/batch-process  
+**Stock**: GET /api/v1/assets/stock, POST /api/v1/assets/stock/{item_uuid}/issue|receive, GET /api/v1/assets/stock/ledger  
+**Depreciation**: GET /api/v1/assets/{asset_uuid}/depreciation, POST /api/v1/assets/{asset_uuid}/depreciation/approve  
+**Products**: CRUD /api/v1/assets/products  
+**Pricing Lookup**: GET /api/v1/accounting/pricing/lookup?asset_type_uuid=...&date=...&flight_type_uuid=...
+
+## 9. Cost Provisioning and Maintenance Accounting
+
+### 9.1 Cost Accrual for Flight Operations
+
+Each asset type can have multiple cost provision rules tied to operational metrics:
+
+| Metric | Meaning | Trigger | Example Rule |
+|---|---|---|---|
+| engine_hours | Hours engine ran | On flight record with engine_hours metric | Glider: €10/hr → 681/281 |
+| winch_launches | Number of winch-assisted launches | On winch-launch flight recorded | Winch: €5/launch → 686/287 |
+| flight_hours | Total flight time | On flight record | Tow Plane: €25/hr → 605/406 |
+| landings | Number of landings | On flight record with landing recorded | Any aircraft: €50/landing → 682/288 |
+
+### 9.2 GL Account Assignment by Asset Type
+
+Per asset type, define which GL accounts are used for cost accrual:
+
+**Gliders:**
+- Engine maintenance: Debit 681, Credit 281 (€10/engine_hour)
+- Landing wear: Debit 682, Credit 288 (€50/landing)
+
+**Tow Plane:**
+- Fuel costs: Debit 605, Credit 406 (€25/flight_hour)
+- Engine maintenance: Debit 681, Credit 281 (€8/flight_hour)
+
+**Winch:**
+- Launch wear: Debit 686, Credit 287 (€5/winch_launch)
+
+### 9.3 Real-Time vs. Batch Accrual
+
+**Real-time (ACT_REAL_TIME)**:
+- Used for metrics available immediately on flight completion (e.g., engine_hours from flight record)
+- Cost entry generated synchronously; journal = AC (Auto-Cost)
+- Linked to source flight (source_document_ref = flight_uuid)
+- Pros: Accurate per-flight cost tracking, no reconciliation needed
+- Cons: More entries, potential for real-time cost creep if rules change
+
+**Batch-daily (ACT_BATCH_DAILY)**:
+- Used for metrics that need aggregation or validation
+- Daily batch job (EOD) runs: lookup all flights from previous day, aggregate metrics per rule per asset, post one entry per rule
+- Journal = AC-DAILY (Batch cost)
+- Pros: Fewer entries, cleaner GL, easier to reconcile
+- Cons: Slight lag (one day), requires validation/audit trail
+
+**Batch-monthly (ACT_BATCH_MONTHLY)**:
+- Heaviest aggregation; month-end only
+- Used for high-volume operations or when audit trail prefers monthly close
+- Journal = AC-MONTHLY (Monthly cost accrual)
+
+### 9.4 Integration with Depreciation and Budget
+
+- Cost provisions flow into maintenance reserve accounts (281, 28x family) — these reserve balances inform depreciation and maintenance scheduling decisions
+- Budget module uses prior-year cost accruals (actual or forecast) to project year N+1 maintenance budget
+- At fiscal year-end, reserve accounts must reconcile to maintenance schedules (planned vs. actual spend)
+
+### 9.5 Audit Trail
+
+Each CostProvisionRule tracks:
+- Rule definition (metric, cost per unit, GL accounts)
+- Accrual method
+- Fiscal year scope
+- Created/updated timestamps and user
+- Active flag (can be paused)
+
+Each CostAccrualStaging record (for batch methods) links accrual entry back to rule, source metrics, and posting date.
+
+Real-time accruals are linked via flight_uuid in accounting entry.
+
+## 10. Phased Implementation
+
+| Phase | Goal | Items |
+|-------|------|-------|
+| 1 | Asset master + depreciation | Asset/Type/DepreciationSchedule models, CRUD, seeding, straight-line calc |
+| 2 | Pricing versioning + flight types (unified with accounting) | PricingVersion/Item/FlightType, overlap validation, lookup logic, asset_type_uuid scoping |
+| 2b | Cost provisioning | CostProvisionRule/CostAccrualStaging, real-time + batch accrual, GL mapping, flight integration |
+| 3 | Stock management | StockItem/Entry, FIFO/weighted-avg costing, ledger posting |
+| 4 | Flight integration | Asset selection on flights, pricing simulation, revenue + cost entry generation |
+| 5 | Acquisition/disposal | Asset acquisition wizard, disposal with gain/loss, bulk import |
+| 6 | Reporting | Asset valuation, utilization, stock aging, depreciation forecast, cost accrual reconciliation |
+
+## 11. Permissions
+
+- `MANAGE_ASSETS`: Create/update/delete assets, approve depreciation
+- `MANAGE_PRICES`: Pricing CRUD
+- `MANAGE_STOCK`: Stock issue/receive
+- `VIEW_FINANCIALS`: Read-only views
+
+## 12. Definition of Done
+
+- [ ] Database migrations reversible (deterministic)
+- [ ] NUMERIC(10,4) precision used consistently
+- [ ] All asset transactions generate accounting entries
+- [ ] Cost provision rules generate entries per defined GL mapping
+- [ ] Batch cost accrual jobs are idempotent and auditable
+- [ ] Capability checks enforced server-side
+- [ ] UI reflects locks (locked versions read-only, disposed assets in history only)
+- [ ] Regression tests pass for accounting ledger
+- [ ] Logging excludes sensitive data
+- [ ] Error handling & validation per endpoint documented
+
+## 13. Risk Mitigation
+
+| Risk | Impact | Mitigation |
+|------|--------|----------|
+| Depreciation method change mid-year | Financial restatement | Lock after posting; new methods on new assets only |
+| Pricing overlap | Ambiguous charges | DB constraints + UI timeline visualization |
+| Stock cost method transition | Inventory valuation jump | Per-item method choice; revalue on transition |
+| Private asset tracking gap | Revenue leak | Require owner_member_uuid; audit by owner |
+| Flight-type inconsistency | Pricing lookup failures | Seed at install; require selection in UI |
+| Cost provision rules forgotten | Incomplete maintenance reserves | Rule audit checklist at fiscal year close |
+| Real-time cost creep | Over-accrual if rules change mid-month | Batch methods preferred for stable environments; real-time for predictable metrics |

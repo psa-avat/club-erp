@@ -22,7 +22,7 @@ from decimal import Decimal
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # Fiscal Year schemas
@@ -209,6 +209,26 @@ class SeedPcgResponse(BaseModel):
     total: int
 
 
+class PcgSeedItem(BaseModel):
+    """One entry in the PCG seed file."""
+    code: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=255)
+    type: int = Field(ge=1, le=5)          # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue
+    is_posting_allowed: bool = True
+    is_reconcilable: bool = False
+
+
+class PcgSeedExportResponse(BaseModel):
+    """Full export of the current PCG seed file."""
+    items: list[PcgSeedItem]
+    total: int
+
+
+class PcgSeedImportRequest(BaseModel):
+    """Replace the PCG seed file with the provided items."""
+    items: list[PcgSeedItem] = Field(min_length=1)
+
+
 class SystemSettingUpdateRequest(BaseModel):
     """Upsert request for module-scoped global settings."""
     settings: dict[str, Any]
@@ -228,6 +248,8 @@ class SystemSettingResponse(BaseModel):
 class PricingVersionCreateRequest(BaseModel):
     """Create request for pricing version governance."""
     fiscal_year_uuid: UUID
+    # NULL = global pricing; set to scope this version to a specific asset type
+    asset_type_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=100)
     from_date: date
     to_date: Optional[date] = None
@@ -243,6 +265,7 @@ class PricingVersionResponse(BaseModel):
     to_date: Optional[date] = None
     status: int
     is_locked: bool
+    asset_type_uuid: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int] = None
@@ -253,6 +276,7 @@ class PricingVersionResponse(BaseModel):
 
 class PricingVersionUpdateRequest(BaseModel):
     """Update request for pricing version governance."""
+    asset_type_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     from_date: Optional[date] = None
     to_date: Optional[date] = None
@@ -270,3 +294,31 @@ class CopyPricingVersionsResponse(BaseModel):
     copied: int
     skipped: int
     versions: list[PricingVersionResponse]
+
+
+class CostProvisionRuleResponse(BaseModel):
+    """Response schema for a cost provision rule."""
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    asset_type_uuid: UUID
+    fiscal_year_uuid: UUID
+    metric_name: str
+    cost_per_unit: Decimal
+    gl_account_debit_uuid: UUID
+    gl_account_credit_uuid: UUID
+    accrual_method: int
+    is_active: bool
+
+
+class CopyCostProvisionRulesRequest(BaseModel):
+    """Request to copy cost provision rules from one fiscal year to another."""
+    source_fiscal_year_uuid: UUID
+    target_fiscal_year_uuid: UUID
+
+
+class CopyCostProvisionRulesResponse(BaseModel):
+    """Summary of cost provision rules copy operation."""
+    copied: int
+    skipped: int
+    rules: list[CostProvisionRuleResponse]

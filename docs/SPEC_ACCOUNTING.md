@@ -50,6 +50,7 @@ Minimum journal codes:
 - CS (cash)
 - OD (misc operations)
 - AN (opening/carry-forward)
+- AC (auto-cost, for cost provision real-time entries)
 
 Journal type enum values:
 - 1 = Sale
@@ -58,6 +59,16 @@ Journal type enum values:
 - 4 = Cash
 - 5 = General
 - 6 = Opening
+- 7 = Auto-Cost
+
+### 3.4 Pricing Version
+- `uuid` (PK)
+- `fiscal_year_uuid` (FK → AccountingFiscalYear)
+- `name`, `from_date`, `to_date` (date, nullable)
+- `status` (1=Draft, 2=Active, 3=Archived)
+- `is_locked` (boolean)
+- `asset_type_uuid` (FK → AssetType, nullable): if NULL → global/membership pricing; if set → asset-specific pricing
+- Timestamps & `created_by`
 
 ### 3.4 Accounting Entry (Header)
 
@@ -70,6 +81,21 @@ Journal type enum values:
 - sequence_number is assigned and locked at posting.
 - Supports reversal chain via reversal_of_entry_uuid and reversal_reason.
 
+### 3.5 Pricing Item
+- `uuid` (PK)
+- `pricing_version_uuid` (FK)
+- `name`, `unit` (1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit)
+- `base_price` (NUMERIC(10,4))
+- `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
+- `pack_price`, `pack_unit_count` (both or neither): bundle/discount
+- `flight_type_uuid` (FK → FlightType, nullable)
+- `include_insurance`, `include_fuel` (booleans)
+- Timestamps
+
+### 3.6 Accounting Line
+
+- Belongs to one entry and one account.
+- Stores debit and credit in NUMERIC(10,4).
 ### 3.5 Accounting Line
 
 - Belongs to one entry and one account.
@@ -78,7 +104,9 @@ Journal type enum values:
   - member_uuid
   - member_account_id_snapshot
 - Analytical asset dimension:
-  - analytical_asset_uuid
+- analytical_asset_uuid
+- Project dimension (future):
+  - project_uuid
 - Optional tax snapshot fields are preserved when provided.
 
 ### 3.6 Project/Special Action Dimension
@@ -204,7 +232,84 @@ Data model direction:
   - optional project_uuid
   - optional analytical_asset_uuid
 
-## 11. Special Actions and Subventions
+## 11. Cost Provision Rules (Asset Maintenance & Reserve Accrual)
+
+Cost provision rules allow automatic accrual of maintenance, reserve, or operating costs based on asset usage metrics (e.g., engine hours, winch launches). Each rule defines:
+- The usage metric (unit type: Hour, Launch, Flight, Landing, etc.)
+- The cost per unit
+- GL account mapping (flexible per rule)
+- Accrual trigger (real-time on event, or batch periodic)
+
+### 11.1 Cost Provision Rule Model
+
+**CostProvisionRule**
+- `uuid` (PK)
+- `asset_type_uuid` (FK → AssetType): which asset type this rule applies to
+- `fiscal_year_uuid` (FK → AccountingFiscalYear): validity scope
+- `metric_name` (string, e.g., "engine_hours", "winch_launches", "flight_hours", "landings")
+- `cost_per_unit` (NUMERIC(10,4)): cost accrued per metric unit
+- `gl_account_debit_uuid` (FK → GLAccount): expense/reserve account (e.g., 681 maintenance, 68x operating)
+- `gl_account_credit_uuid` (FK → GLAccount): accrual/reserve account (e.g., 281 maintenance reserve, 486 accrued maintenance)
+- `accrual_method` (enum):
+  - 1 = **Real-time**: Entry posted immediately when asset event (flight) is recorded
+  - 2 = **Batch-daily**: Accrued via daily batch job (e.g., each night)
+  - 3 = **Batch-monthly**: Accrued via monthly batch (e.g., month-end close)
+- `is_active` (boolean): pause/resume without deleting
+- `created_at`, `updated_at`, `created_by` (FK → User)
+
+**Constraint**: For a given `(asset_type_uuid, metric_name, fiscal_year_uuid)` pair, only one active rule may exist.
+
+### 11.2 Integration with Flight Recording
+
+When a flight is recorded with asset metrics (e.g., engine hours, launches):
+1. Lookup active CostProvisionRules matching the asset and FY
+2. For each rule:
+   - Calculate cost accrual: `metric_value × cost_per_unit`
+   - If `accrual_method` = Real-time:
+     - Generate Draft accounting entry (journal AC or configurable)
+     - Debit GL account from rule
+     - Credit GL account from rule
+     - Link to flight record (source_document_ref = flight_uuid)
+   - If `accrual_method` = Batch-*:
+     - Aggregate metric in a staging table (see section 11.3)
+     - Batch job processes staged accruals
+
+### 11.3 Batch Accrual Staging
+
+For batch accrual methods, maintain a staging table:
+
+**CostAccrualStaging**
+- `uuid` (PK)
+- `cost_provision_rule_uuid` (FK)
+- `asset_uuid` (FK → Asset)
+- `metric_date` (date): when metric was recorded
+- `metric_value` (numeric): cumulative or incremental (policy TBD)
+- `cost_amount` (NUMERIC(10,4)): calculated cost
+- `is_accrued` (boolean): whether entry already posted
+- `accrual_entry_uuid` (FK → AccountingEntry, nullable)
+- `created_at`
+
+Batch job:
+- Daily: runs at EOD, groups by rule/asset, creates one entry per rule per asset
+- Monthly: runs at month-end, aggregates full month, creates summary entries
+
+### 11.4 GL Account Mapping Examples
+
+| Asset Type | Metric | Cost/Unit | Debit GL | Credit GL | Rationale |
+|---|---|---|---|---|---|
+| Glider ASK21 | engine_hours | €10 | 681 (Maintenance costs) | 281 (Maintenance reserve) | Accrual for scheduled maintenance |
+| Tow Plane | flight_hours | €25 | 605 (Fuel costs) | 406 (Accrued fuel costs) | Variable fuel cost based on hours |
+| Winch | winch_launches | €5 | 686 (Equipment maintenance) | 287 (Equipment reserve) | Per-launch wear reserve |
+| Glider ASK21 | landings | €50 | 682 (Repairs) | 288 (Repairs accrual) | Landing-related wear |
+
+### 11.5 End-of-Period Close Integration
+
+At fiscal year-end:
+1. All batch-accrued costs must be posted (no pending staging rows)
+2. Reserve GL accounts (28x) should reconcile to physical asset maintenance schedules
+3. Accrual method can be overridden for final month-end (e.g., force batch→real-time for close clarity)
+
+## 12. Special Actions and Subventions
 
 Special actions are project-centric budgets and accounting flows.
 
@@ -257,8 +362,8 @@ Settings requirements:
 ### 14.2 Next Accounting-Adjacent Endpoints
 
 - Module settings endpoints (per module, capability-scoped).
-- Pricing lifecycle endpoints (year + date-range versioning).
-- Budget lifecycle/reporting endpoints.
+- Pricing lifecycle endpoints (year + date-range versioning).- Cost provision rule CRUD/list endpoints (asset type + fiscal year scoped).
+- Cost accrual staging and batch job monitoring endpoints.- Budget lifecycle/reporting endpoints.
 - Project/subvention reporting endpoints.
 - Flight sync monitoring and error reporting endpoints.
 
@@ -323,9 +428,10 @@ Handled by dedicated modules/services (must remain accounting-compatible):
 2. Draft/post immutability and reversal policy are explicit.
 3. Fiscal-year partitioning constraints are explicit and technically consistent.
 4. Pricing decision (fiscal year + date range) is explicit.
-5. Budget and project/subvention requirements are linked to accounting dimensions.
-6. Flight-sync accounting workflow is explicit and auditable.
-7. Capability-based authorization expectations are explicit.
+5. Cost provision rules (metric, GL accounts, accrual method) are explicit and flexible.
+6. Budget and project/subvention requirements are linked to accounting dimensions.
+7. Flight-sync accounting workflow is explicit and auditable.
+8. Capability-based authorization expectations are explicit.
 
 ## 18. Phased Implementation Checklist
 
@@ -373,7 +479,7 @@ API and contracts:
 
 Frontend:
 - [x] Build settings screens per module section.
-- [ ] Build pricing management screen for fiscal year with version timeline.
+- [x] Build pricing management screen for fiscal year with version timeline.
 - [ ] Integrate registration workflow to select applicable price items and preview accounting outcome.
 
 Permissions and security:
@@ -383,6 +489,35 @@ Permissions and security:
 Testing and release:
 - [ ] Add pricing overlap and fiscal-year mismatch tests.
 - [ ] Add end-to-end test for registration -> draft accounting entry generation.
+
+### Phase 2b: Cost Provision Rules (New)
+
+Goal: enable automatic maintenance/reserve cost accrual based on asset usage metrics.
+
+Backend and database:
+- [ ] Create CostProvisionRule and CostAccrualStaging tables.
+- [ ] Implement cost accrual service (real-time and batch methods).
+- [ ] Add daily and monthly batch job schedulers for batch-accrued costs.
+- [ ] Implement GL account mapping per asset type.
+
+API and contracts:
+- [ ] Add cost provision rule CRUD/list endpoints (scoped to asset type + fiscal year).
+- [ ] Add batch job trigger and status endpoints.
+- [ ] Add cost accrual staging query/reconciliation endpoints.
+
+Frontend:
+- [ ] Build cost provision rule management UI (per asset type).
+- [ ] Build batch job monitoring dashboard (pending vs. posted accruals).
+- [ ] Show cost accrual history on asset detail views.
+
+Permissions and security:
+- [ ] Restrict rule management to MANAGE_PRICES or dedicated capability.
+- [ ] Restrict batch job execution to privileged users.
+
+Testing and release:
+- [ ] Add tests for real-time and batch cost accrual.
+- [ ] Add end-to-end test for flight with metrics → cost entry generation.
+- [ ] Add batch job idempotency tests.
 
 ### Phase 3: Budget Lifecycle and KPI Reporting
 
@@ -478,4 +613,4 @@ To parallelize delivery with low risk:
 - [ ] Track B (Frontend): Phase 1 screens then settings/pricing UI from Phase 2.
 - [ ] Track C (Data/Finance): PCG seed validation and budget model from Phase 3.
 - [ ] Track D (Integrations): Flight sync foundation from Phase 5 once Phase 2 settings are available.
-
+- [ ] Track E (Assets): Asset master + Phase 2b cost provision rules (depends on Phase 2b backend).

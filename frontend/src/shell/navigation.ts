@@ -9,5 +9,6 @@ export const shellNavItems: ShellNavItem[] = [
   { to: '/club', labelKey: 'nav.club', requiredCapability: 'MANAGE_USERS' },
   { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
   { to: '/banque', labelKey: 'nav.banque', requiredCapability: 'VIEW_FINANCIALS' },
+  { to: '/assets', labelKey: 'nav.assets', requiredCapability: 'MANAGE_ASSETS' },
   { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
 ]

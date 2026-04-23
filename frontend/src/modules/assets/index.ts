@@ -1,0 +1,4 @@
+export { AssetsListPage } from './components/AssetsListPage'
+export { AssetDetailPage } from './components/AssetDetailPage'
+export { AssetFormPage } from './components/AssetFormPage'
+export { AssetPricingPage } from './components/AssetPricingPage'
