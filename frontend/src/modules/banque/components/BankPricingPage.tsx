@@ -502,7 +502,7 @@ export function BankPricingPage() {
             <p className="text-sm text-slate-600">{t('pricing.description')}</p>
           </div>
           {canManagePrices && !showNewFyForm && (
-            <Button size="sm" variant="outline" onClick={() => setShowNewFyForm(true)}>
+            <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>
               <Plus className="mr-1 h-4 w-4" />
               {t('pricing.fy.new')}
             </Button>
@@ -630,7 +630,7 @@ export function BankPricingPage() {
                 {canEditVersions && prevFy && !showNewVersionForm && !editingVersion && (
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
                     disabled={copyVersionsMutation.isPending}
                     onClick={handleCopyFromPrev}
                   >
