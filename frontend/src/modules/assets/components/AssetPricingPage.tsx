@@ -194,7 +194,7 @@ const EMPTY_ITEM: ItemFormState = {
   base_price: '',
   threshold_unit_count: '',
   threshold_price: '',
-  flight_type_uuid: '',,
+  flight_type_uuid: '',
 }
 
 function itemToForm(item: PricingItem): ItemFormState {
@@ -204,7 +204,7 @@ function itemToForm(item: PricingItem): ItemFormState {
     base_price: item.base_price,
     threshold_unit_count: item.threshold_unit_count ?? '',
     threshold_price: item.threshold_price ?? '',
-    flight_type_uuid: item.flight_type_uuid ?? '',,
+    flight_type_uuid: item.flight_type_uuid ?? '',
   }
 }
 
