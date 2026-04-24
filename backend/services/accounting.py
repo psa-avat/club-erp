@@ -547,6 +547,72 @@ async def list_pricing_versions(
     return result.scalars().all()
 
 
+async def list_pricing_items(db: AsyncSession, version_uuid: UUID) -> list[PricingItem]:
+    """List all pricing items for a given pricing version."""
+    await get_pricing_version(db, version_uuid)
+    result = await db.execute(
+        select(PricingItem)
+        .where(PricingItem.pricing_version_uuid == version_uuid)
+        .order_by(PricingItem.name)
+    )
+    return result.scalars().all()
+
+
+async def get_pricing_item(db: AsyncSession, item_uuid: UUID) -> PricingItem:
+    """Fetch one pricing item or raise 404."""
+    result = await db.execute(select(PricingItem).where(PricingItem.uuid == item_uuid))
+    obj = result.scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pricing item not found.")
+    return obj
+
+
+async def create_pricing_item(
+    db: AsyncSession,
+    version_uuid: UUID,
+    request,
+) -> PricingItem:
+    """Create a pricing item inside a (non-locked) pricing version."""
+    version = await get_pricing_version(db, version_uuid)
+    if version.is_locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    obj = PricingItem(
+        pricing_version_uuid=version_uuid,
+        **request.model_dump(),
+    )
+    db.add(obj)
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+async def update_pricing_item(
+    db: AsyncSession,
+    item_uuid: UUID,
+    request,
+) -> PricingItem:
+    """Partially update a pricing item; version must not be locked."""
+    obj = await get_pricing_item(db, item_uuid)
+    version = await get_pricing_version(db, obj.pricing_version_uuid)
+    if version.is_locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    for field, value in request.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+async def delete_pricing_item(db: AsyncSession, item_uuid: UUID) -> None:
+    """Delete a pricing item; version must not be locked."""
+    obj = await get_pricing_item(db, item_uuid)
+    version = await get_pricing_version(db, obj.pricing_version_uuid)
+    if version.is_locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    await db.delete(obj)
+    await db.commit()
+
+
 async def copy_pricing_versions_from_year(
     db: AsyncSession,
     source_fy_uuid: UUID,
@@ -644,7 +710,7 @@ async def copy_pricing_versions_from_year(
         for si in sv.items:
             new_item = PricingItem(
                 pricing_version_uuid=new_version.uuid,
-                asset_flight_type_uuid=si.asset_flight_type_uuid,
+                flight_type_uuid=si.flight_type_uuid,
                 name=si.name,
                 unit=si.unit,
                 base_price=si.base_price,

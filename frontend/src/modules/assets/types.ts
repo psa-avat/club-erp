@@ -149,7 +149,7 @@ export type AssetStatusTransitionPayload = {
 export type PricingItem = {
   uuid: string
   pricing_version_uuid: string
-  asset_flight_type_uuid: string | null
+  flight_type_uuid: string | null
   name: string
   /** 1=PerHour, 2=PerMinute, 3=PerLaunch, 4=PerFlight, 5=Fixed */
   unit: number
@@ -165,7 +165,7 @@ export type PricingItem = {
 }
 
 export type CreatePricingItemPayload = {
-  asset_flight_type_uuid?: string | null
+  flight_type_uuid?: string | null
   name: string
   unit: number
   base_price: string

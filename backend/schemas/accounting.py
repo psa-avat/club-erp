@@ -322,3 +322,56 @@ class CopyCostProvisionRulesResponse(BaseModel):
     copied: int
     skipped: int
     rules: list[CostProvisionRuleResponse]
+
+
+# ---------------------------------------------------------------------------
+# Pricing Items
+# ---------------------------------------------------------------------------
+
+class PricingItemCreateRequest(BaseModel):
+    """Create request for a pricing item within a pricing version."""
+    flight_type_uuid: Optional[UUID] = None
+    name: str = Field(min_length=1, max_length=120)
+    # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
+    unit: int = Field(ge=1, le=5)
+    base_price: Decimal = Field(ge=0)
+    threshold_unit_count: Optional[int] = Field(default=None, ge=1)
+    threshold_price: Optional[Decimal] = Field(default=None, ge=0)
+    pack_unit_count: Optional[int] = Field(default=None, ge=1)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    include_insurance: bool = False
+    include_fuel: bool = False
+
+
+class PricingItemUpdateRequest(BaseModel):
+    """Partial update request for a pricing item."""
+    flight_type_uuid: Optional[UUID] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    unit: Optional[int] = Field(default=None, ge=1, le=5)
+    base_price: Optional[Decimal] = Field(default=None, ge=0)
+    threshold_unit_count: Optional[int] = Field(default=None, ge=1)
+    threshold_price: Optional[Decimal] = Field(default=None, ge=0)
+    pack_unit_count: Optional[int] = Field(default=None, ge=1)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    include_insurance: Optional[bool] = None
+    include_fuel: Optional[bool] = None
+
+
+class PricingItemResponse(BaseModel):
+    """Pricing item response."""
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    pricing_version_uuid: UUID
+    flight_type_uuid: Optional[UUID] = None
+    name: str
+    unit: int
+    base_price: Decimal
+    threshold_unit_count: Optional[int] = None
+    threshold_price: Optional[Decimal] = None
+    pack_unit_count: Optional[int] = None
+    pack_price: Optional[Decimal] = None
+    include_insurance: bool
+    include_fuel: bool
+    created_at: datetime
+    updated_at: datetime

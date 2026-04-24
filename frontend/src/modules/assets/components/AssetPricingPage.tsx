@@ -189,7 +189,7 @@ type ItemFormState = {
   pack_price: string
   include_insurance: boolean
   include_fuel: boolean
-  asset_flight_type_uuid: string
+  flight_type_uuid: string
 }
 
 const EMPTY_ITEM: ItemFormState = {
@@ -202,7 +202,7 @@ const EMPTY_ITEM: ItemFormState = {
   pack_price: '',
   include_insurance: false,
   include_fuel: false,
-  asset_flight_type_uuid: '',
+  flight_type_uuid: '',,
 }
 
 function itemToForm(item: PricingItem): ItemFormState {
@@ -216,7 +216,7 @@ function itemToForm(item: PricingItem): ItemFormState {
     pack_price: item.pack_price ?? '',
     include_insurance: item.include_insurance,
     include_fuel: item.include_fuel,
-    asset_flight_type_uuid: item.asset_flight_type_uuid ?? '',
+    flight_type_uuid: item.flight_type_uuid ?? '',,
   }
 }
 
@@ -227,7 +227,7 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
     name: form.name.trim(),
     unit: form.unit,
     base_price: form.base_price.trim(),
-    asset_flight_type_uuid: form.asset_flight_type_uuid || null,
+    flight_type_uuid: form.flight_type_uuid || null,
     threshold_unit_count: hasThreshold ? form.threshold_unit_count : null,
     threshold_price: hasThreshold ? form.threshold_price : null,
     pack_unit_count: hasPack ? form.pack_unit_count : null,
@@ -298,8 +298,8 @@ function PricingItemForm({
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.flightType')}</Label>
           <select
-            value={form.asset_flight_type_uuid}
-            onChange={(e) => set('asset_flight_type_uuid', e.target.value)}
+            value={form.flight_type_uuid}
+            onChange={(e) => set('flight_type_uuid', e.target.value)}
             className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
             <option value="">{t('pricing.noFlightType')}</option>

@@ -41,6 +41,9 @@ from schemas.accounting import (
     FiscalYearCreateRequest,
     FiscalYearResponse,
     JournalResponse,
+    PricingItemCreateRequest,
+    PricingItemResponse,
+    PricingItemUpdateRequest,
     PricingVersionCreateRequest,
     PricingVersionResponse,
     PricingVersionUpdateRequest,
@@ -56,8 +59,10 @@ from services.accounting import (
     copy_pricing_versions_from_year,
     create_accounting_entry,
     create_fiscal_year,
+    create_pricing_item,
     create_pricing_version,
     create_reversal_entry,
+    delete_pricing_item,
     delete_pricing_version,
     get_system_setting,
     get_accounting_entry,
@@ -65,6 +70,7 @@ from services.accounting import (
     list_accounts,
     list_fiscal_years,
     list_journals,
+    list_pricing_items,
     list_pricing_versions,
     list_system_settings,
     post_accounting_entry,
@@ -74,6 +80,7 @@ from services.accounting import (
     import_pcg_seed,
     validate_pcg_seed_items,
     upsert_system_setting,
+    update_pricing_item,
     update_pricing_version,
     update_accounting_entry,
 )
@@ -435,7 +442,11 @@ async def get_pricing_version_endpoint(
     return await get_pricing_version(db, version_uuid)
 
 
-@router.put("/pricing/versions/{version_uuid}", response_model=PricingVersionResponse, responses=PRICING_VALIDATION_ERRORS)
+@router.patch(
+    "/pricing/versions/{version_uuid}",
+    response_model=PricingVersionResponse,
+    responses=PRICING_VALIDATION_ERRORS,
+)
 async def update_pricing_version_endpoint(
     version_uuid: UUID,
     request: PricingVersionUpdateRequest,
@@ -470,6 +481,57 @@ async def delete_pricing_version_endpoint(
         user_id=current_user.id,
         pricing_version_uuid=version_uuid,
     )
+    return None
+
+
+@router.get("/pricing/versions/{version_uuid}/items", response_model=list[PricingItemResponse])
+async def list_pricing_items_endpoint(
+    version_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """List all pricing items for a pricing version."""
+    return await list_pricing_items(db, version_uuid)
+
+
+@router.post(
+    "/pricing/versions/{version_uuid}/items",
+    response_model=PricingItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_pricing_item_endpoint(
+    version_uuid: UUID,
+    request: PricingItemCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Add a pricing item to a (non-locked) pricing version."""
+    return await create_pricing_item(db, version_uuid, request)
+
+
+@router.patch("/pricing/items/{item_uuid}", response_model=PricingItemResponse)
+async def update_pricing_item_endpoint(
+    item_uuid: UUID,
+    request: PricingItemUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Partially update a pricing item (version must not be locked)."""
+    return await update_pricing_item(db, item_uuid, request)
+
+
+@router.delete("/pricing/items/{item_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_pricing_item_endpoint(
+    item_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a pricing item (version must not be locked)."""
+    await delete_pricing_item(db, item_uuid)
     return None
 
 
