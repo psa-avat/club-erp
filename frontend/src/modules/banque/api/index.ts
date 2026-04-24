@@ -3,11 +3,13 @@ export const banqueQueryKeys = {
   settings: (moduleName: string) => ['banque', 'settings', moduleName] as const,
   fiscalYears: () => ['banque', 'fiscal-years'] as const,
   pricingVersions: (fiscalYearUuid?: string) => ['banque', 'pricing-versions', fiscalYearUuid ?? 'all'] as const,
+  pcgSeed: ['banque', 'pcg-seed'] as const,
 }
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
+import type { PcgSeedExportResponse, PcgSeedImportRequest } from '../types'
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -247,6 +249,51 @@ export function useCopyPricingVersionsMutation() {
       await queryClient.invalidateQueries({
         queryKey: banqueQueryKeys.pricingVersions(variables.target_fiscal_year_uuid),
       })
+    },
+  })
+}
+
+// ── PCG Seed ──────────────────────────────────────────────────────────────────
+
+export function usePcgSeedQuery() {
+  return useQuery({
+    queryKey: banqueQueryKeys.pcgSeed,
+    queryFn: async () => {
+      const { data } = await apiClient.get<PcgSeedExportResponse>(
+        '/api/v1/accounting/accounts/pcg-seed',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useImportPcgSeedMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: PcgSeedImportRequest) => {
+      const { data } = await apiClient.put<PcgSeedExportResponse>(
+        '/api/v1/accounting/accounts/pcg-seed',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pcgSeed })
+    },
+  })
+}
+
+export function useApplyPcgSeedMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<{ inserted: number; updated: number; total: number }>(
+        '/api/v1/accounting/accounts/seed-pcg',
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
     },
   })
 }

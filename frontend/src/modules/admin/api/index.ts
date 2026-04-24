@@ -12,18 +12,12 @@ import type {
   UpdateAdminRolePayload,
   UpdateAdminUserPayload,
 } from '../types'
-import type {
-  PcgSeedExportResponse,
-  PcgSeedImportRequest,
-  PcgSeedItem,
-} from '../types'
 
 export const adminQueryKeys = {
   root: ['admin'] as const,
   users: ['admin', 'users'] as const,
   roles: ['admin', 'roles'] as const,
   capabilities: ['admin', 'capabilities'] as const,
-  pcgSeed: ['admin', 'pcg-seed'] as const,
 }
 
 export function useAdminUsersQuery() {
@@ -194,50 +188,3 @@ export function useDeleteAdminCapabilityMutation() {
   })
 }
 
-// ── PCG Seed ─────────────────────────────────────────────────────────────────
-
-export function usePcgSeedQuery() {
-  return useQuery({
-    queryKey: adminQueryKeys.pcgSeed,
-    queryFn: async () => {
-      const { data } = await apiClient.get<PcgSeedExportResponse>(
-        '/api/v1/accounting/accounts/pcg-seed',
-        getAuthRequestConfig(),
-      )
-      return data
-    },
-  })
-}
-
-export function useImportPcgSeedMutation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (payload: PcgSeedImportRequest) => {
-      const { data } = await apiClient.put<PcgSeedExportResponse>(
-        '/api/v1/accounting/accounts/pcg-seed',
-        payload,
-        getAuthRequestConfig(),
-      )
-      return data
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: adminQueryKeys.pcgSeed })
-    },
-  })
-}
-
-export function useApplyPcgSeedMutation() {
-  return useMutation({
-    mutationFn: async () => {
-      const { data } = await apiClient.post<{ inserted: number; updated: number; total: number }>(
-        '/api/v1/accounting/accounts/seed-pcg',
-        {},
-        getAuthRequestConfig(),
-      )
-      return data
-    },
-  })
-}
-
-export type { PcgSeedItem }

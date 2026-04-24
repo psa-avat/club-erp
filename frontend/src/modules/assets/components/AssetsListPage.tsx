@@ -208,10 +208,15 @@ export function AssetsListPage() {
             <p className="mt-1 text-sm text-slate-500">{t('list.description')}</p>
           </div>
           {canManage && (
-            <Button onClick={() => navigate('/assets/new')} size="sm">
-              <Plus className="mr-1 h-4 w-4" />
-              {t('actions.newAsset')}
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/assets/types')}>
+                {t('assetTypes.title')}
+              </Button>
+              <Button onClick={() => navigate('/assets/new')} size="sm">
+                <Plus className="mr-1 h-4 w-4" />
+                {t('actions.newAsset')}
+              </Button>
+            </div>
           )}
         </div>
       </div>

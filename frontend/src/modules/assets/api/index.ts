@@ -28,10 +28,12 @@ import type {
   AssetSummary,
   AssetType,
   CreateAssetPayload,
+  CreateAssetTypePayload,
   CreatePricingItemPayload,
   FlightType,
   PricingItem,
   UpdateAssetPayload,
+  UpdateAssetTypePayload,
   UpdatePricingItemPayload,
 } from '../types'
 import { banqueQueryKeys } from '../../banque/api'
@@ -64,6 +66,36 @@ export function useAssetTypesQuery(enabled = true) {
     queryFn: async () => {
       const { data } = await apiClient.get<AssetType[]>('/api/v1/assets/types', getAuthRequestConfig())
       return data
+    },
+  })
+}
+
+export function useCreateAssetTypeMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: CreateAssetTypePayload) => {
+      const { data } = await apiClient.post<AssetType>('/api/v1/assets/types', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.types() })
+    },
+  })
+}
+
+export function useUpdateAssetTypeMutation(uuid: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: UpdateAssetTypePayload) => {
+      const { data } = await apiClient.patch<AssetType>(
+        `/api/v1/assets/types/${uuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.types() })
     },
   })
 }

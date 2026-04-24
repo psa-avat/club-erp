@@ -94,6 +94,23 @@ export type AssetDetail = {
   status_history: AssetStatusHistoryEntry[]
 }
 
+export type CreateAssetTypePayload = {
+  code: string
+  name: string
+  /** 1=Aircraft 2=LaunchEquipment 3=Support 4=Consumable 5=Service */
+  category: number
+  /** 1=FlightHours 2=EngineTime 3=PerFlight 4=PerDuration 5=PerUnit 6=FlatRate */
+  pricing_strategy: number
+  is_active?: boolean
+}
+
+export type UpdateAssetTypePayload = {
+  name?: string
+  category?: number
+  pricing_strategy?: number
+  is_active?: boolean
+}
+
 export type AssetFilters = {
   asset_type_uuid?: string
   status?: number
