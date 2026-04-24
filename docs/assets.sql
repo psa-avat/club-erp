@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS asset_types (
     code                         VARCHAR(32)   NOT NULL UNIQUE,
     name                         VARCHAR(100)  NOT NULL,
     category                     SMALLINT      NOT NULL,  -- 1=Aircraft,2=LaunchEquipment,3=Support,4=Consumable,5=Service
-    pricing_strategy             SMALLINT      NOT NULL,  -- 1=FlightHours,2=EngineTime,3=PerFlight,4=PerDuration,5=PerUnit,6=FlatRate
     is_trackable_in_ledger       BOOLEAN       NOT NULL DEFAULT FALSE,
     is_active                    BOOLEAN       NOT NULL DEFAULT TRUE,
     standard_depreciation_years  INTEGER       NULL,
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS asset_types (
     created_by                   INTEGER       NULL,
     updated_by                   INTEGER       NULL,
     CONSTRAINT chk_asset_types_category CHECK (category IN (1,2,3,4,5)),
-    CONSTRAINT chk_asset_types_pricing_strategy CHECK (pricing_strategy IN (1,2,3,4,5,6)),
     CONSTRAINT chk_asset_types_depr_years CHECK (standard_depreciation_years IS NULL OR standard_depreciation_years > 0)
 );
 
@@ -137,6 +135,49 @@ CREATE INDEX IF NOT EXISTS ix_asset_depr_fiscal_year ON asset_depreciation_sched
 CREATE INDEX IF NOT EXISTS ix_asset_depr_status ON asset_depreciation_schedules(status);
 
 -----------------------------------------------------------
+-- Billing Metrics Catalog (shared by pricing + cost rules)
+-----------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS billing_metrics (
+    code          VARCHAR(32)   PRIMARY KEY,
+    name          VARCHAR(100)  NOT NULL,
+    description   VARCHAR(255)  NULL,
+    is_active     BOOLEAN       NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO billing_metrics(code, name, description)
+VALUES
+    ('engine_hours', 'Engine Hours', 'Usage measured in engine running hours'),
+    ('flight_hours', 'Flight Hours', 'Usage measured in flight hours'),
+    ('winch_launches', 'Winch Launches', 'Usage measured in number of winch launches'),
+    ('landings', 'Landings', 'Usage measured in number of landings'),
+    ('hour', 'Hour', 'Generic hourly metric for pricing items'),
+    ('minute', 'Minute', 'Generic minute metric for pricing items'),
+    ('flight', 'Flight', 'Generic per-flight metric for pricing items'),
+    ('kilometer', 'Kilometer', 'Distance based metric for pricing items'),
+    ('unit', 'Unit', 'Generic per-unit metric for pricing items'),
+    ('fixed', 'Fixed', 'Flat-rate metric for pricing items')
+ON CONFLICT (code) DO NOTHING;
+
+-----------------------------------------------------------
+-- Optional defaults per asset type (UX hints only)
+-----------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS asset_type_default_metrics (
+    asset_type_uuid   UUID         NOT NULL REFERENCES asset_types(uuid) ON DELETE CASCADE,
+    metric_code       VARCHAR(32)  NOT NULL REFERENCES billing_metrics(code),
+    is_primary        BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (asset_type_uuid, metric_code)
+);
+
+CREATE INDEX IF NOT EXISTS ix_asset_type_default_metrics_primary
+ON asset_type_default_metrics(asset_type_uuid)
+WHERE is_primary = TRUE;
+
+-----------------------------------------------------------
 -- Cost Provision Rules
 -----------------------------------------------------------
 
@@ -144,7 +185,7 @@ CREATE TABLE IF NOT EXISTS cost_provision_rules (
     uuid                     UUID           PRIMARY KEY DEFAULT uuid_generate_v4(),
     asset_type_uuid          UUID           NOT NULL REFERENCES asset_types(uuid),
     fiscal_year_uuid         UUID           NOT NULL REFERENCES accounting_fiscal_years(uuid),
-    metric_name              VARCHAR(32)    NOT NULL, -- engine_hours, winch_launches, flight_hours, landings
+    metric_code              VARCHAR(32)    NOT NULL REFERENCES billing_metrics(code),
     cost_per_unit            NUMERIC(10,4)  NOT NULL,
     gl_account_debit_uuid    UUID           NOT NULL REFERENCES accounting_accounts(uuid),
     gl_account_credit_uuid   UUID           NOT NULL REFERENCES accounting_accounts(uuid),
@@ -154,18 +195,49 @@ CREATE TABLE IF NOT EXISTS cost_provision_rules (
     updated_at               TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     created_by               INTEGER        NULL,
     updated_by               INTEGER        NULL,
-    CONSTRAINT chk_cost_rules_metric CHECK (metric_name IN ('engine_hours','winch_launches','flight_hours','landings')),
     CONSTRAINT chk_cost_rules_cost_per_unit CHECK (cost_per_unit > 0),
     CONSTRAINT chk_cost_rules_accrual_method CHECK (accrual_method IN (1,2,3)),
     CONSTRAINT chk_cost_rules_distinct_gl CHECK (gl_account_debit_uuid <> gl_account_credit_uuid)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cost_rules_active_unique
-ON cost_provision_rules(asset_type_uuid, fiscal_year_uuid, metric_name)
+ON cost_provision_rules(asset_type_uuid, fiscal_year_uuid, metric_code)
 WHERE is_active = TRUE;
 
 CREATE INDEX IF NOT EXISTS ix_cost_rules_fiscal_year ON cost_provision_rules(fiscal_year_uuid);
 CREATE INDEX IF NOT EXISTS ix_cost_rules_asset_type ON cost_provision_rules(asset_type_uuid);
+
+-- Compatibility migration for environments that still have metric_name.
+ALTER TABLE cost_provision_rules
+ADD COLUMN IF NOT EXISTS metric_code VARCHAR(32);
+
+UPDATE cost_provision_rules
+SET metric_code = CASE metric_name
+    WHEN 'engine_hours' THEN 'engine_hours'
+    WHEN 'winch_launches' THEN 'winch_launches'
+    WHEN 'flight_hours' THEN 'flight_hours'
+    WHEN 'landings' THEN 'landings'
+    ELSE metric_code
+END
+WHERE metric_code IS NULL AND metric_name IS NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_cost_rules_metric_code'
+    ) THEN
+        ALTER TABLE cost_provision_rules
+        ADD CONSTRAINT fk_cost_rules_metric_code
+        FOREIGN KEY (metric_code) REFERENCES billing_metrics(code);
+    END IF;
+END $$;
+
+DROP INDEX IF EXISTS uq_cost_rules_active_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cost_rules_active_unique
+ON cost_provision_rules(asset_type_uuid, fiscal_year_uuid, metric_code)
+WHERE is_active = TRUE;
 
 -----------------------------------------------------------
 -- Cost Accrual Staging
@@ -268,10 +340,37 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'pricing_items'
     ) THEN
         ALTER TABLE pricing_items ADD COLUMN IF NOT EXISTS flight_type_uuid UUID NULL REFERENCES asset_flight_types(uuid);
-        ALTER TABLE pricing_items ADD COLUMN IF NOT EXISTS include_insurance BOOLEAN NOT NULL DEFAULT FALSE;
-        ALTER TABLE pricing_items ADD COLUMN IF NOT EXISTS include_fuel BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE pricing_items ADD COLUMN IF NOT EXISTS metric_code VARCHAR(32);
+
+        UPDATE pricing_items
+        SET metric_code = CASE unit
+            WHEN 1 THEN 'hour'
+            WHEN 2 THEN 'flight'
+            WHEN 3 THEN 'minute'
+            WHEN 4 THEN 'kilometer'
+            WHEN 5 THEN 'unit'
+            ELSE metric_code
+        END
+        WHERE metric_code IS NULL;
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'fk_pricing_items_metric_code'
+        ) THEN
+            ALTER TABLE pricing_items
+            ADD CONSTRAINT fk_pricing_items_metric_code
+            FOREIGN KEY (metric_code) REFERENCES billing_metrics(code);
+        END IF;
+
+        CREATE INDEX IF NOT EXISTS ix_pricing_items_metric_code
+        ON pricing_items(metric_code);
     END IF;
 END $$;
+
+-- Compatibility cleanup: drop legacy strategy column when present.
+ALTER TABLE asset_types
+DROP COLUMN IF EXISTS pricing_strategy;
 
 -----------------------------------------------------------
 -- updated_at Triggers

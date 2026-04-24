@@ -185,10 +185,6 @@ type ItemFormState = {
   base_price: string
   threshold_unit_count: string
   threshold_price: string
-  pack_unit_count: string
-  pack_price: string
-  include_insurance: boolean
-  include_fuel: boolean
   flight_type_uuid: string
 }
 
@@ -198,10 +194,6 @@ const EMPTY_ITEM: ItemFormState = {
   base_price: '',
   threshold_unit_count: '',
   threshold_price: '',
-  pack_unit_count: '',
-  pack_price: '',
-  include_insurance: false,
-  include_fuel: false,
   flight_type_uuid: '',,
 }
 
@@ -212,17 +204,12 @@ function itemToForm(item: PricingItem): ItemFormState {
     base_price: item.base_price,
     threshold_unit_count: item.threshold_unit_count ?? '',
     threshold_price: item.threshold_price ?? '',
-    pack_unit_count: item.pack_unit_count ?? '',
-    pack_price: item.pack_price ?? '',
-    include_insurance: item.include_insurance,
-    include_fuel: item.include_fuel,
     flight_type_uuid: item.flight_type_uuid ?? '',,
   }
 }
 
 function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
   const hasThreshold = form.threshold_unit_count !== '' && form.threshold_price !== ''
-  const hasPack = form.pack_unit_count !== '' && form.pack_price !== ''
   return {
     name: form.name.trim(),
     unit: form.unit,
@@ -230,10 +217,6 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
     flight_type_uuid: form.flight_type_uuid || null,
     threshold_unit_count: hasThreshold ? form.threshold_unit_count : null,
     threshold_price: hasThreshold ? form.threshold_price : null,
-    pack_unit_count: hasPack ? form.pack_unit_count : null,
-    pack_price: hasPack ? form.pack_price : null,
-    include_insurance: form.include_insurance,
-    include_fuel: form.include_fuel,
   }
 }
 
@@ -260,10 +243,7 @@ function PricingItemForm({
   const thresholdComplete =
     (form.threshold_unit_count !== '' && form.threshold_price !== '') ||
     (form.threshold_unit_count === '' && form.threshold_price === '')
-  const packComplete =
-    (form.pack_unit_count !== '' && form.pack_price !== '') ||
-    (form.pack_unit_count === '' && form.pack_price === '')
-  const valid = form.name.trim() !== '' && form.base_price !== '' && thresholdComplete && packComplete
+  const valid = form.name.trim() !== '' && form.base_price !== '' && thresholdComplete
 
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -335,52 +315,9 @@ function PricingItemForm({
         <p className="text-xs text-red-600">{t('pricing.thresholdPairRequired')}</p>
       )}
 
-      {/* Pack pair */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.packCount')}</Label>
-          <Input
-            value={form.pack_unit_count}
-            onChange={(e) => set('pack_unit_count', e.target.value)}
-            placeholder="0"
-            className={`h-8 text-sm font-mono ${!packComplete ? 'border-red-400' : ''}`}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.packPrice')}</Label>
-          <Input
-            value={form.pack_price}
-            onChange={(e) => set('pack_price', e.target.value)}
-            placeholder="0.0000"
-            className={`h-8 text-sm font-mono ${!packComplete ? 'border-red-400' : ''}`}
-          />
-        </div>
-      </div>
-      {!packComplete && (
-        <p className="text-xs text-red-600">{t('pricing.packPairRequired')}</p>
-      )}
 
-      {/* Flags */}
-      <div className="flex gap-4">
-        <label className="flex cursor-pointer items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={form.include_insurance}
-            onChange={(e) => set('include_insurance', e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          {t('pricing.includeInsurance')}
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={form.include_fuel}
-            onChange={(e) => set('include_fuel', e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          {t('pricing.includeFuel')}
-        </label>
-      </div>
+
+
 
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
@@ -512,20 +449,7 @@ function PricingItemsPanel({
                     {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)} ·{' '}
                     {formatPrice(item.base_price)}
                     {item.threshold_price && ` · >${item.threshold_unit_count}: ${formatPrice(item.threshold_price)}`}
-                    {item.pack_price && ` · �-${item.pack_unit_count}: ${formatPrice(item.pack_price)}`}
                   </p>
-                  <div className="mt-0.5 flex gap-2">
-                    {item.include_insurance && (
-                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">
-                        {t('pricing.includeInsurance')}
-                      </span>
-                    )}
-                    {item.include_fuel && (
-                      <span className="rounded bg-orange-50 px-1.5 py-0.5 text-xs text-orange-600">
-                        {t('pricing.includeFuel')}
-                      </span>
-                    )}
-                  </div>
                 </div>
                 {editable && (
                   <div className="flex shrink-0 gap-1">
@@ -680,7 +604,7 @@ export function AssetPricingPage() {
           {t('actions.backToDetail')}
         </button>
         <h1 className="text-xl font-semibold text-slate-900">
-          {asset ? `${asset.name} �?" ` : ''}{t('pricing.title')}
+          {asset ? `${asset.name} — ` : ''}{t('pricing.title')}
         </h1>
         {assetType && (
           <p className="mt-1 text-sm text-slate-500">
@@ -733,7 +657,7 @@ export function AssetPricingPage() {
           {/* Version header */}
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">
-              {t('pricing.versions')} �?" {selectedFy.label}
+              {t('pricing.versions')} — {selectedFy.label}
             </h2>
             {canEdit && !showNewVersionForm && !editingVersion && (
               <Button size="sm" onClick={() => setShowNewVersionForm(true)}>

@@ -46,6 +46,7 @@ export const assetsQueryKeys = {
   flightTypes: (typeUuid: string) => ['assets', 'flight-types', typeUuid] as const,
   list: (filters: AssetFilters) => ['assets', 'list', filters] as const,
   detail: (uuid: string) => ['assets', 'detail', uuid] as const,
+  statusHistory: (uuid: string) => ['assets', 'status-history', uuid] as const,
   pricingVersions: (assetTypeUuid: string, fyUuid: string) =>
     ['assets', 'pricing-versions', assetTypeUuid, fyUuid] as const,
   pricingItems: (versionUuid: string) => ['assets', 'pricing-items', versionUuid] as const,
@@ -137,6 +138,20 @@ export function useAssetQuery(uuid: string | null) {
     queryFn: async () => {
       const { data } = await apiClient.get<AssetDetail>(
         `/api/v1/assets/${uuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useAssetStatusHistoryQuery(uuid: string | null) {
+  return useQuery({
+    queryKey: assetsQueryKeys.statusHistory(uuid ?? ''),
+    enabled: Boolean(uuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<AssetStatusHistoryEntry[]>(
+        `/api/v1/assets/${uuid}/status-history`,
         getAuthRequestConfig(),
       )
       return data

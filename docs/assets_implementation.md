@@ -25,15 +25,21 @@ Out of scope:
 
 ## 3. Core Design Decisions
 
-1. Pricing model is shared with accounting:
-	- `pricing_versions` remains the governance table.
-	- Add optional `asset_type_uuid` to scope versions for asset pricing.
-	- `asset_type_uuid = NULL` means global/non-asset pricing.
-2. Cost accrual is rule-driven:
-	- `cost_provision_rules` define metric, unit cost, debit account, credit account, and accrual method.
-3. Financial integrity is accounting-first:
+1. Pricing behavior is item-driven:
+	- Pricing calculation is defined by pricing items, not by asset type.
+	- One asset type may have multiple pricing items using different billing metrics in the same fiscal period.
+2. Shared metric vocabulary across pricing and cost provisioning:
+	- Introduce a canonical billing metric catalog.
+	- Pricing items and cost provision rules both reference `metric_code` from this shared catalog.
+3. Asset type remains classification-focused:
+	- Asset type stores category and operational metadata only.
+	- Remove `pricing_strategy` from asset type to avoid ambiguity.
+4. Optional defaults are UX-only:
+	- Asset type may define default metrics for form prefill.
+	- Defaults never constrain billing logic.
+5. Financial integrity is accounting-first:
 	- All asset operations with financial impact generate balanced accounting entries.
-4. Precision:
+6. Precision:
 	- SQL NUMERIC(10,4), backend Decimal, frontend decimal.js.
 
 ## 4. Backend Implementation Plan
@@ -63,18 +69,19 @@ Deliverables:
 1. Extend pricing versioning with `asset_type_uuid`.
 2. Add asset pricing items table/fields to support:
 	- optional flight type,
-	- unit and base price,
+	- `metric_code` and base price,
 	- threshold and pack pricing,
 	- include_insurance/include_fuel flags.
 3. Service validations:
 	- fiscal-year boundary checks,
 	- date-range overlap checks per `(fiscal_year_uuid, asset_type_uuid)`.
-4. Pricing lookup API for asset/date/flight type.
+4. Pricing lookup API for asset/date/flight type using metric-aware item selection.
+5. Support multiple metrics for a single asset type/version (for example: flight hour plus engine hour).
 
 ### Phase 2b - Cost Provisioning
 
 Deliverables:
-1. Cost provision rules CRUD.
+1. Cost provision rules CRUD using `metric_code` from the same billing metric catalog.
 2. Real-time accrual path and batch accrual path.
 3. Batch staging table and idempotent processing.
 4. Accounting posting from rules:
@@ -136,10 +143,10 @@ Wire in shell:
 	- fiscal year selector,
 	- version timeline,
 	- version create/edit,
-	- pricing items CRUD,
+	- pricing items CRUD with shared billing metric selector,
 	- overlap validation feedback.
 5. Cost provisioning page:
-	- rules CRUD,
+	- rules CRUD with same metric catalog as pricing items,
 	- accrual method selection,
 	- staging/batch monitor.
 6. Stock pages:
@@ -183,7 +190,10 @@ Pricing (accounting-governed):
 3. `PATCH /api/v1/accounting/pricing/versions/{version_uuid}`
 4. `POST /api/v1/accounting/pricing/versions/{version_uuid}/items`
 5. `GET /api/v1/accounting/pricing/versions/{version_uuid}/items`
-6. `GET /api/v1/accounting/pricing/lookup`
+6. `PATCH /api/v1/accounting/pricing/items/{item_uuid}`
+7. `DELETE /api/v1/accounting/pricing/items/{item_uuid}`
+8. `GET /api/v1/accounting/pricing/lookup`
+9. `GET /api/v1/accounting/billing-metrics`
 
 Cost provisioning:
 1. `POST /api/v1/accounting/cost-provision-rules`
@@ -205,10 +215,12 @@ Stock and depreciation:
 1. No overlapping pricing versions for same fiscal year + asset type.
 2. Pricing date ranges must be inside fiscal year boundaries.
 3. Pack and threshold fields must be complete pairs.
-4. Cost rule uniqueness for active rules: `(asset_type_uuid, fiscal_year_uuid, metric_name)`.
+4. Cost rule uniqueness for active rules: `(asset_type_uuid, fiscal_year_uuid, metric_code)`.
 5. Cost rule debit and credit accounts cannot be the same.
 6. Posted depreciation schedules and posted accounting entries are immutable.
 7. Stock on-hand cannot become negative.
+8. Pricing item `metric_code` must exist in billing metrics catalog.
+9. Asset type default metrics, if configured, are UX defaults only and never pricing constraints.
 
 ## 9. SQL Delivery Plan
 
@@ -218,13 +230,17 @@ Create `docs/assets.sql` as an idempotent schema extension with:
 3. `assets`
 4. `asset_account_snapshots`
 5. `asset_depreciation_schedules`
-6. `cost_provision_rules`
-7. `cost_accrual_staging`
-8. `asset_products`
-9. `asset_stock_items`
-10. `asset_stock_entries`
-11. alter `pricing_versions` add `asset_type_uuid`
-12. conditional extension for `pricing_items` if present in target schema
+6. `billing_metrics` (new canonical catalog)
+7. `asset_type_default_metrics` (optional)
+8. `cost_provision_rules` (metric_code based)
+9. `cost_accrual_staging`
+10. `asset_products`
+11. `asset_stock_items`
+12. `asset_stock_entries`
+13. alter `pricing_versions` add `asset_type_uuid`
+14. alter `pricing_items` add `metric_code` and backfill from legacy `unit`
+15. alter `cost_provision_rules` migrate `metric_name` to `metric_code`
+16. remove `asset_types.pricing_strategy` after compatibility window
 
 Notes:
 1. `docs/account.sql` is treated as canonical accounting schema in this repository.
@@ -249,11 +265,12 @@ Frontend tests:
 ## 11. Execution Order (Recommended)
 
 1. SQL foundation in `docs/assets.sql`.
-2. Backend models + schemas.
-3. Backend services + routes.
-4. Frontend API hooks and types.
-5. Frontend pages and forms.
-6. Integration tests and stabilization.
+2. Backend models + schemas with compatibility fields.
+3. Backend services + routes with dual-read migration support.
+4. Frontend API hooks and types migrated to `metric_code`.
+5. Frontend pages and forms migrated to shared metric selector.
+6. Remove deprecated fields after compatibility window.
+7. Integration tests and stabilization.
 
 ## 12. Acceptance Criteria
 
@@ -263,3 +280,6 @@ Frontend tests:
 4. All monetary values preserve NUMERIC(10,4) precision.
 5. Capability checks are enforced server-side.
 6. SQL is idempotent and aligned with existing schema conventions.
+7. A single asset type can be priced with multiple metrics in the same pricing version.
+8. Pricing items and cost provision rules use the same metric vocabulary.
+9. Asset type does not carry pricing behavior fields.

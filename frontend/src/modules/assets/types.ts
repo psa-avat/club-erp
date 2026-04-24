@@ -91,7 +91,6 @@ export type AssetDetail = {
   is_active: boolean
   created_at: string
   updated_at: string
-  status_history: AssetStatusHistoryEntry[]
 }
 
 export type CreateAssetTypePayload = {
@@ -156,10 +155,6 @@ export type PricingItem = {
   base_price: string
   threshold_unit_count: string | null
   threshold_price: string | null
-  pack_unit_count: string | null
-  pack_price: string | null
-  include_insurance: boolean
-  include_fuel: boolean
   created_at: string
   updated_at: string
 }
@@ -171,10 +166,6 @@ export type CreatePricingItemPayload = {
   base_price: string
   threshold_unit_count?: string | null
   threshold_price?: string | null
-  pack_unit_count?: string | null
-  pack_price?: string | null
-  include_insurance?: boolean
-  include_fuel?: boolean
 }
 
 export type UpdatePricingItemPayload = Partial<CreatePricingItemPayload>

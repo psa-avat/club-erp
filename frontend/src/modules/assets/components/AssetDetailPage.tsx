@@ -30,7 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
-import { useAssetQuery, useTransitionAssetStatusMutation } from '../api'
+import { useAssetQuery, useAssetStatusHistoryQuery, useTransitionAssetStatusMutation } from '../api'
 import type { AssetStatusHistoryEntry } from '../types'
 
 // �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
@@ -252,6 +252,8 @@ export function AssetDetailPage() {
 
   const assetQuery = useAssetQuery(uuid ?? null)
   const asset = assetQuery.data ?? null
+  const historyQuery = useAssetStatusHistoryQuery(uuid ?? null)
+  const statusHistory = historyQuery.data ?? []
 
   const transitionMutation = useTransitionAssetStatusMutation(uuid ?? '')
   const [transitionError, setTransitionError] = useState<string | null>(null)
@@ -410,7 +412,7 @@ export function AssetDetailPage() {
       {canManage && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('detail.lifecycle')}</h2>
-          <StatusTimeline history={asset.status_history} t={t} />
+          <StatusTimeline history={statusHistory} t={t} />
           <TransitionForm
             currentStatus={asset.status}
             onTransition={handleTransition}

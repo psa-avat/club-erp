@@ -337,10 +337,6 @@ class PricingItemCreateRequest(BaseModel):
     base_price: Decimal = Field(ge=0)
     threshold_unit_count: Optional[int] = Field(default=None, ge=1)
     threshold_price: Optional[Decimal] = Field(default=None, ge=0)
-    pack_unit_count: Optional[int] = Field(default=None, ge=1)
-    pack_price: Optional[Decimal] = Field(default=None, ge=0)
-    include_insurance: bool = False
-    include_fuel: bool = False
 
 
 class PricingItemUpdateRequest(BaseModel):
@@ -351,10 +347,6 @@ class PricingItemUpdateRequest(BaseModel):
     base_price: Optional[Decimal] = Field(default=None, ge=0)
     threshold_unit_count: Optional[int] = Field(default=None, ge=1)
     threshold_price: Optional[Decimal] = Field(default=None, ge=0)
-    pack_unit_count: Optional[int] = Field(default=None, ge=1)
-    pack_price: Optional[Decimal] = Field(default=None, ge=0)
-    include_insurance: Optional[bool] = None
-    include_fuel: Optional[bool] = None
 
 
 class PricingItemResponse(BaseModel):
@@ -369,9 +361,5 @@ class PricingItemResponse(BaseModel):
     base_price: Decimal
     threshold_unit_count: Optional[int] = None
     threshold_price: Optional[Decimal] = None
-    pack_unit_count: Optional[int] = None
-    pack_price: Optional[Decimal] = None
-    include_insurance: bool
-    include_fuel: bool
     created_at: datetime
     updated_at: datetime

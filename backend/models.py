@@ -545,13 +545,7 @@ class PricingItem(Base):
             "(threshold_unit_count IS NOT NULL AND threshold_price IS NOT NULL)",
             name="chk_pricing_items_threshold_pair",
         ),
-        CheckConstraint(
-            "(pack_unit_count IS NULL AND pack_price IS NULL) OR "
-            "(pack_unit_count IS NOT NULL AND pack_price IS NOT NULL)",
-            name="chk_pricing_items_pack_pair",
-        ),
         CheckConstraint("threshold_unit_count IS NULL OR threshold_unit_count > 0", name="chk_pricing_items_threshold_count"),
-        CheckConstraint("pack_unit_count IS NULL OR pack_unit_count > 0", name="chk_pricing_items_pack_count"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -568,10 +562,6 @@ class PricingItem(Base):
     base_price = Column(Numeric(10, 4), nullable=False)
     threshold_unit_count = Column(Integer, nullable=True)
     threshold_price = Column(Numeric(10, 4), nullable=True)
-    pack_price = Column(Numeric(10, 4), nullable=True)
-    pack_unit_count = Column(Integer, nullable=True)
-    include_insurance = Column(Boolean, nullable=False, default=False)
-    include_fuel = Column(Boolean, nullable=False, default=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
