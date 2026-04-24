@@ -24,6 +24,7 @@ import type {
   AssetDetail,
   AssetFilters,
   AssetPricingVersion,
+  AssetStatusHistoryEntry,
   AssetStatusTransitionPayload,
   AssetSummary,
   AssetType,
