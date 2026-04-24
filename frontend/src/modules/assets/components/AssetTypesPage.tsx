@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
 import { ArrowLeft, Check, Pencil, Plus, X } from 'lucide-react'
 
-import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
