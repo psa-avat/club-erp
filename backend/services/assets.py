@@ -244,10 +244,13 @@ async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: i
     )
     db.add(obj)
 
+    # Materialize PK/default values (uuid/status) before creating dependent history row.
+    await db.flush()
+
     # Record initial status in history
     history = AssetStatusHistory(
         asset_uuid=obj.uuid,
-        status=obj.status,
+        status=obj.status or 1,
         reason="Initial creation",
         changed_by=user_id,
     )
