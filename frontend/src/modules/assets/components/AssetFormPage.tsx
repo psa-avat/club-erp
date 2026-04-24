@@ -36,12 +36,12 @@ import {
 } from '../api'
 import type { CreateAssetPayload } from '../types'
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 const OWNERSHIP_CLUB = 1
 const OWNERSHIP_PRIVATE = 2
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function isValidDecimal(value: string): boolean {
   if (!value.trim()) return true
@@ -60,7 +60,7 @@ function extractError(e: unknown, fallback: string): string {
   return fallback
 }
 
-// ── Form State ────────────────────────────────────────────────────────────────
+// �"?�"? Form State �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 type FormState = {
   code: string
@@ -100,7 +100,7 @@ const EMPTY_FORM: FormState = {
   residual_value: '',
 }
 
-// ── Decimal Input ─────────────────────────────────────────────────────────────
+// �"?�"? Decimal Input �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function DecimalInput({
   id,
@@ -138,7 +138,7 @@ function DecimalInput({
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// �"?�"? Main Component �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 export function AssetFormPage() {
   const { t } = useTranslation('assets')
@@ -225,7 +225,7 @@ export function AssetFormPage() {
         navigate(`/assets/${created.uuid}`)
       }
     } catch (err) {
-      setError(extractError(err, t('assets.error.saveFailed')))
+      setError(extractError(err, t('error.saveFailed')))
     }
   }
 
@@ -235,7 +235,7 @@ export function AssetFormPage() {
   if (!canManage) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('assets.noPermission')}</p>
+        <p className="text-sm text-slate-500">{t('noPermission')}</p>
       </section>
     )
   }
@@ -243,7 +243,7 @@ export function AssetFormPage() {
   if (isEdit && assetQuery.isLoading) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('assets.states.loading')}</p>
+        <p className="text-sm text-slate-500">{t('states.loading')}</p>
       </section>
     )
   }
@@ -253,9 +253,9 @@ export function AssetFormPage() {
       {/* Header */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-900">
-          {isEdit ? t('assets.form.editTitle') : t('assets.form.createTitle')}
+          {isEdit ? t('form.editTitle') : t('form.createTitle')}
         </h1>
-        <p className="mt-1 text-sm text-slate-500">{t('assets.form.description')}</p>
+        <p className="mt-1 text-sm text-slate-500">{t('form.description')}</p>
       </div>
 
       {error && (
@@ -265,18 +265,18 @@ export function AssetFormPage() {
       )}
       {saved && (
         <Alert>
-          <p className="text-sm">{t('assets.form.savedSuccess')}</p>
+          <p className="text-sm">{t('form.savedSuccess')}</p>
         </Alert>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Identity */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('assets.form.sectionIdentity')}</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('form.sectionIdentity')}</h2>
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <div className="space-y-1">
               <Label htmlFor="code" className="text-xs">
-                {t('assets.form.code')} <span className="text-red-500">*</span>
+                {t('form.code')} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="code"
@@ -288,7 +288,7 @@ export function AssetFormPage() {
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="name" className="text-xs">
-                {t('assets.form.name')} <span className="text-red-500">*</span>
+                {t('form.name')} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="name"
@@ -300,7 +300,7 @@ export function AssetFormPage() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="type" className="text-xs">
-                {t('assets.form.type')} <span className="text-red-500">*</span>
+                {t('form.type')} <span className="text-red-500">*</span>
               </Label>
               <select
                 id="type"
@@ -309,7 +309,7 @@ export function AssetFormPage() {
                 required
                 className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
-                <option value="">{t('assets.form.selectType')}</option>
+                <option value="">{t('form.selectType')}</option>
                 {(typesQuery.data ?? []).map((ty) => (
                   <option key={ty.uuid} value={ty.uuid}>
                     {ty.name}
@@ -318,7 +318,7 @@ export function AssetFormPage() {
               </select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="registration" className="text-xs">{t('assets.form.registrationNumber')}</Label>
+              <Label htmlFor="registration" className="text-xs">{t('form.registrationNumber')}</Label>
               <Input
                 id="registration"
                 value={form.registration_number}
@@ -327,7 +327,7 @@ export function AssetFormPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="serial" className="text-xs">{t('assets.form.serialNumber')}</Label>
+              <Label htmlFor="serial" className="text-xs">{t('form.serialNumber')}</Label>
               <Input
                 id="serial"
                 value={form.serial_number}
@@ -336,7 +336,7 @@ export function AssetFormPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="manufacturer" className="text-xs">{t('assets.form.manufacturer')}</Label>
+              <Label htmlFor="manufacturer" className="text-xs">{t('form.manufacturer')}</Label>
               <Input
                 id="manufacturer"
                 value={form.manufacturer}
@@ -345,7 +345,7 @@ export function AssetFormPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="model" className="text-xs">{t('assets.form.model')}</Label>
+              <Label htmlFor="model" className="text-xs">{t('form.model')}</Label>
               <Input
                 id="model"
                 value={form.model}
@@ -354,7 +354,7 @@ export function AssetFormPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="year" className="text-xs">{t('assets.form.yearOfManufacture')}</Label>
+              <Label htmlFor="year" className="text-xs">{t('form.yearOfManufacture')}</Label>
               <Input
                 id="year"
                 type="number"
@@ -370,11 +370,11 @@ export function AssetFormPage() {
 
         {/* Ownership */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('assets.form.sectionOwnership')}</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('form.sectionOwnership')}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="ownership" className="text-xs">
-                {t('assets.form.ownership')} <span className="text-red-500">*</span>
+                {t('form.ownership')} <span className="text-red-500">*</span>
               </Label>
               <select
                 id="ownership"
@@ -382,26 +382,26 @@ export function AssetFormPage() {
                 onChange={(e) => set('ownership', Number(e.target.value))}
                 className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
-                <option value={OWNERSHIP_CLUB}>{t('assets.ownership.club')}</option>
-                <option value={OWNERSHIP_PRIVATE}>{t('assets.ownership.private')}</option>
+                <option value={OWNERSHIP_CLUB}>{t('ownership.club')}</option>
+                <option value={OWNERSHIP_PRIVATE}>{t('ownership.private')}</option>
               </select>
             </div>
 
             {isPrivate && (
               <div className="space-y-1">
                 <Label htmlFor="owner" className="text-xs">
-                  {t('assets.form.ownerMemberUuid')}
+                  {t('form.ownerMemberUuid')}
                   <span className="ml-0.5 text-red-500">*</span>
                 </Label>
                 <Input
                   id="owner"
                   value={form.owner_member_uuid}
                   onChange={(e) => set('owner_member_uuid', e.target.value)}
-                  placeholder={t('assets.form.ownerPlaceholder')}
+                  placeholder={t('form.ownerPlaceholder')}
                   className="h-8 text-sm font-mono"
                   required={isPrivate}
                 />
-                <p className="text-xs text-slate-500">{t('assets.form.ownerHint')}</p>
+                <p className="text-xs text-slate-500">{t('form.ownerHint')}</p>
               </div>
             )}
           </div>
@@ -409,21 +409,21 @@ export function AssetFormPage() {
 
         {/* Financial */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('assets.form.sectionFinancial')}</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('form.sectionFinancial')}</h2>
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <div className="space-y-1">
-              <Label htmlFor="acqAccount" className="text-xs">{t('assets.form.acquisitionAccountUuid')}</Label>
+              <Label htmlFor="acqAccount" className="text-xs">{t('form.acquisitionAccountUuid')}</Label>
               <Input
                 id="acqAccount"
                 value={form.acquisition_account_uuid}
                 onChange={(e) => set('acquisition_account_uuid', e.target.value)}
-                placeholder={t('assets.form.accountPlaceholder')}
+                placeholder={t('form.accountPlaceholder')}
                 className="h-8 text-sm font-mono"
               />
-              <p className="text-xs text-slate-500">{t('assets.form.accountHint')}</p>
+              <p className="text-xs text-slate-500">{t('form.accountHint')}</p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="purchaseDate" className="text-xs">{t('assets.form.purchaseDate')}</Label>
+              <Label htmlFor="purchaseDate" className="text-xs">{t('form.purchaseDate')}</Label>
               <Input
                 id="purchaseDate"
                 type="date"
@@ -434,12 +434,12 @@ export function AssetFormPage() {
             </div>
             <DecimalInput
               id="purchasePrice"
-              label={t('assets.form.purchasePrice')}
+              label={t('form.purchasePrice')}
               value={form.purchase_price}
               onChange={(v) => set('purchase_price', v)}
             />
             <div className="space-y-1">
-              <Label htmlFor="deprStart" className="text-xs">{t('assets.form.depreciationStartDate')}</Label>
+              <Label htmlFor="deprStart" className="text-xs">{t('form.depreciationStartDate')}</Label>
               <Input
                 id="deprStart"
                 type="date"
@@ -449,7 +449,7 @@ export function AssetFormPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="deprMonths" className="text-xs">{t('assets.form.depreciationMonths')}</Label>
+              <Label htmlFor="deprMonths" className="text-xs">{t('form.depreciationMonths')}</Label>
               <Input
                 id="deprMonths"
                 type="number"
@@ -461,7 +461,7 @@ export function AssetFormPage() {
             </div>
             <DecimalInput
               id="residualValue"
-              label={t('assets.form.residualValue')}
+              label={t('form.residualValue')}
               value={form.residual_value}
               onChange={(v) => set('residual_value', v)}
             />
@@ -471,14 +471,14 @@ export function AssetFormPage() {
         {/* Actions */}
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={isSaving}>
-            {isSaving ? t('assets.actions.saving') : isEdit ? t('assets.actions.saveChanges') : t('assets.actions.create')}
+            {isSaving ? t('actions.saving') : isEdit ? t('actions.saveChanges') : t('actions.create')}
           </Button>
           <Button
             type="button"
             variant="ghost"
             onClick={() => navigate(isEdit ? `/assets/${uuid}` : '/assets')}
           >
-            {t('assets.actions.cancel')}
+            {t('actions.cancel')}
           </Button>
         </div>
       </form>

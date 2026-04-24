@@ -33,7 +33,7 @@ import { useCapability } from '../../../auth/hooks/useCapability'
 import { useAssetQuery, useTransitionAssetStatusMutation } from '../api'
 import type { AssetStatusHistoryEntry } from '../types'
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 const STATUS_LABELS: Record<number, string> = {
   1: 'operational',
@@ -56,10 +56,10 @@ const NEXT_STATUSES: Record<number, number[]> = {
   4: [],
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function formatDecimal(value: string | null): string {
-  if (!value) return '—'
+  if (!value) return '�?"'
   try {
     return new Decimal(value).toFixed(2)
   } catch {
@@ -68,7 +68,7 @@ function formatDecimal(value: string | null): string {
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return '—'
+  if (!value) return '�?"'
   return new Date(value).toLocaleDateString()
 }
 
@@ -79,7 +79,7 @@ function extractError(e: unknown, fallback: string): string {
   return fallback
 }
 
-// ── Status Timeline ───────────────────────────────────────────────────────────
+// �"?�"? Status Timeline �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function StatusTimeline({
   history,
@@ -90,7 +90,7 @@ function StatusTimeline({
 }) {
   if (history.length === 0) {
     return (
-      <p className="text-xs text-slate-500">{t('assets.detail.noHistory')}</p>
+      <p className="text-xs text-slate-500">{t('detail.noHistory')}</p>
     )
   }
 
@@ -101,7 +101,7 @@ function StatusTimeline({
           <span
             className={`mt-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[entry.status] ?? 'bg-slate-100 text-slate-500'}`}
           >
-            {t(`assets.status.${STATUS_LABELS[entry.status] ?? 'unknown'}`)}
+            {t(`status.${STATUS_LABELS[entry.status] ?? 'unknown'}`)}
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-xs text-slate-500">
@@ -116,7 +116,7 @@ function StatusTimeline({
   )
 }
 
-// ── Status Transition Form ────────────────────────────────────────────────────
+// �"?�"? Status Transition Form �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function TransitionForm({
   currentStatus,
@@ -138,7 +138,7 @@ function TransitionForm({
   return (
     <div className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
       <div className="space-y-1">
-        <Label className="text-xs">{t('assets.detail.newStatus')}</Label>
+        <Label className="text-xs">{t('detail.newStatus')}</Label>
         <select
           value={status}
           onChange={(e) => setStatus(Number(e.target.value))}
@@ -146,17 +146,17 @@ function TransitionForm({
         >
           {nextStatuses.map((s) => (
             <option key={s} value={s}>
-              {t(`assets.status.${STATUS_LABELS[s]}`)}
+              {t(`status.${STATUS_LABELS[s]}`)}
             </option>
           ))}
         </select>
       </div>
       <div className="space-y-1 sm:col-span-2">
-        <Label className="text-xs">{t('assets.detail.transitionReason')}</Label>
+        <Label className="text-xs">{t('detail.transitionReason')}</Label>
         <Input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder={t('assets.detail.reasonPlaceholder')}
+          placeholder={t('detail.reasonPlaceholder')}
           className="h-8 text-sm"
         />
       </div>
@@ -166,25 +166,25 @@ function TransitionForm({
           onClick={() => onTransition(status, reason)}
           disabled={saving}
         >
-          {saving ? t('assets.detail.transitioning') : t('assets.detail.applyTransition')}
+          {saving ? t('detail.transitioning') : t('detail.applyTransition')}
         </Button>
       </div>
     </div>
   )
 }
 
-// ── Info Row ──────────────────────────────────────────────────────────────────
+// �"?�"? Info Row �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
     <div className="flex justify-between gap-2 border-b border-slate-100 py-1.5 last:border-0">
       <span className="text-xs text-slate-500">{label}</span>
-      <span className="text-xs font-medium text-slate-800">{value ?? '—'}</span>
+      <span className="text-xs font-medium text-slate-800">{value ?? '�?"'}</span>
     </div>
   )
 }
 
-// ── Depreciation Summary ──────────────────────────────────────────────────────
+// �"?�"? Depreciation Summary �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function DepreciationSummary({
   purchasePrice,
@@ -199,11 +199,11 @@ function DepreciationSummary({
   durationMonths: number | null
   t: (k: string) => string
 }) {
-  let annualDepreciation = '—'
-  let depreciableBase = '—'
-  let elapsedMonths = '—'
-  let remainingMonths = '—'
-  let bookValue = '—'
+  let annualDepreciation = '�?"'
+  let depreciableBase = '�?"'
+  let elapsedMonths = '�?"'
+  let remainingMonths = '�?"'
+  let bookValue = '�?"'
 
   try {
     if (purchasePrice && durationMonths) {
@@ -233,16 +233,16 @@ function DepreciationSummary({
 
   return (
     <div className="space-y-0.5">
-      <InfoRow label={t('assets.detail.depreciableBase')} value={depreciableBase} />
-      <InfoRow label={t('assets.detail.annualDepreciation')} value={annualDepreciation} />
-      <InfoRow label={t('assets.detail.elapsedMonths')} value={elapsedMonths} />
-      <InfoRow label={t('assets.detail.remainingMonths')} value={remainingMonths} />
-      <InfoRow label={t('assets.detail.bookValue')} value={bookValue} />
+      <InfoRow label={t('detail.depreciableBase')} value={depreciableBase} />
+      <InfoRow label={t('detail.annualDepreciation')} value={annualDepreciation} />
+      <InfoRow label={t('detail.elapsedMonths')} value={elapsedMonths} />
+      <InfoRow label={t('detail.remainingMonths')} value={remainingMonths} />
+      <InfoRow label={t('detail.bookValue')} value={bookValue} />
     </div>
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// �"?�"? Main Component �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 export function AssetDetailPage() {
   const { t } = useTranslation('assets')
@@ -261,14 +261,14 @@ export function AssetDetailPage() {
       await transitionMutation.mutateAsync({ status, reason: reason || null })
       setTransitionError(null)
     } catch (e) {
-      setTransitionError(extractError(e, t('assets.error.transitionFailed')))
+      setTransitionError(extractError(e, t('error.transitionFailed')))
     }
   }
 
   if (assetQuery.isLoading) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('assets.states.loading')}</p>
+        <p className="text-sm text-slate-500">{t('states.loading')}</p>
       </section>
     )
   }
@@ -276,7 +276,7 @@ export function AssetDetailPage() {
   if (!asset) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('assets.states.notFound')}</p>
+        <p className="text-sm text-slate-500">{t('states.notFound')}</p>
       </section>
     )
   }
@@ -296,24 +296,24 @@ export function AssetDetailPage() {
               onClick={() => navigate('/assets')}
             >
               <ArrowLeft className="h-3 w-3" />
-              {t('assets.actions.backToList')}
+              {t('actions.backToList')}
             </button>
             <h1 className="text-xl font-semibold text-slate-900">{asset.name}</h1>
             <p className="mt-0.5 text-sm text-slate-500">{asset.code}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${currentStatusColor}`}>
-              {t(`assets.status.${currentStatusKey}`)}
+              {t(`status.${currentStatusKey}`)}
             </span>
             {canManage && (
               <Button size="sm" variant="ghost" onClick={() => navigate(`/assets/${uuid}/edit`)}>
                 <Pencil className="mr-1 h-3.5 w-3.5" />
-                {t('assets.actions.edit')}
+                {t('actions.edit')}
               </Button>
             )}
             <Button size="sm" variant="ghost" onClick={() => navigate(`/assets/${uuid}/pricing`)}>
               <BarChart3 className="mr-1 h-3.5 w-3.5" />
-              {t('assets.actions.pricing')}
+              {t('actions.pricing')}
             </Button>
           </div>
         </div>
@@ -329,22 +329,22 @@ export function AssetDetailPage() {
         {/* Identity card */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('assets.detail.identity')}</CardTitle>
+            <CardTitle className="text-sm">{t('detail.identity')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-0.5">
-              <InfoRow label={t('assets.form.type')} value={asset.asset_type_uuid} />
-              <InfoRow label={t('assets.form.registrationNumber')} value={asset.registration_number} />
-              <InfoRow label={t('assets.form.serialNumber')} value={asset.serial_number} />
-              <InfoRow label={t('assets.form.manufacturer')} value={asset.manufacturer} />
-              <InfoRow label={t('assets.form.model')} value={asset.model} />
-              <InfoRow label={t('assets.form.yearOfManufacture')} value={asset.year_of_manufacture} />
+              <InfoRow label={t('form.type')} value={asset.asset_type_uuid} />
+              <InfoRow label={t('form.registrationNumber')} value={asset.registration_number} />
+              <InfoRow label={t('form.serialNumber')} value={asset.serial_number} />
+              <InfoRow label={t('form.manufacturer')} value={asset.manufacturer} />
+              <InfoRow label={t('form.model')} value={asset.model} />
+              <InfoRow label={t('form.yearOfManufacture')} value={asset.year_of_manufacture} />
               <InfoRow
-                label={t('assets.form.ownership')}
+                label={t('form.ownership')}
                 value={
                   asset.ownership === 1
-                    ? t('assets.ownership.club')
-                    : t('assets.ownership.private')
+                    ? t('ownership.club')
+                    : t('ownership.private')
                 }
               />
             </div>
@@ -354,25 +354,25 @@ export function AssetDetailPage() {
         {/* Depreciation summary */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('assets.detail.depreciationSummary')}</CardTitle>
+            <CardTitle className="text-sm">{t('detail.depreciationSummary')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-3 space-y-0.5">
-              <InfoRow label={t('assets.form.purchaseDate')} value={formatDate(asset.purchase_date)} />
+              <InfoRow label={t('form.purchaseDate')} value={formatDate(asset.purchase_date)} />
               <InfoRow
-                label={t('assets.form.purchasePrice')}
+                label={t('form.purchasePrice')}
                 value={formatDecimal(asset.purchase_price)}
               />
               <InfoRow
-                label={t('assets.form.depreciationStartDate')}
+                label={t('form.depreciationStartDate')}
                 value={formatDate(asset.depreciation_start_date)}
               />
               <InfoRow
-                label={t('assets.form.depreciationMonths')}
+                label={t('form.depreciationMonths')}
                 value={asset.depreciation_duration_months}
               />
               <InfoRow
-                label={t('assets.form.residualValue')}
+                label={t('form.residualValue')}
                 value={formatDecimal(asset.residual_value)}
               />
             </div>
@@ -389,16 +389,16 @@ export function AssetDetailPage() {
         {/* Accounting references */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('assets.detail.accountingRefs')}</CardTitle>
+            <CardTitle className="text-sm">{t('detail.accountingRefs')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-0.5">
               <InfoRow
-                label={t('assets.form.acquisitionAccountUuid')}
+                label={t('form.acquisitionAccountUuid')}
                 value={asset.acquisition_account_uuid}
               />
               <InfoRow
-                label={t('assets.detail.accountCodeSnapshot')}
+                label={t('detail.accountCodeSnapshot')}
                 value={asset.accounting_account_code_snapshot}
               />
             </div>
@@ -409,7 +409,7 @@ export function AssetDetailPage() {
       {/* Lifecycle / status transitions */}
       {canManage && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('assets.detail.lifecycle')}</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('detail.lifecycle')}</h2>
           <StatusTimeline history={asset.status_history} t={t} />
           <TransitionForm
             currentStatus={asset.status}

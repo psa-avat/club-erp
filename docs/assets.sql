@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS asset_types (
     category                     SMALLINT      NOT NULL,  -- 1=Aircraft,2=LaunchEquipment,3=Support,4=Consumable,5=Service
     pricing_strategy             SMALLINT      NOT NULL,  -- 1=FlightHours,2=EngineTime,3=PerFlight,4=PerDuration,5=PerUnit,6=FlatRate
     is_trackable_in_ledger       BOOLEAN       NOT NULL DEFAULT FALSE,
+    is_active                    BOOLEAN       NOT NULL DEFAULT TRUE,
     standard_depreciation_years  INTEGER       NULL,
     created_at                   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at                   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
@@ -56,16 +57,23 @@ CREATE TABLE IF NOT EXISTS assets (
     asset_type_uuid            UUID           NOT NULL REFERENCES asset_types(uuid),
     code                       VARCHAR(64)    NOT NULL UNIQUE,
     name                       VARCHAR(150)   NOT NULL,
+    registration               VARCHAR(32)    NULL UNIQUE,
     serial_number              VARCHAR(100)   NULL,
+    manufacturer               VARCHAR(100)   NULL,
+    model                      VARCHAR(100)   NULL,
+    year_of_manufacture        SMALLINT       NULL,
     ownership                  SMALLINT       NOT NULL,   -- 1=Club,2=Private
     owner_member_uuid          UUID           NULL,       -- members.uuid (application-level FK)
     purchase_date              DATE           NULL,
     purchase_price             NUMERIC(10,4)  NULL,
     acquisition_account_uuid   UUID           NULL REFERENCES accounting_accounts(uuid),
+    accounting_account_code_snapshot VARCHAR(32) NULL,
     status                     SMALLINT       NOT NULL DEFAULT 1, -- 1=Operational,2=Maintenance,3=OutOfService,4=Disposed
     depreciation_start_date    DATE           NULL,
-    depreciation_years         INTEGER        NULL,
+    depreciation_years         SMALLINT       NULL,
     residual_value             NUMERIC(10,4)  NULL,
+    useful_life_years          SMALLINT       NULL,
+    notes                      TEXT           NULL,
     is_active                  BOOLEAN        NOT NULL DEFAULT TRUE,
     created_at                 TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     updated_at                 TIMESTAMPTZ    NOT NULL DEFAULT NOW(),

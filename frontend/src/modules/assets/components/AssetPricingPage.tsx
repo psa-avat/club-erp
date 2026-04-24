@@ -48,7 +48,7 @@ import {
 } from '../api'
 import type { AssetPricingVersion, PricingItem, CreatePricingItemPayload } from '../types'
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 const VERSION_STATUS_DRAFT = 1
 const VERSION_STATUS_ACTIVE = 2
@@ -63,7 +63,7 @@ const UNIT_LABELS: Record<number, string> = {
   5: 'Fixed',
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function extractError(e: unknown, fallback: string): string {
   if (e instanceof AxiosError && e.response?.data?.detail) {
@@ -90,19 +90,19 @@ function timelineBar(fy: FiscalYear, version: AssetPricingVersion) {
 }
 
 function formatPrice(value: string | null | undefined): string {
-  if (!value) return '—'
+  if (!value) return '�?"'
   try { return new Decimal(value).toFixed(2) } catch { return value }
 }
 
-// ── Version Badge ─────────────────────────────────────────────────────────────
+// �"?�"? Version Badge �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function VersionBadge({ status, t }: { status: number; t: (k: string) => string }) {
   const label =
     status === VERSION_STATUS_DRAFT
-      ? t('assets.pricing.statusDraft')
+      ? t('pricing.statusDraft')
       : status === VERSION_STATUS_ACTIVE
-      ? t('assets.pricing.statusActive')
-      : t('assets.pricing.statusArchived')
+      ? t('pricing.statusActive')
+      : t('pricing.statusArchived')
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${versionStatusClass(status)}`}>
       {label}
@@ -110,7 +110,7 @@ function VersionBadge({ status, t }: { status: number; t: (k: string) => string 
   )
 }
 
-// ── Version Form ──────────────────────────────────────────────────────────────
+// �"?�"? Version Form �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 type VersionFormState = {
   name: string
@@ -140,44 +140,44 @@ function VersionForm({
   return (
     <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-4">
       <div className="space-y-1 sm:col-span-2">
-        <Label className="text-xs">{t('assets.pricing.versionName')}</Label>
+        <Label className="text-xs">{t('pricing.versionName')}</Label>
         <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('assets.pricing.fromDate')}</Label>
+        <Label className="text-xs">{t('pricing.fromDate')}</Label>
         <Input type="date" value={form.from_date} onChange={(e) => set('from_date', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('assets.pricing.toDate')}</Label>
+        <Label className="text-xs">{t('pricing.toDate')}</Label>
         <Input type="date" value={form.to_date} onChange={(e) => set('to_date', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('assets.pricing.versionStatus')}</Label>
+        <Label className="text-xs">{t('pricing.versionStatus')}</Label>
         <select
           value={form.status}
           onChange={(e) => set('status', Number(e.target.value))}
           className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
         >
-          <option value={VERSION_STATUS_DRAFT}>{t('assets.pricing.statusDraft')}</option>
-          <option value={VERSION_STATUS_ACTIVE}>{t('assets.pricing.statusActive')}</option>
-          <option value={VERSION_STATUS_ARCHIVED}>{t('assets.pricing.statusArchived')}</option>
+          <option value={VERSION_STATUS_DRAFT}>{t('pricing.statusDraft')}</option>
+          <option value={VERSION_STATUS_ACTIVE}>{t('pricing.statusActive')}</option>
+          <option value={VERSION_STATUS_ARCHIVED}>{t('pricing.statusArchived')}</option>
         </select>
       </div>
       <div className="flex items-end gap-2 sm:col-span-3">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !form.name || !form.from_date}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('assets.pricing.saving') : t('assets.pricing.save')}
+          {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('assets.pricing.cancel')}
+          {t('pricing.cancel')}
         </Button>
       </div>
     </div>
   )
 }
 
-// ── Pricing Item Form ─────────────────────────────────────────────────────────
+// �"?�"? Pricing Item Form �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 type ItemFormState = {
   name: string
@@ -269,11 +269,11 @@ function PricingItemForm({
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
-          <Label className="text-xs">{t('assets.pricing.itemName')} *</Label>
+          <Label className="text-xs">{t('pricing.itemName')} *</Label>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.itemUnit')}</Label>
+          <Label className="text-xs">{t('pricing.itemUnit')}</Label>
           <select
             value={form.unit}
             onChange={(e) => set('unit', Number(e.target.value))}
@@ -281,13 +281,13 @@ function PricingItemForm({
           >
             {Object.entries(UNIT_LABELS).map(([k, label]) => (
               <option key={k} value={Number(k)}>
-                {t(`assets.pricing.unit${label}`)}
+                {t(`pricing.unit${label}`)}
               </option>
             ))}
           </select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.basePrice')} *</Label>
+          <Label className="text-xs">{t('pricing.basePrice')} *</Label>
           <Input
             value={form.base_price}
             onChange={(e) => set('base_price', e.target.value)}
@@ -296,13 +296,13 @@ function PricingItemForm({
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.flightType')}</Label>
+          <Label className="text-xs">{t('pricing.flightType')}</Label>
           <select
             value={form.asset_flight_type_uuid}
             onChange={(e) => set('asset_flight_type_uuid', e.target.value)}
             className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
-            <option value="">{t('assets.pricing.noFlightType')}</option>
+            <option value="">{t('pricing.noFlightType')}</option>
             {flightTypes.map((ft) => (
               <option key={ft.uuid} value={ft.uuid}>{ft.name}</option>
             ))}
@@ -313,51 +313,51 @@ function PricingItemForm({
       {/* Threshold pair */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.thresholdCount')}</Label>
+          <Label className="text-xs">{t('pricing.thresholdCount')}</Label>
           <Input
             value={form.threshold_unit_count}
             onChange={(e) => set('threshold_unit_count', e.target.value)}
-            placeholder="—"
+            placeholder="�?""
             className={`h-8 text-sm font-mono ${!thresholdComplete ? 'border-red-400' : ''}`}
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.thresholdPrice')}</Label>
+          <Label className="text-xs">{t('pricing.thresholdPrice')}</Label>
           <Input
             value={form.threshold_price}
             onChange={(e) => set('threshold_price', e.target.value)}
-            placeholder="—"
+            placeholder="�?""
             className={`h-8 text-sm font-mono ${!thresholdComplete ? 'border-red-400' : ''}`}
           />
         </div>
       </div>
       {!thresholdComplete && (
-        <p className="text-xs text-red-600">{t('assets.pricing.thresholdPairRequired')}</p>
+        <p className="text-xs text-red-600">{t('pricing.thresholdPairRequired')}</p>
       )}
 
       {/* Pack pair */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.packCount')}</Label>
+          <Label className="text-xs">{t('pricing.packCount')}</Label>
           <Input
             value={form.pack_unit_count}
             onChange={(e) => set('pack_unit_count', e.target.value)}
-            placeholder="—"
+            placeholder="�?""
             className={`h-8 text-sm font-mono ${!packComplete ? 'border-red-400' : ''}`}
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assets.pricing.packPrice')}</Label>
+          <Label className="text-xs">{t('pricing.packPrice')}</Label>
           <Input
             value={form.pack_price}
             onChange={(e) => set('pack_price', e.target.value)}
-            placeholder="—"
+            placeholder="�?""
             className={`h-8 text-sm font-mono ${!packComplete ? 'border-red-400' : ''}`}
           />
         </div>
       </div>
       {!packComplete && (
-        <p className="text-xs text-red-600">{t('assets.pricing.packPairRequired')}</p>
+        <p className="text-xs text-red-600">{t('pricing.packPairRequired')}</p>
       )}
 
       {/* Flags */}
@@ -369,7 +369,7 @@ function PricingItemForm({
             onChange={(e) => set('include_insurance', e.target.checked)}
             className="h-4 w-4 rounded border-slate-300"
           />
-          {t('assets.pricing.includeInsurance')}
+          {t('pricing.includeInsurance')}
         </label>
         <label className="flex cursor-pointer items-center gap-2 text-xs">
           <input
@@ -378,25 +378,25 @@ function PricingItemForm({
             onChange={(e) => set('include_fuel', e.target.checked)}
             className="h-4 w-4 rounded border-slate-300"
           />
-          {t('assets.pricing.includeFuel')}
+          {t('pricing.includeFuel')}
         </label>
       </div>
 
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('assets.pricing.saving') : t('assets.pricing.save')}
+          {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('assets.pricing.cancel')}
+          {t('pricing.cancel')}
         </Button>
       </div>
     </div>
   )
 }
 
-// ── Pricing Items Panel ───────────────────────────────────────────────────────
+// �"?�"? Pricing Items Panel �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function PricingItemsPanel({
   version,
@@ -429,7 +429,7 @@ function PricingItemsPanel({
       setShowForm(false)
       setItemError(null)
     } catch (e) {
-      setItemError(extractError(e, t('assets.pricing.error.saveFailed')))
+      setItemError(extractError(e, t('pricing.error.saveFailed')))
     }
   }
 
@@ -440,17 +440,17 @@ function PricingItemsPanel({
       setEditingItem(null)
       setItemError(null)
     } catch (e) {
-      setItemError(extractError(e, t('assets.pricing.error.saveFailed')))
+      setItemError(extractError(e, t('pricing.error.saveFailed')))
     }
   }
 
   async function handleDelete(item: PricingItem) {
-    if (!window.confirm(t('assets.pricing.confirmDeleteItem'))) return
+    if (!window.confirm(t('pricing.confirmDeleteItem'))) return
     try {
       await deleteMutation.mutateAsync(item.uuid)
       setItemError(null)
     } catch (e) {
-      setItemError(extractError(e, t('assets.pricing.error.deleteFailed')))
+      setItemError(extractError(e, t('pricing.error.deleteFailed')))
     }
   }
 
@@ -460,11 +460,11 @@ function PricingItemsPanel({
   return (
     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-slate-700">{t('assets.pricing.items')}</h3>
+        <h3 className="text-xs font-semibold text-slate-700">{t('pricing.items')}</h3>
         {editable && !showForm && !editingItem && (
           <Button size="sm" variant="ghost" onClick={() => setShowForm(true)}>
             <Plus className="mr-1 h-3 w-3" />
-            {t('assets.pricing.addItem')}
+            {t('pricing.addItem')}
           </Button>
         )}
       </div>
@@ -483,10 +483,10 @@ function PricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-slate-500">{t('assets.states.loading')}</p>
+        <p className="text-xs text-slate-500">{t('states.loading')}</p>
       ) : items.length === 0 && !showForm ? (
         <p className="rounded border border-dashed border-slate-200 py-3 text-center text-xs text-slate-500">
-          {t('assets.pricing.noItems')}
+          {t('pricing.noItems')}
         </p>
       ) : (
         <div className="space-y-2">
@@ -509,20 +509,20 @@ function PricingItemsPanel({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
                   <p className="text-xs text-slate-500">
-                    {t(`assets.pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)} ·{' '}
+                    {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)} ·{' '}
                     {formatPrice(item.base_price)}
                     {item.threshold_price && ` · >${item.threshold_unit_count}: ${formatPrice(item.threshold_price)}`}
-                    {item.pack_price && ` · ×${item.pack_unit_count}: ${formatPrice(item.pack_price)}`}
+                    {item.pack_price && ` · �-${item.pack_unit_count}: ${formatPrice(item.pack_price)}`}
                   </p>
                   <div className="mt-0.5 flex gap-2">
                     {item.include_insurance && (
                       <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">
-                        {t('assets.pricing.includeInsurance')}
+                        {t('pricing.includeInsurance')}
                       </span>
                     )}
                     {item.include_fuel && (
                       <span className="rounded bg-orange-50 px-1.5 py-0.5 text-xs text-orange-600">
-                        {t('assets.pricing.includeFuel')}
+                        {t('pricing.includeFuel')}
                       </span>
                     )}
                   </div>
@@ -554,7 +554,7 @@ function PricingItemsPanel({
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// �"?�"? Main Component �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 export function AssetPricingPage() {
   const { t } = useTranslation('assets')
@@ -624,7 +624,7 @@ export function AssetPricingPage() {
       setExpandedVersionUuid(created.uuid)
       setError(null)
     } catch (e) {
-      setError(extractError(e, t('assets.pricing.error.saveFailed')))
+      setError(extractError(e, t('pricing.error.saveFailed')))
     }
   }
 
@@ -641,18 +641,18 @@ export function AssetPricingPage() {
       setEditingVersion(null)
       setError(null)
     } catch (e) {
-      setError(extractError(e, t('assets.pricing.error.saveFailed')))
+      setError(extractError(e, t('pricing.error.saveFailed')))
     }
   }
 
   async function handleDeleteVersion(v: AssetPricingVersion) {
-    if (!window.confirm(t('assets.pricing.confirmDeleteVersion', { name: v.name }))) return
+    if (!window.confirm(t('pricing.confirmDeleteVersion', { name: v.name }))) return
     try {
       await deleteVersionMutation.mutateAsync(v.uuid)
       if (expandedVersionUuid === v.uuid) setExpandedVersionUuid(null)
       setError(null)
     } catch (e) {
-      setError(extractError(e, t('assets.pricing.error.deleteFailed')))
+      setError(extractError(e, t('pricing.error.deleteFailed')))
     }
   }
 
@@ -662,7 +662,7 @@ export function AssetPricingPage() {
   if (!canView) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('assets.noPermission')}</p>
+        <p className="text-sm text-slate-500">{t('noPermission')}</p>
       </section>
     )
   }
@@ -677,14 +677,14 @@ export function AssetPricingPage() {
           onClick={() => navigate(uuid ? `/assets/${uuid}` : '/assets')}
         >
           <ArrowLeft className="h-3 w-3" />
-          {t('assets.actions.backToDetail')}
+          {t('actions.backToDetail')}
         </button>
         <h1 className="text-xl font-semibold text-slate-900">
-          {asset ? `${asset.name} — ` : ''}{t('assets.pricing.title')}
+          {asset ? `${asset.name} �?" ` : ''}{t('pricing.title')}
         </h1>
         {assetType && (
           <p className="mt-1 text-sm text-slate-500">
-            {t('assets.pricing.typeLabel')}: {assetType.name}
+            {t('pricing.typeLabel')}: {assetType.name}
           </p>
         )}
       </div>
@@ -698,7 +698,7 @@ export function AssetPricingPage() {
       {/* FY Selector */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <Label className="text-xs font-semibold">{t('assets.pricing.fiscalYear')}</Label>
+          <Label className="text-xs font-semibold">{t('pricing.fiscalYear')}</Label>
           <div className="flex flex-wrap gap-2">
             {allFy.map((fy) => (
               <button
@@ -717,12 +717,12 @@ export function AssetPricingPage() {
               >
                 {fy.code}
                 {fy.state === FY_STATE_CLOSED && (
-                  <span className="ml-1 text-slate-400">({t('assets.pricing.fyClosed')})</span>
+                  <span className="ml-1 text-slate-400">({t('pricing.fyClosed')})</span>
                 )}
               </button>
             ))}
             {allFy.length === 0 && (
-              <p className="text-xs text-slate-500">{t('assets.pricing.noFiscalYears')}</p>
+              <p className="text-xs text-slate-500">{t('pricing.noFiscalYears')}</p>
             )}
           </div>
         </div>
@@ -733,12 +733,12 @@ export function AssetPricingPage() {
           {/* Version header */}
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-700">
-              {t('assets.pricing.versions')} — {selectedFy.label}
+              {t('pricing.versions')} �?" {selectedFy.label}
             </h2>
             {canEdit && !showNewVersionForm && !editingVersion && (
               <Button size="sm" onClick={() => setShowNewVersionForm(true)}>
                 <Plus className="mr-1 h-3.5 w-3.5" />
-                {t('assets.pricing.addVersion')}
+                {t('pricing.addVersion')}
               </Button>
             )}
           </div>
@@ -761,10 +761,10 @@ export function AssetPricingPage() {
           )}
 
           {versionsQuery.isLoading ? (
-            <p className="text-sm text-slate-500">{t('assets.states.loading')}</p>
+            <p className="text-sm text-slate-500">{t('states.loading')}</p>
           ) : versions.length === 0 && !showNewVersionForm ? (
             <p className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-              {t('assets.pricing.noVersions')}
+              {t('pricing.noVersions')}
             </p>
           ) : (
             <>
@@ -776,7 +776,7 @@ export function AssetPricingPage() {
                     return (
                       <div
                         key={v.uuid}
-                        title={`${v.name} · ${v.from_date} → ${v.to_date ?? '∞'}`}
+                        title={`${v.name} · ${v.from_date} �?' ${v.to_date ?? '�^z'}`}
                         className={`absolute top-0 h-full rounded opacity-80 hover:opacity-100 ${versionStatusClass(v.status)}`}
                         style={{ left, width }}
                       />
@@ -819,13 +819,13 @@ export function AssetPricingPage() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-900">{v.name}</p>
                           <p className="text-xs text-slate-500">
-                            {v.from_date} → {v.to_date ?? t('assets.pricing.openEnd')}
+                            {v.from_date} �?' {v.to_date ?? t('pricing.openEnd')}
                           </p>
                         </div>
                         <VersionBadge status={v.status} t={t} />
                         {v.is_locked && (
                           <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">
-                            {t('assets.pricing.locked')}
+                            {t('pricing.locked')}
                           </span>
                         )}
                         {canEdit && !v.is_locked && (

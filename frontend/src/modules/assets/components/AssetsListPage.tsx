@@ -35,7 +35,7 @@ import {
 } from '../api'
 import type { AssetFilters, AssetSummary } from '../types'
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 const ASSET_STATUS_OPERATIONAL = 1
 const ASSET_STATUS_MAINTENANCE = 2
@@ -45,7 +45,7 @@ const ASSET_STATUS_DISPOSED = 4
 const ASSET_OWNERSHIP_CLUB = 1
 const ASSET_OWNERSHIP_PRIVATE = 2
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function statusLabel(
   status: number,
@@ -53,13 +53,13 @@ function statusLabel(
 ): { label: string; className: string } {
   switch (status) {
     case ASSET_STATUS_OPERATIONAL:
-      return { label: t('assets.status.operational'), className: 'bg-green-100 text-green-800' }
+      return { label: t('status.operational'), className: 'bg-green-100 text-green-800' }
     case ASSET_STATUS_MAINTENANCE:
-      return { label: t('assets.status.maintenance'), className: 'bg-amber-100 text-amber-800' }
+      return { label: t('status.maintenance'), className: 'bg-amber-100 text-amber-800' }
     case ASSET_STATUS_OUT_OF_SERVICE:
-      return { label: t('assets.status.outOfService'), className: 'bg-red-100 text-red-800' }
+      return { label: t('status.outOfService'), className: 'bg-red-100 text-red-800' }
     case ASSET_STATUS_DISPOSED:
-      return { label: t('assets.status.disposed'), className: 'bg-slate-100 text-slate-500' }
+      return { label: t('status.disposed'), className: 'bg-slate-100 text-slate-500' }
     default:
       return { label: String(status), className: 'bg-slate-100 text-slate-500' }
   }
@@ -67,8 +67,8 @@ function statusLabel(
 
 function ownershipLabel(ownership: number, t: (k: string) => string): string {
   return ownership === ASSET_OWNERSHIP_CLUB
-    ? t('assets.ownership.club')
-    : t('assets.ownership.private')
+    ? t('ownership.club')
+    : t('ownership.private')
 }
 
 function extractError(e: unknown, fallback: string): string {
@@ -78,14 +78,14 @@ function extractError(e: unknown, fallback: string): string {
   return fallback
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────────────
+// �"?�"? Status Badge �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function StatusBadge({ status, t }: { status: number; t: (k: string) => string }) {
   const { label, className } = statusLabel(status, t)
   return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}>{label}</span>
 }
 
-// ── Quick Status Actions ──────────────────────────────────────────────────────
+// �"?�"? Quick Status Actions �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function StatusActions({
   asset,
@@ -103,7 +103,7 @@ function StatusActions({
       {asset.status !== ASSET_STATUS_OPERATIONAL && (
         <button
           type="button"
-          title={t('assets.actions.setOperational')}
+          title={t('actions.setOperational')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OPERATIONAL)}
           className="rounded p-1 text-slate-400 hover:bg-green-50 hover:text-green-700"
         >
@@ -113,7 +113,7 @@ function StatusActions({
       {asset.status !== ASSET_STATUS_MAINTENANCE && (
         <button
           type="button"
-          title={t('assets.actions.setMaintenance')}
+          title={t('actions.setMaintenance')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_MAINTENANCE)}
           className="rounded p-1 text-slate-400 hover:bg-amber-50 hover:text-amber-700"
         >
@@ -123,7 +123,7 @@ function StatusActions({
       {asset.status !== ASSET_STATUS_OUT_OF_SERVICE && (
         <button
           type="button"
-          title={t('assets.actions.setOutOfService')}
+          title={t('actions.setOutOfService')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OUT_OF_SERVICE)}
           className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-700"
         >
@@ -132,7 +132,7 @@ function StatusActions({
       )}
       <button
         type="button"
-        title={t('assets.actions.setDisposed')}
+        title={t('actions.setDisposed')}
         onClick={() => onTransition(asset.uuid, ASSET_STATUS_DISPOSED)}
         className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
       >
@@ -142,7 +142,7 @@ function StatusActions({
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// �"?�"? Main Component �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 export function AssetsListPage() {
   const { t } = useTranslation('assets')
@@ -169,7 +169,7 @@ export function AssetsListPage() {
       )
     : assets
 
-  // Per-row transition mutation — stored as a map of uuid → mutation
+  // Per-row transition mutation �?" stored as a map of uuid �?' mutation
   // We use a single shared mutation and track pending uuid
   const [pendingUuid, setPendingUuid] = useState<string | null>(null)
   const transitionMutation = useTransitionAssetStatusMutation(pendingUuid ?? '')
@@ -180,7 +180,7 @@ export function AssetsListPage() {
       await transitionMutation.mutateAsync({ status })
       setTransitionError(null)
     } catch (e) {
-      setTransitionError(extractError(e, t('assets.error.transitionFailed')))
+      setTransitionError(extractError(e, t('error.transitionFailed')))
     } finally {
       setPendingUuid(null)
     }
@@ -193,7 +193,7 @@ export function AssetsListPage() {
   if (!canView) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('assets.noPermission')}</p>
+        <p className="text-sm text-slate-500">{t('noPermission')}</p>
       </section>
     )
   }
@@ -204,13 +204,13 @@ export function AssetsListPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">{t('assets.list.title')}</h1>
-            <p className="mt-1 text-sm text-slate-500">{t('assets.list.description')}</p>
+            <h1 className="text-xl font-semibold text-slate-900">{t('list.title')}</h1>
+            <p className="mt-1 text-sm text-slate-500">{t('list.description')}</p>
           </div>
           {canManage && (
             <Button onClick={() => navigate('/assets/new')} size="sm">
               <Plus className="mr-1 h-4 w-4" />
-              {t('assets.actions.newAsset')}
+              {t('actions.newAsset')}
             </Button>
           )}
         </div>
@@ -221,24 +221,24 @@ export function AssetsListPage() {
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           {/* Text search */}
           <div className="space-y-1">
-            <Label className="text-xs">{t('assets.filters.search')}</Label>
+            <Label className="text-xs">{t('filters.search')}</Label>
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('assets.filters.searchPlaceholder')}
+              placeholder={t('filters.searchPlaceholder')}
               className="h-8 text-sm"
             />
           </div>
 
           {/* Type filter */}
           <div className="space-y-1">
-            <Label className="text-xs">{t('assets.filters.type')}</Label>
+            <Label className="text-xs">{t('filters.type')}</Label>
             <select
               value={filters.asset_type_uuid ?? ''}
               onChange={(e) => setFilter('asset_type_uuid', e.target.value || undefined)}
               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
-              <option value="">{t('assets.filters.allTypes')}</option>
+              <option value="">{t('filters.allTypes')}</option>
               {types.map((ty) => (
                 <option key={ty.uuid} value={ty.uuid}>
                   {ty.name}
@@ -249,7 +249,7 @@ export function AssetsListPage() {
 
           {/* Status filter */}
           <div className="space-y-1">
-            <Label className="text-xs">{t('assets.filters.status')}</Label>
+            <Label className="text-xs">{t('filters.status')}</Label>
             <select
               value={filters.status ?? ''}
               onChange={(e) =>
@@ -257,17 +257,17 @@ export function AssetsListPage() {
               }
               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
-              <option value="">{t('assets.filters.allStatuses')}</option>
-              <option value={ASSET_STATUS_OPERATIONAL}>{t('assets.status.operational')}</option>
-              <option value={ASSET_STATUS_MAINTENANCE}>{t('assets.status.maintenance')}</option>
-              <option value={ASSET_STATUS_OUT_OF_SERVICE}>{t('assets.status.outOfService')}</option>
-              <option value={ASSET_STATUS_DISPOSED}>{t('assets.status.disposed')}</option>
+              <option value="">{t('filters.allStatuses')}</option>
+              <option value={ASSET_STATUS_OPERATIONAL}>{t('status.operational')}</option>
+              <option value={ASSET_STATUS_MAINTENANCE}>{t('status.maintenance')}</option>
+              <option value={ASSET_STATUS_OUT_OF_SERVICE}>{t('status.outOfService')}</option>
+              <option value={ASSET_STATUS_DISPOSED}>{t('status.disposed')}</option>
             </select>
           </div>
 
           {/* Ownership filter */}
           <div className="space-y-1">
-            <Label className="text-xs">{t('assets.filters.ownership')}</Label>
+            <Label className="text-xs">{t('filters.ownership')}</Label>
             <select
               value={filters.ownership ?? ''}
               onChange={(e) =>
@@ -275,9 +275,9 @@ export function AssetsListPage() {
               }
               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
-              <option value="">{t('assets.filters.allOwnership')}</option>
-              <option value={ASSET_OWNERSHIP_CLUB}>{t('assets.ownership.club')}</option>
-              <option value={ASSET_OWNERSHIP_PRIVATE}>{t('assets.ownership.private')}</option>
+              <option value="">{t('filters.allOwnership')}</option>
+              <option value={ASSET_OWNERSHIP_CLUB}>{t('ownership.club')}</option>
+              <option value={ASSET_OWNERSHIP_PRIVATE}>{t('ownership.private')}</option>
             </select>
           </div>
         </div>
@@ -292,7 +292,7 @@ export function AssetsListPage() {
             className="h-4 w-4 rounded border-slate-300"
           />
           <Label htmlFor="active-filter" className="cursor-pointer text-xs">
-            {t('assets.filters.activeOnly')}
+            {t('filters.activeOnly')}
           </Label>
         </div>
       </div>
@@ -307,9 +307,9 @@ export function AssetsListPage() {
       {/* List */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         {assetsQuery.isLoading ? (
-          <p className="p-6 text-sm text-slate-500">{t('assets.states.loading')}</p>
+          <p className="p-6 text-sm text-slate-500">{t('states.loading')}</p>
         ) : filtered.length === 0 ? (
-          <p className="p-6 text-sm text-slate-500">{t('assets.states.empty')}</p>
+          <p className="p-6 text-sm text-slate-500">{t('states.empty')}</p>
         ) : (
           <div className="divide-y divide-slate-100">
             {filtered.map((asset) => (
@@ -344,7 +344,7 @@ export function AssetsListPage() {
                     className="shrink-0 rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-50"
                     onClick={() => navigate(`/assets/${asset.uuid}/edit`)}
                   >
-                    {t('assets.actions.edit')}
+                    {t('actions.edit')}
                   </button>
                 )}
 
@@ -353,7 +353,7 @@ export function AssetsListPage() {
                   className="shrink-0 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
                   onClick={() => navigate(`/assets/${asset.uuid}/pricing`)}
                 >
-                  {t('assets.actions.pricing')}
+                  {t('actions.pricing')}
                 </button>
               </div>
             ))}

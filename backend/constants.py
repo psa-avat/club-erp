@@ -68,4 +68,5 @@ CAPABILITY_SEEDS = (
     (CAP_MANAGE_ACCOUNTING_SETTINGS, "Parametrage comptable"),
     (CAP_MANAGE_USERS, "Gestion des utilisateurs"),
     (CAP_MEMBER_PORTAL, "Acces portail membre"),
+    (CAP_MANAGE_ASSETS, "Gestion des aeronefs et equipements"),
 )
