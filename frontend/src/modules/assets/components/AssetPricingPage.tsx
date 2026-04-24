@@ -317,7 +317,7 @@ function PricingItemForm({
           <Input
             value={form.threshold_unit_count}
             onChange={(e) => set('threshold_unit_count', e.target.value)}
-            placeholder="�?""
+            placeholder="0"
             className={`h-8 text-sm font-mono ${!thresholdComplete ? 'border-red-400' : ''}`}
           />
         </div>
@@ -326,7 +326,7 @@ function PricingItemForm({
           <Input
             value={form.threshold_price}
             onChange={(e) => set('threshold_price', e.target.value)}
-            placeholder="�?""
+            placeholder="0.0000"
             className={`h-8 text-sm font-mono ${!thresholdComplete ? 'border-red-400' : ''}`}
           />
         </div>
@@ -342,7 +342,7 @@ function PricingItemForm({
           <Input
             value={form.pack_unit_count}
             onChange={(e) => set('pack_unit_count', e.target.value)}
-            placeholder="�?""
+            placeholder="0"
             className={`h-8 text-sm font-mono ${!packComplete ? 'border-red-400' : ''}`}
           />
         </div>
@@ -351,7 +351,7 @@ function PricingItemForm({
           <Input
             value={form.pack_price}
             onChange={(e) => set('pack_price', e.target.value)}
-            placeholder="�?""
+            placeholder="0.0000"
             className={`h-8 text-sm font-mono ${!packComplete ? 'border-red-400' : ''}`}
           />
         </div>
