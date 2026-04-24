@@ -19,9 +19,10 @@
  """
 import logging
 from uuid import UUID
+from datetime import date
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Asset, AssetStatusHistory, AssetType, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
@@ -482,19 +483,6 @@ async def lookup_pricing(
     lookup_date: "date",
     flight_type_uuid: UUID | None = None,
 ) -> tuple[PricingVersion, PricingItem]:
-    """Find the active pricing item for an asset on a given date.
-
-    Lookup order:
-    1. Find the asset to obtain its asset_type_uuid.
-    2. Find pricing versions scoped to that asset type, status=Active (2),
-       where from_date <= lookup_date <= to_date (or to_date is NULL).
-    3. Among items in those versions, prefer an item matching the requested
-       flight_type_uuid; fall back to a NULL flight_type item.
-    4. Raise 404 if no match is found.
-    """
-    from datetime import date as date_type
-    from sqlalchemy import and_, or_
-
     asset = await get_asset(db, asset_uuid)
 
     # Active versions for this asset type on the given date

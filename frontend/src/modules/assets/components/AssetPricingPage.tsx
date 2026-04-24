@@ -690,7 +690,7 @@ export function AssetPricingPage() {
       </div>
 
       {error && (
-        <Alert variant="destructive">
+        <Alert>
           <p className="text-sm">{error}</p>
         </Alert>
       )}

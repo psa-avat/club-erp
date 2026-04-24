@@ -21,7 +21,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { Plus, Wrench, BanCircle, CheckCircle2, Trash2 } from 'lucide-react'
+import { Plus, Wrench, Ban, CheckCircle2, Trash2 } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
@@ -127,7 +127,7 @@ function StatusActions({
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OUT_OF_SERVICE)}
           className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-700"
         >
-          <BanCircle className="h-4 w-4" />
+          <Ban className="h-4 w-4" />
         </button>
       )}
       <button
@@ -299,7 +299,7 @@ export function AssetsListPage() {
 
       {/* Error */}
       {transitionError && (
-        <Alert variant="destructive">
+        <Alert>
           <p className="text-sm">{transitionError}</p>
         </Alert>
       )}

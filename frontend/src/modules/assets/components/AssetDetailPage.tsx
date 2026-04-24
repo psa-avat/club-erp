@@ -189,14 +189,12 @@ function InfoRow({ label, value }: { label: string; value: string | number | nul
 function DepreciationSummary({
   purchasePrice,
   residualValue,
-  purchaseDate,
   depreciationStartDate,
   durationMonths,
   t,
 }: {
   purchasePrice: string | null
   residualValue: string | null
-  purchaseDate: string | null
   depreciationStartDate: string | null
   durationMonths: number | null
   t: (k: string) => string
@@ -322,7 +320,7 @@ export function AssetDetailPage() {
       </div>
 
       {transitionError && (
-        <Alert variant="destructive">
+        <Alert>
           <p className="text-sm">{transitionError}</p>
         </Alert>
       )}
@@ -381,7 +379,6 @@ export function AssetDetailPage() {
             <DepreciationSummary
               purchasePrice={asset.purchase_price}
               residualValue={asset.residual_value}
-              purchaseDate={asset.purchase_date}
               depreciationStartDate={asset.depreciation_start_date}
               durationMonths={asset.depreciation_duration_months}
               t={t}
