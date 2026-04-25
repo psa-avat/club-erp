@@ -34,7 +34,6 @@ import {
   useFiscalYearsQuery,
   useUpdatePricingVersionMutation,
   useDeletePricingVersionMutation,
-  type FiscalYear,
 } from '../../banque/api'
 import {
   useAssetTypesQuery,
@@ -71,6 +70,8 @@ const UNIT_LABELS: Record<number, string> = {
 const pricingQueryKeys = {
   allVersions: (fyUuid: string) => ['pricing', 'all-versions', fyUuid] as const,
 }
+
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ function useCreatePricingVersionMutation(fiscalYearUuid: string) {
 
 // ── Version Badge ─────────────────────────────────────────────────────────────
 
-function VersionBadge({ status, t }: { status: number; t: (k: string) => string }) {
+function VersionBadge({ status, t }: { status: number; t: TranslateFn }) {
   const label =
     status === VERSION_STATUS_DRAFT
       ? t('pricing.statusDraft')
@@ -173,7 +174,7 @@ function VersionForm({
   onSave: (v: VersionFormState) => void
   onCancel: () => void
   saving: boolean
-  t: (k: string) => string
+  t: TranslateFn
 }) {
   const [form, setForm] = useState<VersionFormState>(initial)
   function set<K extends keyof VersionFormState>(key: K, value: VersionFormState[K]) {
@@ -281,7 +282,7 @@ function PricingItemForm({
   onSave: (f: ItemFormState) => void
   onCancel: () => void
   saving: boolean
-  t: (k: string) => string
+  t: TranslateFn
 }) {
   const [form, setForm] = useState<ItemFormState>(initial)
   function set<K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) {
@@ -392,7 +393,7 @@ function PricingItemsPanel({
 }: {
   version: AssetPricingVersion
   canEdit: boolean
-  t: (k: string) => string
+  t: TranslateFn
 }) {
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
@@ -548,7 +549,7 @@ function VersionCard({
   canEdit: boolean
   expanded: boolean
   onToggle: () => void
-  t: (k: string) => string
+  t: TranslateFn
 }) {
   const [editing, setEditing] = useState(false)
   const [cardError, setCardError] = useState<string | null>(null)
@@ -679,7 +680,7 @@ function VersionsSection({
   canEdit: boolean
   expandedUuid: string | null
   onToggle: (uuid: string) => void
-  t: (k: string) => string
+  t: TranslateFn
 }) {
   if (versions.length === 0) return null
   return (
@@ -829,7 +830,7 @@ export function PricingPage() {
         </div>
       )}
 
-      {error && <Alert variant="destructive"><p className="text-sm">{error}</p></Alert>}
+      {error && <Alert><p className="text-sm">{error}</p></Alert>}
 
       {/* New version form */}
       {showNewVersionForm && (
