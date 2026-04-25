@@ -38,8 +38,22 @@ export type FlightType = {
   asset_type_uuid: string
   code: string
   name: string
+  description: string | null
   is_active: boolean
-  created_at: string
+  updated_at: string
+}
+
+export type CreateFlightTypePayload = {
+  code: string
+  name: string
+  description?: string | null
+  is_active?: boolean
+}
+
+export type UpdateFlightTypePayload = {
+  name?: string
+  description?: string | null
+  is_active?: boolean
 }
 
 // ── Asset ─────────────────────────────────────────────────────────────────────
@@ -71,7 +85,7 @@ export type AssetDetail = {
   code: string
   name: string
   asset_type_uuid: string
-  registration_number: string | null
+  registration: string | null
   serial_number: string | null
   manufacturer: string | null
   model: string | null
@@ -98,15 +112,12 @@ export type CreateAssetTypePayload = {
   name: string
   /** 1=Aircraft 2=LaunchEquipment 3=Support 4=Consumable 5=Service */
   category: number
-  /** 1=FlightHours 2=EngineTime 3=PerFlight 4=PerDuration 5=PerUnit 6=FlatRate */
-  pricing_strategy: number
   is_active?: boolean
 }
 
 export type UpdateAssetTypePayload = {
   name?: string
   category?: number
-  pricing_strategy?: number
   is_active?: boolean
 }
 
@@ -121,7 +132,7 @@ export type CreateAssetPayload = {
   code: string
   name: string
   asset_type_uuid: string
-  registration_number?: string | null
+  registration?: string | null
   serial_number?: string | null
   manufacturer?: string | null
   model?: string | null

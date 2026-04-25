@@ -66,7 +66,7 @@ type FormState = {
   code: string
   name: string
   asset_type_uuid: string
-  registration_number: string
+  registration: string
   serial_number: string
   manufacturer: string
   model: string
@@ -85,7 +85,7 @@ const EMPTY_FORM: FormState = {
   code: '',
   name: '',
   asset_type_uuid: '',
-  registration_number: '',
+  registration: '',
   serial_number: '',
   manufacturer: '',
   model: '',
@@ -166,7 +166,7 @@ export function AssetFormPage() {
       code: asset.code,
       name: asset.name,
       asset_type_uuid: asset.asset_type_uuid,
-      registration_number: asset.registration_number ?? '',
+      registration: asset.registration ?? '',
       serial_number: asset.serial_number ?? '',
       manufacturer: asset.manufacturer ?? '',
       model: asset.model ?? '',
@@ -193,7 +193,7 @@ export function AssetFormPage() {
       code: form.code.trim(),
       name: form.name.trim(),
       asset_type_uuid: form.asset_type_uuid,
-      registration_number: form.registration_number.trim() || null,
+      registration: form.registration.trim() || null,
       serial_number: form.serial_number.trim() || null,
       manufacturer: form.manufacturer.trim() || null,
       model: form.model.trim() || null,
@@ -321,8 +321,8 @@ export function AssetFormPage() {
               <Label htmlFor="registration" className="text-xs">{t('form.registrationNumber')}</Label>
               <Input
                 id="registration"
-                value={form.registration_number}
-                onChange={(e) => set('registration_number', e.target.value)}
+                value={form.registration}
+                onChange={(e) => set('registration', e.target.value)}
                 className="h-8 text-sm"
               />
             </div>

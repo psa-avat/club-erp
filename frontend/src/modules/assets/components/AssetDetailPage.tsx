@@ -336,7 +336,7 @@ export function AssetDetailPage() {
           <CardContent>
             <div className="space-y-0.5">
               <InfoRow label={t('form.type')} value={asset.asset_type_uuid} />
-              <InfoRow label={t('form.registrationNumber')} value={asset.registration_number} />
+              <InfoRow label={t('form.registrationNumber')} value={asset.registration} />
               <InfoRow label={t('form.serialNumber')} value={asset.serial_number} />
               <InfoRow label={t('form.manufacturer')} value={asset.manufacturer} />
               <InfoRow label={t('form.model')} value={asset.model} />
