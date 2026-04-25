@@ -398,7 +398,7 @@ function PricingItemsPanel({
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
 
-  const flightTypesQuery = useFlightTypesQuery(version.asset_type_uuid)
+  const flightTypesQuery = useFlightTypesQuery()
   const flightTypes = flightTypesQuery.data ?? []
 
   const createMutation = useCreatePricingItemMutation(version.uuid)

@@ -78,7 +78,6 @@ class FlightTypeUpdateRequest(BaseModel):
 
 class FlightTypeResponse(BaseModel):
     uuid: UUID
-    asset_type_uuid: UUID
     code: str
     name: str
     description: Optional[str]

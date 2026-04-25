@@ -772,22 +772,19 @@ class AssetType(Base):
     )
 
     assets = relationship("Asset", back_populates="asset_type")
-    flight_types = relationship("FlightType", back_populates="asset_type", cascade="all, delete-orphan")
-
     def __repr__(self):
         return f"<AssetType code={self.code} name={self.name}>"
 
 
 class FlightType(Base):
-    """Flight/usage sub-types per asset type (e.g. tow, ferry, cable-break, exercise)."""
+    """Global flight/usage types (e.g. solo, dual, cross-country, tow) — not tied to a specific asset type."""
 
     __tablename__ = "asset_flight_types"
     __table_args__ = (
-        UniqueConstraint("asset_type_uuid", "code", name="uq_asset_flight_types_code_per_type"),
+        UniqueConstraint("code", name="uq_asset_flight_types_code"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    asset_type_uuid = Column(UUID(as_uuid=True), ForeignKey("asset_types.uuid", ondelete="CASCADE"), nullable=False, index=True)
     code = Column(String(32), nullable=False)
     name = Column(String(100), nullable=False)
     description = Column(String(255), nullable=True)
@@ -799,10 +796,8 @@ class FlightType(Base):
         nullable=False,
     )
 
-    asset_type = relationship("AssetType", back_populates="flight_types")
-
     def __repr__(self):
-        return f"<FlightType code={self.code} asset_type={self.asset_type_uuid}>"
+        return f"<FlightType code={self.code}>"
 
 
 class Asset(Base):

@@ -21,7 +21,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Pencil, Plus, X } from 'lucide-react'
+import { ArrowLeft, Check, Pencil, Plus, X } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -255,19 +255,17 @@ function FlightTypeForm({
 // ── Flight Types Panel ────────────────────────────────────────────────────────
 
 function FlightTypesPanel({
-  assetType,
   canManage,
   t,
 }: {
-  assetType: AssetType
   canManage: boolean
   t: (k: string) => string
 }) {
-  const ftQuery = useFlightTypesQuery(assetType.uuid)
+  const ftQuery = useFlightTypesQuery()
   const flightTypes = ftQuery.data ?? []
 
-  const createMutation = useCreateFlightTypeMutation(assetType.uuid)
-  const updateMutation = useUpdateFlightTypeMutation(assetType.uuid)
+  const createMutation = useCreateFlightTypeMutation()
+  const updateMutation = useUpdateFlightTypeMutation()
 
   const [showForm, setShowForm] = useState(false)
   const [editingFt, setEditingFt] = useState<FlightType | null>(null)
@@ -391,24 +389,17 @@ function FlightTypesPanel({
 function TypeRow({
   assetType,
   canManage,
-  expanded,
-  onToggle,
   onEdit,
   t,
 }: {
   assetType: AssetType
   canManage: boolean
-  expanded: boolean
-  onToggle: () => void
   onEdit: (at: AssetType) => void
   t: (k: string) => string
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white">
-      <div className="flex cursor-pointer items-center gap-3 px-4 py-3" onClick={onToggle}>
-        <span className="shrink-0 text-slate-400">
-          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </span>
+      <div className="flex items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">
@@ -433,11 +424,6 @@ function TypeRow({
           </button>
         )}
       </div>
-      {expanded && (
-        <div className="px-4 pb-4">
-          <FlightTypesPanel assetType={assetType} canManage={canManage} t={t} />
-        </div>
-      )}
     </div>
   )
 }
@@ -457,8 +443,6 @@ export function AssetTypesPage() {
   const [editingType, setEditingType] = useState<AssetType | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [activeOnly, setActiveOnly] = useState(false)
-  const [expandedTypeUuid, setExpandedTypeUuid] = useState<string | null>(null)
-
   const allTypes = typesQuery.data ?? []
   const types = activeOnly ? allTypes.filter((ty) => ty.is_active) : allTypes
 
@@ -493,10 +477,6 @@ export function AssetTypesPage() {
     } catch (e) {
       setFormError(extractError(e, t('assetTypes.error.saveFailed')))
     }
-  }
-
-  function toggleExpanded(uuid: string) {
-    setExpandedTypeUuid((prev) => (prev === uuid ? null : uuid))
   }
 
   if (!canView) {
@@ -589,8 +569,6 @@ export function AssetTypesPage() {
                   key={ty.uuid}
                   assetType={ty}
                   canManage={canManage}
-                  expanded={expandedTypeUuid === ty.uuid}
-                  onToggle={() => toggleExpanded(ty.uuid)}
                   onEdit={(at) => { setEditingType(at); setFormError(null); setShowForm(false) }}
                   t={t}
                 />
@@ -598,6 +576,11 @@ export function AssetTypesPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Flight Types — global section */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <FlightTypesPanel canManage={canManage} t={t} />
       </div>
     </section>
   )

@@ -26,9 +26,10 @@ This document defines the target specification for the Assets module of the ERP 
 - Timestamps
 
 ### 3.2 Flight Type
-- `uuid`, `asset_type_uuid` (FK)
-- `code`, `name`, `description`
+- `uuid`
+- `code` (unique), `name`, `description`
 - `is_active`
+- Global catalog (not tied to an asset type)
 - Examples: TOW, FERRY, TRAINING, NORMAL, CABLE_BREAK, EXERCISE
 
 ### 3.3 Asset (Master)
@@ -76,7 +77,7 @@ This document defines the target specification for the Assets module of the ERP 
 - `base_price` (NUMERIC(10,4))
 - `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
 - `pack_price`, `pack_unit_count` (both or neither): bundle/discount
-- **`flight_type_uuid` (FK → FlightType, nullable)** ← Only used for asset-specific pricing; NULL for global pricing
+- **`flight_type_uuid` (FK → FlightType, nullable)** ← Only used for asset-specific pricing; NULL for global pricing. Values come from the global flight type catalog.
 - `include_insurance`, `include_fuel` (booleans) ← Only meaningful for asset-specific pricing
 - `created_at`, `updated_at`
 
@@ -183,7 +184,7 @@ Integration: When a flight is recorded with asset metrics (engine hours, launche
 
 ## 8. API Scope
 
-**Assets**: POST/GET/PATCH /api/v1/assets, /api/v1/assets/types, /api/v1/assets/types/{type_uuid}/flight-types  
+**Assets**: POST/GET/PATCH /api/v1/assets, /api/v1/assets/types, /api/v1/assets/flight-types  
 **Pricing**: POST/GET/PATCH /api/v1/accounting/pricing/versions, /api/v1/accounting/pricing/versions/{version_uuid}/items  
 **Cost Provision Rules**: POST/GET/PATCH /api/v1/accounting/cost-provision-rules  
 **Cost Accrual Staging**: GET /api/v1/accounting/cost-accrual-staging, POST /api/v1/accounting/cost-accrual-staging/batch-process  
@@ -265,7 +266,7 @@ Real-time accruals are linked via flight_uuid in accounting entry.
 | Phase | Goal | Items |
 |-------|------|-------|
 | 1 | Asset master + depreciation | Asset/Type/DepreciationSchedule models, CRUD, seeding, straight-line calc |
-| 2 | Pricing versioning + flight types (unified with accounting) | PricingVersion/Item/FlightType, overlap validation, lookup logic, asset_type_uuid scoping |
+| 2 | Pricing versioning + flight types (unified with accounting) | PricingVersion/Item/FlightType (global catalog), overlap validation, lookup logic |
 | 2b | Cost provisioning | CostProvisionRule/CostAccrualStaging, real-time + batch accrual, GL mapping, flight integration |
 | 3 | Stock management | StockItem/Entry, FIFO/weighted-avg costing, ledger posting |
 | 4 | Flight integration | Asset selection on flights, pricing simulation, revenue + cost entry generation |

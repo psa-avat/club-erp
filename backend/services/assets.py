@@ -103,8 +103,8 @@ async def update_asset_type(db: AsyncSession, asset_type_uuid: UUID, request: As
 # Flight Types
 # ---------------------------------------------------------------------------
 
-async def list_flight_types(db: AsyncSession, asset_type_uuid: UUID, *, active_only: bool = False) -> list[FlightType]:
-    stmt = select(FlightType).where(FlightType.asset_type_uuid == asset_type_uuid).order_by(FlightType.code)
+async def list_flight_types(db: AsyncSession, *, active_only: bool = False) -> list[FlightType]:
+    stmt = select(FlightType).order_by(FlightType.code)
     if active_only:
         stmt = stmt.where(FlightType.is_active.is_(True))
     result = await db.execute(stmt)
@@ -120,28 +120,22 @@ async def get_flight_type(db: AsyncSession, flight_type_uuid: UUID) -> FlightTyp
 
 
 async def create_flight_type(
-    db: AsyncSession, asset_type_uuid: UUID, request: FlightTypeCreateRequest
+    db: AsyncSession, request: FlightTypeCreateRequest
 ) -> FlightType:
-    # Verify parent asset type exists
-    await get_asset_type(db, asset_type_uuid)
-
     existing = await db.execute(
-        select(FlightType).where(
-            FlightType.asset_type_uuid == asset_type_uuid,
-            FlightType.code == request.code,
-        )
+        select(FlightType).where(FlightType.code == request.code)
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Flight type code {request.code!r} already exists for this asset type.",
+            detail=f"Flight type code {request.code!r} already exists.",
         )
 
-    obj = FlightType(asset_type_uuid=asset_type_uuid, **request.model_dump())
+    obj = FlightType(**request.model_dump())
     db.add(obj)
     await db.commit()
     await db.refresh(obj)
-    logger.info("Created flight type code=%s uuid=%s asset_type=%s", obj.code, obj.uuid, asset_type_uuid)
+    logger.info("Created flight type code=%s uuid=%s", obj.code, obj.uuid)
     return obj
 
 

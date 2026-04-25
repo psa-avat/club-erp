@@ -30,7 +30,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
-import { useAssetQuery, useAssetStatusHistoryQuery, useTransitionAssetStatusMutation } from '../api'
+import {
+  useAssetQuery,
+  useAssetStatusHistoryQuery,
+  useAssetTypesQuery,
+  useTransitionAssetStatusMutation,
+} from '../api'
 import type { AssetStatusHistoryEntry } from '../types'
 
 // �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
@@ -252,6 +257,7 @@ export function AssetDetailPage() {
 
   const assetQuery = useAssetQuery(uuid ?? null)
   const asset = assetQuery.data ?? null
+  const assetTypesQuery = useAssetTypesQuery(true)
   const historyQuery = useAssetStatusHistoryQuery(uuid ?? null)
   const statusHistory = historyQuery.data ?? []
 
@@ -285,6 +291,9 @@ export function AssetDetailPage() {
 
   const currentStatusColor = STATUS_COLORS[asset.status] ?? 'bg-slate-100 text-slate-500'
   const currentStatusKey = STATUS_LABELS[asset.status] ?? 'unknown'
+  const assetTypeName =
+    (assetTypesQuery.data ?? []).find((type) => type.uuid === asset.asset_type_uuid)?.name ??
+    asset.asset_type_uuid
 
   return (
     <section className="space-y-4">
@@ -335,7 +344,7 @@ export function AssetDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-0.5">
-              <InfoRow label={t('form.type')} value={asset.asset_type_uuid} />
+              <InfoRow label={t('form.type')} value={assetTypeName} />
               <InfoRow label={t('form.registrationNumber')} value={asset.registration} />
               <InfoRow label={t('form.serialNumber')} value={asset.serial_number} />
               <InfoRow label={t('form.manufacturer')} value={asset.manufacturer} />

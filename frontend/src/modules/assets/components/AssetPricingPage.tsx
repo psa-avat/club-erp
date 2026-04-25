@@ -370,19 +370,17 @@ function PricingItemForm({
 
 function PricingItemsPanel({
   version,
-  assetTypeUuid,
   canEdit,
   t,
 }: {
   version: AssetPricingVersion
-  assetTypeUuid: string
   canEdit: boolean
   t: (k: string) => string
 }) {
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
 
-  const flightTypesQuery = useFlightTypesQuery(assetTypeUuid)
+  const flightTypesQuery = useFlightTypesQuery()
   const flightTypes = flightTypesQuery.data ?? []
 
   const createMutation = useCreatePricingItemMutation(version.uuid)
@@ -814,7 +812,6 @@ export function AssetPricingPage() {
                         <div className="px-4 pb-4">
                           <PricingItemsPanel
                             version={v}
-                            assetTypeUuid={asset?.asset_type_uuid ?? ''}
                             canEdit={canEdit && !v.is_locked}
                             t={t}
                           />

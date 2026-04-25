@@ -88,7 +88,7 @@ Journal type enum values:
 - `base_price` (NUMERIC(10,4))
 - `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
 - `pack_price`, `pack_unit_count` (both or neither): bundle/discount
-- `flight_type_uuid` (FK → FlightType, nullable)
+- `flight_type_uuid` (FK → FlightType global catalog, nullable)
 - `include_insurance`, `include_fuel` (booleans)
 - Timestamps
 

@@ -47,7 +47,7 @@ import { banqueQueryKeys } from '../../banque/api'
 export const assetsQueryKeys = {
   root: ['assets'] as const,
   types: () => ['assets', 'types'] as const,
-  flightTypes: (typeUuid: string) => ['assets', 'flight-types', typeUuid] as const,
+  flightTypes: () => ['assets', 'flight-types'] as const,
   list: (filters: AssetFilters) => ['assets', 'list', filters] as const,
   detail: (uuid: string) => ['assets', 'detail', uuid] as const,
   statusHistory: (uuid: string) => ['assets', 'status-history', uuid] as const,
@@ -105,13 +105,13 @@ export function useUpdateAssetTypeMutation(uuid: string) {
   })
 }
 
-export function useFlightTypesQuery(assetTypeUuid: string | null) {
+export function useFlightTypesQuery() {
   return useQuery({
-    queryKey: assetsQueryKeys.flightTypes(assetTypeUuid ?? ''),
-    enabled: Boolean(assetTypeUuid),
+    queryKey: assetsQueryKeys.flightTypes(),
+    enabled: true,
     queryFn: async () => {
       const { data } = await apiClient.get<FlightType[]>(
-        `/api/v1/assets/types/${assetTypeUuid}/flight-types`,
+        `/api/v1/assets/flight-types`,
         getAuthRequestConfig(),
       )
       return data
@@ -119,24 +119,24 @@ export function useFlightTypesQuery(assetTypeUuid: string | null) {
   })
 }
 
-export function useCreateFlightTypeMutation(assetTypeUuid: string) {
+export function useCreateFlightTypeMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: CreateFlightTypePayload) => {
       const { data } = await apiClient.post<FlightType>(
-        `/api/v1/assets/types/${assetTypeUuid}/flight-types`,
+        `/api/v1/assets/flight-types`,
         payload,
         getAuthRequestConfig(),
       )
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.flightTypes(assetTypeUuid) })
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.flightTypes() })
     },
   })
 }
 
-export function useUpdateFlightTypeMutation(assetTypeUuid: string) {
+export function useUpdateFlightTypeMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ uuid, ...payload }: UpdateFlightTypePayload & { uuid: string }) => {
@@ -148,7 +148,7 @@ export function useUpdateFlightTypeMutation(assetTypeUuid: string) {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.flightTypes(assetTypeUuid) })
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.flightTypes() })
     },
   })
 }

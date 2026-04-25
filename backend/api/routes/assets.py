@@ -121,29 +121,27 @@ async def update_asset_type_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# Flight Types (per asset type)
+# Flight Types (global)
 # ---------------------------------------------------------------------------
 
-@router.get("/types/{type_uuid}/flight-types", response_model=list[FlightTypeResponse])
+@router.get("/flight-types", response_model=list[FlightTypeResponse])
 async def list_flight_types_endpoint(
-    type_uuid: UUID,
     active_only: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     _: User = _view_guard,
 ):
-    """List flight types for a given asset type."""
-    return await list_flight_types(db, type_uuid, active_only=active_only)
+    """List all global flight types."""
+    return await list_flight_types(db, active_only=active_only)
 
 
-@router.post("/types/{type_uuid}/flight-types", response_model=FlightTypeResponse, status_code=201)
+@router.post("/flight-types", response_model=FlightTypeResponse, status_code=201)
 async def create_flight_type_endpoint(
-    type_uuid: UUID,
     request: FlightTypeCreateRequest,
     db: AsyncSession = Depends(get_db),
     _: User = _manage_guard,
 ):
-    """Create a flight type for the given asset type."""
-    return await create_flight_type(db, type_uuid, request)
+    """Create a global flight type."""
+    return await create_flight_type(db, request)
 
 
 @router.patch("/flight-types/{flight_type_uuid}", response_model=FlightTypeResponse)

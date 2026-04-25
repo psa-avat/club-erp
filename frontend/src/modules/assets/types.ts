@@ -35,7 +35,6 @@ export type AssetType = {
 
 export type FlightType = {
   uuid: string
-  asset_type_uuid: string
   code: string
   name: string
   description: string | null

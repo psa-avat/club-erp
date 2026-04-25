@@ -206,7 +206,7 @@ export function useUpdatePricingVersionMutation(fiscalYearUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ uuid, ...payload }: PricingVersionUpdatePayload & { uuid: string }) => {
-      const { data } = await apiClient.put<PricingVersion>(
+      const { data } = await apiClient.patch<PricingVersion>(
         `/api/v1/accounting/pricing/versions/${uuid}`,
         payload,
         getAuthRequestConfig(),
