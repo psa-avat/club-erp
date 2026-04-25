@@ -122,6 +122,7 @@ class AssetCreateRequest(BaseModel):
 
 
 class AssetUpdateRequest(BaseModel):
+    asset_type_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=150)
     registration: Optional[str] = Field(default=None, max_length=32)
     serial_number: Optional[str] = Field(default=None, max_length=100)

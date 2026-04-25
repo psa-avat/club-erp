@@ -267,6 +267,10 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
 
     data = request.model_dump(exclude_none=True)
 
+    # Validate asset type when changed
+    if "asset_type_uuid" in data and data["asset_type_uuid"] != obj.asset_type_uuid:
+        await get_asset_type(db, data["asset_type_uuid"])
+
     # Validate owner member if ownership being set to private
     new_ownership = data.get("ownership", obj.ownership)
     new_owner = data.get("owner_member_uuid", obj.owner_member_uuid)
