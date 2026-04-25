@@ -295,6 +295,7 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
+          <p className="text-[11px] text-slate-500">{t('pricing.basePriceHelp')}</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.packPrice')}</Label>
@@ -307,6 +308,7 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
+          <p className="text-[11px] text-slate-500">{t('pricing.packPriceHelp')}</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.flightType')}</Label>
@@ -326,6 +328,7 @@ function PricingItemForm({
       {/* Progressive price tiers */}
       <div className="space-y-2">
         <Label className="text-xs">{t('pricing.tiers')}</Label>
+        <p className="text-[11px] text-slate-500">{t('pricing.tiersHelp')}</p>
         {form.tiers.length === 0 && (
           <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>
         )}
@@ -340,7 +343,7 @@ function PricingItemForm({
               <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
                 <Input
                   type="number"
-                  min="0"
+                  min={getFromQtyStep(form.unit)}
                   step={getFromQtyStep(form.unit)}
                   value={tier.from_qty}
                   onChange={(e) => updateTier(i, 'from_qty', e.target.value)}

@@ -625,6 +625,11 @@ def _validate_pricing_precision(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="tier.price must have at most 2 decimal places.",
             )
+        if tier.from_qty <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="tier.from_qty must be greater than 0 because base_price is the implicit threshold at 0.",
+            )
         if _decimal_places(tier.from_qty) > max_decimals:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -641,6 +646,12 @@ async def _replace_pricing_item_tiers(
     tier_payloads: list,
 ) -> None:
     """Delete existing tiers and insert new ones sorted by from_qty."""
+    _validate_pricing_precision(
+        unit=item.unit,
+        base_price=None,
+        pack_price=None,
+        tiers=tier_payloads,
+    )
     await db.execute(
         delete(PricingItemTier).where(
             PricingItemTier.pricing_item_uuid == item.uuid

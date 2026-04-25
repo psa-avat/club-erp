@@ -330,7 +330,7 @@ class CopyCostProvisionRulesResponse(BaseModel):
 
 class PricingItemTierCreate(BaseModel):
     """One progressive pricing bracket: applies from from_qty units onward."""
-    from_qty: Decimal = Field(ge=0, decimal_places=4)
+    from_qty: Decimal = Field(gt=0, decimal_places=4)
     price: Decimal = Field(ge=0, decimal_places=2)
 
 

@@ -74,12 +74,17 @@ This document defines the target specification for the Assets module of the ERP 
 - `uuid` (PK)
 - `pricing_version_uuid` (FK)
 - `name`, `unit` (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed)
-- `base_price` (NUMERIC(10,4))
-- `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
-- `pack_price`, `pack_unit_count` (both or neither): bundle/discount
+- `base_price` (NUMERIC(10,4)): implicit bracket at threshold `0`
+- `pack_price` (NUMERIC(10,4), nullable): optional unit price when member has an active pack
+- `tiers`: progressive brackets stored in `pricing_item_tiers(from_qty, price, sort_order)`; every `from_qty` must be strictly `> 0`
 - **`flight_type_uuid` (FK → FlightType, nullable)** ← Only used for asset-specific pricing; NULL for global pricing. Values come from the global flight type catalog.
 - `include_insurance`, `include_fuel` (booleans) ← Only meaningful for asset-specific pricing
 - `created_at`, `updated_at`
+
+Precision rules:
+- prices (`base_price`, `pack_price`, tier `price`) use 2 decimal places
+- `from_qty` uses up to 1 decimal place for `FlightTime` and `FlightDuration`
+- `from_qty` uses integer values only for `EngineTimeMin`, `EngineTime1/100h`, `PerFlight`, and `Fixed`
 
 **Context-dependent fields**:
 
@@ -140,9 +145,9 @@ Reuses `PricingVersion` (with optional `asset_type_uuid`) and `PricingItem`:
 - **asset_type_uuid = <asset-uuid>**: Asset-specific pricing (what to charge for flights using this asset)
 
 Example pricing items:
-- Glider ASK21, unit=Hour, base_price=€45, include_insurance=true, include_fuel=false
-- Tow Plane, unit=Flight, base_price=€120, include_fuel=true
-- Winch, unit=Launch, base_price=€15 (charged to member)
+- Glider ASK21, unit=FlightTime, base_price=€45.00, include_insurance=true, include_fuel=false
+- Tow Plane, unit=PerFlight, base_price=€120.00, include_fuel=true
+- Winch, unit=PerFlight, base_price=€15.00 (charged to member)
 
 Version workflow: Draft → Active (when published) → Archived (when superseded).
 

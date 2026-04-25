@@ -70,14 +70,14 @@ Deliverables:
 2. Pricing item fields:
 	- optional `flight_type_uuid` filter,
 	- `unit` billing unit (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed),
-	- `base_price` — standard price per unit,
+	- `base_price` — standard price per unit for the implicit threshold `0`,
 	- `pack_price` — nullable, price per unit when pilot has an active pack subscription,
-	- `tiers` — child table `pricing_item_tiers` (from_qty, price, sort_order); evaluated as progressive brackets during flight billing.
+	- `tiers` — child table `pricing_item_tiers` (from_qty, price, sort_order); evaluated as progressive brackets during flight billing and starting strictly above `0`.
 3. Numeric precision rules:
 	- prices (`base_price`, `pack_price`, `tier.price`) use 2 decimal places,
 	- hour-based thresholds (`tier.from_qty` for FlightTime/FlightDuration) use up to 1 decimal place,
 	- engine/count-based thresholds (`tier.from_qty` for EngineTimeMin, EngineTime1/100h, PerFlight, Fixed) use integer values only.
-4. Tier semantics: brackets are sorted ascending by `from_qty`; the flight module picks the last bracket whose `from_qty <= cumulated consumption`. Example: `0→18€, 3→9€, 5→0€`.
+4. Tier semantics: `base_price` is the implicit bracket at `0`; explicit brackets are sorted ascending by `from_qty`, and the flight module picks the last bracket whose `from_qty <= cumulated consumption`. Example: `base=18€, 3→9€, 5→0€`.
 5. Service validations:
 	- fiscal-year boundary checks,
 	- date-range overlap checks per `(fiscal_year_uuid, asset_type_uuid)`.
@@ -226,7 +226,7 @@ Stock and depreciation:
 1. No overlapping pricing versions for same fiscal year + asset type.
 2. Pricing date ranges must be inside fiscal year boundaries.
 3. `pack_price`, when set, must be a non-negative decimal.
-4. Tier `from_qty` values must be unique per item; `from_qty = 0` defines the base bracket.
+4. Tier `from_qty` values must be unique per item and strictly greater than `0`; `base_price` defines the implicit base bracket.
 5. Cost rule uniqueness for active rules: `(asset_type_uuid, fiscal_year_uuid, metric_code)`.
 6. Cost rule debit and credit accounts cannot be the same.
 7. Posted depreciation schedules and posted accounting entries are immutable.

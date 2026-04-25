@@ -587,12 +587,13 @@ class PricingItemTier(Base):
 
     Tiers are evaluated ascending by from_qty: the flight module applies the
     price of the last bracket whose from_qty <= cumulated consumption.
-    Example: [(0, 18€), (3, 9€), (5, 0€)] => free after 5 units.
+    The base price is the implicit bracket at 0.
+    Example: base=18€, then [(3, 9€), (5, 0€)] => free after 5 units.
     """
 
     __tablename__ = "pricing_item_tiers"
     __table_args__ = (
-        CheckConstraint("from_qty >= 0", name="chk_pricing_item_tiers_from_qty"),
+        CheckConstraint("from_qty > 0", name="chk_pricing_item_tiers_from_qty"),
         CheckConstraint("price >= 0", name="chk_pricing_item_tiers_price"),
     )
 
