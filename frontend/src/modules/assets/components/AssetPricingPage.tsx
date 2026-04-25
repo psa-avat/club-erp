@@ -46,9 +46,9 @@ import {
   useDeletePricingItemMutation,
   useFlightTypesQuery,
 } from '../api'
-import type { AssetPricingVersion, PricingItem, CreatePricingItemPayload } from '../types'
+import type { AssetPricingVersion, PricingItem, CreatePricingItemPayload, TierPayload } from '../types'
 
-// �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const VERSION_STATUS_DRAFT = 1
 const VERSION_STATUS_ACTIVE = 2
@@ -63,7 +63,7 @@ const UNIT_LABELS: Record<number, string> = {
   5: 'Fixed',
 }
 
-// �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractError(e: unknown, fallback: string): string {
   if (e instanceof AxiosError && e.response?.data?.detail) {
@@ -90,11 +90,11 @@ function timelineBar(fy: FiscalYear, version: AssetPricingVersion) {
 }
 
 function formatPrice(value: string | null | undefined): string {
-  if (!value) return '�?"'
+  if (!value) return '—'
   try { return new Decimal(value).toFixed(2) } catch { return value }
 }
 
-// �"?�"? Version Badge �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Version Badge ─────────────────────────────────────────────────────────────
 
 function VersionBadge({ status, t }: { status: number; t: (k: string) => string }) {
   const label =
@@ -110,7 +110,7 @@ function VersionBadge({ status, t }: { status: number; t: (k: string) => string 
   )
 }
 
-// �"?�"? Version Form �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Version Form ─────────────────────────────────────────────────────────────
 
 type VersionFormState = {
   name: string
@@ -177,14 +177,14 @@ function VersionForm({
   )
 }
 
-// �"?�"? Pricing Item Form �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Pricing Item Form ─────────────────────────────────────────────────────────
 
 type ItemFormState = {
   name: string
   unit: number
   base_price: string
-  threshold_unit_count: string
-  threshold_price: string
+  pack_price: string
+  tiers: TierPayload[]
   flight_type_uuid: string
 }
 
@@ -192,8 +192,8 @@ const EMPTY_ITEM: ItemFormState = {
   name: '',
   unit: 1,
   base_price: '',
-  threshold_unit_count: '',
-  threshold_price: '',
+  pack_price: '',
+  tiers: [],
   flight_type_uuid: '',
 }
 
@@ -202,21 +202,20 @@ function itemToForm(item: PricingItem): ItemFormState {
     name: item.name,
     unit: item.unit,
     base_price: item.base_price,
-    threshold_unit_count: item.threshold_unit_count ?? '',
-    threshold_price: item.threshold_price ?? '',
+    pack_price: item.pack_price ?? '',
+    tiers: item.tiers.map((t) => ({ from_qty: t.from_qty, price: t.price })),
     flight_type_uuid: item.flight_type_uuid ?? '',
   }
 }
 
 function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
-  const hasThreshold = form.threshold_unit_count !== '' && form.threshold_price !== ''
   return {
     name: form.name.trim(),
     unit: form.unit,
     base_price: form.base_price.trim(),
+    pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
     flight_type_uuid: form.flight_type_uuid || null,
-    threshold_unit_count: hasThreshold ? form.threshold_unit_count : null,
-    threshold_price: hasThreshold ? form.threshold_price : null,
+    tiers: form.tiers.filter((t) => t.from_qty !== '' && t.price !== ''),
   }
 }
 
@@ -240,10 +239,20 @@ function PricingItemForm({
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const thresholdComplete =
-    (form.threshold_unit_count !== '' && form.threshold_price !== '') ||
-    (form.threshold_unit_count === '' && form.threshold_price === '')
-  const valid = form.name.trim() !== '' && form.base_price !== '' && thresholdComplete
+  function addTier() {
+    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '' }] }))
+  }
+  function updateTier(index: number, field: keyof TierPayload, value: string) {
+    setForm((prev) => {
+      const tiers = prev.tiers.map((t, i) => i === index ? { ...t, [field]: value } : t)
+      return { ...prev, tiers }
+    })
+  }
+  function removeTier(index: number) {
+    setForm((prev) => ({ ...prev, tiers: prev.tiers.filter((_, i) => i !== index) }))
+  }
+
+  const valid = form.name.trim() !== '' && form.base_price !== ''
 
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -276,6 +285,15 @@ function PricingItemForm({
           />
         </div>
         <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.packPrice')}</Label>
+          <Input
+            value={form.pack_price}
+            onChange={(e) => set('pack_price', e.target.value)}
+            placeholder="0.0000"
+            className="h-8 text-sm font-mono"
+          />
+        </div>
+        <div className="space-y-1">
           <Label className="text-xs">{t('pricing.flightType')}</Label>
           <select
             value={form.flight_type_uuid}
@@ -290,34 +308,49 @@ function PricingItemForm({
         </div>
       </div>
 
-      {/* Threshold pair */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.thresholdCount')}</Label>
-          <Input
-            value={form.threshold_unit_count}
-            onChange={(e) => set('threshold_unit_count', e.target.value)}
-            placeholder="0"
-            className={`h-8 text-sm font-mono ${!thresholdComplete ? 'border-red-400' : ''}`}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.thresholdPrice')}</Label>
-          <Input
-            value={form.threshold_price}
-            onChange={(e) => set('threshold_price', e.target.value)}
-            placeholder="0.0000"
-            className={`h-8 text-sm font-mono ${!thresholdComplete ? 'border-red-400' : ''}`}
-          />
-        </div>
+      {/* Progressive price tiers */}
+      <div className="space-y-2">
+        <Label className="text-xs">{t('pricing.tiers')}</Label>
+        {form.tiers.length === 0 && (
+          <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>
+        )}
+        {form.tiers.length > 0 && (
+          <div className="space-y-1">
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-slate-500">
+              <span>{t('pricing.tierFrom')}</span>
+              <span>{t('pricing.tierPrice')}</span>
+              <span />
+            </div>
+            {form.tiers.map((tier, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                <Input
+                  value={tier.from_qty}
+                  onChange={(e) => updateTier(i, 'from_qty', e.target.value)}
+                  placeholder="0"
+                  className="h-7 text-sm font-mono"
+                />
+                <Input
+                  value={tier.price}
+                  onChange={(e) => updateTier(i, 'price', e.target.value)}
+                  placeholder="0.0000"
+                  className="h-7 text-sm font-mono"
+                />
+                <button
+                  type="button"
+                  className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  onClick={() => removeTier(i)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <Button size="sm" variant="ghost" type="button" onClick={addTier}>
+          <Plus className="mr-1 h-3 w-3" />
+          {t('pricing.addTier')}
+        </Button>
       </div>
-      {!thresholdComplete && (
-        <p className="text-xs text-red-600">{t('pricing.thresholdPairRequired')}</p>
-      )}
-
-
-
-
 
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
@@ -333,7 +366,7 @@ function PricingItemForm({
   )
 }
 
-// �"?�"? Pricing Items Panel �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Pricing Items Panel ───────────────────────────────────────────────────────
 
 function PricingItemsPanel({
   version,
@@ -446,9 +479,10 @@ function PricingItemsPanel({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
                   <p className="text-xs text-slate-500">
-                    {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)} ·{' '}
+                    {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
                     {formatPrice(item.base_price)}
-                    {item.threshold_price && ` · >${item.threshold_unit_count}: ${formatPrice(item.threshold_price)}`}
+                    {item.pack_price && ` · Pack: ${formatPrice(item.pack_price)}`}
+                    {item.tiers.length > 0 && ` · ${item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}`).join(' · ')}`}
                   </p>
                 </div>
                 {editable && (
@@ -478,7 +512,7 @@ function PricingItemsPanel({
   )
 }
 
-// �"?�"? Main Component �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Main Component ────────────────────────────────────────────────────────────
 
 export function AssetPricingPage() {
   const { t } = useTranslation('assets')
@@ -700,7 +734,7 @@ export function AssetPricingPage() {
                     return (
                       <div
                         key={v.uuid}
-                        title={`${v.name} · ${v.from_date} �?' ${v.to_date ?? '�^z'}`}
+                        title={`${v.name} · ${v.from_date} → ${v.to_date ?? '∞'}`}
                         className={`absolute top-0 h-full rounded opacity-80 hover:opacity-100 ${versionStatusClass(v.status)}`}
                         style={{ left, width }}
                       />
@@ -743,7 +777,7 @@ export function AssetPricingPage() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-900">{v.name}</p>
                           <p className="text-xs text-slate-500">
-                            {v.from_date} �?' {v.to_date ?? t('pricing.openEnd')}
+                            {v.from_date} → {v.to_date ?? t('pricing.openEnd')}
                           </p>
                         </div>
                         <VersionBadge status={v.status} t={t} />

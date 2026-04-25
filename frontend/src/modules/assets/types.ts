@@ -145,6 +145,18 @@ export type AssetStatusTransitionPayload = {
 
 // ── Pricing Items ─────────────────────────────────────────────────────────────
 
+export type PricingItemTier = {
+  uuid: string
+  from_qty: string
+  price: string
+  sort_order: number
+}
+
+export type TierPayload = {
+  from_qty: string
+  price: string
+}
+
 export type PricingItem = {
   uuid: string
   pricing_version_uuid: string
@@ -153,8 +165,10 @@ export type PricingItem = {
   /** 1=PerHour, 2=PerMinute, 3=PerLaunch, 4=PerFlight, 5=Fixed */
   unit: number
   base_price: string
-  threshold_unit_count: string | null
-  threshold_price: string | null
+  /** Price per unit when the pilot has an active pack subscription */
+  pack_price: string | null
+  /** Progressive pricing brackets; sorted ascending by from_qty */
+  tiers: PricingItemTier[]
   created_at: string
   updated_at: string
 }
@@ -164,11 +178,13 @@ export type CreatePricingItemPayload = {
   name: string
   unit: number
   base_price: string
-  threshold_unit_count?: string | null
-  threshold_price?: string | null
+  pack_price?: string | null
+  tiers?: TierPayload[]
 }
 
 export type UpdatePricingItemPayload = Partial<CreatePricingItemPayload>
+
+export type ReplaceTiersPayload = TierPayload[]
 
 // ── Pricing Version (asset-scoped extension) ──────────────────────────────────
 

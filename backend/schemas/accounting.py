@@ -325,6 +325,26 @@ class CopyCostProvisionRulesResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Pricing Item Tiers
+# ---------------------------------------------------------------------------
+
+class PricingItemTierCreate(BaseModel):
+    """One progressive pricing bracket: applies from from_qty units onward."""
+    from_qty: Decimal = Field(ge=0, decimal_places=4)
+    price: Decimal = Field(ge=0, decimal_places=4)
+
+
+class PricingItemTierResponse(BaseModel):
+    """Pricing item tier response."""
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    from_qty: Decimal
+    price: Decimal
+    sort_order: int
+
+
+# ---------------------------------------------------------------------------
 # Pricing Items
 # ---------------------------------------------------------------------------
 
@@ -335,8 +355,10 @@ class PricingItemCreateRequest(BaseModel):
     # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
     unit: int = Field(ge=1, le=5)
     base_price: Decimal = Field(ge=0)
-    threshold_unit_count: Optional[int] = Field(default=None, ge=1)
-    threshold_price: Optional[Decimal] = Field(default=None, ge=0)
+    # Price per unit when the pilot has an active pack subscription
+    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    # Progressive price brackets; replaces the former single threshold pair
+    tiers: list[PricingItemTierCreate] = []
 
 
 class PricingItemUpdateRequest(BaseModel):
@@ -345,8 +367,9 @@ class PricingItemUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     unit: Optional[int] = Field(default=None, ge=1, le=5)
     base_price: Optional[Decimal] = Field(default=None, ge=0)
-    threshold_unit_count: Optional[int] = Field(default=None, ge=1)
-    threshold_price: Optional[Decimal] = Field(default=None, ge=0)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    # When provided, replaces all existing tiers atomically
+    tiers: Optional[list[PricingItemTierCreate]] = None
 
 
 class PricingItemResponse(BaseModel):
@@ -359,7 +382,7 @@ class PricingItemResponse(BaseModel):
     name: str
     unit: int
     base_price: Decimal
-    threshold_unit_count: Optional[int] = None
-    threshold_price: Optional[Decimal] = None
+    pack_price: Optional[Decimal] = None
+    tiers: list[PricingItemTierResponse] = []
     created_at: datetime
     updated_at: datetime

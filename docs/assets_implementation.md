@@ -66,17 +66,19 @@ Deliverables:
 ### Phase 2 - Asset Pricing Governance
 
 Deliverables:
-1. Extend pricing versioning with `asset_type_uuid`.
-2. Add asset pricing items table/fields to support:
-	- optional flight type,
-	- `metric_code` and base price,
-	- threshold and pack pricing,
-	- include_insurance/include_fuel flags.
-3. Service validations:
+1. Extend pricing versioning with `asset_type_uuid` (NULL = global version).
+2. Pricing item fields:
+	- optional `flight_type_uuid` filter,
+	- `unit` billing unit (1=Hour, 2=Minute, 3=Launch, 4=Flight, 5=Fixed),
+	- `base_price` — standard price per unit,
+	- `pack_price` — nullable, price per unit when pilot has an active pack subscription,
+	- `tiers` — child table `pricing_item_tiers` (from_qty, price, sort_order); evaluated as progressive brackets during flight billing.
+3. Tier semantics: brackets are sorted ascending by `from_qty`; the flight module picks the last bracket whose `from_qty <= cumulated consumption`. Example: `0→18€, 3→9€, 5→0€`.
+4. Service validations:
 	- fiscal-year boundary checks,
 	- date-range overlap checks per `(fiscal_year_uuid, asset_type_uuid)`.
-4. Pricing lookup API for asset/date/flight type using metric-aware item selection.
-5. Support multiple metrics for a single asset type/version (for example: flight hour plus engine hour).
+5. Pricing lookup API for asset/date/flight type using metric-aware item selection.
+6. Support multiple metrics for a single asset type/version (for example: flight hour plus engine hour).
 
 ### Phase 2b - Cost Provisioning
 
@@ -139,12 +141,16 @@ Wire in shell:
 3. Asset create/edit form:
 	- Decimal-safe monetary fields,
 	- conditional owner/account fields.
-4. Asset pricing page:
+4. Unified pricing management page (`/pricing`):
 	- fiscal year selector,
-	- version timeline,
-	- version create/edit,
-	- pricing items CRUD with shared billing metric selector,
+	- version timeline grouped by: global versions + per asset type,
+	- version create/edit (optional asset_type_uuid selector),
+	- pricing items CRUD:
+		- base price + optional pack price (price with active pack),
+		- inline multi-tier bracket editor (add/remove rows with from_qty + price),
+		- optional flight type filter per item,
 	- overlap validation feedback.
+	Note: `/assets/:uuid/pricing` links to `/pricing?asset_type_uuid=xxx`.
 5. Cost provisioning page:
 	- rules CRUD with same metric catalog as pricing items,
 	- accrual method selection,
@@ -189,11 +195,12 @@ Pricing (accounting-governed):
 2. `GET /api/v1/accounting/pricing/versions`
 3. `PATCH /api/v1/accounting/pricing/versions/{version_uuid}`
 4. `POST /api/v1/accounting/pricing/versions/{version_uuid}/items`
-5. `GET /api/v1/accounting/pricing/versions/{version_uuid}/items`
-6. `PATCH /api/v1/accounting/pricing/items/{item_uuid}`
-7. `DELETE /api/v1/accounting/pricing/items/{item_uuid}`
-8. `GET /api/v1/accounting/pricing/lookup`
-9. `GET /api/v1/accounting/billing-metrics`
+8. `GET /api/v1/accounting/pricing/versions/{version_uuid}/items` (eager-loads tiers)
+9. `PATCH /api/v1/accounting/pricing/items/{item_uuid}`
+10. `DELETE /api/v1/accounting/pricing/items/{item_uuid}`
+11. `PUT /api/v1/accounting/pricing/items/{item_uuid}/tiers` (replace full tier list atomically)
+12. `GET /api/v1/accounting/pricing/lookup`
+13. `GET /api/v1/accounting/billing-metrics`
 
 Cost provisioning:
 1. `POST /api/v1/accounting/cost-provision-rules`
@@ -214,13 +221,14 @@ Stock and depreciation:
 
 1. No overlapping pricing versions for same fiscal year + asset type.
 2. Pricing date ranges must be inside fiscal year boundaries.
-3. Pack and threshold fields must be complete pairs.
-4. Cost rule uniqueness for active rules: `(asset_type_uuid, fiscal_year_uuid, metric_code)`.
-5. Cost rule debit and credit accounts cannot be the same.
-6. Posted depreciation schedules and posted accounting entries are immutable.
-7. Stock on-hand cannot become negative.
-8. Pricing item `metric_code` must exist in billing metrics catalog.
-9. Asset type default metrics, if configured, are UX defaults only and never pricing constraints.
+3. `pack_price`, when set, must be a non-negative decimal.
+4. Tier `from_qty` values must be unique per item; `from_qty = 0` defines the base bracket.
+5. Cost rule uniqueness for active rules: `(asset_type_uuid, fiscal_year_uuid, metric_code)`.
+6. Cost rule debit and credit accounts cannot be the same.
+7. Posted depreciation schedules and posted accounting entries are immutable.
+8. Stock on-hand cannot become negative.
+9. Pricing item `metric_code` must exist in billing metrics catalog.
+10. Asset type default metrics, if configured, are UX defaults only and never pricing constraints.
 
 ## 9. SQL Delivery Plan
 
@@ -238,9 +246,13 @@ Create `docs/assets.sql` as an idempotent schema extension with:
 11. `asset_stock_items`
 12. `asset_stock_entries`
 13. alter `pricing_versions` add `asset_type_uuid`
-14. alter `pricing_items` add `metric_code` and backfill from legacy `unit`
-15. alter `cost_provision_rules` migrate `metric_name` to `metric_code`
-16. remove `asset_types.pricing_strategy` after compatibility window
+14. alter `pricing_items`:
+	- add `pack_price NUMERIC(10,4) NULL`,
+	- remove `threshold_unit_count`, `threshold_price` (migrated to tiers),
+	- add `metric_code` and backfill from legacy `unit`.
+15. create `pricing_item_tiers` (uuid, pricing_item_uuid FK CASCADE, from_qty, price, sort_order).
+16. alter `cost_provision_rules` migrate `metric_name` to `metric_code`.
+17. remove `asset_types.pricing_strategy` after compatibility window.
 
 Notes:
 1. `docs/account.sql` is treated as canonical accounting schema in this repository.

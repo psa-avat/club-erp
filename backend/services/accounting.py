@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -39,6 +39,7 @@ from models import (
     AccountingLine,
     CostProvisionRule,
     PricingItem,
+    PricingItemTier,
     PricingVersion,
     SystemSetting,
     User,
@@ -548,23 +549,49 @@ async def list_pricing_versions(
 
 
 async def list_pricing_items(db: AsyncSession, version_uuid: UUID) -> list[PricingItem]:
-    """List all pricing items for a given pricing version."""
+    """List all pricing items for a given pricing version (tiers eager-loaded)."""
     await get_pricing_version(db, version_uuid)
     result = await db.execute(
         select(PricingItem)
         .where(PricingItem.pricing_version_uuid == version_uuid)
+        .options(selectinload(PricingItem.tiers))
         .order_by(PricingItem.name)
     )
     return result.scalars().all()
 
 
 async def get_pricing_item(db: AsyncSession, item_uuid: UUID) -> PricingItem:
-    """Fetch one pricing item or raise 404."""
-    result = await db.execute(select(PricingItem).where(PricingItem.uuid == item_uuid))
+    """Fetch one pricing item (tiers eager-loaded) or raise 404."""
+    result = await db.execute(
+        select(PricingItem)
+        .where(PricingItem.uuid == item_uuid)
+        .options(selectinload(PricingItem.tiers))
+    )
     obj = result.scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pricing item not found.")
     return obj
+
+
+async def _replace_pricing_item_tiers(
+    db: AsyncSession,
+    item: PricingItem,
+    tier_payloads: list,
+) -> None:
+    """Delete existing tiers and insert new ones sorted by from_qty."""
+    await db.execute(
+        delete(PricingItemTier).where(
+            PricingItemTier.pricing_item_uuid == item.uuid
+        )
+    )
+    sorted_tiers = sorted(tier_payloads, key=lambda t: t.from_qty)
+    for i, tier in enumerate(sorted_tiers):
+        db.add(PricingItemTier(
+            pricing_item_uuid=item.uuid,
+            from_qty=tier.from_qty,
+            price=tier.price,
+            sort_order=i,
+        ))
 
 
 async def create_pricing_item(
@@ -576,13 +603,18 @@ async def create_pricing_item(
     version = await get_pricing_version(db, version_uuid)
     if version.is_locked:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    tier_payloads = request.tiers or []
+    item_data = request.model_dump(exclude={'tiers'})
     obj = PricingItem(
         pricing_version_uuid=version_uuid,
-        **request.model_dump(),
+        **item_data,
     )
     db.add(obj)
+    await db.flush()
+    if tier_payloads:
+        await _replace_pricing_item_tiers(db, obj, tier_payloads)
     await db.commit()
-    await db.refresh(obj)
+    await db.refresh(obj, ['tiers'])
     return obj
 
 
@@ -596,10 +628,14 @@ async def update_pricing_item(
     version = await get_pricing_version(db, obj.pricing_version_uuid)
     if version.is_locked:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
-    for field, value in request.model_dump(exclude_unset=True).items():
+    update_data = request.model_dump(exclude_unset=True)
+    tier_payloads = update_data.pop('tiers', None)
+    for field, value in update_data.items():
         setattr(obj, field, value)
+    if tier_payloads is not None:
+        await _replace_pricing_item_tiers(db, obj, request.tiers)
     await db.commit()
-    await db.refresh(obj)
+    await db.refresh(obj, ['tiers'])
     return obj
 
 
@@ -639,7 +675,7 @@ async def copy_pricing_versions_from_year(
     source_versions_result = await db.execute(
         select(PricingVersion)
         .where(PricingVersion.fiscal_year_uuid == source_fy_uuid)
-        .options(selectinload(PricingVersion.items))
+        .options(selectinload(PricingVersion.items).selectinload(PricingItem.tiers))
         .order_by(PricingVersion.from_date.asc())
     )
     source_versions = source_versions_result.scalars().all()
@@ -714,15 +750,18 @@ async def copy_pricing_versions_from_year(
                 name=si.name,
                 unit=si.unit,
                 base_price=si.base_price,
-                threshold_unit_count=si.threshold_unit_count,
-                threshold_price=si.threshold_price,
-                pack_unit_count=si.pack_unit_count,
                 pack_price=si.pack_price,
-                include_insurance=si.include_insurance,
-                include_fuel=si.include_fuel,
                 created_by=user_id,
             )
             db.add(new_item)
+            await db.flush()
+            for tier in si.tiers:
+                db.add(PricingItemTier(
+                    pricing_item_uuid=new_item.uuid,
+                    from_qty=tier.from_qty,
+                    price=tier.price,
+                    sort_order=tier.sort_order,
+                ))
 
         created.append(new_version)
 

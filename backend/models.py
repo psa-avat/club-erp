@@ -540,12 +540,7 @@ class PricingItem(Base):
     __table_args__ = (
         CheckConstraint("unit IN (1, 2, 3, 4, 5)", name="chk_pricing_items_unit"),
         CheckConstraint("base_price >= 0", name="chk_pricing_items_base_price"),
-        CheckConstraint(
-            "(threshold_unit_count IS NULL AND threshold_price IS NULL) OR "
-            "(threshold_unit_count IS NOT NULL AND threshold_price IS NOT NULL)",
-            name="chk_pricing_items_threshold_pair",
-        ),
-        CheckConstraint("threshold_unit_count IS NULL OR threshold_unit_count > 0", name="chk_pricing_items_threshold_count"),
+        CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_items_pack_price"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -560,8 +555,8 @@ class PricingItem(Base):
     # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
     unit = Column(SmallInteger, nullable=False)
     base_price = Column(Numeric(10, 4), nullable=False)
-    threshold_unit_count = Column(Integer, nullable=True)
-    threshold_price = Column(Numeric(10, 4), nullable=True)
+    # Price per unit when pilot has an active pack subscription
+    pack_price = Column(Numeric(10, 4), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -576,9 +571,43 @@ class PricingItem(Base):
 
     pricing_version = relationship("PricingVersion", back_populates="items")
     flight_type = relationship("FlightType")
+    tiers = relationship(
+        "PricingItemTier",
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="PricingItemTier.sort_order",
+    )
 
     def __repr__(self):
         return f"<PricingItem uuid={self.uuid} version={self.pricing_version_uuid} unit={self.unit}>"
+
+
+class PricingItemTier(Base):
+    """Progressive pricing bracket for a pricing item.
+
+    Tiers are evaluated ascending by from_qty: the flight module applies the
+    price of the last bracket whose from_qty <= cumulated consumption.
+    Example: [(0, 18€), (3, 9€), (5, 0€)] => free after 5 units.
+    """
+
+    __tablename__ = "pricing_item_tiers"
+    __table_args__ = (
+        CheckConstraint("from_qty >= 0", name="chk_pricing_item_tiers_from_qty"),
+        CheckConstraint("price >= 0", name="chk_pricing_item_tiers_price"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    pricing_item_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("pricing_items.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_qty = Column(Numeric(10, 4), nullable=False)
+    price = Column(Numeric(10, 4), nullable=False)
+    sort_order = Column(SmallInteger, nullable=False, default=0)
+
+    item = relationship("PricingItem", back_populates="tiers")
+
+    def __repr__(self):
+        return f"<PricingItemTier item={self.pricing_item_uuid} from_qty={self.from_qty}>"
 
 
 class AccountingJournal(Base):

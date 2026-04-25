@@ -43,6 +43,7 @@ from schemas.accounting import (
     JournalResponse,
     PricingItemCreateRequest,
     PricingItemResponse,
+    PricingItemTierCreate,
     PricingItemUpdateRequest,
     PricingVersionCreateRequest,
     PricingVersionResponse,
@@ -65,6 +66,7 @@ from services.accounting import (
     delete_pricing_item,
     delete_pricing_version,
     get_system_setting,
+    get_pricing_item,
     get_accounting_entry,
     get_pricing_version,
     list_accounts,
@@ -83,6 +85,7 @@ from services.accounting import (
     update_pricing_item,
     update_pricing_version,
     update_accounting_entry,
+    _replace_pricing_item_tiers,
 )
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["accounting"])
@@ -533,6 +536,28 @@ async def delete_pricing_item_endpoint(
     """Delete a pricing item (version must not be locked)."""
     await delete_pricing_item(db, item_uuid)
     return None
+
+
+@router.put(
+    "/pricing/items/{item_uuid}/tiers",
+    response_model=PricingItemResponse,
+)
+async def replace_pricing_item_tiers_endpoint(
+    item_uuid: UUID,
+    tiers: list[PricingItemTierCreate],
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Replace all progressive pricing brackets for an item (version must not be locked)."""
+    item = await get_pricing_item(db, item_uuid)
+    version = await get_pricing_version(db, item.pricing_version_uuid)
+    if version.is_locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    await _replace_pricing_item_tiers(db, item, tiers)
+    await db.commit()
+    await db.refresh(item, ['tiers'])
+    return item
 
 
 @router.post(

@@ -33,6 +33,7 @@ import type {
   CreatePricingItemPayload,
   FlightType,
   PricingItem,
+  ReplaceTiersPayload,
   UpdateAssetPayload,
   UpdateAssetTypePayload,
   UpdatePricingItemPayload,
@@ -358,6 +359,23 @@ export function useDeletePricingItemMutation(versionUuid: string) {
         `/api/v1/accounting/pricing/items/${itemUuid}`,
         getAuthRequestConfig(),
       )
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.pricingItems(versionUuid) })
+    },
+  })
+}
+
+export function useReplacePricingItemTiersMutation(versionUuid: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ itemUuid, tiers }: { itemUuid: string; tiers: ReplaceTiersPayload }) => {
+      const { data } = await apiClient.put<PricingItem>(
+        `/api/v1/accounting/pricing/items/${itemUuid}/tiers`,
+        tiers,
+        getAuthRequestConfig(),
+      )
+      return data
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.pricingItems(versionUuid) })
