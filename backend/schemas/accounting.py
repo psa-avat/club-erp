@@ -331,7 +331,7 @@ class CopyCostProvisionRulesResponse(BaseModel):
 class PricingItemTierCreate(BaseModel):
     """One progressive pricing bracket: applies from from_qty units onward."""
     from_qty: Decimal = Field(ge=0, decimal_places=4)
-    price: Decimal = Field(ge=0, decimal_places=4)
+    price: Decimal = Field(ge=0, decimal_places=2)
 
 
 class PricingItemTierResponse(BaseModel):
@@ -352,11 +352,11 @@ class PricingItemCreateRequest(BaseModel):
     """Create request for a pricing item within a pricing version."""
     flight_type_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=120)
-    # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
-    unit: int = Field(ge=1, le=5)
-    base_price: Decimal = Field(ge=0)
+    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed
+    unit: int = Field(ge=1, le=6)
+    base_price: Decimal = Field(ge=0, decimal_places=2)
     # Price per unit when the pilot has an active pack subscription
-    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # Progressive price brackets; replaces the former single threshold pair
     tiers: list[PricingItemTierCreate] = []
 
@@ -365,9 +365,9 @@ class PricingItemUpdateRequest(BaseModel):
     """Partial update request for a pricing item."""
     flight_type_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    unit: Optional[int] = Field(default=None, ge=1, le=5)
-    base_price: Optional[Decimal] = Field(default=None, ge=0)
-    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    unit: Optional[int] = Field(default=None, ge=1, le=6)
+    base_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # When provided, replaces all existing tiers atomically
     tiers: Optional[list[PricingItemTierCreate]] = None
 

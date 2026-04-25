@@ -172,7 +172,7 @@ export type PricingItem = {
   pricing_version_uuid: string
   flight_type_uuid: string | null
   name: string
-  /** 1=PerHour, 2=PerMinute, 3=PerLaunch, 4=PerFlight, 5=Fixed */
+  /** 1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed */
   unit: number
   base_price: string
   /** Price per unit when the pilot has an active pack subscription */

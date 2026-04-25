@@ -69,16 +69,20 @@ Deliverables:
 1. Extend pricing versioning with `asset_type_uuid` (NULL = global version).
 2. Pricing item fields:
 	- optional `flight_type_uuid` filter,
-	- `unit` billing unit (1=Hour, 2=Minute, 3=Launch, 4=Flight, 5=Fixed),
+	- `unit` billing unit (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed),
 	- `base_price` — standard price per unit,
 	- `pack_price` — nullable, price per unit when pilot has an active pack subscription,
 	- `tiers` — child table `pricing_item_tiers` (from_qty, price, sort_order); evaluated as progressive brackets during flight billing.
-3. Tier semantics: brackets are sorted ascending by `from_qty`; the flight module picks the last bracket whose `from_qty <= cumulated consumption`. Example: `0→18€, 3→9€, 5→0€`.
-4. Service validations:
+3. Numeric precision rules:
+	- prices (`base_price`, `pack_price`, `tier.price`) use 2 decimal places,
+	- hour-based thresholds (`tier.from_qty` for FlightTime/FlightDuration) use up to 1 decimal place,
+	- engine/count-based thresholds (`tier.from_qty` for EngineTimeMin, EngineTime1/100h, PerFlight, Fixed) use integer values only.
+4. Tier semantics: brackets are sorted ascending by `from_qty`; the flight module picks the last bracket whose `from_qty <= cumulated consumption`. Example: `0→18€, 3→9€, 5→0€`.
+5. Service validations:
 	- fiscal-year boundary checks,
 	- date-range overlap checks per `(fiscal_year_uuid, asset_type_uuid)`.
-5. Pricing lookup API for asset/date/flight type using metric-aware item selection.
-6. Support multiple metrics for a single asset type/version (for example: flight hour plus engine hour).
+6. Pricing lookup API for asset/date/flight type using metric-aware item selection.
+7. Support multiple metrics for a single asset type/version (for example: flight hour plus engine hour).
 
 ### Phase 2b - Cost Provisioning
 

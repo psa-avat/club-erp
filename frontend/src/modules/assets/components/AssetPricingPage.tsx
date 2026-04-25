@@ -56,11 +56,12 @@ const VERSION_STATUS_ARCHIVED = 3
 const FY_STATE_CLOSED = 2
 
 const UNIT_LABELS: Record<number, string> = {
-  1: 'PerHour',
-  2: 'PerMinute',
-  3: 'PerLaunch',
-  4: 'PerFlight',
-  5: 'Fixed',
+  1: 'FlightTime',
+  2: 'EngineTimeMin',
+  3: 'EngineTime1_100h',
+  4: 'FlightDuration',
+  5: 'PerFlight',
+  6: 'Fixed',
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,6 +93,14 @@ function timelineBar(fy: FiscalYear, version: AssetPricingVersion) {
 function formatPrice(value: string | null | undefined): string {
   if (!value) return '—'
   try { return new Decimal(value).toFixed(2) } catch { return value }
+}
+
+function getFromQtyStep(unit: number): string {
+  return unit === 1 || unit === 4 ? '0.1' : '1'
+}
+
+function getFromQtyPlaceholder(unit: number): string {
+  return unit === 1 || unit === 4 ? '0.0' : '0'
 }
 
 // ── Version Badge ─────────────────────────────────────────────────────────────
@@ -278,18 +287,24 @@ function PricingItemForm({
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.basePrice')} *</Label>
           <Input
+            type="number"
+            min="0"
+            step="0.01"
             value={form.base_price}
             onChange={(e) => set('base_price', e.target.value)}
-            placeholder="0.0000"
+            placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.packPrice')}</Label>
           <Input
+            type="number"
+            min="0"
+            step="0.01"
             value={form.pack_price}
             onChange={(e) => set('pack_price', e.target.value)}
-            placeholder="0.0000"
+            placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
         </div>
@@ -324,15 +339,21 @@ function PricingItemForm({
             {form.tiers.map((tier, i) => (
               <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
                 <Input
+                  type="number"
+                  min="0"
+                  step={getFromQtyStep(form.unit)}
                   value={tier.from_qty}
                   onChange={(e) => updateTier(i, 'from_qty', e.target.value)}
-                  placeholder="0"
+                  placeholder={getFromQtyPlaceholder(form.unit)}
                   className="h-7 text-sm font-mono"
                 />
                 <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
                   value={tier.price}
                   onChange={(e) => updateTier(i, 'price', e.target.value)}
-                  placeholder="0.0000"
+                  placeholder="0.00"
                   className="h-7 text-sm font-mono"
                 />
                 <button

@@ -73,7 +73,7 @@ This document defines the target specification for the Assets module of the ERP 
 
 - `uuid` (PK)
 - `pricing_version_uuid` (FK)
-- `name`, `unit` (1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit)
+- `name`, `unit` (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed)
 - `base_price` (NUMERIC(10,4))
 - `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
 - `pack_price`, `pack_unit_count` (both or neither): bundle/discount
@@ -88,7 +88,7 @@ This document defines the target specification for the Assets module of the ERP 
 | `flight_type_uuid` | Optional (e.g., FERRY, CABLE_BREAK) | Unused (NULL) |
 | `include_insurance` | Relevant | Not relevant (NULL/false) |
 | `include_fuel` | Relevant | Not relevant (NULL/false) |
-| `unit` | Hour, Flight, Minute, Kilometer, Unit | Hour, Flight, or flat Unit |
+| `unit` | FlightTime, EngineTimeMin, EngineTime1/100h, FlightDuration, PerFlight, Fixed | PerFlight, Fixed |
 
 ### 3.7 Product / Service
 - `uuid`, `code` (unique), `name`

@@ -197,15 +197,15 @@ class PricingItemCreateRequest(BaseModel):
     # NULL = applies to all flight types within the version's asset type
     flight_type_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=120)
-    # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
-    unit: int = Field(ge=1, le=5)
-    base_price: Decimal = Field(ge=0)
+    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed
+    unit: int = Field(ge=1, le=6)
+    base_price: Decimal = Field(ge=0, decimal_places=2)
     # Threshold pricing: price per unit drops after threshold_unit_count units
     threshold_unit_count: Optional[int] = Field(default=None, ge=1)
-    threshold_price: Optional[Decimal] = Field(default=None, ge=0)
+    threshold_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # Pack pricing: flat price for a bundle of pack_unit_count units
     pack_unit_count: Optional[int] = Field(default=None, ge=1)
-    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     include_insurance: bool = False
     include_fuel: bool = False
 
@@ -229,12 +229,12 @@ class PricingItemCreateRequest(BaseModel):
 class PricingItemUpdateRequest(BaseModel):
     flight_type_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    unit: Optional[int] = Field(default=None, ge=1, le=5)
-    base_price: Optional[Decimal] = Field(default=None, ge=0)
+    unit: Optional[int] = Field(default=None, ge=1, le=6)
+    base_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     threshold_unit_count: Optional[int] = Field(default=None, ge=1)
-    threshold_price: Optional[Decimal] = Field(default=None, ge=0)
+    threshold_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     pack_unit_count: Optional[int] = Field(default=None, ge=1)
-    pack_price: Optional[Decimal] = Field(default=None, ge=0)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     include_insurance: Optional[bool] = None
     include_fuel: Optional[bool] = None
 

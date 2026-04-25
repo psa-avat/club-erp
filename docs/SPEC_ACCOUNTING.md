@@ -84,7 +84,7 @@ Journal type enum values:
 ### 3.5 Pricing Item
 - `uuid` (PK)
 - `pricing_version_uuid` (FK)
-- `name`, `unit` (1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit)
+- `name`, `unit` (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed)
 - `base_price` (NUMERIC(10,4))
 - `threshold_unit_count`, `threshold_price` (both or neither): tier pricing
 - `pack_price`, `pack_unit_count` (both or neither): bundle/discount

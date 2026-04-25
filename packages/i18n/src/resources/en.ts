@@ -519,9 +519,10 @@ export const en = {
       removeTier: 'Remove',
       noTiers: 'No tiers configured.',
       confirmDeleteItem: 'Delete this pricing item?',
-      unitPerHour: 'Per hour',
-      unitPerMinute: 'Per minute',
-      unitPerLaunch: 'Per launch',
+      unitFlightTime: 'Flight time',
+      unitEngineTimeMin: 'Engine time (min)',
+      unitEngineTime1_100h: 'Engine time (1/100 h)',
+      unitFlightDuration: 'Flight duration',
       unitPerFlight: 'Per flight',
       unitFixed: 'Fixed',
       error: {

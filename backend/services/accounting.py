@@ -573,6 +573,68 @@ async def get_pricing_item(db: AsyncSession, item_uuid: UUID) -> PricingItem:
     return obj
 
 
+def _decimal_places(value: Decimal) -> int:
+    exponent = value.as_tuple().exponent
+    return -exponent if exponent < 0 else 0
+
+
+def _unit_label(unit: int) -> str:
+    labels = {
+        1: "flight time",
+        2: "engine time (minute)",
+        3: "engine time (1/100 h)",
+        4: "flight duration",
+        5: "per flight",
+        6: "fixed",
+    }
+    return labels.get(unit, f"unit={unit}")
+
+
+def _from_qty_max_decimals(unit: int) -> int:
+    # Hour-based quantities allow 1 decimal; count-based quantities are integers.
+    if unit in {1, 4}:
+        return 1
+    return 0
+
+
+def _validate_pricing_precision(
+    *,
+    unit: int,
+    base_price: Decimal | None,
+    pack_price: Decimal | None,
+    tiers: list | None,
+) -> None:
+    if base_price is not None and _decimal_places(base_price) > 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="base_price must have at most 2 decimal places.",
+        )
+    if pack_price is not None and _decimal_places(pack_price) > 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="pack_price must have at most 2 decimal places.",
+        )
+
+    if tiers is None:
+        return
+
+    max_decimals = _from_qty_max_decimals(unit)
+    for tier in tiers:
+        if _decimal_places(tier.price) > 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="tier.price must have at most 2 decimal places.",
+            )
+        if _decimal_places(tier.from_qty) > max_decimals:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"tier.from_qty for {_unit_label(unit)} must have at most "
+                    f"{max_decimals} decimal place(s)."
+                ),
+            )
+
+
 async def _replace_pricing_item_tiers(
     db: AsyncSession,
     item: PricingItem,
@@ -604,6 +666,12 @@ async def create_pricing_item(
     if version.is_locked:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
     tier_payloads = request.tiers or []
+    _validate_pricing_precision(
+        unit=request.unit,
+        base_price=request.base_price,
+        pack_price=request.pack_price,
+        tiers=tier_payloads,
+    )
     item_data = request.model_dump(exclude={'tiers'})
     obj = PricingItem(
         pricing_version_uuid=version_uuid,
@@ -630,6 +698,15 @@ async def update_pricing_item(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
     update_data = request.model_dump(exclude_unset=True)
     tier_payloads = update_data.pop('tiers', None)
+
+    effective_unit = update_data.get('unit', obj.unit)
+    _validate_pricing_precision(
+        unit=effective_unit,
+        base_price=update_data.get('base_price'),
+        pack_price=update_data.get('pack_price'),
+        tiers=request.tiers if tier_payloads is not None else None,
+    )
+
     for field, value in update_data.items():
         setattr(obj, field, value)
     if tier_payloads is not None:

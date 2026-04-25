@@ -538,7 +538,7 @@ class PricingItem(Base):
 
     __tablename__ = "pricing_items"
     __table_args__ = (
-        CheckConstraint("unit IN (1, 2, 3, 4, 5)", name="chk_pricing_items_unit"),
+        CheckConstraint("unit IN (1, 2, 3, 4, 5, 6)", name="chk_pricing_items_unit"),
         CheckConstraint("base_price >= 0", name="chk_pricing_items_base_price"),
         CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_items_pack_price"),
     )
@@ -552,7 +552,7 @@ class PricingItem(Base):
         UUID(as_uuid=True), ForeignKey("asset_flight_types.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
     name = Column(String(120), nullable=False)
-    # 1=Hour, 2=Flight, 3=Minute, 4=Kilometer, 5=Unit
+    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed
     unit = Column(SmallInteger, nullable=False)
     base_price = Column(Numeric(10, 4), nullable=False)
     # Price per unit when pilot has an active pack subscription

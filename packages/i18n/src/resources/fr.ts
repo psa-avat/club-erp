@@ -526,9 +526,10 @@ export const fr = {
       includeInsurance: 'Assurance incluse',
       includeFuel: 'Carburant inclus',
       confirmDeleteItem: 'Supprimer cette ligne tarifaire ?',
-      unitPerHour: 'Par heure',
-      unitPerMinute: 'Par minute',
-      unitPerLaunch: 'Par treuillée',
+      unitFlightTime: 'Temps de vol',
+      unitEngineTimeMin: 'Temps moteur (min)',
+      unitEngineTime1_100h: 'Temps moteur (1/100 h)',
+      unitFlightDuration: 'Durée de vol',
       unitPerFlight: 'Par vol',
       unitFixed: 'Forfait',
       error: {

@@ -58,11 +58,12 @@ const VERSION_STATUS_ACTIVE = 2
 const FY_STATE_CLOSED = 2
 
 const UNIT_LABELS: Record<number, string> = {
-  1: 'PerHour',
-  2: 'PerMinute',
-  3: 'PerLaunch',
-  4: 'PerFlight',
-  5: 'Fixed',
+  1: 'FlightTime',
+  2: 'EngineTimeMin',
+  3: 'EngineTime1_100h',
+  4: 'FlightDuration',
+  5: 'PerFlight',
+  6: 'Fixed',
 }
 
 // ── Query Keys ────────────────────────────────────────────────────────────────
@@ -85,6 +86,14 @@ function extractError(e: unknown, fallback: string): string {
 function formatPrice(value: string | null | undefined): string {
   if (!value) return '—'
   try { return new Decimal(value).toFixed(2) } catch { return value }
+}
+
+function getFromQtyStep(unit: number): string {
+  return unit === 1 || unit === 4 ? '0.1' : '1'
+}
+
+function getFromQtyPlaceholder(unit: number): string {
+  return unit === 1 || unit === 4 ? '0.0' : '0'
 }
 
 function versionStatusClass(status: number): string {
@@ -322,11 +331,27 @@ function PricingItemForm({
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.basePrice')} *</Label>
-          <Input value={form.base_price} onChange={(e) => set('base_price', e.target.value)} placeholder="0.0000" className="h-8 text-sm font-mono" />
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.base_price}
+            onChange={(e) => set('base_price', e.target.value)}
+            placeholder="0.00"
+            className="h-8 text-sm font-mono"
+          />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.packPrice')}</Label>
-          <Input value={form.pack_price} onChange={(e) => set('pack_price', e.target.value)} placeholder="0.0000" className="h-8 text-sm font-mono" />
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.pack_price}
+            onChange={(e) => set('pack_price', e.target.value)}
+            placeholder="0.00"
+            className="h-8 text-sm font-mono"
+          />
         </div>
         {flightTypes.length > 0 && (
           <div className="space-y-1">
@@ -356,8 +381,24 @@ function PricingItemForm({
             </div>
             {form.tiers.map((tier, i) => (
               <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
-                <Input value={tier.from_qty} onChange={(e) => updateTier(i, 'from_qty', e.target.value)} placeholder="0" className="h-7 text-sm font-mono" />
-                <Input value={tier.price} onChange={(e) => updateTier(i, 'price', e.target.value)} placeholder="0.0000" className="h-7 text-sm font-mono" />
+                <Input
+                  type="number"
+                  min="0"
+                  step={getFromQtyStep(form.unit)}
+                  value={tier.from_qty}
+                  onChange={(e) => updateTier(i, 'from_qty', e.target.value)}
+                  placeholder={getFromQtyPlaceholder(form.unit)}
+                  className="h-7 text-sm font-mono"
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tier.price}
+                  onChange={(e) => updateTier(i, 'price', e.target.value)}
+                  placeholder="0.00"
+                  className="h-7 text-sm font-mono"
+                />
                 <button type="button" className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeTier(i)}>
                   <X className="h-3.5 w-3.5" />
                 </button>
