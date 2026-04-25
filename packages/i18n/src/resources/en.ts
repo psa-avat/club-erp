@@ -519,6 +519,7 @@ export const en = {
       addTier: 'Add tier',
       tierFrom: 'From quantity',
       tierPrice: 'Price',
+      tierPackPrice: 'Pack price',
       removeTier: 'Remove',
       noTiers: 'No tiers configured.',
       confirmDeleteItem: 'Delete this pricing item?',

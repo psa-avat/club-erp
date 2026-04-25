@@ -625,6 +625,11 @@ def _validate_pricing_precision(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="tier.price must have at most 2 decimal places.",
             )
+        if tier.pack_price is not None and _decimal_places(tier.pack_price) > 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="tier.pack_price must have at most 2 decimal places.",
+            )
         if tier.from_qty <= 0:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -663,6 +668,7 @@ async def _replace_pricing_item_tiers(
             pricing_item_uuid=item.uuid,
             from_qty=tier.from_qty,
             price=tier.price,
+            pack_price=getattr(tier, 'pack_price', None),
             sort_order=i,
         ))
 

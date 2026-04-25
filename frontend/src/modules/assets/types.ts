@@ -159,12 +159,14 @@ export type PricingItemTier = {
   uuid: string
   from_qty: string
   price: string
+  pack_price: string | null
   sort_order: number
 }
 
 export type TierPayload = {
   from_qty: string
   price: string
+  pack_price?: string
 }
 
 export type PricingItem = {

@@ -332,6 +332,7 @@ class PricingItemTierCreate(BaseModel):
     """One progressive pricing bracket: applies from from_qty units onward."""
     from_qty: Decimal = Field(gt=0, decimal_places=4)
     price: Decimal = Field(ge=0, decimal_places=2)
+    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
 
 
 class PricingItemTierResponse(BaseModel):
@@ -341,6 +342,7 @@ class PricingItemTierResponse(BaseModel):
     uuid: UUID
     from_qty: Decimal
     price: Decimal
+    pack_price: Optional[Decimal] = None
     sort_order: int
 
 

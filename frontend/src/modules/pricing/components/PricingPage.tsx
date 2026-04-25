@@ -262,7 +262,7 @@ function itemToForm(item: PricingItem): ItemFormState {
     unit: item.unit,
     base_price: item.base_price,
     pack_price: item.pack_price ?? '',
-    tiers: item.tiers.map((t) => ({ from_qty: t.from_qty, price: t.price })),
+    tiers: item.tiers.map((t) => ({ from_qty: t.from_qty, price: t.price, pack_price: t.pack_price ?? '' })),
     flight_type_uuid: item.flight_type_uuid ?? '',
   }
 }
@@ -274,7 +274,11 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
     base_price: form.base_price.trim(),
     pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
     flight_type_uuid: form.flight_type_uuid || null,
-    tiers: form.tiers.filter((t) => t.from_qty !== '' && t.price !== ''),
+    tiers: form.tiers.filter((t) => t.from_qty !== '' && t.price !== '').map((t) => ({
+      from_qty: t.from_qty,
+      price: t.price,
+      pack_price: t.pack_price && t.pack_price.trim() !== '' ? t.pack_price.trim() : undefined,
+    })),
   }
 }
 
@@ -298,7 +302,7 @@ function PricingItemForm({
     setForm((prev) => ({ ...prev, [key]: value }))
   }
   function addTier() {
-    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '' }] }))
+    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '', pack_price: '' }] }))
   }
   function updateTier(index: number, field: keyof TierPayload, value: string) {
     setForm((prev) => ({
@@ -377,13 +381,14 @@ function PricingItemForm({
         {form.tiers.length === 0 && <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>}
         {form.tiers.length > 0 && (
           <div className="space-y-1">
-            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-slate-500">
+            <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs font-medium text-slate-500">
               <span>{t('pricing.tierFrom')}</span>
               <span>{t('pricing.tierPrice')}</span>
+              <span>{t('pricing.tierPackPrice')}</span>
               <span />
             </div>
             {form.tiers.map((tier, i) => (
-              <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+              <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2">
                 <Input
                   type="number"
                   min={getFromQtyStep(form.unit)}
@@ -399,6 +404,15 @@ function PricingItemForm({
                   step="0.01"
                   value={tier.price}
                   onChange={(e) => updateTier(i, 'price', e.target.value)}
+                  placeholder="0.00"
+                  className="h-7 text-sm font-mono"
+                />
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tier.pack_price ?? ''}
+                  onChange={(e) => updateTier(i, 'pack_price', e.target.value)}
                   placeholder="0.00"
                   className="h-7 text-sm font-mono"
                 />

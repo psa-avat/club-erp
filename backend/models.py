@@ -595,6 +595,7 @@ class PricingItemTier(Base):
     __table_args__ = (
         CheckConstraint("from_qty > 0", name="chk_pricing_item_tiers_from_qty"),
         CheckConstraint("price >= 0", name="chk_pricing_item_tiers_price"),
+        CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_item_tiers_pack_price"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -603,6 +604,7 @@ class PricingItemTier(Base):
     )
     from_qty = Column(Numeric(10, 4), nullable=False)
     price = Column(Numeric(10, 4), nullable=False)
+    pack_price = Column(Numeric(10, 4), nullable=True)
     sort_order = Column(SmallInteger, nullable=False, default=0)
 
     item = relationship("PricingItem", back_populates="tiers")
