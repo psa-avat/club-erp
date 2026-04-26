@@ -494,6 +494,8 @@ export const fr = {
       fromDate: 'Du',
       toDate: 'Au',
       versionStatus: 'Statut',
+      usePack: 'Avec pack',
+      usePackHelp: 'Activer les prix pack pour cette version tarifaire.',
       statusDraft: 'Brouillon',
       statusActive: 'Actif',
       statusArchived: 'Archivé',

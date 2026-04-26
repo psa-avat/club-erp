@@ -209,6 +209,7 @@ export type AssetPricingVersion = {
   to_date: string | null
   status: number
   is_locked: boolean
+  use_pack: boolean
   created_at: string
   updated_at: string
 }

@@ -511,6 +511,7 @@ class PricingVersion(Base):
     to_date = Column(Date, nullable=True)
     status = Column(SmallInteger, nullable=False, default=1)  # 1=Draft, 2=Active, 3=Archived
     is_locked = Column(Boolean, nullable=False, default=False)
+    use_pack = Column(Boolean, nullable=False, default=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

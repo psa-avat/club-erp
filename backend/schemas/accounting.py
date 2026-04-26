@@ -254,6 +254,7 @@ class PricingVersionCreateRequest(BaseModel):
     from_date: date
     to_date: Optional[date] = None
     status: int = Field(default=1, ge=1, le=3)  # 1=Draft, 2=Active, 3=Archived
+    use_pack: bool = True
 
 
 class PricingVersionResponse(BaseModel):
@@ -265,6 +266,7 @@ class PricingVersionResponse(BaseModel):
     to_date: Optional[date] = None
     status: int
     is_locked: bool
+    use_pack: bool
     asset_type_uuid: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -281,6 +283,7 @@ class PricingVersionUpdateRequest(BaseModel):
     from_date: Optional[date] = None
     to_date: Optional[date] = None
     status: Optional[int] = Field(default=None, ge=1, le=3)
+    use_pack: Optional[bool] = None
 
 
 class CopyPricingVersionsRequest(BaseModel):

@@ -494,6 +494,8 @@ export const en = {
       fromDate: 'From',
       toDate: 'To',
       versionStatus: 'Status',
+      usePack: 'Use pack',
+      usePackHelp: 'Enable pack prices for this pricing version.',
       statusDraft: 'Draft',
       statusActive: 'Active',
       statusArchived: 'Archived',

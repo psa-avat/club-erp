@@ -429,6 +429,7 @@ async def create_pricing_version(
         to_date=request.to_date,
         status=request.status,
         asset_type_uuid=asset_type_uuid,
+        use_pack=request.use_pack,
         created_by=user_id,
     )
 
@@ -519,6 +520,8 @@ async def update_pricing_version(
         version.status = request.status
     if request.asset_type_uuid is not None:
         version.asset_type_uuid = request.asset_type_uuid
+    if request.use_pack is not None:
+        version.use_pack = request.use_pack
 
     await db.commit()
     await db.refresh(version)
