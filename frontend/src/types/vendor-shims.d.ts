@@ -21,18 +21,107 @@
 declare module 'react-router-dom' {
   import * as React from 'react'
 
+  export interface NavigateOptions {
+    replace?: boolean
+    state?: unknown
+    relative?: 'route' | 'path'
+  }
+
   export interface NavigateFunction {
-    (to: string): void
+    (to: string, options?: NavigateOptions): void
     (delta: number): void
   }
 
-  export function BrowserRouter(props: { children?: React.ReactNode }): React.JSX.Element
+  export interface Location {
+    pathname: string
+    search: string
+    hash: string
+    state: unknown
+    key: string
+  }
+
+  export type To = string | { pathname?: string; search?: string; hash?: string }
+
+  export interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+    to: To
+    replace?: boolean
+    state?: unknown
+    reloadDocument?: boolean
+    preventScrollReset?: boolean
+    relative?: 'route' | 'path'
+    children?: React.ReactNode
+  }
+
+  export interface NavLinkProps extends Omit<LinkProps, 'className' | 'style'> {
+    className?: string | ((props: { isActive: boolean; isPending: boolean }) => string | undefined)
+    style?: React.CSSProperties | ((props: { isActive: boolean; isPending: boolean }) => React.CSSProperties | undefined)
+    end?: boolean
+    caseSensitive?: boolean
+    children?: React.ReactNode | ((props: { isActive: boolean; isPending: boolean }) => React.ReactNode)
+  }
+
+  export interface NavigateProps {
+    to: To
+    replace?: boolean
+    state?: unknown
+    relative?: 'route' | 'path'
+  }
+
+  export interface RouteProps {
+    path?: string
+    index?: boolean
+    element?: React.ReactNode
+    children?: React.ReactNode
+    caseSensitive?: boolean
+    id?: string
+  }
+
+  export interface RouterProps {
+    children?: React.ReactNode
+  }
+
+  export function BrowserRouter(props: RouterProps): React.JSX.Element
+  export function Routes(props: { children?: React.ReactNode; location?: Partial<Location> | string }): React.JSX.Element
+  export function Route(props: RouteProps): React.JSX.Element
+  export function Navigate(props: NavigateProps): React.JSX.Element
+  export function Outlet(props: { context?: unknown }): React.JSX.Element
+  export function Link(props: LinkProps): React.JSX.Element
+  export function NavLink(props: NavLinkProps): React.JSX.Element
+
   export function useNavigate(): NavigateFunction
   export function useParams<T extends Record<string, string | undefined> = Record<string, string | undefined>>(): T
+  export function useLocation(): Location
+  export function useOutletContext<T = unknown>(): T
 }
 
 declare module 'react-i18next' {
-  export function useTranslation(namespace?: string): {
-    t: (key: string, options?: Record<string, unknown>) => string
+  export const initReactI18next: { type: '3rdParty'; init(i18n: unknown): void }
+
+  export interface TFunction {
+    (key: string): string
+    (key: string, options: Record<string, unknown>): string
+    (key: string, defaultValue: string, options?: Record<string, unknown>): string
   }
+
+  export interface I18nInstance {
+    language: string
+    changeLanguage(lang: string): Promise<TFunction>
+    t: TFunction
+    use(plugin: unknown): I18nInstance
+    init(options: Record<string, unknown>): Promise<TFunction>
+  }
+
+  export interface UseTranslationResponse {
+    t: TFunction
+    i18n: I18nInstance
+    ready: boolean
+  }
+
+  export function useTranslation(namespace?: string | string[]): UseTranslationResponse
+  export function Trans(props: {
+    i18nKey?: string
+    children?: React.ReactNode
+    values?: Record<string, unknown>
+    components?: Record<string, React.ReactElement>
+  }): React.JSX.Element
 }

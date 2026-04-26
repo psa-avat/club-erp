@@ -1,5 +1,3 @@
-/// <reference path="../../../types/vendor-shims.d.ts" />
-
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
