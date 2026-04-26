@@ -1,3 +1,5 @@
+/// <reference path="../../../types/vendor-shims.d.ts" />
+
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
@@ -185,11 +187,11 @@ function VersionForm({
         <span className="text-[11px] text-slate-500">{t('pricing.usePackHelp')}</span>
       </div>
       <div className="flex items-end gap-2 sm:col-span-3">
-        <Button size="sm" onClick={() => onSave(form)} disabled={saving || !form.name || !form.from_date}>
+        <Button className="h-8 rounded-md px-3 text-xs" onClick={() => onSave(form)} disabled={saving || !form.name || !form.from_date}>
           <Check className="mr-1 h-3 w-3" />
           {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
           {t('pricing.cancel')}
         </Button>
@@ -406,18 +408,18 @@ function PricingItemForm({
             ))}
           </div>
         )}
-        <Button size="sm" variant="ghost" type="button" onClick={addTier}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" type="button" onClick={addTier}>
           <Plus className="mr-1 h-3 w-3" />
           {t('pricing.addTier')}
         </Button>
       </div>
 
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
+        <Button className="h-8 rounded-md px-3 text-xs" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
           {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
           {t('pricing.cancel')}
         </Button>
@@ -490,7 +492,7 @@ function PricingItemsPanel({
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-slate-700">{t('pricing.items')}</h3>
         {editable && !showForm && !editingItem && (
-          <Button size="sm" variant="ghost" onClick={() => setShowForm(true)}>
+          <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" onClick={() => setShowForm(true)}>
             <Plus className="mr-1 h-3 w-3" />
             {t('pricing.addItem')}
           </Button>
@@ -756,7 +758,7 @@ export function AssetPricingPage() {
               {t('pricing.versions')} — {selectedFy.label}
             </h2>
             {canEdit && !showNewVersionForm && !editingVersion && (
-              <Button size="sm" onClick={() => setShowNewVersionForm(true)}>
+              <Button className="h-8 rounded-md px-3 text-xs" onClick={() => setShowNewVersionForm(true)}>
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 {t('pricing.addVersion')}
               </Button>

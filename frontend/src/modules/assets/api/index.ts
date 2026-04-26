@@ -276,6 +276,7 @@ export function useCreateAssetPricingVersionMutation(fiscalYearUuid: string, ass
       from_date: string
       to_date?: string | null
       status?: number
+      use_pack?: boolean
     }) => {
       const { data } = await apiClient.post<AssetPricingVersion>(
         '/api/v1/accounting/pricing/versions',
@@ -303,6 +304,7 @@ export function useUpdateAssetPricingVersionMutation(fiscalYearUuid: string, ass
       from_date?: string
       to_date?: string | null
       status?: number
+      use_pack?: boolean
     }) => {
       const { uuid, ...rest } = payload
       const { data } = await apiClient.patch<AssetPricingVersion>(

@@ -150,6 +150,7 @@ export type PricingVersionCreatePayload = {
   from_date: string
   to_date?: string | null
   status?: number
+  use_pack?: boolean
 }
 
 export type PricingVersionUpdatePayload = {
@@ -157,6 +158,7 @@ export type PricingVersionUpdatePayload = {
   from_date?: string
   to_date?: string | null
   status?: number
+  use_pack?: boolean
 }
 
 export type CopyPricingVersionsPayload = {
