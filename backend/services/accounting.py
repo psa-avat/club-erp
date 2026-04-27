@@ -381,6 +381,12 @@ async def create_pricing_version(
     asset_type_uuid: "UUID | None" = None,
 ) -> PricingVersion:
     """Create pricing version with fiscal-year and date overlap constraints."""
+    if request.status != PRICING_STATUS_DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Pricing versions must be created in Draft status.",
+        )
+
     fy = await get_or_create_fiscal_year(db, request.fiscal_year_uuid)
 
     if request.to_date is not None and request.to_date < request.from_date:
@@ -455,6 +461,68 @@ def _pricing_ranges_overlap(start_a, end_a, start_b, end_b) -> bool:
     return start_a <= end_b and end_a >= start_b
 
 
+PRICING_STATUS_DRAFT = 1
+PRICING_STATUS_ACTIVE = 2
+PRICING_STATUS_ARCHIVED = 3
+
+
+def _pricing_status_label(status_code: int) -> str:
+    labels = {
+        PRICING_STATUS_DRAFT: "Draft",
+        PRICING_STATUS_ACTIVE: "Active",
+        PRICING_STATUS_ARCHIVED: "Archived",
+    }
+    return labels.get(status_code, f"Unknown({status_code})")
+
+
+def _ensure_pricing_version_mutable(version: PricingVersion) -> None:
+    if version.is_locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    if version.status != PRICING_STATUS_DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only Draft pricing versions are editable. "
+                f"Current status is {_pricing_status_label(version.status)}."
+            ),
+        )
+
+
+def _validate_pricing_status_transition(current_status: int, next_status: int) -> None:
+    if current_status == next_status:
+        return
+    allowed = {
+        PRICING_STATUS_DRAFT: {PRICING_STATUS_ACTIVE, PRICING_STATUS_ARCHIVED},
+        PRICING_STATUS_ACTIVE: {PRICING_STATUS_ARCHIVED},
+        PRICING_STATUS_ARCHIVED: set(),
+    }
+    if next_status not in allowed.get(current_status, set()):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Invalid pricing version status transition: "
+                f"{_pricing_status_label(current_status)} -> {_pricing_status_label(next_status)}."
+            ),
+        )
+
+
+async def _validate_pricing_version_activation(db: AsyncSession, version_uuid: UUID) -> None:
+    missing_credit_query = await db.execute(
+        select(PricingItem.uuid).where(
+            PricingItem.pricing_version_uuid == version_uuid,
+            PricingItem.gl_account_credit_uuid.is_(None),
+        )
+    )
+    if missing_credit_query.first() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Cannot activate pricing version: all pricing items must define "
+                "gl_account_credit_uuid before activation."
+            ),
+        )
+
+
 async def update_pricing_version(
     db: AsyncSession,
     version_uuid: UUID,
@@ -464,6 +532,32 @@ async def update_pricing_version(
     """Update pricing version and enforce fiscal-year and overlap constraints."""
     version = await get_pricing_version(db, version_uuid)
     fy = await get_or_create_fiscal_year(db, version.fiscal_year_uuid)
+
+    if version.is_locked:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+
+    current_status = version.status
+    next_status = request.status if request.status is not None else current_status
+    _validate_pricing_status_transition(current_status, next_status)
+
+    mutable_fields_requested = any(
+        field is not None
+        for field in (
+            request.name,
+            request.from_date,
+            request.to_date,
+            request.asset_type_uuid,
+            request.use_pack,
+        )
+    )
+    if mutable_fields_requested and current_status != PRICING_STATUS_DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only Draft pricing versions can modify name/date/scope/options. "
+                f"Current status is {_pricing_status_label(current_status)}."
+            ),
+        )
 
     next_from = request.from_date if request.from_date is not None else version.from_date
     next_to = request.to_date if request.to_date is not None else version.to_date
@@ -523,6 +617,9 @@ async def update_pricing_version(
     if request.use_pack is not None:
         version.use_pack = request.use_pack
 
+    if current_status != PRICING_STATUS_ACTIVE and next_status == PRICING_STATUS_ACTIVE:
+        await _validate_pricing_version_activation(db, version.uuid)
+
     await db.commit()
     await db.refresh(version)
     return version
@@ -531,6 +628,7 @@ async def update_pricing_version(
 async def delete_pricing_version(db: AsyncSession, version_uuid: UUID) -> None:
     """Delete one pricing version by UUID."""
     version = await get_pricing_version(db, version_uuid)
+    _ensure_pricing_version_mutable(version)
     await db.delete(version)
     await db.commit()
 
@@ -694,10 +792,9 @@ async def create_pricing_item(
     version_uuid: UUID,
     request,
 ) -> PricingItem:
-    """Create a pricing item inside a (non-locked) pricing version."""
+    """Create a pricing item inside a mutable (Draft + unlocked) pricing version."""
     version = await get_pricing_version(db, version_uuid)
-    if version.is_locked:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    _ensure_pricing_version_mutable(version)
     tier_payloads = request.tiers or []
     _validate_pricing_precision(
         unit=request.unit,
@@ -732,11 +829,10 @@ async def update_pricing_item(
     item_uuid: UUID,
     request,
 ) -> PricingItem:
-    """Partially update a pricing item; version must not be locked."""
+    """Partially update a pricing item; version must be mutable (Draft + unlocked)."""
     obj = await get_pricing_item(db, item_uuid)
     version = await get_pricing_version(db, obj.pricing_version_uuid)
-    if version.is_locked:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    _ensure_pricing_version_mutable(version)
     update_data = request.model_dump(exclude_unset=True)
     tier_payloads = update_data.pop('tiers', None)
 
@@ -766,11 +862,10 @@ async def update_pricing_item(
 
 
 async def delete_pricing_item(db: AsyncSession, item_uuid: UUID) -> None:
-    """Delete a pricing item; version must not be locked."""
+    """Delete a pricing item; version must be mutable (Draft + unlocked)."""
     obj = await get_pricing_item(db, item_uuid)
     version = await get_pricing_version(db, obj.pricing_version_uuid)
-    if version.is_locked:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
+    _ensure_pricing_version_mutable(version)
     await db.delete(obj)
     await db.commit()
 

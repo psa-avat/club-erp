@@ -560,7 +560,7 @@ function PricingItemsPanel({
     }
   }
 
-  const editable = canEdit && !version.is_locked
+  const editable = canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT
 
   return (
     <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
@@ -760,7 +760,7 @@ function VersionCard({
             {t('pricing.locked')}
           </span>
         )}
-        {canEdit && !version.is_locked && (
+        {canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT && (
           <div className="flex shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"

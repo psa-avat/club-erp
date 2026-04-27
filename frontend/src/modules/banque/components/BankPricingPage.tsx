@@ -308,7 +308,7 @@ function VersionTimeline({
                 {t('pricing.version.locked')}
               </span>
             )}
-            {canEdit && !v.is_locked && fy.state !== FY_STATE_CLOSED && (
+            {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
               <div className="flex shrink-0 gap-1">
                 <button
                   type="button"

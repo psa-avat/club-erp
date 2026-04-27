@@ -59,6 +59,12 @@ This document defines the target specification for the Assets module of the ERP 
 - **`asset_type_uuid` (FK → AssetType, nullable)** ← if NULL → global/membership pricing; if set → asset-specific pricing
 - `created_at`, `updated_at`, `created_by` (FK → User)
 
+Lifecycle and mutability rules:
+- Reuse the same state transition matrix and governance defined in `SPEC_ACCOUNTING` for `Draft/Active/Archived`.
+- For asset pricing, the operational rule is identical: only `Draft` is editable; `Active` and `Archived` are read-only from a pricing-content perspective.
+- Any post-activation change must be implemented by creating a new draft version (copy/edit/activate), not by editing an active or archived version.
+- A version already used by billing/accounting flows is permanently frozen against `Active -> Draft` rollback.
+
 **Constraint**: For a given `(asset_type_uuid, fiscal_year_uuid)` pair, pricing versions must not overlap in date ranges.
 
 **Examples**:

@@ -403,6 +403,11 @@ async def create_pricing_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot add items to a locked pricing version.",
         )
+    if version.status != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot add items unless pricing version is Draft.",
+        )
 
     # Validate flight type if provided
     if request.flight_type_uuid is not None:
@@ -438,6 +443,11 @@ async def update_pricing_item(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot modify items in a locked pricing version.",
         )
+    if version and version.status != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot modify items unless pricing version is Draft.",
+        )
 
     # Validate flight type if being changed
     data = request.model_dump(exclude_unset=True)
@@ -468,6 +478,11 @@ async def delete_pricing_item(db: AsyncSession, item_uuid: UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete items from a locked pricing version.",
+        )
+    if version and version.status != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete items unless pricing version is Draft.",
         )
 
     await db.delete(obj)

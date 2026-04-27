@@ -70,6 +70,32 @@ Journal type enum values:
 - `asset_type_uuid` (FK → AssetType, nullable): if NULL → global/membership pricing; if set → asset-specific pricing
 - Timestamps & `created_by`
 
+Pricing lifecycle governance:
+- `Draft` is the only fully editable state.
+- `Active` is operational and must be treated as immutable for pricing content (items, tiers, prices, GL mapping).
+- `Archived` is terminal and read-only.
+- `is_locked` remains a technical hard lock and can only tighten permissions; it never expands them.
+
+Pricing version state transition matrix:
+
+| From | To | Allowed | Conditions |
+|---|---|---|---|
+| Draft | Active | Yes | Validation passes (date coherence, overlap checks, mandatory billing/accounting fields completed). |
+| Draft | Archived | Yes | Optional administrative archive of unused draft. |
+| Active | Archived | Yes | Allowed for retirement/end-of-life of a version. |
+| Active | Draft | Conditional | Allowed only if version has never been used for billing/accounting and only with privileged capability + audit log. |
+| Archived | Draft | No | Not allowed; create a new draft by copy instead. |
+| Archived | Active | No | Not allowed; create and activate a new draft version. |
+
+Used-once freeze rule:
+- The system must track whether a pricing version has already been used by business flows (for example draft accounting entries generated from registration/flight billing).
+- Suggested fields: `first_used_at` (timestamp nullable) and/or `usage_count` (integer default 0).
+- Once used (`first_used_at` is not NULL or `usage_count > 0`), any transition that re-opens mutability (`Active -> Draft`) is forbidden.
+
+Correction policy after activation:
+- If a change is required after activation, create a new `Draft` version (typically copied from the active one), apply edits, then activate the new version with the appropriate validity dates.
+- Historical versions already used remain immutable to preserve auditability and reproducibility.
+
 ### 3.4 Accounting Entry (Header)
 
 - Belongs to one fiscal year and one journal.
