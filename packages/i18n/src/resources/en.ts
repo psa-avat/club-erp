@@ -519,7 +519,7 @@ export const en = {
       ageDiscountPercent: 'Under-25 discount (%)',
       ageDiscountPercentHelp: 'Percentage discount applied when the member is under 25 on Jan 1 of the active year. 0 = no discount.',
       tiers: 'Progressive tiers',
-      tiersHelp: 'Additional tiers must start above 0. Flight time (hours) allows 1 decimal; flight duration uses integer minutes; engine/count units use integers only.',,
+      tiersHelp: 'Additional tiers must start above 0. Flight time (hours) allows 1 decimal; flight duration uses integer minutes; engine/count units use integers only.',
       addTier: 'Add tier',
       tierFrom: 'From quantity',
       tierPrice: 'Price',

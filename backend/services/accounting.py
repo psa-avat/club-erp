@@ -706,6 +706,13 @@ async def create_pricing_item(
         age_discount_percent=request.age_discount_percent,
         tiers=tier_payloads,
     )
+    if request.gl_account_credit_uuid is not None:
+        credit_account = await get_account(db, request.gl_account_credit_uuid)
+        if not credit_account.is_posting_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Account {credit_account.code} is a grouping account and does not allow posting.",
+            )
     item_data = request.model_dump(exclude={'tiers'})
     obj = PricingItem(
         pricing_version_uuid=version_uuid,
@@ -741,6 +748,13 @@ async def update_pricing_item(
         age_discount_percent=update_data.get('age_discount_percent'),
         tiers=request.tiers if tier_payloads is not None else None,
     )
+    if 'gl_account_credit_uuid' in update_data and update_data['gl_account_credit_uuid'] is not None:
+        credit_account = await get_account(db, update_data['gl_account_credit_uuid'])
+        if not credit_account.is_posting_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Account {credit_account.code} is a grouping account and does not allow posting.",
+            )
 
     for field, value in update_data.items():
         setattr(obj, field, value)
@@ -864,6 +878,7 @@ async def copy_pricing_versions_from_year(
                 base_price=si.base_price,
                 pack_price=si.pack_price,
                 age_discount_percent=si.age_discount_percent,
+                gl_account_credit_uuid=si.gl_account_credit_uuid,
                 created_by=user_id,
             )
             db.add(new_item)

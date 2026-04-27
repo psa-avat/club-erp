@@ -4,6 +4,7 @@ export const banqueQueryKeys = {
   fiscalYears: () => ['banque', 'fiscal-years'] as const,
   pricingVersions: (fiscalYearUuid?: string) => ['banque', 'pricing-versions', fiscalYearUuid ?? 'all'] as const,
   pcgSeed: ['banque', 'pcg-seed'] as const,
+  accounts: () => ['banque', 'accounts'] as const,
 }
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -105,6 +106,32 @@ export function useFiscalYearsQuery(enabled = true) {
     queryFn: async () => {
       const { data } = await apiClient.get<FiscalYear[]>(
         '/api/v1/accounting/fiscal-years',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+// ── Chart of Accounts ────────────────────────────────────────────────────────
+
+export type AccountOption = {
+  uuid: string
+  code: string
+  name: string
+  type: number            // 1=Asset 2=Liability 3=Equity 4=Expense 5=Revenue
+  is_posting_allowed: boolean
+}
+
+/** Fetches all accounts; suitable for select pickers in pricing / entry forms. */
+export function useAccountsQuery(enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.accounts(),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountOption[]>(
+        '/api/v1/accounting/accounts?limit=500',
         getAuthRequestConfig(),
       )
       return data

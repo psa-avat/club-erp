@@ -564,6 +564,10 @@ class PricingItem(Base):
     pack_price = Column(Numeric(10, 4), nullable=True)
     # Percentage discount applied to this item when the member is under-25 eligible (0 = no discount)
     age_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
+    # Revenue account credited at billing time (NULL allowed during setup)
+    gl_account_credit_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -578,6 +582,7 @@ class PricingItem(Base):
 
     pricing_version = relationship("PricingVersion", back_populates="items")
     flight_type = relationship("FlightType")
+    gl_account_credit = relationship("AccountingAccount", foreign_keys=[gl_account_credit_uuid])
     tiers = relationship(
         "PricingItemTier",
         back_populates="item",

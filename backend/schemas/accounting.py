@@ -364,6 +364,8 @@ class PricingItemCreateRequest(BaseModel):
     pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # Percentage discount applied when the member is under-25 eligible (0 = no discount)
     age_discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100, decimal_places=2)
+    # Revenue account credited at billing time (NULL allowed during setup)
+    gl_account_credit_uuid: Optional[UUID] = None
     # Progressive price brackets; replaces the former single threshold pair
     tiers: list[PricingItemTierCreate] = []
 
@@ -377,6 +379,8 @@ class PricingItemUpdateRequest(BaseModel):
     pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # When provided, overrides the existing age discount percentage
     age_discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100, decimal_places=2)
+    # When provided, updates the revenue account linked to this item
+    gl_account_credit_uuid: Optional[UUID] = None
     # When provided, replaces all existing tiers atomically
     tiers: Optional[list[PricingItemTierCreate]] = None
 
@@ -393,6 +397,7 @@ class PricingItemResponse(BaseModel):
     base_price: Decimal
     pack_price: Optional[Decimal] = None
     age_discount_percent: Decimal
+    gl_account_credit_uuid: Optional[UUID] = None
     tiers: list[PricingItemTierResponse] = []
     created_at: datetime
     updated_at: datetime

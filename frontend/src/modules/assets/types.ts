@@ -181,6 +181,8 @@ export type PricingItem = {
   pack_price: string | null
   /** Percentage discount applied when member is under-25 eligible (0 = no discount) */
   age_discount_percent: string
+  /** Revenue account credited at billing time (null until configured) */
+  gl_account_credit_uuid: string | null
   /** Progressive pricing brackets; sorted ascending by from_qty */
   tiers: PricingItemTier[]
   created_at: string
@@ -195,6 +197,8 @@ export type CreatePricingItemPayload = {
   pack_price?: string | null
   /** Percentage discount for under-25 members; omit or send "0" for no discount */
   age_discount_percent?: string
+  /** Revenue account UUID (class 7) to credit at billing time */
+  gl_account_credit_uuid?: string | null
   tiers?: TierPayload[]
 }
 

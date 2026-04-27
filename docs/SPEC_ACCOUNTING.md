@@ -89,6 +89,7 @@ Journal type enum values:
 - `base_price` (NUMERIC(10,4)): implicit bracket at threshold `0`
 - `pack_price` (NUMERIC(10,4), nullable): optional per-unit surcharge applied on top of pack hour cost when member has an active pack
 - `age_discount_percent` (NUMERIC(5,2), NOT NULL, default 0): percentage discount applied to this item when the member is under-25 eligible; 0 means no discount
+- `gl_account_credit_uuid` (FK → AccountingAccount, nullable): revenue account credited when this item is billed (e.g., `7062` glider flight time, `7063` tow, `7561` annual membership). NULL is allowed during setup; the version activation guard should require it to be set. The debit side (member receivable `411`) is resolved at billing time from the journal/settings default — it is **not** stored on the item.
 - `tiers`: progressive brackets stored in `pricing_item_tiers(from_qty, price, sort_order)`; every `from_qty` must be strictly `> 0`
 - `flight_type_uuid` (FK → FlightType global catalog, nullable)
 - `include_insurance`, `include_fuel` (booleans)
@@ -224,8 +225,9 @@ During member registration:
 - User selects one or more applicable price items.
 - System generates a Draft accounting entry in journal VT.
 - Canonical accounting pattern:
-  - debit 411 (with member dimensions)
-  - credit applicable revenue accounts (7061, 7062, 7063, 707x, etc.)
+  - debit `411` (member receivable, with member dimensions) — resolved at billing time from the journal/settings default receivable account; not stored on the item
+  - credit `pricing_items.gl_account_credit_uuid` for each item (e.g., `7061` membership, `7062` flight time, `7063` tow, `707x` misc)
+- Analytical tracking: when a flight is the billing source, the billing service stamps `analytical_asset_uuid` on the accounting line using the glider/tow-plane UUID from the flight record. Revenue by aircraft is then a query on `(account_uuid, analytical_asset_uuid)` — no per-aircraft sub-accounts in the chart of accounts are needed.
 
 ## 10. Budget Management
 
