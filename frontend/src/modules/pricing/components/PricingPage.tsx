@@ -32,6 +32,7 @@ import { useCapability } from '../../../auth/hooks/useCapability'
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import {
   useFiscalYearsQuery,
+  useAccountsQuery,
   useUpdatePricingVersionMutation,
   useDeletePricingVersionMutation,
 } from '../../banque/api'
@@ -264,11 +265,12 @@ type ItemFormState = {
   base_price: string
   pack_price: string
   age_discount_percent: string
+  gl_account_credit_uuid: string
   tiers: TierPayload[]
   flight_type_uuid: string
 }
 
-const EMPTY_ITEM: ItemFormState = { name: '', unit: 1, base_price: '', pack_price: '', age_discount_percent: '0.00', tiers: [], flight_type_uuid: '' }
+const EMPTY_ITEM: ItemFormState = { name: '', unit: 1, base_price: '', pack_price: '', age_discount_percent: '0.00', gl_account_credit_uuid: '', tiers: [], flight_type_uuid: '' }
 
 function itemToForm(item: PricingItem): ItemFormState {
   return {
@@ -282,6 +284,7 @@ function itemToForm(item: PricingItem): ItemFormState {
       price: parseFloat(t.price).toFixed(2),
       pack_price: t.pack_price != null ? parseFloat(t.pack_price).toFixed(2) : '',
     })),
+    gl_account_credit_uuid: item.gl_account_credit_uuid ?? '',
     flight_type_uuid: item.flight_type_uuid ?? '',
   }
 }
@@ -293,6 +296,7 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
     base_price: form.base_price.trim(),
     pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
     age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
+    gl_account_credit_uuid: form.gl_account_credit_uuid || null,
     flight_type_uuid: form.flight_type_uuid || null,
     tiers: form.tiers.filter((t) => t.from_qty !== '' && t.price !== '').map((t) => ({
       from_qty: t.from_qty,
@@ -305,6 +309,7 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
 function PricingItemForm({
   initial,
   flightTypes,
+  revenueAccounts,
   usePack,
   onSave,
   onCancel,
@@ -313,6 +318,7 @@ function PricingItemForm({
 }: {
   initial: ItemFormState
   flightTypes: Array<{ uuid: string; name: string }>
+  revenueAccounts: Array<{ uuid: string; code: string; name: string }>
   usePack: boolean
   onSave: (f: ItemFormState) => void
   onCancel: () => void
@@ -396,6 +402,20 @@ function PricingItemForm({
             className="h-8 text-sm font-mono"
           />
           <p className="text-[11px] text-slate-500">{t('pricing.ageDiscountPercentHelp')}</p>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.glAccountCredit')}</Label>
+          <select
+            value={form.gl_account_credit_uuid}
+            onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
+            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          >
+            <option value="">{t('pricing.noAccount')}</option>
+            {revenueAccounts.map((a) => (
+              <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-500">{t('pricing.glAccountCreditHelp')}</p>
         </div>
         {flightTypes.length > 0 && (
           <div className="space-y-1">
@@ -499,6 +519,9 @@ function PricingItemsPanel({
   const flightTypesQuery = useFlightTypesQuery()
   const flightTypes = flightTypesQuery.data ?? []
 
+  const accountsQuery = useAccountsQuery()
+  const revenueAccounts = (accountsQuery.data ?? []).filter((a) => a.type === 5 && a.is_posting_allowed)
+
   const createMutation = useCreatePricingItemMutation(version.uuid)
   const updateMutation = useUpdatePricingItemMutation(version.uuid)
   const deleteMutation = useDeletePricingItemMutation(version.uuid)
@@ -561,6 +584,7 @@ function PricingItemsPanel({
         <PricingItemForm
           initial={EMPTY_ITEM}
           flightTypes={flightTypes}
+          revenueAccounts={revenueAccounts}
           usePack={version.use_pack}
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
@@ -583,6 +607,7 @@ function PricingItemsPanel({
                 key={item.uuid}
                 initial={itemToForm(item)}
                 flightTypes={flightTypes}
+                revenueAccounts={revenueAccounts}
                 usePack={version.use_pack}
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
