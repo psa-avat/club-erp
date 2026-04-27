@@ -89,11 +89,11 @@ function formatPrice(value: string | null | undefined): string {
 }
 
 function getFromQtyStep(unit: number): string {
-  return unit === 1 || unit === 4 ? '0.1' : '1'
+  return unit === 1 ? '0.1' : '1'
 }
 
 function getFromQtyPlaceholder(unit: number): string {
-  return unit === 1 || unit === 4 ? '0.0' : '0'
+  return unit === 1 ? '0.0' : '0'
 }
 
 function versionStatusClass(status: number): string {
@@ -263,11 +263,12 @@ type ItemFormState = {
   unit: number
   base_price: string
   pack_price: string
+  age_discount_percent: string
   tiers: TierPayload[]
   flight_type_uuid: string
 }
 
-const EMPTY_ITEM: ItemFormState = { name: '', unit: 1, base_price: '', pack_price: '', tiers: [], flight_type_uuid: '' }
+const EMPTY_ITEM: ItemFormState = { name: '', unit: 1, base_price: '', pack_price: '', age_discount_percent: '0.00', tiers: [], flight_type_uuid: '' }
 
 function itemToForm(item: PricingItem): ItemFormState {
   return {
@@ -275,6 +276,7 @@ function itemToForm(item: PricingItem): ItemFormState {
     unit: item.unit,
     base_price: parseFloat(item.base_price).toFixed(2),
     pack_price: item.pack_price != null ? parseFloat(item.pack_price).toFixed(2) : '',
+    age_discount_percent: parseFloat(item.age_discount_percent).toFixed(2),
     tiers: item.tiers.map((t) => ({
       from_qty: t.from_qty,
       price: parseFloat(t.price).toFixed(2),
@@ -290,6 +292,7 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
     unit: form.unit,
     base_price: form.base_price.trim(),
     pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
+    age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
     flight_type_uuid: form.flight_type_uuid || null,
     tiers: form.tiers.filter((t) => t.from_qty !== '' && t.price !== '').map((t) => ({
       from_qty: t.from_qty,
@@ -380,6 +383,20 @@ function PricingItemForm({
             <p className="text-[11px] text-slate-500">{t('pricing.packPriceHelp')}</p>
           </div>
         )}
+        <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
+          <Input
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={form.age_discount_percent}
+            onChange={(e) => set('age_discount_percent', e.target.value)}
+            placeholder="0.00"
+            className="h-8 text-sm font-mono"
+          />
+          <p className="text-[11px] text-slate-500">{t('pricing.ageDiscountPercentHelp')}</p>
+        </div>
         {flightTypes.length > 0 && (
           <div className="space-y-1">
             <Label className="text-xs">{t('pricing.flightType')}</Label>

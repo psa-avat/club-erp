@@ -594,8 +594,8 @@ def _unit_label(unit: int) -> str:
 
 
 def _from_qty_max_decimals(unit: int) -> int:
-    # Hour-based quantities allow 1 decimal; count-based quantities are integers.
-    if unit in {1, 4}:
+    # FlightTime (unit=1) is in hours (1 decimal max); FlightDuration (unit=4) is in integer minutes.
+    if unit in {1}:
         return 1
     return 0
 
@@ -605,6 +605,7 @@ def _validate_pricing_precision(
     unit: int,
     base_price: Decimal | None,
     pack_price: Decimal | None,
+    age_discount_percent: Decimal | None,
     tiers: list | None,
 ) -> None:
     if base_price is not None and _decimal_places(base_price) > 2:
@@ -617,6 +618,17 @@ def _validate_pricing_precision(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="pack_price must have at most 2 decimal places.",
         )
+    if age_discount_percent is not None:
+        if _decimal_places(age_discount_percent) > 2:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="age_discount_percent must have at most 2 decimal places.",
+            )
+        if age_discount_percent < 0 or age_discount_percent > 100:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="age_discount_percent must be between 0 and 100.",
+            )
 
     if tiers is None:
         return
@@ -658,6 +670,7 @@ async def _replace_pricing_item_tiers(
         unit=item.unit,
         base_price=None,
         pack_price=None,
+        age_discount_percent=None,
         tiers=tier_payloads,
     )
     await db.execute(
@@ -690,6 +703,7 @@ async def create_pricing_item(
         unit=request.unit,
         base_price=request.base_price,
         pack_price=request.pack_price,
+        age_discount_percent=request.age_discount_percent,
         tiers=tier_payloads,
     )
     item_data = request.model_dump(exclude={'tiers'})
@@ -724,6 +738,7 @@ async def update_pricing_item(
         unit=effective_unit,
         base_price=update_data.get('base_price'),
         pack_price=update_data.get('pack_price'),
+        age_discount_percent=update_data.get('age_discount_percent'),
         tiers=request.tiers if tier_payloads is not None else None,
     )
 
@@ -848,6 +863,7 @@ async def copy_pricing_versions_from_year(
                 unit=si.unit,
                 base_price=si.base_price,
                 pack_price=si.pack_price,
+                age_discount_percent=si.age_discount_percent,
                 created_by=user_id,
             )
             db.add(new_item)

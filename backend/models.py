@@ -542,6 +542,10 @@ class PricingItem(Base):
         CheckConstraint("unit IN (1, 2, 3, 4, 5, 6)", name="chk_pricing_items_unit"),
         CheckConstraint("base_price >= 0", name="chk_pricing_items_base_price"),
         CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_items_pack_price"),
+        CheckConstraint(
+            "age_discount_percent >= 0 AND age_discount_percent <= 100",
+            name="chk_pricing_items_age_discount",
+        ),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -558,6 +562,8 @@ class PricingItem(Base):
     base_price = Column(Numeric(10, 4), nullable=False)
     # Price per unit when pilot has an active pack subscription
     pack_price = Column(Numeric(10, 4), nullable=True)
+    # Percentage discount applied to this item when the member is under-25 eligible (0 = no discount)
+    age_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

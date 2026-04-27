@@ -179,6 +179,8 @@ export type PricingItem = {
   base_price: string
   /** Price per unit when the pilot has an active pack subscription */
   pack_price: string | null
+  /** Percentage discount applied when member is under-25 eligible (0 = no discount) */
+  age_discount_percent: string
   /** Progressive pricing brackets; sorted ascending by from_qty */
   tiers: PricingItemTier[]
   created_at: string
@@ -191,6 +193,8 @@ export type CreatePricingItemPayload = {
   unit: number
   base_price: string
   pack_price?: string | null
+  /** Percentage discount for under-25 members; omit or send "0" for no discount */
+  age_discount_percent?: string
   tiers?: TierPayload[]
 }
 

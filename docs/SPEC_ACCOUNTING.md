@@ -85,8 +85,10 @@ Journal type enum values:
 - `uuid` (PK)
 - `pricing_version_uuid` (FK)
 - `name`, `unit` (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed)
+- `metric_code` (string, FK -> BillingMetric): canonical identifier for usage metrics
 - `base_price` (NUMERIC(10,4)): implicit bracket at threshold `0`
-- `pack_price` (NUMERIC(10,4), nullable): optional unit price when member has an active pack
+- `pack_price` (NUMERIC(10,4), nullable): optional per-unit surcharge applied on top of pack hour cost when member has an active pack
+- `age_discount_percent` (NUMERIC(5,2), NOT NULL, default 0): percentage discount applied to this item when the member is under-25 eligible; 0 means no discount
 - `tiers`: progressive brackets stored in `pricing_item_tiers(from_qty, price, sort_order)`; every `from_qty` must be strictly `> 0`
 - `flight_type_uuid` (FK → FlightType global catalog, nullable)
 - `include_insurance`, `include_fuel` (booleans)
@@ -94,8 +96,14 @@ Journal type enum values:
 
 Precision rules:
 - prices (`base_price`, `pack_price`, tier `price`) use 2 decimal places
-- `from_qty` uses up to 1 decimal place for `FlightTime` and `FlightDuration`
+- `age_discount_percent` uses 2 decimal places and must be between 0 and 100 (inclusive)
+- `from_qty` uses up to 1 decimal place for `FlightTime`; integer minutes for `FlightDuration`
 - `from_qty` uses integer values only for `EngineTimeMin`, `EngineTime1/100h`, `PerFlight`, and `Fixed`
+
+Age eligibility rule:
+- A member is under-25 eligible if their computed age on January 1 of the active fiscal year is strictly less than 25.
+- Age is computed from `members.date_of_birth`; if `date_of_birth` is NULL the member is treated as not eligible (no discount applied).
+- Eligibility is evaluated at billing time; the discount percentage stored on the item is the source of truth.
 
 ### 3.6 Accounting Line
 

@@ -20,7 +20,6 @@ This document defines the target specification for the Assets module of the ERP 
 ### 3.1 Asset Type
 - `uuid`, `code` (unique), `name`
 - `category` (Aircraft, Launch Equipment, Support, Consumable, Service)
-- `pricing_strategy` (Flight Hours, Engine Time, Per Flight, Per Duration, Per Unit, Flat Rate)
 - `is_trackable_in_ledger` (boolean): for depreciation
 - `standard_depreciation_years` (int, nullable)
 - Timestamps
@@ -74,6 +73,7 @@ This document defines the target specification for the Assets module of the ERP 
 - `uuid` (PK)
 - `pricing_version_uuid` (FK)
 - `name`, `unit` (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed)
+- `metric_code` (string, FK -> BillingMetric): matches usage metrics like `engine_hours`
 - `base_price` (NUMERIC(10,4)): implicit bracket at threshold `0`
 - `pack_price` (NUMERIC(10,4), nullable): optional unit price when member has an active pack
 - `tiers`: progressive brackets stored in `pricing_item_tiers(from_qty, price, sort_order)`; every `from_qty` must be strictly `> 0`
