@@ -17,7 +17,8 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import Decimal from 'decimal.js'
 import { AxiosError } from 'axios'
 
@@ -191,6 +192,25 @@ export function entryStateLabel(value: number, t: (key: string) => string): stri
   return t('journal.entries.states.draft')
 }
 
+export function entryStateBadgeClass(state: number): string {
+  if (state === ENTRY_STATE_POSTED) return 'bg-green-100 text-green-800'
+  if (state === 3) return 'bg-red-100 text-red-700'
+  return 'bg-amber-100 text-amber-800'
+}
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
+
+export function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(id)
+  }, [value, delayMs])
+  return debounced
+}
+
 // ---------------------------------------------------------------------------
 // Shared primitive: LineEditor
 // ---------------------------------------------------------------------------
@@ -213,7 +233,7 @@ export function LineEditor({
   t: (key: string) => string
 }) {
   const summary = totals(lines)
-
+  const balanced = isBalanced(lines)
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between gap-3">
@@ -270,8 +290,8 @@ export function LineEditor({
               <td className="px-3 py-2 font-medium">{t('journal.forms.total')}</td>
               <td className="px-3 py-2 font-mono">{summary.debit}</td>
               <td className="px-3 py-2 font-mono">{summary.credit}</td>
-              <td className="px-3 py-2" colSpan={2}>
-                {summary.debit === summary.credit ? t('journal.forms.balanced') : t('journal.forms.unbalanced')}
+              <td className={`px-3 py-2 font-medium ${balanced ? 'text-green-700' : 'text-red-600'}`} colSpan={2}>
+                {balanced ? t('journal.forms.balanced') : t('journal.forms.unbalanced')}
               </td>
             </tr>
           </tfoot>
@@ -314,35 +334,35 @@ export function JournalPageShell({
     <section className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-2">
-          <a href="/banque" className="text-xs text-slate-500 hover:text-slate-800">← {t('journal.back')}</a>
+          <Link to="/banque" className="text-xs text-slate-500 hover:text-slate-800">← {t('journal.back')}</Link>
         </div>
         <h1 className="text-xl font-semibold text-slate-900">{t('journal.title')}</h1>
         <p className="mt-1 text-sm text-slate-500">{t('journal.description')}</p>
         <nav className="mt-4 flex flex-wrap gap-2" aria-label="Journal navigation">
-          <a
-            href="/banque/journal/entries"
+          <Link
+            to="/banque/journal/entries"
             className={linkClass(isEntriesActive)}
             aria-current={isEntriesActive ? 'page' : undefined}
           >
             {t('journal.tabs.entries')}
-          </a>
+          </Link>
           {canPost && (
-            <a
-              href="/banque/journal/entry/new"
+            <Link
+              to="/banque/journal/entry/new"
               className={linkClass(isWorkspaceActive)}
               aria-current={isWorkspaceActive ? 'page' : undefined}
             >
               {t('journal.entries.newDraft')}
-            </a>
+            </Link>
           )}
           {canManageModels && (
-            <a
-              href="/banque/journal/templates"
+            <Link
+              to="/banque/journal/templates"
               className={linkClass(isTemplatesActive)}
               aria-current={isTemplatesActive ? 'page' : undefined}
             >
               {t('journal.tabs.models')}
-            </a>
+            </Link>
           )}
         </nav>
       </div>
@@ -380,18 +400,18 @@ export function JournalSubNav({
 
   return (
     <nav className="mt-4 flex flex-wrap gap-2" aria-label="Journal navigation">
-      <a href="/banque/journal/entries" className={linkClass(isEntriesActive)} aria-current={isEntriesActive ? 'page' : undefined}>
+      <Link to="/banque/journal/entries" className={linkClass(isEntriesActive)} aria-current={isEntriesActive ? 'page' : undefined}>
         {t('journal.tabs.entries')}
-      </a>
+      </Link>
       {canPost && (
-        <a href="/banque/journal/entry/new" className={linkClass(isWorkspaceActive)} aria-current={isWorkspaceActive ? 'page' : undefined}>
+        <Link to="/banque/journal/entry/new" className={linkClass(isWorkspaceActive)} aria-current={isWorkspaceActive ? 'page' : undefined}>
           {t('journal.entries.newDraft')}
-        </a>
+        </Link>
       )}
       {canManageModels && (
-        <a href="/banque/journal/templates" className={linkClass(isTemplatesActive)} aria-current={isTemplatesActive ? 'page' : undefined}>
+        <Link to="/banque/journal/templates" className={linkClass(isTemplatesActive)} aria-current={isTemplatesActive ? 'page' : undefined}>
           {t('journal.tabs.models')}
-        </a>
+        </Link>
       )}
     </nav>
   )

@@ -30,7 +30,7 @@ import {
   useFiscalYearsQuery,
   useJournalsQuery,
 } from '../api'
-import { entryStateLabel, totals, JournalPageShell } from './journalShared'
+import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce } from './journalShared'
 
 export function JournalEntriesScreen() {
   const { t } = useTranslation('banque')
@@ -43,6 +43,7 @@ export function JournalEntriesScreen() {
   const journalsQuery = useJournalsQuery(canView)
 
   const [filters, setFilters] = useState({ fiscal_year_uuid: '', journal_uuid: '', state: 0, search: '' })
+  const debouncedSearch = useDebounce(filters.search, 350)
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
@@ -58,10 +59,10 @@ export function JournalEntriesScreen() {
       fiscal_year_uuid: filters.fiscal_year_uuid || undefined,
       journal_uuid: filters.journal_uuid || undefined,
       state: filters.state || undefined,
-      search: filters.search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       limit: 200,
     }),
-    [filters],
+    [filters.fiscal_year_uuid, filters.journal_uuid, filters.state, debouncedSearch],
   )
 
   const entriesQuery = useAccountingEntriesQuery(entryFilters, canView && Boolean(filters.fiscal_year_uuid))
@@ -79,7 +80,17 @@ export function JournalEntriesScreen() {
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
       {/* Filters */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.filtersTitle')}</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.filtersTitle')}</h2>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setFilters((prev) => ({ fiscal_year_uuid: prev.fiscal_year_uuid, journal_uuid: '', state: 0, search: '' }))}
+          >
+            {t('journal.entries.resetFilters')}
+          </Button>
+        </div>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <div className="space-y-1">
             <Label>{t('journal.entries.fiscalYear')}</Label>
@@ -131,7 +142,10 @@ export function JournalEntriesScreen() {
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.listTitle')}</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {t('journal.entries.listTitle')}
+              {entries.length > 0 && <span className="ml-2 text-sm font-normal text-slate-500">({entries.length})</span>}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
           </div>
           {canPost && (
@@ -171,7 +185,7 @@ export function JournalEntriesScreen() {
                       <p className="text-sm text-slate-700">{entry.description}</p>
                       <p className="text-xs text-slate-500">{entry.entry_date} · {entry.reference ?? t('journal.entries.noReference')}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${entryStateBadgeClass(entry.state)}`}>
                       {entryStateLabel(entry.state, t)}
                     </span>
                   </div>

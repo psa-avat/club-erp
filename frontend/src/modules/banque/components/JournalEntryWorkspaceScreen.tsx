@@ -34,12 +34,12 @@ import {
   useJournalsQuery,
   useAccountingEntryModelsQuery,
   usePostAccountingEntryMutation,
+  usePricingItemsQuery,
   usePricingVersionsQuery,
   useReverseAccountingEntryMutation,
   useUpdateAccountingEntryMutation,
+  type PricingItem,
 } from '../api'
-import { usePricingItemsQuery } from '../../assets/api'
-import type { PricingItem } from '../../assets/types'
 import {
   ENTRY_STATE_DRAFT,
   ENTRY_STATE_POSTED,
@@ -49,6 +49,8 @@ import {
   decimalOrZero,
   emptyEntryForm,
   emptyLine,
+  entryStateBadgeClass,
+  entryStateLabel,
   isBalanced,
   mapEntryToForm,
   toErrorMessage,
@@ -81,6 +83,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const [applyModelUuid, setApplyModelUuid] = useState('')
   const [reverseReason, setReverseReason] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
@@ -117,6 +120,30 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const updateEntryMutation = useUpdateAccountingEntryMutation()
   const postEntryMutation = usePostAccountingEntryMutation()
   const reverseEntryMutation = useReverseAccountingEntryMutation()
+
+  useEffect(() => {
+    if (createEntryMutation.isSuccess || updateEntryMutation.isSuccess) {
+      setSuccessMessage(t('journal.entries.saved'))
+      const id = setTimeout(() => setSuccessMessage(null), 3000)
+      return () => clearTimeout(id)
+    }
+  }, [createEntryMutation.isSuccess, updateEntryMutation.isSuccess, t])
+
+  useEffect(() => {
+    if (postEntryMutation.isSuccess) {
+      setSuccessMessage(t('journal.entries.posted'))
+      const id = setTimeout(() => setSuccessMessage(null), 3000)
+      return () => clearTimeout(id)
+    }
+  }, [postEntryMutation.isSuccess, t])
+
+  useEffect(() => {
+    if (reverseEntryMutation.isSuccess) {
+      setSuccessMessage(t('journal.entries.reversed'))
+      const id = setTimeout(() => setSuccessMessage(null), 3000)
+      return () => clearTimeout(id)
+    }
+  }, [reverseEntryMutation.isSuccess, t])
 
   // Seed fiscal year / journal defaults once data arrives
   useEffect(() => {
@@ -290,12 +317,20 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   return (
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
       {anyError && <Alert>{anyError}</Alert>}
+      {successMessage && <Alert className="border-green-200 bg-green-50 text-green-800">{successMessage}</Alert>}
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900">
-            {selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">
+              {selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}
+            </h2>
+            {selectedEntry && (
+              <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${entryStateBadgeClass(selectedEntry.state)}`}>
+                {entryStateLabel(selectedEntry.state, t)}
+              </span>
+            )}
+          </div>
           <Button type="button" variant="ghost" onClick={resetEntryForm}>
             {t('journal.entries.resetDraft')}
           </Button>
@@ -441,7 +476,9 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             disabled={!canPost || !entryCanSave || createEntryMutation.isPending || updateEntryMutation.isPending}
             onClick={() => void handleSaveEntry()}
           >
-            {selectedEntryUuid ? t('journal.entries.saveChanges') : t('journal.entries.saveDraft')}
+            {createEntryMutation.isPending || updateEntryMutation.isPending
+              ? t('journal.entries.saving')
+              : selectedEntryUuid ? t('journal.entries.saveChanges') : t('journal.entries.saveDraft')}
           </Button>
           {selectedEntry && selectedEntry.state === ENTRY_STATE_DRAFT && (
             <Button
@@ -449,7 +486,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
               disabled={!canPost || postEntryMutation.isPending}
               onClick={() => void handlePostEntry()}
             >
-              {t('journal.entries.postDraft')}
+              {postEntryMutation.isPending ? t('journal.entries.posting') : t('journal.entries.postDraft')}
             </Button>
           )}
         </div>
@@ -465,10 +502,10 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
               />
               <Button
                 type="button" variant="secondary"
-                disabled={!canPost || reverseReason.trim() === ''}
+                disabled={!canPost || reverseReason.trim() === '' || reverseEntryMutation.isPending}
                 onClick={() => void handleReverseEntry()}
               >
-                {t('journal.entries.reverseAction')}
+                {reverseEntryMutation.isPending ? t('journal.entries.reversing') : t('journal.entries.reverseAction')}
               </Button>
             </div>
           </div>

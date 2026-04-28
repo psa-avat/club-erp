@@ -66,10 +66,19 @@ export function JournalTemplatesScreen() {
   const [modelForm, setModelForm] = useState<ModelFormState>(() => emptyModelForm())
   const [selectedModelUuid, setSelectedModelUuid] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const createModelMutation = useCreateAccountingEntryModelMutation()
   const updateModelMutation = useUpdateAccountingEntryModelMutation()
   const deleteModelMutation = useDeleteAccountingEntryModelMutation()
+
+  useEffect(() => {
+    if (createModelMutation.isSuccess || updateModelMutation.isSuccess) {
+      setSuccessMessage(t('journal.models.saved'))
+      const id = setTimeout(() => setSuccessMessage(null), 3000)
+      return () => clearTimeout(id)
+    }
+  }, [createModelMutation.isSuccess, updateModelMutation.isSuccess, t])
 
   useEffect(() => {
     if (journals.length > 0 && modelForm.journal_uuid === '') {
@@ -127,6 +136,7 @@ export function JournalTemplatesScreen() {
   }
 
   async function handleDeleteModel(templateUuid: string) {
+    if (!window.confirm(t('journal.models.confirmDelete'))) return
     setLocalError(null)
     try {
       await deleteModelMutation.mutateAsync(templateUuid)
@@ -156,6 +166,7 @@ export function JournalTemplatesScreen() {
   return (
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
       {anyError && <Alert>{anyError}</Alert>}
+      {successMessage && <Alert className="border-green-200 bg-green-50 text-green-800">{successMessage}</Alert>}
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
         {/* Template editor */}
@@ -266,14 +277,16 @@ export function JournalTemplatesScreen() {
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 type="button"
-                disabled={!modelCanSave}
+                disabled={!modelCanSave || createModelMutation.isPending || updateModelMutation.isPending}
                 onClick={() => void handleSaveModel()}
               >
-                {selectedModelUuid ? t('journal.models.saveChanges') : t('journal.models.saveModel')}
+                {createModelMutation.isPending || updateModelMutation.isPending
+                  ? t('journal.models.saving')
+                  : selectedModelUuid ? t('journal.models.saveChanges') : t('journal.models.saveModel')}
               </Button>
               {selectedModelUuid && (
                 <Button
-                  type="button" variant="secondary"
+                  type="button" variant="destructive"
                   onClick={() => void handleDeleteModel(selectedModelUuid)}
                 >
                   {t('journal.models.deleteModel')}

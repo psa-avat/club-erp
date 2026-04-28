@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { useCurrentUser, useLogout } from '../../auth/api/useAuth'
 import { ChangePasswordDialog } from '../../auth/components/ChangePasswordDialog'
 import { useAuthStore } from '../../auth/store/authStore'
 import { Button } from '../../components/ui/button'
+import { shellNavItems } from '../navigation'
 
 type HeaderProps = {
   onOpenMobileMenu: () => void
@@ -13,6 +14,7 @@ type HeaderProps = {
 
 export function Header({ onOpenMobileMenu }: HeaderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { i18n, t } = useTranslation('common')
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
@@ -42,6 +44,12 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
   const initials = [user?.prenom?.[0], user?.nom?.[0]].filter(Boolean).join('').toUpperCase() || 'U'
 
+  const activeModule = shellNavItems.find((item) =>
+    item.to === '/dashboard'
+      ? location.pathname === '/dashboard'
+      : location.pathname === item.to || location.pathname.startsWith(item.to + '/')
+  )
+
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
@@ -54,6 +62,14 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
           >
             {t('nav.openMenu')}
           </button>
+          {activeModule && activeModule.to !== '/dashboard' && (
+            <Link
+              className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200 md:hidden"
+              to={activeModule.to}
+            >
+              {t(activeModule.labelKey)}
+            </Link>
+          )}
           <Link className="text-lg font-semibold text-slate-900" to="/dashboard">
             {t('app.name')}
           </Link>

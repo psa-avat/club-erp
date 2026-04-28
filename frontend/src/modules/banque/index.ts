@@ -1,5 +1,4 @@
 export { BanquePage } from './components/BanquePage'
-export { BanqueJournalPage } from './components/BanqueJournalPage'
 export { BanqueJournalEntriesPage } from './components/BanqueJournalEntriesPage'
 export { BanqueJournalEntryWorkspacePage } from './components/BanqueJournalEntryWorkspacePage'
 export { BanqueJournalTemplatesPage } from './components/BanqueJournalTemplatesPage'

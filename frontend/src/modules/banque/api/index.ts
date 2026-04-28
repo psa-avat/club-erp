@@ -3,6 +3,7 @@ export const banqueQueryKeys = {
   settings: (moduleName: string) => ['banque', 'settings', moduleName] as const,
   fiscalYears: () => ['banque', 'fiscal-years'] as const,
   pricingVersions: (fiscalYearUuid?: string) => ['banque', 'pricing-versions', fiscalYearUuid ?? 'all'] as const,
+  pricingItems: (versionUuid: string) => ['banque', 'pricing-items', versionUuid] as const,
   pcgSeed: ['banque', 'pcg-seed'] as const,
   accounts: () => ['banque', 'accounts'] as const,
   journals: () => ['banque', 'journals'] as const,
@@ -574,6 +575,31 @@ export function useCopyPricingVersionsMutation() {
       await queryClient.invalidateQueries({
         queryKey: banqueQueryKeys.pricingVersions(variables.target_fiscal_year_uuid),
       })
+    },
+  })
+}
+
+// ── Pricing Items (facade for journal entry prefill) ────────────────────────
+
+/** Minimal shape of a pricing item as needed by the Journal workspace. */
+export type PricingItem = {
+  uuid: string
+  name: string
+  base_price: string
+  /** Revenue account credited at billing time; null until configured. */
+  gl_account_credit_uuid: string | null
+}
+
+export function usePricingItemsQuery(versionUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.pricingItems(versionUuid ?? ''),
+    enabled: enabled && Boolean(versionUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<PricingItem[]>(
+        `/api/v1/accounting/pricing/versions/${versionUuid}/items`,
+        getAuthRequestConfig(),
+      )
+      return data
     },
   })
 }
