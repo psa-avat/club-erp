@@ -18,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
 import Decimal from 'decimal.js'
@@ -51,6 +51,12 @@ import { usePricingItemsQuery } from '../../assets/api'
 import type { PricingItem } from '../../assets/types'
 
 type TabKey = 'entries' | 'models'
+
+type BanqueJournalPageProps = {
+  initialTab?: TabKey
+  forceEntryUuid?: string | null
+  showJournalNav?: boolean
+}
 
 type LineFormState = {
   account_uuid: string
@@ -304,8 +310,14 @@ function LineEditor({
   )
 }
 
-export function BanqueJournalPage() {
+export function BanqueJournalPage({
+  initialTab = 'entries',
+  forceEntryUuid = null,
+  showJournalNav = false,
+}: BanqueJournalPageProps) {
   const { t } = useTranslation('banque')
+  const location = useLocation()
+  const navigate = useNavigate()
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
   const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
@@ -316,7 +328,7 @@ export function BanqueJournalPage() {
   const accountsQuery = useAccountsQuery(canView)
   const modelsQuery = useAccountingEntryModelsQuery(canView)
 
-  const [activeTab, setActiveTab] = useState<TabKey>('entries')
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
   const [filters, setFilters] = useState({ fiscal_year_uuid: '', journal_uuid: '', state: 0, search: '' })
   const [entryForm, setEntryForm] = useState<EntryFormState>(() => emptyEntryForm(today))
   const [modelForm, setModelForm] = useState<ModelFormState>(() => emptyModelForm())
@@ -363,6 +375,23 @@ export function BanqueJournalPage() {
 
   const selectedEntry = entries.find((entry) => entry.uuid === selectedEntryUuid) ?? null
   const selectedPricingItem = pricingItems.find((item) => item.uuid === selectedPriceItemUuid) ?? null
+  const isEntriesRoute = location.pathname === '/banque/journal' || location.pathname === '/banque/journal/entries'
+  const isEntryWorkspaceRoute = location.pathname.startsWith('/banque/journal/entry/')
+  const isTemplatesRoute = location.pathname === '/banque/journal/templates'
+  const showEntriesListOnly = showJournalNav && isEntriesRoute
+  const showWorkspaceOnly = showJournalNav && isEntryWorkspaceRoute
+
+  const navLinkClass = (isActive: boolean) =>
+    [
+      'rounded-lg border px-3 py-2 text-sm transition-colors',
+      isActive
+        ? 'border-slate-900 bg-slate-900 text-white'
+        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+    ].join(' ')
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
 
   useEffect(() => {
     if (fiscalYears.length > 0 && filters.fiscal_year_uuid === '') {
@@ -378,6 +407,16 @@ export function BanqueJournalPage() {
       setModelForm((prev) => ({ ...prev, journal_uuid: prev.journal_uuid || journals[0].uuid }))
     }
   }, [entryForm.journal_uuid, journals])
+
+  useEffect(() => {
+    if (!forceEntryUuid || entries.length === 0) return
+    const forcedEntry = entries.find((entry) => entry.uuid === forceEntryUuid)
+    if (!forcedEntry) return
+    setSelectedEntryUuid(forcedEntry.uuid)
+    setEntryForm(mapEntryToForm(forcedEntry))
+    setActiveTab('entries')
+    setLocalError(null)
+  }, [entries, forceEntryUuid])
 
   function updateEntryLine(index: number, patch: Partial<LineFormState>) {
     setEntryForm((prev) => ({
@@ -598,6 +637,31 @@ export function BanqueJournalPage() {
         </div>
         <h1 className="text-xl font-semibold text-slate-900">{t('journal.title')}</h1>
         <p className="mt-1 text-sm text-slate-500">{t('journal.description')}</p>
+        {showJournalNav && (
+          <nav className="mt-4 flex flex-wrap gap-2" aria-label="Journal navigation">
+            <Link
+              to="/banque/journal/entries"
+              className={navLinkClass(isEntriesRoute)}
+              aria-current={isEntriesRoute ? 'page' : undefined}
+            >
+              {t('journal.tabs.entries')}
+            </Link>
+            <Link
+              to="/banque/journal/entry/new"
+              className={navLinkClass(isEntryWorkspaceRoute)}
+              aria-current={isEntryWorkspaceRoute ? 'page' : undefined}
+            >
+              {t('journal.entries.newDraft')}
+            </Link>
+            <Link
+              to="/banque/journal/templates"
+              className={navLinkClass(isTemplatesRoute)}
+              aria-current={isTemplatesRoute ? 'page' : undefined}
+            >
+              {t('journal.tabs.models')}
+            </Link>
+          </nav>
+        )}
       </div>
 
       {(localError || createEntryMutation.error || updateEntryMutation.error || postEntryMutation.error || reverseEntryMutation.error || createModelMutation.error || updateModelMutation.error || deleteModelMutation.error) && (
@@ -606,14 +670,16 @@ export function BanqueJournalPage() {
         </Alert>
       )}
 
-      <div className="flex gap-2">
-        <Button variant={activeTab === 'entries' ? 'default' : 'secondary'} type="button" onClick={() => setActiveTab('entries')}>
-          {t('journal.tabs.entries')}
-        </Button>
-        <Button variant={activeTab === 'models' ? 'default' : 'secondary'} type="button" onClick={() => setActiveTab('models')}>
-          {t('journal.tabs.models')}
-        </Button>
-      </div>
+      {!showJournalNav && (
+        <div className="flex gap-2">
+          <Button variant={activeTab === 'entries' ? 'default' : 'secondary'} type="button" onClick={() => setActiveTab('entries')}>
+            {t('journal.tabs.entries')}
+          </Button>
+          <Button variant={activeTab === 'models' ? 'default' : 'secondary'} type="button" onClick={() => setActiveTab('models')}>
+            {t('journal.tabs.models')}
+          </Button>
+        </div>
+      )}
 
       {activeTab === 'entries' ? (
         <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
@@ -671,11 +737,12 @@ export function BanqueJournalPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-slate-900">{selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}</h2>
-                <Button type="button" variant="ghost" onClick={resetEntryForm}>{t('journal.entries.resetDraft')}</Button>
-              </div>
+            {!showEntriesListOnly && (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-slate-900">{selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}</h2>
+                  <Button type="button" variant="ghost" onClick={resetEntryForm}>{t('journal.entries.resetDraft')}</Button>
+                </div>
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -820,12 +887,21 @@ export function BanqueJournalPage() {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            )}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.listTitle')}</h2>
-            <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
+          {!showWorkspaceOnly && (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.listTitle')}</h2>
+                {showEntriesListOnly && canPost && (
+                  <Link to="/banque/journal/entry/new">
+                    <Button type="button" size="sm">{t('journal.entries.newDraft')}</Button>
+                  </Link>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
             <div className="mt-4 space-y-3">
               {entriesQuery.isLoading ? (
                 <p className="text-sm text-slate-500">{t('settings.loading')}</p>
@@ -843,7 +919,13 @@ export function BanqueJournalPage() {
                     <button
                       key={entry.uuid}
                       type="button"
-                      onClick={() => selectEntry(entry)}
+                      onClick={() => {
+                        if (showEntriesListOnly) {
+                          navigate(`/banque/journal/entry/${entry.uuid}`)
+                          return
+                        }
+                        selectEntry(entry)
+                      }}
                       className={[
                         'w-full rounded-lg border p-4 text-left transition-colors',
                         selectedEntryUuid === entry.uuid
@@ -869,6 +951,7 @@ export function BanqueJournalPage() {
               )}
             </div>
           </div>
+          )}
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">

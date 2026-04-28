@@ -26,3 +26,5 @@ frontend/nohup.out
 # ── Build artefacts ───────────────────────────────────────────────────────────
 frontend/dist/
 deploy/config/conf_emails.json
+deploy/erp_vps.dump
+deploy/erp_vps.sql

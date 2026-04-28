@@ -2,7 +2,15 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { LoginPage, ProtectedRoute, PublicOnlyRoute } from './auth'
 import { AdminPage } from './modules/admin'
-import { BanquePage, BanqueJournalPage, BanqueSettingsPage, BankPricingPage, BanquePcgPage } from './modules/banque'
+import {
+  BanquePage,
+  BanqueJournalEntriesPage,
+  BanqueJournalEntryWorkspacePage,
+  BanqueJournalTemplatesPage,
+  BanqueSettingsPage,
+  BankPricingPage,
+  BanquePcgPage,
+} from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
@@ -25,7 +33,11 @@ function App() {
           <Route path="/club" element={<MembersPage />} />
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/banque" element={<BanquePage />} />
-          <Route path="/banque/journal" element={<BanqueJournalPage />} />
+          <Route path="/banque/journal" element={<BanqueJournalEntriesPage />} />
+          <Route path="/banque/journal/entries" element={<BanqueJournalEntriesPage />} />
+          <Route path="/banque/journal/entry/new" element={<BanqueJournalEntryWorkspacePage />} />
+          <Route path="/banque/journal/entry/:entryUuid" element={<BanqueJournalEntryWorkspacePage />} />
+          <Route path="/banque/journal/templates" element={<BanqueJournalTemplatesPage />} />
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pcg" element={<BanquePcgPage />} />

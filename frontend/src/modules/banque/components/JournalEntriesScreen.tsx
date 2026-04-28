@@ -1,0 +1,190 @@
+/*
+    ERP-CLUB - ERP pour Club de vol à voile
+    - Logiciel libre de gestion d'un club de vol à voile
+    - banque: Journal entries browser screen – filter + list + CTA to workspace
+    Copyright (C) 2026  SAFORCADA Patrick
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+
+import { Button } from '../../../components/ui/button'
+import { Input } from '../../../components/ui/input'
+import { Label } from '../../../components/ui/label'
+import { useCapability } from '../../../auth/hooks/useCapability'
+import {
+  useAccountingEntriesQuery,
+  useFiscalYearsQuery,
+  useJournalsQuery,
+} from '../api'
+import { entryStateLabel, totals, JournalPageShell } from './journalShared'
+
+export function JournalEntriesScreen() {
+  const { t } = useTranslation('banque')
+  const navigate = useNavigate()
+  const canView = useCapability('VIEW_FINANCIALS')
+  const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
+  const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
+
+  const fiscalYearsQuery = useFiscalYearsQuery(canView)
+  const journalsQuery = useJournalsQuery(canView)
+
+  const [filters, setFilters] = useState({ fiscal_year_uuid: '', journal_uuid: '', state: 0, search: '' })
+
+  const fiscalYears = fiscalYearsQuery.data ?? []
+  const journals = journalsQuery.data ?? []
+
+  useEffect(() => {
+    if (fiscalYears.length > 0 && filters.fiscal_year_uuid === '') {
+      setFilters((prev) => ({ ...prev, fiscal_year_uuid: fiscalYears[0].uuid }))
+    }
+  }, [fiscalYears, filters.fiscal_year_uuid])
+
+  const entryFilters = useMemo(
+    () => ({
+      fiscal_year_uuid: filters.fiscal_year_uuid || undefined,
+      journal_uuid: filters.journal_uuid || undefined,
+      state: filters.state || undefined,
+      search: filters.search.trim() || undefined,
+      limit: 200,
+    }),
+    [filters],
+  )
+
+  const entriesQuery = useAccountingEntriesQuery(entryFilters, canView && Boolean(filters.fiscal_year_uuid))
+  const entries = entriesQuery.data ?? []
+
+  if (!canView) {
+    return (
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-sm text-slate-500">{t('journal.noPermission')}</p>
+      </section>
+    )
+  }
+
+  return (
+    <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
+      {/* Filters */}
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.filtersTitle')}</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div className="space-y-1">
+            <Label>{t('journal.entries.fiscalYear')}</Label>
+            <select
+              value={filters.fiscal_year_uuid}
+              onChange={(event) => setFilters((prev) => ({ ...prev, fiscal_year_uuid: event.target.value }))}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="">{t('journal.entries.selectFiscalYear')}</option>
+              {fiscalYears.map((year) => (
+                <option key={year.uuid} value={year.uuid}>{year.code}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.journal')}</Label>
+            <select
+              value={filters.journal_uuid}
+              onChange={(event) => setFilters((prev) => ({ ...prev, journal_uuid: event.target.value }))}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="">{t('journal.entries.allJournals')}</option>
+              {journals.map((journal) => (
+                <option key={journal.uuid} value={journal.uuid}>{journal.code} · {journal.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.state')}</Label>
+            <select
+              value={filters.state}
+              onChange={(event) => setFilters((prev) => ({ ...prev, state: Number(event.target.value) }))}
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value={0}>{t('journal.entries.allStates')}</option>
+              <option value={1}>{t('journal.entries.states.draft')}</option>
+              <option value={2}>{t('journal.entries.states.posted')}</option>
+              <option value={3}>{t('journal.entries.states.cancelled')}</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.search')}</Label>
+            <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
+          </div>
+        </div>
+      </div>
+
+      {/* Entry list */}
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">{t('journal.entries.listTitle')}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
+          </div>
+          {canPost && (
+            <a href="/banque/journal/entry/new">
+              <Button type="button" size="sm">{t('journal.entries.newDraft')}</Button>
+            </a>
+          )}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {entriesQuery.isLoading ? (
+            <p className="text-sm text-slate-500">{t('settings.loading')}</p>
+          ) : !filters.fiscal_year_uuid ? (
+            <p className="text-sm text-slate-500">{t('journal.entries.selectFiscalYear')}</p>
+          ) : entries.length === 0 ? (
+            <p className="text-sm text-slate-500">{t('journal.entries.empty')}</p>
+          ) : (
+            entries.map((entry) => {
+              const summary = totals(
+                entry.lines.map((line) => ({
+                  account_uuid: line.account_uuid,
+                  debit: line.debit,
+                  credit: line.credit,
+                  description: line.description ?? '',
+                })),
+              )
+              return (
+                <button
+                  key={entry.uuid}
+                  type="button"
+                  onClick={() => navigate(`/banque/journal/entry/${entry.uuid}`)}
+                  className="w-full rounded-lg border border-slate-200 bg-white p-4 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{entry.sequence_number ?? t('journal.entries.draftSequence')}</p>
+                      <p className="text-sm text-slate-700">{entry.description}</p>
+                      <p className="text-xs text-slate-500">{entry.entry_date} · {entry.reference ?? t('journal.entries.noReference')}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                      {entryStateLabel(entry.state, t)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span>{entry.lines.length} {t('journal.entries.linesCount')}</span>
+                    <span className="font-mono">D {summary.debit} / C {summary.credit}</span>
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </JournalPageShell>
+  )
+}
