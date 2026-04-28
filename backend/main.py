@@ -35,7 +35,7 @@ from api.security import get_current_user, get_user_capabilities, get_user_roles
 from api.routes import auth, admin, members, accounting, assets
 from models import User
 from gestionlog import LogConfig
-from services.accounting import ensure_default_system_settings
+from services.accounting import ensure_default_journals, ensure_default_system_settings
 
 
 
@@ -78,6 +78,14 @@ async def lifespan(app: FastAPI):
                 "Default system settings ensured: inserted={} total_defaults={}",
                 settings_seed_result.get("inserted"),
                 settings_seed_result.get("total_defaults"),
+            )
+
+            journals_seed_result = await ensure_default_journals(db)
+            logger.info(
+                "Default journals ensured: inserted={} reactivated={} total_defaults={}",
+                journals_seed_result.get("inserted"),
+                journals_seed_result.get("reactivated"),
+                journals_seed_result.get("total_defaults"),
             )
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")

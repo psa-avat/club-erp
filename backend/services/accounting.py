@@ -187,6 +187,16 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, dict] = {
 }
 
 
+DEFAULT_ACCOUNTING_JOURNALS: tuple[dict[str, object], ...] = (
+    {"code": "VT", "name": "Journal des ventes", "type": 1, "is_active": True},
+    {"code": "AC", "name": "Journal des achats", "type": 2, "is_active": True},
+    {"code": "BQ", "name": "Journal de banque", "type": 3, "is_active": True},
+    {"code": "CA", "name": "Journal de caisse", "type": 4, "is_active": True},
+    {"code": "OD", "name": "Opérations diverses", "type": 5, "is_active": True},
+    {"code": "AN", "name": "Journal à-nouveaux", "type": 6, "is_active": True},
+)
+
+
 def _safe_partition_suffix(fiscal_year_code: str) -> str:
     """Produce a safe SQL identifier suffix for partition table names."""
     return re.sub(r"[^a-z0-9_]", "_", fiscal_year_code.lower())
@@ -376,6 +386,47 @@ async def ensure_default_system_settings(db: AsyncSession) -> dict:
     return {
         "inserted": inserted,
         "total_defaults": len(DEFAULT_SYSTEM_SETTINGS),
+    }
+
+
+async def ensure_default_journals(db: AsyncSession) -> dict:
+    """Ensure a baseline set of accounting journals exists for first-run UX."""
+    expected_codes = tuple(journal["code"] for journal in DEFAULT_ACCOUNTING_JOURNALS)
+    existing_result = await db.execute(
+        select(AccountingJournal).where(AccountingJournal.code.in_(expected_codes))
+    )
+    existing_by_code = {row.code: row for row in existing_result.scalars().all()}
+
+    inserted = 0
+    reactivated = 0
+
+    for payload in DEFAULT_ACCOUNTING_JOURNALS:
+        code = str(payload["code"])
+        journal = existing_by_code.get(code)
+
+        if journal is None:
+            db.add(
+                AccountingJournal(
+                    code=code,
+                    name=str(payload["name"]),
+                    type=int(payload["type"]),
+                    is_active=bool(payload["is_active"]),
+                )
+            )
+            inserted += 1
+            continue
+
+        if not journal.is_active:
+            journal.is_active = True
+            reactivated += 1
+
+    if inserted > 0 or reactivated > 0:
+        await db.commit()
+
+    return {
+        "inserted": inserted,
+        "reactivated": reactivated,
+        "total_defaults": len(DEFAULT_ACCOUNTING_JOURNALS),
     }
 
 
