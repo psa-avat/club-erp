@@ -401,6 +401,7 @@ export const fr = {
         editTitle: 'Modifier le modèle récurrent',
         listTitle: 'Modèles récurrents',
         listDescription: 'Définissez des écritures types pour les opérations périodiques ou réutilisables.',
+        linesTitle: 'Lignes du modèle',
         empty: 'Aucun modèle récurrent défini.',
         noPermission: "Vous n'avez pas la capacité MANAGE_ACCOUNTING_SETTINGS nécessaire pour modifier les modèles.",
         code: 'Code',

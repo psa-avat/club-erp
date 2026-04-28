@@ -401,6 +401,7 @@ export const en = {
         editTitle: 'Edit recurring model',
         listTitle: 'Recurring models',
         listDescription: 'Define reusable entry structures for periodic or repeatable operations.',
+        linesTitle: 'Model lines',
         empty: 'No recurring model defined yet.',
         noPermission: 'You do not have the required MANAGE_ACCOUNTING_SETTINGS capability to edit models.',
         code: 'Code',

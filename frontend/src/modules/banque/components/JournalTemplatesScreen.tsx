@@ -168,7 +168,7 @@ export function JournalTemplatesScreen() {
       {anyError && <Alert>{anyError}</Alert>}
       {successMessage && <Alert className="border-green-200 bg-green-50 text-green-800">{successMessage}</Alert>}
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+      <div className="space-y-4">
         {/* Template editor */}
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3">
@@ -300,7 +300,7 @@ export function JournalTemplatesScreen() {
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">{t('journal.models.listTitle')}</h2>
           <p className="mt-1 text-sm text-slate-500">{t('journal.models.listDescription')}</p>
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {modelsQuery.isLoading ? (
               <p className="text-sm text-slate-500">{t('settings.loading')}</p>
             ) : models.length === 0 ? (
