@@ -48,6 +48,22 @@ export const en = {
       openMenu: 'Open menu',
       closeMenu: 'Close',
     },
+    import: {
+      button: 'Import CSV',
+      close: 'Close',
+      chooseFile: 'Choose file',
+      noFileChosen: 'No file chosen',
+      upload: 'Import',
+      uploading: 'Importing...',
+      created: 'Created',
+      skipped: 'Skipped',
+      errors: 'Errors',
+      colRow: 'Row',
+      colField: 'Field',
+      colMessage: 'Message',
+      sampleDownloadPrefix: 'Download a sample CSV file:',
+      sampleDownloadLink: 'Sample CSV',
+    },
   },
   dashboard: {
     home: {

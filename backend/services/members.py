@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import logging
 import secrets
 from hashlib import sha256
 from typing import Optional
@@ -19,6 +22,8 @@ from schemas.members import (
     CommitteeResponse,
     CommitteeUpdateRequest,
     ExpenseAccessResponse,
+    ImportResultResponse,
+    ImportRowError,
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
@@ -27,6 +32,8 @@ from schemas.members import (
     MemberSummaryResponse,
     MemberUpdateRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _hash_token(raw_token: str) -> str:
@@ -594,3 +601,204 @@ async def disable_member_sheet_expense_access(
         expense_access_enabled=False,
         generated_token=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk import
+# ---------------------------------------------------------------------------
+
+# Mapping from human-readable CSV values to SMALLINT enum codes
+_MEMBER_CATEGORY_MAP: dict[str, int] = {
+    "1": 1, "full": 1, "membre_actif": 1,
+    "2": 2, "temporary": 2, "temporaire": 2,
+    "3": 3, "non_flying": 3, "non_volant": 3,
+    "4": 4, "short_period": 4, "court_sejour": 4,
+    "5": 5, "external_pilot": 5, "pilote_externe": 5,
+    "6": 6, "volunteer": 6, "benevole": 6,
+}
+
+_GENRE_MAP: dict[str, int] = {
+    "0": 0, "unknown": 0, "inconnu": 0, "": 0,
+    "1": 1, "m": 1, "male": 1, "homme": 1,
+    "2": 2, "f": 2, "female": 2, "femme": 2,
+    "3": 3, "other": 3, "autre": 3,
+}
+
+_STATUS_MAP: dict[str, int] = {
+    "1": 1, "active": 1, "actif": 1,
+    "2": 2, "inactive": 2, "inactif": 2,
+    "3": 3, "suspended": 3, "suspendu": 3,
+    "4": 4, "deceased": 4, "décédé": 4, "decede": 4,
+}
+
+_REGISTRATION_STATUS_MAP: dict[str, int] = {
+    "1": 1, "draft": 1, "brouillon": 1,
+    "2": 2, "pending": 2, "en_attente": 2,
+    "3": 3, "complete": 3, "complet": 3,
+    "4": 4, "expired": 4, "expiré": 4, "expire": 4,
+}
+
+
+def _parse_bool_cell(value: str, default: bool = False) -> bool:
+    v = value.strip().lower()
+    if v in ("1", "true", "yes", "oui", "vrai"):
+        return True
+    if v in ("0", "false", "no", "non", "faux", ""):
+        return False
+    return default
+
+
+async def import_members_from_csv(
+    db: AsyncSession,
+    content: bytes,
+    *,
+    updated_by_user_id: Optional[int] = None,
+) -> ImportResultResponse:
+    """Parse a CSV file and bulk-create members, collecting per-row errors.
+
+    Rows with validation errors are skipped; valid rows are committed
+    individually so that one bad row does not roll back good ones.
+    """
+    errors: list[ImportRowError] = []
+    created = 0
+    skipped = 0
+
+    try:
+        text = content.decode("utf-8-sig")  # strip BOM if present
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    required_columns = {"first_name", "last_name", "member_category"}
+    if reader.fieldnames:
+        missing = required_columns - {c.strip().lower() for c in reader.fieldnames}
+        if missing:
+            return ImportResultResponse(
+                created=0,
+                skipped=0,
+                errors=[ImportRowError(row=0, field=None, message=f"Missing required columns: {', '.join(sorted(missing))}")],
+            )
+
+    for row_index, raw in enumerate(reader, start=2):  # row 1 = header
+        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
+
+        # --- required fields ---
+        first_name = row.get("first_name", "")
+        last_name = row.get("last_name", "")
+        raw_category = row.get("member_category", "").lower()
+
+        if not first_name:
+            errors.append(ImportRowError(row=row_index, field="first_name", message="Required"))
+            skipped += 1
+            continue
+        if not last_name:
+            errors.append(ImportRowError(row=row_index, field="last_name", message="Required"))
+            skipped += 1
+            continue
+        if raw_category not in _MEMBER_CATEGORY_MAP:
+            errors.append(ImportRowError(row=row_index, field="member_category", message=f"Unknown value {raw_category!r}. Expected 1-6 or label."))
+            skipped += 1
+            continue
+
+        # --- optional fields ---
+        raw_genre = row.get("genre", "0").lower()
+        genre = _GENRE_MAP.get(raw_genre, 0)
+
+        raw_status = row.get("status", "1").lower()
+        member_status = _STATUS_MAP.get(raw_status, 1)
+        if member_status is None:
+            errors.append(ImportRowError(row=row_index, field="status", message=f"Unknown value {raw_status!r}"))
+            skipped += 1
+            continue
+
+        raw_reg_status = row.get("registration_status", "1").lower()
+        reg_status = _REGISTRATION_STATUS_MAP.get(raw_reg_status, 1)
+
+        email_raw = row.get("email", "") or None
+        phone = row.get("phone", "") or None
+        account_id = row.get("account_id", "") or None
+        notes = row.get("notes", "") or None
+
+        date_of_birth = None
+        raw_dob = row.get("date_of_birth", "")
+        if raw_dob:
+            from datetime import date as _date
+            try:
+                date_of_birth = _date.fromisoformat(raw_dob)
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="date_of_birth", message=f"Invalid date {raw_dob!r}. Use YYYY-MM-DD."))
+                skipped += 1
+                continue
+
+        seniority = None
+        raw_seniority = row.get("seniority", "")
+        if raw_seniority:
+            try:
+                seniority = int(raw_seniority)
+                if seniority < 0:
+                    raise ValueError
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="seniority", message="Must be a non-negative integer"))
+                skipped += 1
+                continue
+
+        ffvp_id = None
+        raw_ffvp = row.get("ffvp_id", "")
+        if raw_ffvp:
+            try:
+                ffvp_id = int(raw_ffvp)
+                if ffvp_id < 1:
+                    raise ValueError
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="ffvp_id", message="Must be a positive integer"))
+                skipped += 1
+                continue
+
+        last_reg_year = None
+        raw_year = row.get("last_registration_year", "")
+        if raw_year:
+            try:
+                last_reg_year = int(raw_year)
+                if not (2000 <= last_reg_year <= 9999):
+                    raise ValueError
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="last_registration_year", message="Must be a year between 2000 and 9999"))
+                skipped += 1
+                continue
+
+        payload = MemberCreateRequest(
+            genre=genre,
+            first_name=first_name,
+            last_name=last_name,
+            date_of_birth=date_of_birth,
+            email=email_raw,  # type: ignore[arg-type]
+            phone=phone,
+            member_category=_MEMBER_CATEGORY_MAP[raw_category],
+            seniority=seniority,
+            ffvp_id=ffvp_id,
+            account_id=account_id,
+            is_active=_parse_bool_cell(row.get("is_active", "true"), default=True),
+            status=member_status,
+            registration_status=reg_status,
+            can_fly=_parse_bool_cell(row.get("can_fly", "false")),
+            is_instructor=_parse_bool_cell(row.get("is_instructor", "false")),
+            is_employee=_parse_bool_cell(row.get("is_employee", "false")),
+            is_executive=_parse_bool_cell(row.get("is_executive", "false")),
+            is_board_member=_parse_bool_cell(row.get("is_board_member", "false")),
+            last_registration_year=last_reg_year,
+            notes=notes,
+        )
+
+        try:
+            await create_member(db=db, payload=payload, updated_by_user_id=updated_by_user_id)
+            created += 1
+        except HTTPException as exc:
+            errors.append(ImportRowError(row=row_index, field=None, message=exc.detail))
+            skipped += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("members_csv_import row=%d error=%s", row_index, exc)
+            errors.append(ImportRowError(row=row_index, field=None, message="Unexpected error — row skipped"))
+            skipped += 1
+
+    return ImportResultResponse(created=created, skipped=skipped, errors=errors)

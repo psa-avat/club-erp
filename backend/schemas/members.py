@@ -240,3 +240,23 @@ class ExpenseAccessResponse(BaseModel):
     expense_access_enabled: bool
     generated_token: Optional[str] = None
 
+
+# ---------------------------------------------------------------------------
+# CSV bulk import
+# ---------------------------------------------------------------------------
+
+class ImportRowError(BaseModel):
+    """One validation or persistence error tied to a specific CSV row."""
+
+    row: int
+    field: Optional[str] = None
+    message: str
+
+
+class ImportResultResponse(BaseModel):
+    """Summary returned after a CSV bulk import."""
+
+    created: int
+    skipped: int
+    errors: list[ImportRowError]
+

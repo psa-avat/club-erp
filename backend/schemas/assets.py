@@ -274,3 +274,23 @@ class PricingLookupResponse(BaseModel):
     pricing_version_uuid: UUID
     pricing_version_name: str
     item: PricingItemResponse
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk import
+# ---------------------------------------------------------------------------
+
+class ImportRowError(BaseModel):
+    """One validation or persistence error tied to a specific CSV row."""
+
+    row: int
+    field: Optional[str] = None
+    message: str
+
+
+class ImportResultResponse(BaseModel):
+    """Summary returned after a CSV bulk import."""
+
+    created: int
+    skipped: int
+    errors: list[ImportRowError]

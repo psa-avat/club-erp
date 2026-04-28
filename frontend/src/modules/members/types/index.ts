@@ -158,3 +158,15 @@ export type UpsertMemberSheetPayload = {
   expense_access_enabled: boolean
 }
 
+export type ImportRowError = {
+  row: number
+  field: string | null
+  message: string
+}
+
+export type ImportResult = {
+  created: number
+  skipped: number
+  errors: ImportRowError[]
+}
+

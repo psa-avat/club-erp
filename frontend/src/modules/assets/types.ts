@@ -221,3 +221,15 @@ export type AssetPricingVersion = {
   created_at: string
   updated_at: string
 }
+
+export type ImportRowError = {
+  row: number
+  field: string | null
+  message: string
+}
+
+export type ImportResult = {
+  created: number
+  skipped: number
+  errors: ImportRowError[]
+}

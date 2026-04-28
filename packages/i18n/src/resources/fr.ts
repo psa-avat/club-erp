@@ -48,6 +48,22 @@ export const fr = {
       openMenu: 'Ouvrir le menu',
       closeMenu: 'Fermer',
     },
+    import: {
+      button: 'Importer CSV',
+      close: 'Fermer',
+      chooseFile: 'Choisir un fichier',
+      noFileChosen: 'Aucun fichier sélectionné',
+      upload: 'Importer',
+      uploading: 'Import en cours...',
+      created: 'Créés',
+      skipped: 'Ignorés',
+      errors: 'Erreurs',
+      colRow: 'Ligne',
+      colField: 'Champ',
+      colMessage: 'Message',
+      sampleDownloadPrefix: 'Télécharger un exemple de fichier CSV :',
+      sampleDownloadLink: 'Exemple CSV',
+    },
   },
   dashboard: {
     home: {

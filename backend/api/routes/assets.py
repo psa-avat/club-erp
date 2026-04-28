@@ -21,7 +21,7 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -40,6 +40,7 @@ from schemas.assets import (
     FlightTypeCreateRequest,
     FlightTypeResponse,
     FlightTypeUpdateRequest,
+    ImportResultResponse,
     PricingItemCreateRequest,
     PricingItemResponse,
     PricingItemUpdateRequest,
@@ -54,6 +55,7 @@ from services.assets import (
     get_asset,
     get_asset_type,
     get_pricing_item,
+    import_assets_from_csv,
     list_asset_status_history,
     list_asset_types,
     list_assets,
@@ -315,3 +317,23 @@ async def lookup_pricing_endpoint(
         pricing_version_name=version.name,
         item=item,
     )
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk import
+# ---------------------------------------------------------------------------
+
+@router.post("/import", response_model=ImportResultResponse)
+async def import_assets_endpoint(
+    file: UploadFile = File(..., description="UTF-8 (or latin-1) CSV file with asset data"),
+    current_user: User = _manage_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk-import assets from a CSV file.
+
+    Asset types are resolved by their `asset_type_code` column value.
+    Rows that pass validation are created immediately.
+    Rows with errors are skipped and reported in the response.
+    """
+    content = await file.read()
+    return await import_assets_from_csv(db=db, content=content, user_id=current_user.id)

@@ -7,7 +7,7 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -21,6 +21,7 @@ from schemas.members import (
     CommitteeResponse,
     CommitteeUpdateRequest,
     ExpenseAccessResponse,
+    ImportResultResponse,
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
@@ -39,6 +40,7 @@ from services.members import (
     get_committee_or_404,
     get_member_or_404,
     get_member_sheet_or_404,
+    import_members_from_csv,
     list_committees,
     list_member_sheets,
     list_members,
@@ -266,5 +268,29 @@ async def disable_member_sheet_expense_access_endpoint(
         db=db,
         member_uuid=member_uuid,
         year=year,
+        updated_by_user_id=current_user.id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk import
+# ---------------------------------------------------------------------------
+
+@router.post("/import", response_model=ImportResultResponse)
+async def import_members_endpoint(
+    file: UploadFile = File(..., description="UTF-8 (or latin-1) CSV file with member data"),
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk-import members from a CSV file.
+
+    Rows that pass validation are created immediately.
+    Rows with errors are skipped and reported in the response.
+    The endpoint always returns 200 with a summary — check the `errors` list.
+    """
+    content = await file.read()
+    return await import_members_from_csv(
+        db=db,
+        content=content,
         updated_by_user_id=current_user.id,
     )

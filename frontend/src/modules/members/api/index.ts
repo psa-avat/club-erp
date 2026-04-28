@@ -7,6 +7,7 @@ import type {
   CreateCommitteePayload,
   CreateMemberPayload,
   ExpenseAccessResponse,
+  ImportResult,
   MemberDetail,
   MemberFilters,
   MemberSheet,
@@ -271,6 +272,26 @@ export function useDisableExpenseAccessMutation() {
     onSuccess: async (_, variables) => {
       await queryClient.invalidateQueries({ queryKey: membersQueryKeys.sheets(variables.memberUuid) })
       await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+    },
+  })
+}
+
+export function useImportMembersMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await apiClient.post<ImportResult>(
+        '/api/v1/members/import',
+        formData,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.lists })
     },
   })
 }

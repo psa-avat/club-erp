@@ -159,7 +159,6 @@ function PricingItemForm({
   onSave,
   onCancel,
   saving,
-  t,
 }: {
   initial: ItemFormState
   flightTypes: Array<{ uuid: string; name: string }>
@@ -168,8 +167,8 @@ function PricingItemForm({
   onSave: (f: ItemFormState) => void
   onCancel: () => void
   saving: boolean
-  t: TranslateFn
 }) {
+  const { t } = useTranslation('assets')
   const [form, setForm] = useState<ItemFormState>(initial)
   function set<K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -325,11 +324,11 @@ function PricingItemForm({
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('pricing.version.saving') : t('pricing.version.save')}
+          {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('pricing.version.cancel')}
+          {t('pricing.cancel')}
         </Button>
       </div>
     </div>
@@ -341,12 +340,11 @@ function PricingItemForm({
 function PricingItemsPanel({
   version,
   canEdit,
-  t,
 }: {
   version: PricingVersion
   canEdit: boolean
-  t: TranslateFn
 }) {
+  const { t } = useTranslation('assets')
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
 
@@ -366,7 +364,7 @@ function PricingItemsPanel({
 
   function extractItemError(e: unknown): string {
     if (e instanceof AxiosError && e.response?.data?.detail) return String(e.response.data.detail)
-    return t('pricing.error.generic')
+    return t('pricing.error.saveFailed')
   }
 
   async function handleCreate(form: ItemFormState) {
@@ -422,7 +420,6 @@ function PricingItemsPanel({
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
           saving={createMutation.isPending}
-          t={t}
         />
       )}
 
@@ -445,7 +442,6 @@ function PricingItemsPanel({
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
                 saving={updateMutation.isPending}
-                t={t}
               />
             ) : (
               <div
@@ -778,7 +774,7 @@ function VersionTimeline({
               {/* Expanded: pricing items panel */}
               {isExpanded && (
                 <div className="border-t border-slate-100 px-4 pb-4">
-                  <PricingItemsPanel version={v} canEdit={canEdit} t={t} />
+                  <PricingItemsPanel version={v} canEdit={canEdit} />
                 </div>
               )}
             </div>

@@ -839,6 +839,53 @@ Must cover:
 7. connect both modules into shell navigation and routing
 8. add tests and seed data
 
+## CSV Bulk Import
+
+### Endpoint
+
+`POST /api/v1/members/import`
+
+- Requires `MANAGE_USERS` capability.
+- Accepts `multipart/form-data` with a single `file` field (`.csv`).
+- Encoding: UTF-8 (with or without BOM) or latin-1; auto-detected.
+
+### CSV Format
+
+See `docs/members-sample.csv` for a reference file.
+
+**Required columns:** `first_name`, `last_name`, `member_category`
+
+**Optional columns:** `genre`, `email`, `phone`, `date_of_birth` (YYYY-MM-DD), `status`, `registration_status`, `is_instructor`, `can_fly`, `ffvp_id`, `account_id`, `seniority`, `is_employee`, `is_executive`, `is_board_member`, `external_auth_enabled`
+
+**Enum values accepted (case-insensitive):**
+
+| Column | Accepted values |
+|---|---|
+| `member_category` | `1`/`pilote`, `2`/`stagiaire`, `3`/`passager`, `4`/`mécanicien`, `5`/`admin` |
+| `genre` | `M`/`male`/`homme`, `F`/`female`/`femme` |
+| `status` | `1`/`active`/`actif`, `2`/`inactive`/`inactif`, `3`/`suspended`/`suspendu` |
+| `registration_status` | `0`/`none`/`aucun`, `1`/`pending`/`en attente`, `2`/`complete`/`complet`, `3`/`expired`/`expiré` |
+| Boolean columns | `true`/`false`/`oui`/`non`/`1`/`0` |
+
+### Behavior
+
+- Each row is validated independently; errors in one row do not block other rows.
+- A row that fails validation is **skipped** (not created) and its error is reported.
+- A row where the `account_id` or `email` already exists is skipped (duplicate).
+- No dry-run mode; rows that pass are committed immediately.
+
+### Response
+
+```json
+{
+  "created": 2,
+  "skipped": 1,
+  "errors": [
+    { "row": 3, "field": "member_category", "message": "Unknown member_category value: 'inconnu'" }
+  ]
+}
+```
+
 ## Open Follow-Ups
 
 These are not blockers for v1 but should be clarified later:

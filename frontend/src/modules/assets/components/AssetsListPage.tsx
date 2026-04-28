@@ -25,12 +25,14 @@ import { Plus, Wrench, Ban, CheckCircle2, Trash2 } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
+import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetsQuery,
   useAssetTypesQuery,
+  useImportAssetsMutation,
   useTransitionAssetStatusMutation,
 } from '../api'
 import type { AssetFilters, AssetSummary } from '../types'
@@ -146,6 +148,7 @@ function StatusActions({
 
 export function AssetsListPage() {
   const { t } = useTranslation('assets')
+  const { t: tCommon } = useTranslation('common')
   const navigate = useNavigate()
   const canManage = useCapability('MANAGE_ASSETS')
   const canView = useCapability('MANAGE_ASSETS') || useCapability('VIEW_FINANCIALS')
@@ -153,9 +156,11 @@ export function AssetsListPage() {
   const [filters, setFilters] = useState<AssetFilters>({ is_active: true })
   const [search, setSearch] = useState('')
   const [transitionError, setTransitionError] = useState<string | null>(null)
+  const [showImportDialog, setShowImportDialog] = useState(false)
 
   const typesQuery = useAssetTypesQuery(canView)
   const assetsQuery = useAssetsQuery(filters, canView)
+  const importAssetsMutation = useImportAssetsMutation()
 
   const assets = assetsQuery.data ?? []
   const types = typesQuery.data ?? []
@@ -211,6 +216,9 @@ export function AssetsListPage() {
             <div className="flex shrink-0 gap-2">
               <Button variant="ghost" size="sm" onClick={() => navigate('/assets/types')}>
                 {t('assetTypes.title')}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowImportDialog(true)}>
+                {tCommon('import.button')}
               </Button>
               <Button onClick={() => navigate('/assets/new')} size="sm">
                 <Plus className="mr-1 h-4 w-4" />
@@ -365,6 +373,14 @@ export function AssetsListPage() {
           </div>
         )}
       </div>
+      {showImportDialog && (
+        <ImportDialog
+          title={tCommon('import.button')}
+          onUpload={(file) => importAssetsMutation.mutateAsync(file)}
+          sampleCsvHref="/docs/assets-sample.csv"
+          onClose={() => setShowImportDialog(false)}
+        />
+      )}
     </section>
   )
 }

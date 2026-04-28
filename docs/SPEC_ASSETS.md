@@ -315,3 +315,49 @@ Real-time accruals are linked via flight_uuid in accounting entry.
 | Flight-type inconsistency | Pricing lookup failures | Seed at install; require selection in UI |
 | Cost provision rules forgotten | Incomplete maintenance reserves | Rule audit checklist at fiscal year close |
 | Real-time cost creep | Over-accrual if rules change mid-month | Batch methods preferred for stable environments; real-time for predictable metrics |
+
+## 14. CSV Bulk Import
+
+### Endpoint
+
+`POST /api/v1/assets/import`
+
+- Requires `MANAGE_ASSETS` capability.
+- Accepts `multipart/form-data` with a single `file` field (`.csv`).
+- Encoding: UTF-8 (with or without BOM) or latin-1; auto-detected.
+
+### CSV Format
+
+See `docs/assets-sample.csv` for a reference file.
+
+**Required columns:** `code`, `name`, `asset_type_code`
+
+**Optional columns:** `ownership`, `status`, `year_of_manufacture`, `purchase_price`, `residual_value`, `purchase_date` (YYYY-MM-DD), `depreciation_years`, `useful_life_years`, `depreciation_start_date` (YYYY-MM-DD), `registration`, `serial_number`, `notes`
+
+**Enum values accepted (case-insensitive):**
+
+| Column | Accepted values |
+|---|---|
+| `ownership` | `1`/`club`, `2`/`private`/`privé` |
+| `status` | `1`/`operational`/`opérationnel`, `2`/`maintenance`, `3`/`out_of_service`/`hors_service`, `4`/`disposed`/`cédé` |
+| `asset_type_code` | Must match an existing asset type `code` in the database |
+
+### Behavior
+
+- Asset types are resolved by `asset_type_code` via a pre-fetched lookup table.
+- Each row is validated independently; errors in one row do not block other rows.
+- A row that fails validation is **skipped** and its error is reported.
+- A row where the `code` already exists is skipped (duplicate).
+- No dry-run mode; rows that pass are committed immediately.
+
+### Response
+
+```json
+{
+  "created": 2,
+  "skipped": 1,
+  "errors": [
+    { "row": 3, "field": "asset_type_code", "message": "Unknown asset_type_code: 'UNKNOWN'" }
+  ]
+}
+```

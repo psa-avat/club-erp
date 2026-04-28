@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
@@ -14,6 +15,7 @@ import {
   useCreateMemberMutation,
   useDisableExpenseAccessMutation,
   useEnableExpenseAccessMutation,
+  useImportMembersMutation,
   useMemberQuery,
   useMembersQuery,
   useMemberSheetsQuery,
@@ -267,6 +269,9 @@ export function MembersPage() {
   const upsertMemberSheetMutation = useUpsertMemberSheetMutation()
   const enableExpenseAccessMutation = useEnableExpenseAccessMutation()
   const disableExpenseAccessMutation = useDisableExpenseAccessMutation()
+  const importMembersMutation = useImportMembersMutation()
+  const [showImportDialog, setShowImportDialog] = useState(false)
+  const { t: tCommon } = useTranslation('common')
 
   const members = membersQuery.data ?? []
   const committees = committeesQuery.data ?? []
@@ -439,6 +444,9 @@ export function MembersPage() {
             />
             <Button className="w-full" variant="secondary" type="button" onClick={handleNewMember}>
               {t('actions.newMember')}
+            </Button>
+            <Button className="w-full" variant="secondary" type="button" onClick={() => setShowImportDialog(true)}>
+              {tCommon('import.button')}
             </Button>
           </div>
         </div>
@@ -894,6 +902,14 @@ export function MembersPage() {
           </Card>
         </div>
       ) : null}
+      {showImportDialog && (
+        <ImportDialog
+          title={tCommon('import.button')}
+          onUpload={(file) => importMembersMutation.mutateAsync(file)}
+          sampleCsvHref="/docs/members-sample.csv"
+          onClose={() => setShowImportDialog(false)}
+        />
+      )}
     </section>
   )
 }

@@ -33,6 +33,7 @@ import type {
   CreateFlightTypePayload,
   CreatePricingItemPayload,
   FlightType,
+  ImportResult,
   PricingItem,
   ReplaceTiersPayload,
   UpdateAssetPayload,
@@ -417,6 +418,26 @@ export function useReplacePricingItemTiersMutation(versionUuid: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.pricingItems(versionUuid) })
+    },
+  })
+}
+
+export function useImportAssetsMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await apiClient.post<ImportResult>(
+        '/api/v1/assets/import',
+        formData,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.root })
     },
   })
 }

@@ -18,6 +18,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
 import logging
+import csv
+import io
 from uuid import UUID
 from datetime import date
 
@@ -34,6 +36,8 @@ from schemas.assets import (
     AssetTypeUpdateRequest,
     FlightTypeCreateRequest,
     FlightTypeUpdateRequest,
+    ImportResultResponse,
+    ImportRowError,
     PricingItemCreateRequest,
     PricingItemUpdateRequest,
 )
@@ -547,3 +551,209 @@ async def lookup_pricing(
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"No pricing item found for asset {asset_uuid} on {lookup_date}.",
     )
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk import
+# ---------------------------------------------------------------------------
+
+_ASSET_OWNERSHIP_MAP: dict[str, int] = {
+    "1": 1, "club": 1,
+    "2": 2, "private": 2, "privé": 2, "prive": 2,
+}
+
+_ASSET_STATUS_MAP: dict[str, int] = {
+    "1": 1, "operational": 1, "opérationnel": 1,
+    "2": 2, "maintenance": 2,
+    "3": 3, "out_of_service": 3, "hors_service": 3,
+    "4": 4, "disposed": 4, "réformé": 4, "reforme": 4,
+}
+
+
+async def import_assets_from_csv(
+    db: AsyncSession,
+    content: bytes,
+    *,
+    user_id: int,
+) -> ImportResultResponse:
+    """Parse a CSV file and bulk-create assets, collecting per-row errors.
+
+    Asset types are resolved by their `code` column (case-insensitive).
+    Rows with errors are skipped; valid rows are committed individually.
+    """
+    errors: list[ImportRowError] = []
+    created = 0
+    skipped = 0
+
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    required_columns = {"code", "name", "asset_type_code"}
+    if reader.fieldnames:
+        missing = required_columns - {c.strip().lower() for c in reader.fieldnames}
+        if missing:
+            return ImportResultResponse(
+                created=0,
+                skipped=0,
+                errors=[ImportRowError(row=0, field=None, message=f"Missing required columns: {', '.join(sorted(missing))}")],
+            )
+
+    # Pre-fetch asset type map (code → uuid) once for the whole import
+    at_rows = (await db.execute(select(AssetType.code, AssetType.uuid))).all()
+    asset_type_map: dict[str, str] = {r[0].lower(): str(r[1]) for r in at_rows}
+
+    for row_index, raw in enumerate(reader, start=2):
+        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
+
+        code = row.get("code", "")
+        name = row.get("name", "")
+        raw_at_code = row.get("asset_type_code", "").lower()
+
+        if not code:
+            errors.append(ImportRowError(row=row_index, field="code", message="Required"))
+            skipped += 1
+            continue
+        if not name:
+            errors.append(ImportRowError(row=row_index, field="name", message="Required"))
+            skipped += 1
+            continue
+        if raw_at_code not in asset_type_map:
+            errors.append(ImportRowError(row=row_index, field="asset_type_code", message=f"Unknown asset type code {raw_at_code!r}"))
+            skipped += 1
+            continue
+
+        from uuid import UUID as _UUID
+        asset_type_uuid = _UUID(asset_type_map[raw_at_code])
+
+        raw_ownership = row.get("ownership", "club").lower()
+        ownership = _ASSET_OWNERSHIP_MAP.get(raw_ownership, 1)
+
+        raw_status_val = row.get("status", "operational").lower()
+        asset_status = _ASSET_STATUS_MAP.get(raw_status_val, 1)
+        if asset_status is None:
+            errors.append(ImportRowError(row=row_index, field="status", message=f"Unknown status {raw_status_val!r}"))
+            skipped += 1
+            continue
+
+        year_of_manufacture = None
+        raw_yom = row.get("year_of_manufacture", "")
+        if raw_yom:
+            try:
+                year_of_manufacture = int(raw_yom)
+                if not (1900 <= year_of_manufacture <= 2100):
+                    raise ValueError
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="year_of_manufacture", message="Must be a year between 1900 and 2100"))
+                skipped += 1
+                continue
+
+        def _parse_date_cell(field_name: str) -> "date | None":
+            raw = row.get(field_name, "")
+            if not raw:
+                return None
+            try:
+                return date.fromisoformat(raw)
+            except ValueError:
+                return None  # caller appends error
+
+        purchase_date = None
+        raw_pd = row.get("purchase_date", "")
+        if raw_pd:
+            try:
+                purchase_date = date.fromisoformat(raw_pd)
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="purchase_date", message=f"Invalid date {raw_pd!r}. Use YYYY-MM-DD."))
+                skipped += 1
+                continue
+
+        depreciation_start_date = None
+        raw_dsd = row.get("depreciation_start_date", "")
+        if raw_dsd:
+            try:
+                depreciation_start_date = date.fromisoformat(raw_dsd)
+            except ValueError:
+                errors.append(ImportRowError(row=row_index, field="depreciation_start_date", message=f"Invalid date {raw_dsd!r}. Use YYYY-MM-DD."))
+                skipped += 1
+                continue
+
+        def _parse_decimal_cell(field_name: str):
+            from decimal import Decimal, InvalidOperation
+            raw = row.get(field_name, "")
+            if not raw:
+                return None
+            try:
+                return Decimal(raw)
+            except InvalidOperation:
+                return "ERROR"
+
+        purchase_price = _parse_decimal_cell("purchase_price")
+        if purchase_price == "ERROR":
+            errors.append(ImportRowError(row=row_index, field="purchase_price", message="Must be a decimal number"))
+            skipped += 1
+            continue
+
+        residual_value = _parse_decimal_cell("residual_value")
+        if residual_value == "ERROR":
+            errors.append(ImportRowError(row=row_index, field="residual_value", message="Must be a decimal number"))
+            skipped += 1
+            continue
+
+        def _parse_int_cell(field_name: str, ge: int, le: int):
+            raw = row.get(field_name, "")
+            if not raw:
+                return None
+            try:
+                v = int(raw)
+                if not (ge <= v <= le):
+                    raise ValueError
+                return v
+            except ValueError:
+                return "ERROR"
+
+        dep_years = _parse_int_cell("depreciation_years", 1, 100)
+        if dep_years == "ERROR":
+            errors.append(ImportRowError(row=row_index, field="depreciation_years", message="Must be an integer between 1 and 100"))
+            skipped += 1
+            continue
+
+        useful_life = _parse_int_cell("useful_life_years", 1, 100)
+        if useful_life == "ERROR":
+            errors.append(ImportRowError(row=row_index, field="useful_life_years", message="Must be an integer between 1 and 100"))
+            skipped += 1
+            continue
+
+        request = AssetCreateRequest(
+            asset_type_uuid=asset_type_uuid,
+            code=code,
+            name=name,
+            registration=row.get("registration", "") or None,
+            serial_number=row.get("serial_number", "") or None,
+            manufacturer=row.get("manufacturer", "") or None,
+            model=row.get("model", "") or None,
+            year_of_manufacture=year_of_manufacture,
+            ownership=ownership,
+            purchase_date=purchase_date,
+            purchase_price=purchase_price,
+            depreciation_start_date=depreciation_start_date,
+            depreciation_years=dep_years,
+            residual_value=residual_value,
+            useful_life_years=useful_life,
+            notes=row.get("notes", "") or None,
+        )
+
+        try:
+            await create_asset(db=db, request=request, user_id=user_id)
+            created += 1
+        except HTTPException as exc:
+            errors.append(ImportRowError(row=row_index, field=None, message=exc.detail))
+            skipped += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("assets_csv_import row=%d error=%s", row_index, exc)
+            errors.append(ImportRowError(row=row_index, field=None, message="Unexpected error — row skipped"))
+            skipped += 1
+
+    return ImportResultResponse(created=created, skipped=skipped, errors=errors)
