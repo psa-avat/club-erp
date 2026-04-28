@@ -5,6 +5,9 @@ export const banqueQueryKeys = {
   pricingVersions: (fiscalYearUuid?: string) => ['banque', 'pricing-versions', fiscalYearUuid ?? 'all'] as const,
   pcgSeed: ['banque', 'pcg-seed'] as const,
   accounts: () => ['banque', 'accounts'] as const,
+  journals: () => ['banque', 'journals'] as const,
+  entries: (filters: Record<string, unknown>) => ['banque', 'entries', filters] as const,
+  entryModels: () => ['banque', 'entry-models'] as const,
 }
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -123,6 +126,120 @@ export type AccountOption = {
   is_posting_allowed: boolean
 }
 
+export type JournalOption = {
+  uuid: string
+  code: string
+  name: string
+  type: number
+  is_active: boolean
+}
+
+export type AccountingEntryLinePayload = {
+  account_uuid: string
+  debit: string
+  credit: string
+  description?: string | null
+  member_uuid?: string | null
+  analytical_asset_uuid?: string | null
+}
+
+export type AccountingEntryLine = AccountingEntryLinePayload & {
+  uuid: string
+  entry_uuid: string
+  fiscal_year_uuid: string
+}
+
+export type AccountingEntry = {
+  uuid: string
+  fiscal_year_uuid: string
+  journal_uuid: string
+  entry_date: string
+  description: string
+  reference: string | null
+  state: number
+  sequence_number: string | null
+  source_system: string | null
+  external_id: string | null
+  import_batch_id: string | null
+  reversal_of_entry_uuid: string | null
+  reversal_reason: string | null
+  posted_at: string | null
+  created_at: string
+  created_by: number
+  lines: AccountingEntryLine[]
+}
+
+export type AccountingEntriesFilters = {
+  fiscal_year_uuid?: string
+  journal_uuid?: string
+  state?: number
+  search?: string
+  limit?: number
+}
+
+export type AccountingEntryCreatePayload = {
+  fiscal_year_uuid: string
+  journal_uuid: string
+  entry_date: string
+  description: string
+  reference?: string | null
+  source_system?: string | null
+  external_id?: string | null
+  import_batch_id?: string | null
+  lines: AccountingEntryLinePayload[]
+}
+
+export type AccountingEntryUpdatePayload = {
+  journal_uuid?: string
+  entry_date?: string
+  description?: string
+  reference?: string | null
+  lines?: AccountingEntryLinePayload[]
+}
+
+export type AccountingEntryModelLinePayload = {
+  account_uuid: string
+  debit: string
+  credit: string
+  description?: string | null
+  member_uuid?: string | null
+  analytical_asset_uuid?: string | null
+}
+
+export type AccountingEntryModelLine = AccountingEntryModelLinePayload & {
+  uuid: string
+  template_uuid: string
+  sort_order: number
+}
+
+export type AccountingEntryModel = {
+  uuid: string
+  code: string
+  name: string
+  journal_uuid: string
+  description: string | null
+  default_reference: string | null
+  recurrence_type: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  created_by: number
+  lines: AccountingEntryModelLine[]
+}
+
+export type AccountingEntryModelCreatePayload = {
+  code: string
+  name: string
+  journal_uuid: string
+  description?: string | null
+  default_reference?: string | null
+  recurrence_type?: number
+  is_active?: boolean
+  lines: AccountingEntryModelLinePayload[]
+}
+
+export type AccountingEntryModelUpdatePayload = Partial<AccountingEntryModelCreatePayload>
+
 /** Fetches all accounts; suitable for select pickers in pricing / entry forms. */
 export function useAccountsQuery(enabled = true) {
   return useQuery({
@@ -135,6 +252,184 @@ export function useAccountsQuery(enabled = true) {
         getAuthRequestConfig(),
       )
       return data
+    },
+  })
+}
+
+export function useJournalsQuery(enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.journals(),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await apiClient.get<JournalOption[]>(
+        '/api/v1/accounting/journals?limit=500',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useAccountingEntriesQuery(filters: AccountingEntriesFilters, enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.entries(filters),
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountingEntry[]>(
+        '/api/v1/accounting/entries',
+        {
+          ...getAuthRequestConfig(),
+          params: filters,
+        },
+      )
+      return data
+    },
+  })
+}
+
+export function useCreateAccountingEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: AccountingEntryCreatePayload) => {
+      const { data } = await apiClient.post<AccountingEntry>(
+        '/api/v1/accounting/entries',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function useUpdateAccountingEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      entryUuid,
+      fiscalYearUuid,
+      payload,
+    }: {
+      entryUuid: string
+      fiscalYearUuid: string
+      payload: AccountingEntryUpdatePayload
+    }) => {
+      const { data } = await apiClient.put<AccountingEntry>(
+        `/api/v1/accounting/entries/${entryUuid}?fiscal_year_uuid=${fiscalYearUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function usePostAccountingEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entryUuid, fiscalYearUuid }: { entryUuid: string; fiscalYearUuid: string }) => {
+      const { data } = await apiClient.patch<AccountingEntry>(
+        `/api/v1/accounting/entries/${entryUuid}/post?fiscal_year_uuid=${fiscalYearUuid}`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function useReverseAccountingEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      entryUuid,
+      fiscal_year_uuid,
+      reversal_reason,
+      entry_date,
+    }: {
+      entryUuid: string
+      fiscal_year_uuid: string
+      reversal_reason: string
+      entry_date?: string
+    }) => {
+      const { data } = await apiClient.post<AccountingEntry>(
+        `/api/v1/accounting/entries/${entryUuid}/reverse`,
+        { fiscal_year_uuid, reversal_reason, entry_date },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function useAccountingEntryModelsQuery(enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.entryModels(),
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountingEntryModel[]>(
+        '/api/v1/accounting/entry-models',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useCreateAccountingEntryModelMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: AccountingEntryModelCreatePayload) => {
+      const { data } = await apiClient.post<AccountingEntryModel>(
+        '/api/v1/accounting/entry-models',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entryModels() })
+    },
+  })
+}
+
+export function useUpdateAccountingEntryModelMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ templateUuid, payload }: { templateUuid: string; payload: AccountingEntryModelUpdatePayload }) => {
+      const { data } = await apiClient.patch<AccountingEntryModel>(
+        `/api/v1/accounting/entry-models/${templateUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entryModels() })
+    },
+  })
+}
+
+export function useDeleteAccountingEntryModelMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (templateUuid: string) => {
+      await apiClient.delete(`/api/v1/accounting/entry-models/${templateUuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entryModels() })
     },
   })
 }

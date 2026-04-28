@@ -158,6 +158,28 @@ Decision:
 - Add an optional project dimension on lines (project_uuid).
 - Keep project master data in a dedicated module/table.
 
+### 3.7 Recurring Entry Model
+
+Reusable journal structures for periodic or operator-driven entries.
+
+Fields:
+- `uuid` (PK)
+- `code` (unique short identifier)
+- `name`
+- `journal_uuid` (FK -> Journal)
+- `description` (nullable)
+- `default_reference` (nullable)
+- `recurrence_type` (enum-like smallint): `1=Manual`, `2=Monthly`, `3=Quarterly`, `4=Yearly`
+- `is_active` (boolean)
+- `created_at`, `updated_at`, `created_by`
+
+Child lines mirror AccountingLine structure for `account_uuid`, `debit`, `credit`, and optional description.
+
+Rules:
+- A model must remain balanced (`sum(debit) == sum(credit)`).
+- Models are reusable prefills; they do not post or schedule entries by themselves.
+- Operators can still adjust the generated draft before posting.
+
 ## 4. Ledger Rules
 
 1. debit >= 0 and credit >= 0.
@@ -198,6 +220,9 @@ Accounting-relevant capabilities:
 Controls:
 - Posting and fiscal-year close/reopen require privileged capability checks.
 - Sensitive integration credentials must not be logged in clear text.
+- The journal / ledger screen is visible with `VIEW_FINANCIALS`.
+- Entry creation, draft editing, posting, and reversal require `POST_ACCOUNTING_ENTRIES`.
+- Recurring entry model CRUD requires `MANAGE_ACCOUNTING_SETTINGS`.
 
 ## 7. Global Settings
 
@@ -395,10 +420,26 @@ Settings requirements:
 - GET /api/v1/accounting/fiscal-years
 - GET /api/v1/accounting/accounts
 - GET /api/v1/accounting/journals
+- GET /api/v1/accounting/entries
 - POST /api/v1/accounting/entries
 - GET /api/v1/accounting/entries/{entry_uuid} (with fiscal_year_uuid)
 - PUT /api/v1/accounting/entries/{entry_uuid} (draft only)
 - PATCH /api/v1/accounting/entries/{entry_uuid}/post
+- POST /api/v1/accounting/entries/{entry_uuid}/reverse
+- GET /api/v1/accounting/entry-models
+- GET /api/v1/accounting/entry-models/{template_uuid}
+- POST /api/v1/accounting/entry-models
+- PATCH /api/v1/accounting/entry-models/{template_uuid}
+- DELETE /api/v1/accounting/entry-models/{template_uuid}
+
+Implemented UI surface:
+- Banque -> Journal et grand livre
+- Browse entries by fiscal year / journal / state / text search
+- Create entries from scratch
+- Prefill entries from pricing items
+- Prefill entries from recurring entry models
+- Save drafts, post drafts, and reverse posted entries
+- Create and maintain recurring entry models
 
 ### 14.2 Next Accounting-Adjacent Endpoints
 

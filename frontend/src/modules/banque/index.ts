@@ -1,4 +1,5 @@
 export { BanquePage } from './components/BanquePage'
+export { BanqueJournalPage } from './components/BanqueJournalPage'
 export { BanqueSettingsPage } from './components/BanqueSettingsPage'
 export { BankPricingPage } from './components/BankPricingPage'
 export { BanquePcgPage } from './components/BanquePcgPage'

@@ -34,6 +34,8 @@ from sqlalchemy.orm import joinedload, selectinload
 from models import (
     AccountingAccount,
     AccountingEntry,
+    AccountingEntryTemplate,
+    AccountingEntryTemplateLine,
     AccountingFiscalYear,
     AccountingJournal,
     AccountingLine,
@@ -46,6 +48,9 @@ from models import (
 )
 from schemas.accounting import (
     AccountingEntryCreateRequest,
+    AccountingEntryTemplateCreateRequest,
+    AccountingEntryTemplateLineCreateRequest,
+    AccountingEntryTemplateUpdateRequest,
     AccountingEntryUpdateRequest,
     AccountingLineCreateRequest,
     FiscalYearCreateRequest,
@@ -1257,7 +1262,7 @@ async def validate_entry_date_in_fy(
         )
 
 
-async def validate_entry_balance(lines_data: list[AccountingLineCreateRequest]) -> None:
+async def validate_entry_balance(lines_data: list[AccountingLineCreateRequest | AccountingEntryTemplateLineCreateRequest]) -> None:
     """Ensure entry is balanced: sum(debit) == sum(credit)."""
     total_debit = sum(line.debit for line in lines_data)
     total_credit = sum(line.credit for line in lines_data)
@@ -1266,6 +1271,193 @@ async def validate_entry_balance(lines_data: list[AccountingLineCreateRequest]) 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Entry is not balanced: debit={total_debit} != credit={total_credit}",
         )
+
+
+async def list_accounting_entries(
+    db: AsyncSession,
+    *,
+    fiscal_year_uuid: UUID | None = None,
+    journal_uuid: UUID | None = None,
+    state: int | None = None,
+    search: str | None = None,
+    limit: int = 200,
+) -> list[AccountingEntry]:
+    """List accounting entries with optional fiscal year, journal, state, and text filters."""
+    stmt = (
+        select(AccountingEntry)
+        .options(
+            joinedload(AccountingEntry.fiscal_year),
+            joinedload(AccountingEntry.journal),
+            joinedload(AccountingEntry.lines),
+        )
+        .order_by(AccountingEntry.entry_date.desc(), AccountingEntry.created_at.desc())
+        .limit(limit)
+    )
+
+    if fiscal_year_uuid is not None:
+        stmt = stmt.where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
+    if journal_uuid is not None:
+        stmt = stmt.where(AccountingEntry.journal_uuid == journal_uuid)
+    if state is not None:
+        stmt = stmt.where(AccountingEntry.state == state)
+    if search:
+        term = f"%{search.strip()}%"
+        stmt = stmt.where(
+            AccountingEntry.description.ilike(term)
+            | AccountingEntry.reference.ilike(term)
+            | AccountingEntry.sequence_number.ilike(term)
+        )
+
+    result = await db.scalars(stmt)
+    return result.unique().all()
+
+
+async def list_accounting_entry_templates(
+    db: AsyncSession,
+    *,
+    journal_uuid: UUID | None = None,
+    is_active: bool | None = None,
+) -> list[AccountingEntryTemplate]:
+    """List reusable accounting entry models."""
+    stmt = (
+        select(AccountingEntryTemplate)
+        .options(
+            joinedload(AccountingEntryTemplate.journal),
+            joinedload(AccountingEntryTemplate.lines),
+        )
+        .order_by(AccountingEntryTemplate.name.asc())
+    )
+    if journal_uuid is not None:
+        stmt = stmt.where(AccountingEntryTemplate.journal_uuid == journal_uuid)
+    if is_active is not None:
+        stmt = stmt.where(AccountingEntryTemplate.is_active == is_active)
+
+    result = await db.scalars(stmt)
+    return result.unique().all()
+
+
+async def get_accounting_entry_template(db: AsyncSession, template_uuid: UUID) -> AccountingEntryTemplate:
+    """Fetch an entry model by UUID."""
+    stmt = (
+        select(AccountingEntryTemplate)
+        .where(AccountingEntryTemplate.uuid == template_uuid)
+        .options(
+            joinedload(AccountingEntryTemplate.journal),
+            joinedload(AccountingEntryTemplate.lines),
+        )
+    )
+    template = await db.scalar(stmt)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Entry model {template_uuid} not found",
+        )
+    return template
+
+
+async def create_accounting_entry_template(
+    db: AsyncSession,
+    request: AccountingEntryTemplateCreateRequest,
+    user_id: int,
+) -> AccountingEntryTemplate:
+    """Create a reusable recurring entry model."""
+    await get_journal(db, request.journal_uuid)
+    for line_req in request.lines:
+        await get_account(db, line_req.account_uuid)
+    await validate_entry_balance(request.lines)
+
+    existing = await db.scalar(select(AccountingEntryTemplate).where(AccountingEntryTemplate.code == request.code.strip()))
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Entry model code {request.code!r} already exists")
+
+    template = AccountingEntryTemplate(
+        code=request.code.strip(),
+        name=request.name.strip(),
+        journal_uuid=request.journal_uuid,
+        description=request.description,
+        default_reference=request.default_reference,
+        recurrence_type=request.recurrence_type,
+        is_active=request.is_active,
+        created_by=user_id,
+    )
+    for index, line_req in enumerate(request.lines, start=1):
+        template.lines.append(
+            AccountingEntryTemplateLine(
+                account_uuid=line_req.account_uuid,
+                sort_order=index,
+                member_uuid=line_req.member_uuid,
+                analytical_asset_uuid=line_req.analytical_asset_uuid,
+                debit=line_req.debit,
+                credit=line_req.credit,
+                description=line_req.description,
+            )
+        )
+
+    db.add(template)
+    await db.commit()
+    await db.refresh(template, ["journal", "lines"])
+    return template
+
+
+async def update_accounting_entry_template(
+    db: AsyncSession,
+    template_uuid: UUID,
+    request: AccountingEntryTemplateUpdateRequest,
+) -> AccountingEntryTemplate:
+    """Update a reusable recurring entry model."""
+    template = await get_accounting_entry_template(db, template_uuid)
+
+    if request.code is not None:
+        normalized_code = request.code.strip()
+        existing = await db.scalar(
+            select(AccountingEntryTemplate).where(
+                and_(AccountingEntryTemplate.code == normalized_code, AccountingEntryTemplate.uuid != template_uuid)
+            )
+        )
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Entry model code {normalized_code!r} already exists")
+        template.code = normalized_code
+    if request.name is not None:
+        template.name = request.name.strip()
+    if request.journal_uuid is not None:
+        await get_journal(db, request.journal_uuid)
+        template.journal_uuid = request.journal_uuid
+    if request.description is not None:
+        template.description = request.description
+    if request.default_reference is not None:
+        template.default_reference = request.default_reference
+    if request.recurrence_type is not None:
+        template.recurrence_type = request.recurrence_type
+    if request.is_active is not None:
+        template.is_active = request.is_active
+    if request.lines is not None:
+        for line_req in request.lines:
+            await get_account(db, line_req.account_uuid)
+        await validate_entry_balance(request.lines)
+        template.lines.clear()
+        for index, line_req in enumerate(request.lines, start=1):
+            template.lines.append(
+                AccountingEntryTemplateLine(
+                    account_uuid=line_req.account_uuid,
+                    sort_order=index,
+                    member_uuid=line_req.member_uuid,
+                    analytical_asset_uuid=line_req.analytical_asset_uuid,
+                    debit=line_req.debit,
+                    credit=line_req.credit,
+                    description=line_req.description,
+                )
+            )
+
+    await db.commit()
+    await db.refresh(template, ["journal", "lines"])
+    return template
+
+
+async def delete_accounting_entry_template(db: AsyncSession, template_uuid: UUID) -> None:
+    """Delete a reusable recurring entry model."""
+    template = await get_accounting_entry_template(db, template_uuid)
+    await db.delete(template)
+    await db.commit()
 
 
 

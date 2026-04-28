@@ -639,6 +639,7 @@ class AccountingJournal(Base):
     is_active = Column(Boolean, nullable=False, default=True)
 
     entries = relationship("AccountingEntry", back_populates="journal")
+    entry_templates = relationship("AccountingEntryTemplate", back_populates="journal")
 
     def __repr__(self):
         return f"<AccountingJournal code={self.code} name={self.name}>"
@@ -666,6 +667,7 @@ class AccountingAccount(Base):
     replacement_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
 
     entries_lines = relationship("AccountingLine", back_populates="account")
+    template_lines = relationship("AccountingEntryTemplateLine", back_populates="account")
 
     def __repr__(self):
         return f"<AccountingAccount code={self.code} name={self.name}>"
@@ -756,6 +758,65 @@ class AccountingLine(Base):
 
     def __repr__(self):
         return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"
+
+
+class AccountingEntryTemplate(Base):
+    """Reusable journal entry model for recurring or manual prefills."""
+
+    __tablename__ = "accounting_entry_templates"
+    __table_args__ = (
+        CheckConstraint("recurrence_type IN (1, 2, 3, 4)", name="chk_entry_template_recurrence_type"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(32), nullable=False, unique=True, index=True)
+    name = Column(String(120), nullable=False)
+    journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False, index=True)
+    description = Column(String(255), nullable=True)
+    default_reference = Column(String(255), nullable=True)
+    recurrence_type = Column(SmallInteger, nullable=False, default=1)  # 1=Manual, 2=Monthly, 3=Quarterly, 4=Yearly
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    journal = relationship("AccountingJournal", back_populates="entry_templates")
+    lines = relationship("AccountingEntryTemplateLine", back_populates="template", cascade="all, delete-orphan")
+    created_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<AccountingEntryTemplate code={self.code} name={self.name}>"
+
+
+class AccountingEntryTemplateLine(Base):
+    """Stored line definition for a reusable entry template."""
+
+    __tablename__ = "accounting_entry_template_lines"
+    __table_args__ = (
+        CheckConstraint("debit >= 0 AND credit >= 0", name="chk_entry_template_line_amounts_positive"),
+        CheckConstraint("debit > 0 OR credit > 0", name="chk_entry_template_line_at_least_one_amount"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    template_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_entry_templates.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
+    sort_order = Column(SmallInteger, nullable=False, default=1)
+    member_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
+    analytical_asset_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
+    debit = Column(Numeric(10, 4), nullable=False, default=0.0)
+    credit = Column(Numeric(10, 4), nullable=False, default=0.0)
+    description = Column(String(255), nullable=True)
+
+    template = relationship("AccountingEntryTemplate", back_populates="lines")
+    account = relationship("AccountingAccount", back_populates="template_lines")
+
+    def __repr__(self):
+        return f"<AccountingEntryTemplateLine uuid={self.uuid} template={self.template_uuid}>"
 
 
 # ---------------------------------------------------------------------------

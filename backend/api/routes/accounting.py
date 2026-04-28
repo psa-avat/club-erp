@@ -29,6 +29,9 @@ from constants import CAP_MANAGE_ACCOUNTING_SETTINGS, CAP_MANAGE_PRICES, CAP_POS
 from models import User
 from schemas.accounting import (
     AccountingEntryCreateRequest,
+    AccountingEntryTemplateCreateRequest,
+    AccountingEntryTemplateResponse,
+    AccountingEntryTemplateUpdateRequest,
     AccountingEntryPostRequest,
     AccountingEntryReverseRequest,
     AccountingEntryResponse,
@@ -59,17 +62,22 @@ from services.accounting import (
     copy_cost_provision_rules_from_year,
     copy_pricing_versions_from_year,
     create_accounting_entry,
+    create_accounting_entry_template,
     create_fiscal_year,
     create_pricing_item,
     create_pricing_version,
     create_reversal_entry,
+    delete_accounting_entry_template,
     delete_pricing_item,
     delete_pricing_version,
     get_system_setting,
     get_pricing_item,
     get_accounting_entry,
+    get_accounting_entry_template,
     get_pricing_version,
     list_accounts,
+    list_accounting_entries,
+    list_accounting_entry_templates,
     list_fiscal_years,
     list_journals,
     list_pricing_items,
@@ -85,6 +93,7 @@ from services.accounting import (
     update_pricing_item,
     update_pricing_version,
     update_accounting_entry,
+    update_accounting_entry_template,
     _replace_pricing_item_tiers,
 )
 
@@ -634,12 +643,33 @@ async def copy_cost_provision_rules_endpoint(
 async def create_entry_endpoint(
     request: AccountingEntryCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = view_guard,
+    _: User = post_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Create a new accounting entry in Draft state."""
     entry = await create_accounting_entry(db, request, current_user.id)
     return entry
+
+
+@router.get("/entries", response_model=list[AccountingEntryResponse])
+async def list_entries_endpoint(
+    fiscal_year_uuid: UUID | None = None,
+    journal_uuid: UUID | None = None,
+    state: int | None = None,
+    search: str | None = None,
+    limit: int = 200,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """List accounting entries for the ledger/journal screen."""
+    return await list_accounting_entries(
+        db,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+        state=state,
+        search=search,
+        limit=limit,
+    )
 
 
 @router.get("/entries/{entry_uuid}", response_model=AccountingEntryResponse, responses=ENTRY_VALIDATION_ERRORS)
@@ -661,7 +691,7 @@ async def update_entry_endpoint(
     fiscal_year_uuid: UUID,
     request: AccountingEntryUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = view_guard,
+    _: User = post_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Update a Draft accounting entry."""
@@ -716,3 +746,64 @@ async def reverse_entry_endpoint(
         reversal_of_entry_uuid=reversal_entry.reversal_of_entry_uuid,
     )
     return reversal_entry
+
+
+@router.get("/entry-models", response_model=list[AccountingEntryTemplateResponse])
+async def list_entry_models_endpoint(
+    journal_uuid: UUID | None = None,
+    is_active: bool | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """List reusable recurring entry models."""
+    return await list_accounting_entry_templates(db, journal_uuid=journal_uuid, is_active=is_active)
+
+
+@router.get("/entry-models/{template_uuid}", response_model=AccountingEntryTemplateResponse)
+async def get_entry_model_endpoint(
+    template_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Fetch one recurring entry model."""
+    return await get_accounting_entry_template(db, template_uuid)
+
+
+@router.post("/entry-models", response_model=AccountingEntryTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_entry_model_endpoint(
+    request: AccountingEntryTemplateCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a recurring entry model."""
+    template = await create_accounting_entry_template(db, request, current_user.id)
+    _log_accounting_audit(action="create_entry_model", user_id=current_user.id, template_uuid=template.uuid)
+    return template
+
+
+@router.patch("/entry-models/{template_uuid}", response_model=AccountingEntryTemplateResponse)
+async def update_entry_model_endpoint(
+    template_uuid: UUID,
+    request: AccountingEntryTemplateUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a recurring entry model."""
+    template = await update_accounting_entry_template(db, template_uuid, request)
+    _log_accounting_audit(action="update_entry_model", user_id=current_user.id, template_uuid=template.uuid)
+    return template
+
+
+@router.delete("/entry-models/{template_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_entry_model_endpoint(
+    template_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a recurring entry model."""
+    await delete_accounting_entry_template(db, template_uuid)
+    _log_accounting_audit(action="delete_entry_model", user_id=current_user.id, template_uuid=template_uuid)
+    return None

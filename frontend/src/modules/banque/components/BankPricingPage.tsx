@@ -73,8 +73,6 @@ function versionStatusLabel(status: number, t: (k: string) => string): { label: 
 
 // ── Pricing item helpers ──────────────────────────────────────────────────────
 
-type TranslateFn = (key: string, options?: Record<string, unknown>) => string
-
 const UNIT_LABELS: Record<number, string> = {
   1: 'FlightTime',
   2: 'EngineTimeMin',

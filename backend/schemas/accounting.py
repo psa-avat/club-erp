@@ -202,6 +202,75 @@ class AccountingEntryReverseRequest(BaseModel):
     entry_date: Optional[date] = None
 
 
+class AccountingEntryTemplateLineBase(BaseModel):
+    """Shared line fields for reusable entry templates."""
+    account_uuid: UUID
+    debit: Decimal = Field(decimal_places=4, ge=0)
+    credit: Decimal = Field(decimal_places=4, ge=0)
+    description: Optional[str] = Field(default=None, max_length=255)
+
+
+class AccountingEntryTemplateLineCreateRequest(AccountingEntryTemplateLineBase):
+    """Request line for a reusable entry template."""
+    member_uuid: Optional[UUID] = None
+    analytical_asset_uuid: Optional[UUID] = None
+
+
+class AccountingEntryTemplateLineResponse(AccountingEntryTemplateLineBase):
+    """Response line for a reusable entry template."""
+    uuid: UUID
+    template_uuid: UUID
+    sort_order: int
+    member_uuid: Optional[UUID] = None
+    analytical_asset_uuid: Optional[UUID] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AccountingEntryTemplateCreateRequest(BaseModel):
+    """Create request for a reusable recurring entry model."""
+    code: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=120)
+    journal_uuid: UUID
+    description: Optional[str] = Field(default=None, max_length=255)
+    default_reference: Optional[str] = Field(default=None, max_length=255)
+    recurrence_type: int = Field(default=1, ge=1, le=4)
+    is_active: bool = True
+    lines: list[AccountingEntryTemplateLineCreateRequest] = Field(min_length=1)
+
+
+class AccountingEntryTemplateUpdateRequest(BaseModel):
+    """Update request for a reusable recurring entry model."""
+    code: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    journal_uuid: Optional[UUID] = None
+    description: Optional[str] = Field(default=None, max_length=255)
+    default_reference: Optional[str] = Field(default=None, max_length=255)
+    recurrence_type: Optional[int] = Field(default=None, ge=1, le=4)
+    is_active: Optional[bool] = None
+    lines: Optional[list[AccountingEntryTemplateLineCreateRequest]] = None
+
+
+class AccountingEntryTemplateResponse(BaseModel):
+    """Response for a reusable recurring entry model."""
+    uuid: UUID
+    code: str
+    name: str
+    journal_uuid: UUID
+    description: Optional[str] = None
+    default_reference: Optional[str] = None
+    recurrence_type: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    created_by: int
+    lines: list[AccountingEntryTemplateLineResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
 class SeedPcgResponse(BaseModel):
     """Response summary for PCG seed operation."""
     inserted: int
