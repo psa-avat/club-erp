@@ -166,6 +166,7 @@ export type PricingVersion = {
   to_date: string | null
   status: number // 1=Draft, 2=Active, 3=Archived
   is_locked: boolean
+  use_pack: boolean
   created_at: string
   updated_at: string
   created_by: number | null

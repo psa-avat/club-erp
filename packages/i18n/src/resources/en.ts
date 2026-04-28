@@ -291,6 +291,8 @@ export const en = {
         cancel: 'Cancel',
         editTitle: 'Edit',
         deleteTitle: 'Delete',
+        expand: 'Show pricing items',
+        collapse: 'Hide pricing items',
         copyFrom: 'Copy from {{code}}',
         copying: 'Copying...',
         empty: 'No pricing versions for this fiscal year.',

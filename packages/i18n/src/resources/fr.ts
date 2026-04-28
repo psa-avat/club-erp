@@ -291,6 +291,8 @@ export const fr = {
         cancel: 'Annuler',
         editTitle: 'Modifier',
         deleteTitle: 'Supprimer',
+        expand: 'Afficher les lignes tarifaires',
+        collapse: 'Masquer les lignes tarifaires',
         copyFrom: 'Copier depuis {{code}}',
         copying: 'Copie en cours...',
         empty: 'Aucune version tarifaire pour cet exercice.',

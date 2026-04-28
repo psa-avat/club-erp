@@ -19,8 +19,9 @@
  */
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Copy, Trash2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Copy, Trash2, Pencil, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { AxiosError } from 'axios'
+import Decimal from 'decimal.js'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -34,9 +35,18 @@ import {
   useUpdatePricingVersionMutation,
   useDeletePricingVersionMutation,
   useCopyPricingVersionsMutation,
+  useAccountsQuery,
   type FiscalYear,
   type PricingVersion,
 } from '../api'
+import {
+  usePricingItemsQuery,
+  useCreatePricingItemMutation,
+  useUpdatePricingItemMutation,
+  useDeletePricingItemMutation,
+  useFlightTypesQuery,
+} from '../../assets/api'
+import type { PricingItem, TierPayload, CreatePricingItemPayload } from '../../assets/types'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,6 +69,425 @@ function versionStatusLabel(status: number, t: (k: string) => string): { label: 
   if (status === VERSION_STATUS_DRAFT) return { label: t('pricing.version.statusDraft'), className: 'bg-yellow-100 text-yellow-800' }
   if (status === VERSION_STATUS_ACTIVE) return { label: t('pricing.version.statusActive'), className: 'bg-green-100 text-green-800' }
   return { label: t('pricing.version.statusArchived'), className: 'bg-slate-100 text-slate-600' }
+}
+
+// ── Pricing item helpers ──────────────────────────────────────────────────────
+
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string
+
+const UNIT_LABELS: Record<number, string> = {
+  1: 'FlightTime',
+  2: 'EngineTimeMin',
+  3: 'EngineTime1_100h',
+  4: 'FlightDuration',
+  5: 'PerFlight',
+  6: 'Fixed',
+}
+
+function formatPrice(value: string | null | undefined): string {
+  if (!value) return '—'
+  try { return new Decimal(value).toFixed(2) } catch { return value ?? '—' }
+}
+
+function getFromQtyStep(unit: number): string {
+  return unit === 1 ? '0.1' : '1'
+}
+
+function getFromQtyPlaceholder(unit: number): string {
+  return unit === 1 ? '0.0' : '0'
+}
+
+type ItemFormState = {
+  name: string
+  unit: number
+  base_price: string
+  pack_price: string
+  age_discount_percent: string
+  gl_account_credit_uuid: string
+  tiers: TierPayload[]
+  flight_type_uuid: string
+}
+
+const EMPTY_ITEM: ItemFormState = {
+  name: '', unit: 1, base_price: '', pack_price: '',
+  age_discount_percent: '0.00', gl_account_credit_uuid: '', tiers: [], flight_type_uuid: '',
+}
+
+function itemToForm(item: PricingItem): ItemFormState {
+  return {
+    name: item.name,
+    unit: item.unit,
+    base_price: parseFloat(item.base_price).toFixed(2),
+    pack_price: item.pack_price != null ? parseFloat(item.pack_price).toFixed(2) : '',
+    age_discount_percent: parseFloat(item.age_discount_percent).toFixed(2),
+    tiers: item.tiers.map((t) => ({
+      from_qty: t.from_qty,
+      price: parseFloat(t.price).toFixed(2),
+      pack_price: t.pack_price != null ? parseFloat(t.pack_price).toFixed(2) : '',
+    })),
+    gl_account_credit_uuid: item.gl_account_credit_uuid ?? '',
+    flight_type_uuid: item.flight_type_uuid ?? '',
+  }
+}
+
+function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
+  return {
+    name: form.name.trim(),
+    unit: form.unit,
+    base_price: form.base_price.trim(),
+    pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
+    age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
+    gl_account_credit_uuid: form.gl_account_credit_uuid || null,
+    flight_type_uuid: form.flight_type_uuid || null,
+    tiers: form.tiers
+      .filter((t) => t.from_qty !== '' && t.price !== '')
+      .map((t) => ({
+        from_qty: t.from_qty,
+        price: t.price,
+        pack_price: t.pack_price && t.pack_price.trim() !== '' ? t.pack_price.trim() : undefined,
+      })),
+  }
+}
+
+// ── Sub-component: Pricing Item Form ─────────────────────────────────────────
+
+function PricingItemForm({
+  initial,
+  flightTypes,
+  revenueAccounts,
+  usePack,
+  onSave,
+  onCancel,
+  saving,
+  t,
+}: {
+  initial: ItemFormState
+  flightTypes: Array<{ uuid: string; name: string }>
+  revenueAccounts: Array<{ uuid: string; code: string; name: string }>
+  usePack: boolean
+  onSave: (f: ItemFormState) => void
+  onCancel: () => void
+  saving: boolean
+  t: TranslateFn
+}) {
+  const [form, setForm] = useState<ItemFormState>(initial)
+  function set<K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+  function addTier() {
+    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '', pack_price: '' }] }))
+  }
+  function updateTier(index: number, field: keyof TierPayload, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      tiers: prev.tiers.map((row, i) => i === index ? { ...row, [field]: value } : row),
+    }))
+  }
+  function removeTier(index: number) {
+    setForm((prev) => ({ ...prev, tiers: prev.tiers.filter((_, i) => i !== index) }))
+  }
+  const valid = form.name.trim() !== '' && form.base_price !== ''
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1 sm:col-span-2">
+          <Label className="text-xs">{t('pricing.itemName')} *</Label>
+          <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.itemUnit')}</Label>
+          <select
+            value={form.unit}
+            onChange={(e) => set('unit', Number(e.target.value))}
+            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          >
+            {Object.entries(UNIT_LABELS).map(([k, label]) => (
+              <option key={k} value={Number(k)}>{t(`pricing.unit${label}`)}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.basePrice')} *</Label>
+          <Input
+            type="number" min="0" step="0.01"
+            value={form.base_price}
+            onChange={(e) => set('base_price', e.target.value)}
+            placeholder="0.00"
+            className="h-8 text-sm font-mono"
+          />
+          <p className="text-[11px] text-slate-500">{t('pricing.basePriceHelp')}</p>
+        </div>
+        {usePack && (
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.packPrice')}</Label>
+            <Input
+              type="number" min="0" step="0.01"
+              value={form.pack_price}
+              onChange={(e) => set('pack_price', e.target.value)}
+              placeholder="0.00"
+              className="h-8 text-sm font-mono"
+            />
+            <p className="text-[11px] text-slate-500">{t('pricing.packPriceHelp')}</p>
+          </div>
+        )}
+        <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
+          <Input
+            type="number" min="0" max="100" step="0.01"
+            value={form.age_discount_percent}
+            onChange={(e) => set('age_discount_percent', e.target.value)}
+            placeholder="0.00"
+            className="h-8 text-sm font-mono"
+          />
+          <p className="text-[11px] text-slate-500">{t('pricing.ageDiscountPercentHelp')}</p>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{t('pricing.glAccountCredit')}</Label>
+          <select
+            value={form.gl_account_credit_uuid}
+            onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
+            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          >
+            <option value="">{t('pricing.noAccount')}</option>
+            {revenueAccounts.map((a) => (
+              <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-500">{t('pricing.glAccountCreditHelp')}</p>
+        </div>
+        {flightTypes.length > 0 && (
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.flightType')}</Label>
+            <select
+              value={form.flight_type_uuid}
+              onChange={(e) => set('flight_type_uuid', e.target.value)}
+              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            >
+              <option value="">{t('pricing.noFlightType')}</option>
+              {flightTypes.map((ft) => (
+                <option key={ft.uuid} value={ft.uuid}>{ft.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Label className="text-xs">{t('pricing.tiers')}</Label>
+        <p className="text-[11px] text-slate-500">{t('pricing.tiersHelp')}</p>
+        {form.tiers.length === 0 && <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>}
+        {form.tiers.length > 0 && (
+          <div className="space-y-1">
+            <div className={`grid gap-2 text-xs font-medium text-slate-500 ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
+              <span>{t('pricing.tierFrom')}</span>
+              <span>{t('pricing.tierPrice')}</span>
+              {usePack && <span>{t('pricing.tierPackPrice')}</span>}
+              <span />
+            </div>
+            {form.tiers.map((tier, i) => (
+              <div key={i} className={`items-center gap-2 grid ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
+                <Input
+                  type="number"
+                  min={getFromQtyStep(form.unit)}
+                  step={getFromQtyStep(form.unit)}
+                  value={tier.from_qty}
+                  onChange={(e) => updateTier(i, 'from_qty', e.target.value)}
+                  placeholder={getFromQtyPlaceholder(form.unit)}
+                  className="h-7 text-sm font-mono"
+                />
+                <Input
+                  type="number" min="0" step="0.01"
+                  value={tier.price}
+                  onChange={(e) => updateTier(i, 'price', e.target.value)}
+                  placeholder="0.00"
+                  className="h-7 text-sm font-mono"
+                />
+                {usePack && (
+                  <Input
+                    type="number" min="0" step="0.01"
+                    value={tier.pack_price ?? ''}
+                    onChange={(e) => updateTier(i, 'pack_price', e.target.value)}
+                    placeholder="0.00"
+                    className="h-7 text-sm font-mono"
+                  />
+                )}
+                <button type="button" className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeTier(i)}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <Button size="sm" variant="ghost" type="button" onClick={addTier}>
+          <Plus className="mr-1 h-3 w-3" />
+          {t('pricing.addTier')}
+        </Button>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
+          <Check className="mr-1 h-3 w-3" />
+          {saving ? t('pricing.version.saving') : t('pricing.version.save')}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          <X className="mr-1 h-3 w-3" />
+          {t('pricing.version.cancel')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ── Sub-component: Pricing Items Panel ───────────────────────────────────────
+
+function PricingItemsPanel({
+  version,
+  canEdit,
+  t,
+}: {
+  version: PricingVersion
+  canEdit: boolean
+  t: TranslateFn
+}) {
+  const itemsQuery = usePricingItemsQuery(version.uuid, true)
+  const items = itemsQuery.data ?? []
+
+  const flightTypesQuery = useFlightTypesQuery()
+  const flightTypes = flightTypesQuery.data ?? []
+
+  const accountsQuery = useAccountsQuery()
+  const revenueAccounts = (accountsQuery.data ?? []).filter((a) => a.type === 5 && a.is_posting_allowed)
+
+  const createMutation = useCreatePricingItemMutation(version.uuid)
+  const updateMutation = useUpdatePricingItemMutation(version.uuid)
+  const deleteMutation = useDeletePricingItemMutation(version.uuid)
+
+  const [showForm, setShowForm] = useState(false)
+  const [editingItem, setEditingItem] = useState<PricingItem | null>(null)
+  const [itemError, setItemError] = useState<string | null>(null)
+
+  function extractItemError(e: unknown): string {
+    if (e instanceof AxiosError && e.response?.data?.detail) return String(e.response.data.detail)
+    return t('pricing.error.generic')
+  }
+
+  async function handleCreate(form: ItemFormState) {
+    try {
+      await createMutation.mutateAsync(buildItemPayload(form))
+      setShowForm(false)
+      setItemError(null)
+    } catch (e) { setItemError(extractItemError(e)) }
+  }
+
+  async function handleUpdate(form: ItemFormState) {
+    if (!editingItem) return
+    try {
+      await updateMutation.mutateAsync({ uuid: editingItem.uuid, ...buildItemPayload(form) })
+      setEditingItem(null)
+      setItemError(null)
+    } catch (e) { setItemError(extractItemError(e)) }
+  }
+
+  async function handleDelete(item: PricingItem) {
+    if (!window.confirm(t('pricing.confirmDeleteItem'))) return
+    try {
+      await deleteMutation.mutateAsync(item.uuid)
+    } catch (e) { setItemError(extractItemError(e)) }
+  }
+
+  const editable = canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-slate-600">{t('pricing.items')}</p>
+        {editable && !showForm && !editingItem && (
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            onClick={() => setShowForm(true)}
+          >
+            <Plus className="h-3 w-3" />
+            {t('pricing.addItem')}
+          </button>
+        )}
+      </div>
+
+      {itemError && <p className="text-xs text-red-600">{itemError}</p>}
+
+      {showForm && (
+        <PricingItemForm
+          initial={EMPTY_ITEM}
+          flightTypes={flightTypes}
+          revenueAccounts={revenueAccounts}
+          usePack={version.use_pack}
+          onSave={handleCreate}
+          onCancel={() => setShowForm(false)}
+          saving={createMutation.isPending}
+          t={t}
+        />
+      )}
+
+      {itemsQuery.isLoading ? (
+        <p className="text-xs text-slate-400">{t('states.loading')}</p>
+      ) : items.length === 0 && !showForm ? (
+        <p className="rounded border border-dashed border-slate-200 py-3 text-center text-xs text-slate-400">
+          {t('pricing.noItems')}
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((item) =>
+            editingItem?.uuid === item.uuid ? (
+              <PricingItemForm
+                key={item.uuid}
+                initial={itemToForm(item)}
+                flightTypes={flightTypes}
+                revenueAccounts={revenueAccounts}
+                usePack={version.use_pack}
+                onSave={handleUpdate}
+                onCancel={() => setEditingItem(null)}
+                saving={updateMutation.isPending}
+                t={t}
+              />
+            ) : (
+              <div
+                key={item.uuid}
+                className="flex items-center gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-1.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}
+                    {' · '}{formatPrice(item.base_price)} €
+                    {item.pack_price && <> · Pack: {formatPrice(item.pack_price)} €</>}
+                    {item.tiers.length > 0 && (
+                      <> · {item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}€`).join(' · ')}</>
+                    )}
+                  </p>
+                </div>
+                {editable && (
+                  <div className="flex shrink-0 gap-0.5">
+                    <button
+                      type="button"
+                      className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                      onClick={() => setEditingItem(item)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      onClick={() => handleDelete(item)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** Compute the % coverage of a version inside its fiscal year for the timeline bar */
@@ -263,6 +692,8 @@ function VersionTimeline({
   onDelete: (v: PricingVersion) => void
   onEdit: (v: PricingVersion) => void
 }) {
+  const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
+
   if (versions.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
@@ -291,45 +722,68 @@ function VersionTimeline({
 
       {/* Version list */}
       <div className="space-y-2">
-        {versions.map((v) => (
-          <div
-            key={v.uuid}
-            className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-slate-900">{v.name}</p>
-              <p className="text-xs text-slate-500">
-                {v.from_date} → {v.to_date ?? t('pricing.version.openEnd')}
-              </p>
-            </div>
-            <VersionBadge status={v.status} t={t} />
-            {v.is_locked && (
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">
-                {t('pricing.version.locked')}
-              </span>
-            )}
-            {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
-              <div className="flex shrink-0 gap-1">
+        {versions.map((v) => {
+          const isExpanded = expandedUuid === v.uuid
+          return (
+            <div
+              key={v.uuid}
+              className="rounded-lg border border-slate-200 bg-white"
+            >
+              {/* Version row header */}
+              <div className="flex items-center gap-3 px-4 py-2">
                 <button
                   type="button"
-                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                  title={t('pricing.version.editTitle')}
-                  onClick={() => onEdit(v)}
+                  className="shrink-0 text-slate-400 hover:text-slate-700"
+                  title={isExpanded ? t('pricing.version.collapse') : t('pricing.version.expand')}
+                  onClick={() => setExpandedUuid(isExpanded ? null : v.uuid)}
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  {isExpanded
+                    ? <ChevronDown className="h-4 w-4" />
+                    : <ChevronRight className="h-4 w-4" />}
                 </button>
-                <button
-                  type="button"
-                  className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                  title={t('pricing.version.deleteTitle')}
-                  onClick={() => onDelete(v)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{v.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {v.from_date} → {v.to_date ?? t('pricing.version.openEnd')}
+                  </p>
+                </div>
+                <VersionBadge status={v.status} t={t} />
+                {v.is_locked && (
+                  <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">
+                    {t('pricing.version.locked')}
+                  </span>
+                )}
+                {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      title={t('pricing.version.editTitle')}
+                      onClick={() => onEdit(v)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      title={t('pricing.version.deleteTitle')}
+                      onClick={() => onDelete(v)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+
+              {/* Expanded: pricing items panel */}
+              {isExpanded && (
+                <div className="border-t border-slate-100 px-4 pb-4">
+                  <PricingItemsPanel version={v} canEdit={canEdit} t={t} />
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
