@@ -40,6 +40,9 @@ export const en = {
     nav: {
       dashboard: 'Dashboard',
       club: 'Club',
+      clubMembers: 'Members',
+      clubCommittees: 'Committees',
+      clubSheets: 'Flight sheets',
       planning: 'Planning',
       banque: 'Accounting',
       banqueOverview: 'Overview',
@@ -165,6 +168,7 @@ export const en = {
       remainingHours: 'Remaining pack hours',
       expenseAccessEnabled: 'Expense access enabled',
       generatedToken: 'Generated external access token',
+      backToList: 'Back to list',
     },
     actions: {
       newMember: 'New member',

@@ -8,7 +8,16 @@ export type ShellNavItem = {
 
 export const shellNavItems: ShellNavItem[] = [
   { to: '/dashboard', labelKey: 'nav.dashboard' },
-  { to: '/club', labelKey: 'nav.club', requiredCapability: 'MANAGE_USERS' },
+  {
+    to: '/club',
+    labelKey: 'nav.club',
+    requiredCapability: 'MANAGE_USERS',
+    children: [
+      { to: '/club/members', labelKey: 'nav.clubMembers' },
+      { to: '/club/committees', labelKey: 'nav.clubCommittees' },
+      { to: '/club/sheets', labelKey: 'nav.clubSheets' },
+    ],
+  },
   { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
   {
     to: '/banque',
