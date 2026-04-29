@@ -15,7 +15,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Committee, CommitteeMember, Member, MemberAccountCounter, MemberRegistration, MemberSheet, SystemSetting
+from models import AccountingEntryTemplate, Committee, CommitteeMember, Member, MemberAccountCounter, MemberRegistration, MemberSheet, SystemSetting
 from schemas.members import (
     AnonymizationResultResponse,
     CommitteeCreateRequest,
@@ -710,6 +710,26 @@ async def complete_member_registration(
             detail="At least one committee membership is required before completing registration",
         )
 
+    if payload.accounting_template_uuid is not None:
+        template_is_active = await db.scalar(
+            select(
+                exists().where(
+                    AccountingEntryTemplate.uuid == payload.accounting_template_uuid,
+                    AccountingEntryTemplate.is_active.is_(True),
+                )
+            )
+        )
+        if not template_is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected accounting template does not exist or is inactive",
+            )
+
+    registration_notes = payload.notes
+    if payload.accounting_template_uuid is not None:
+        template_trace = f"Registration template: {payload.accounting_template_uuid}"
+        registration_notes = template_trace if not registration_notes else f"{registration_notes}\n{template_trace}"
+
     await create_member_registration(
         db=db,
         member_uuid=member_uuid,
@@ -719,7 +739,7 @@ async def complete_member_registration(
             registered_for_year=payload.year,
             registration_type=payload.registration_type or member.member_category,
             status=payload.status,
-            notes=payload.notes,
+            notes=registration_notes,
         ),
         registered_by_user_id=updated_by_user_id,
     )

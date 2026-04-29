@@ -230,6 +230,23 @@ export const en = {
       cancelled: 'Cancelled',
       superseded: 'Superseded',
     },
+    registrationWizard: {
+      title: 'Registration checklist ({{year}})',
+      checklistTitle: 'Validation checklist',
+      templateLabel: 'Accounting template entry',
+      templatePlaceholder: 'Select one template entry',
+      checks: {
+        profile: 'Member profile is complete (first name, last name, email)',
+        committee: 'Member has at least one committee assignment for the year ({{count}})',
+        period: 'Registration period is valid',
+        template: 'One accounting template entry is selected',
+      },
+      errors: {
+        missingDates: 'Start and end dates are required.',
+        invalidDateRange: 'End date must be on or after start date.',
+        templateRequired: 'Select one accounting template entry before completing registration.',
+      },
+    },
     fare: {
       standard: 'Standard',
       student: 'Student',

@@ -135,6 +135,7 @@ class RegistrationCompletionRequest(BaseModel):
     start_date: date
     end_date: date
     registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    accounting_template_uuid: Optional[UUID] = None
     status: int = Field(default=1, ge=1, le=3)
     notes: Optional[str] = None
 

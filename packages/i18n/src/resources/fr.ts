@@ -230,6 +230,23 @@ export const fr = {
       cancelled: 'Annulée',
       superseded: 'Remplacée',
     },
+    registrationWizard: {
+      title: "Checklist d'inscription ({{year}})",
+      checklistTitle: 'Checklist de validation',
+      templateLabel: 'Écriture modèle comptable',
+      templatePlaceholder: 'Sélectionnez une écriture modèle',
+      checks: {
+        profile: 'Le profil membre est complet (prénom, nom, email)',
+        committee: "Le membre a au moins une affectation en commission pour l'année ({{count}})",
+        period: "La période d'inscription est valide",
+        template: 'Une écriture modèle comptable est sélectionnée',
+      },
+      errors: {
+        missingDates: 'Les dates de début et de fin sont obligatoires.',
+        invalidDateRange: 'La date de fin doit être postérieure ou égale à la date de début.',
+        templateRequired: "Sélectionnez une écriture modèle comptable avant de finaliser l'inscription.",
+      },
+    },
     fare: {
       standard: 'Standard',
       student: 'Étudiant',
