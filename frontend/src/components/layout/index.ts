@@ -1,1 +1,0 @@
-export { GlobalMenuBar } from './GlobalMenuBar'

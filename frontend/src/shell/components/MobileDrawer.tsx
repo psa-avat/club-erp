@@ -1,8 +1,12 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { useAuthStore } from '../../auth/store/authStore'
 import { shellNavItems } from '../navigation'
+
+const linkBase = 'block rounded-shape-sm px-3 py-2 text-sm font-medium transition-colors'
+const linkActive = 'bg-primary text-on-primary'
+const linkIdle = 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
 
 type MobileDrawerProps = {
   open: boolean
@@ -12,27 +16,27 @@ type MobileDrawerProps = {
 export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
   const { t } = useTranslation('common')
   const capabilities = useAuthStore((state) => state.user?.capabilities ?? [])
+  const location = useLocation()
 
-  if (!open) {
-    return null
-  }
+  if (!open) return null
 
-  const visibleLinks = shellNavItems.filter((link) => {
-    if (!link.requiredCapability) {
-      return true
-    }
-
-    return capabilities.includes(link.requiredCapability)
-  })
+  const visibleLinks = shellNavItems.filter((link) =>
+    !link.requiredCapability || capabilities.includes(link.requiredCapability),
+  )
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/30 md:hidden" role="dialog">
-      <div className="h-full w-72 bg-white p-3 shadow-xl">
-        <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-3">
-          <p className="text-sm font-semibold text-slate-900">{t('nav.modules')}</p>
+    <div
+      className="fixed inset-0 z-50 bg-primary/20 md:hidden"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="h-full w-72 bg-surface p-3 shadow-surface-4">
+        <div className="mb-3 flex items-center justify-between border-b border-outline-variant pb-3">
+          <p className="text-sm font-semibold text-on-surface">{t('nav.modules')}</p>
           <button
             aria-label={t('nav.closeMenu')}
-            className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700"
+            className="rounded-shape-xs border border-outline px-2 py-1 text-sm text-on-surface-variant hover:bg-surface-container"
             type="button"
             onClick={onClose}
           >
@@ -40,23 +44,52 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
           </button>
         </div>
 
-        <nav className="space-y-1">
-          {visibleLinks.map((link) => (
-            <NavLink
-              key={link.to}
-              className={({ isActive }) =>
-                [
-                  'block rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
-                ].join(' ')
-              }
-              end={link.to === '/dashboard'}
-              to={link.to}
-              onClick={onClose}
-            >
-              {t(link.labelKey)}
-            </NavLink>
-          ))}
+        <nav className="space-y-0.5">
+          {visibleLinks.map((link) => {
+            const isGroupActive =
+              link.to === '/dashboard'
+                ? location.pathname === '/dashboard'
+                : location.pathname === link.to || location.pathname.startsWith(link.to + '/')
+
+            if (link.children && link.children.length > 0 && isGroupActive) {
+              return (
+                <div key={link.to} className="space-y-0.5">
+                  <p className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+                    {t(link.labelKey)}
+                  </p>
+                  <div className="space-y-0.5 border-l-2 border-outline-variant ml-2 pl-1">
+                    {link.children.map((child) => (
+                      <NavLink
+                        key={child.to}
+                        to={child.to}
+                        end={child.to === link.to}
+                        className={({ isActive }) =>
+                          [linkBase, isActive ? linkActive : linkIdle].join(' ')
+                        }
+                        onClick={onClose}
+                      >
+                        {t(child.labelKey)}
+                      </NavLink>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.to === '/dashboard'}
+                className={({ isActive }) =>
+                  [linkBase, isActive ? linkActive : linkIdle].join(' ')
+                }
+                onClick={onClose}
+              >
+                {t(link.labelKey)}
+              </NavLink>
+            )
+          })}
         </nav>
       </div>
     </div>
