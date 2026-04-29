@@ -18,6 +18,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
   const { i18n, t } = useTranslation('common')
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
+  const capabilities = useAuthStore((state) => state.user?.capabilities ?? [])
   const logoutMutation = useLogout()
   const [menuOpen, setMenuOpen] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
@@ -44,15 +45,34 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
   const initials = [user?.prenom?.[0], user?.nom?.[0]].filter(Boolean).join('').toUpperCase() || 'U'
 
-  const activeModule = shellNavItems.find((item) =>
+  const visibleLinks = shellNavItems
+    .map((link) => ({
+      ...link,
+      children: (link.children ?? []).filter(
+        (child) => !child.requiredCapability || capabilities.includes(child.requiredCapability),
+      ),
+    }))
+    .filter(
+      (link) =>
+        !link.requiredCapability ||
+        capabilities.includes(link.requiredCapability) ||
+        (link.children?.length ?? 0) > 0,
+    )
+
+  const activeModule = visibleLinks.find((item) =>
     item.to === '/dashboard'
       ? location.pathname === '/dashboard'
-      : location.pathname === item.to || location.pathname.startsWith(item.to + '/')
+      : location.pathname === item.to ||
+        location.pathname.startsWith(item.to + '/') ||
+        (item.children ?? []).some(
+          (child) =>
+            location.pathname === child.to || location.pathname.startsWith(child.to + '/'),
+        )
   )
 
   return (
     <header className="sticky top-0 z-40 border-b border-outline-variant bg-surface/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
+      <div className="mx-auto flex h-16 w-full items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-3">
           <button
             aria-label={t('nav.openMenu')}

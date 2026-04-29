@@ -340,6 +340,32 @@ export function useDeleteAssetPricingVersionMutation(fiscalYearUuid: string, ass
   })
 }
 
+export function useCloneAssetPricingVersionMutation(fiscalYearUuid: string, assetTypeUuid: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      source_version_uuid: string
+      name: string
+      from_date: string
+      to_date?: string | null
+      use_pack?: boolean
+    }) => {
+      const { source_version_uuid, ...rest } = payload
+      const { data } = await apiClient.post<AssetPricingVersion>(
+        `/api/v1/accounting/pricing/versions/${source_version_uuid}/clone`,
+        rest,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid, fiscalYearUuid),
+      })
+    },
+  })
+}
+
 // ── Pricing Items ─────────────────────────────────────────────────────────────
 
 export function usePricingItemsQuery(versionUuid: string | null, enabled = true) {

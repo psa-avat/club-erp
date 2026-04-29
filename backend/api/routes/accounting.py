@@ -49,6 +49,7 @@ from schemas.accounting import (
     PricingItemTierCreate,
     PricingItemUpdateRequest,
     PricingVersionCreateRequest,
+    PricingVersionCloneRequest,
     PricingVersionResponse,
     PricingVersionUpdateRequest,
     SeedPcgResponse,
@@ -60,6 +61,7 @@ from schemas.accounting import (
 from services.accounting import (
     close_fiscal_year,
     copy_cost_provision_rules_from_year,
+    clone_pricing_version,
     copy_pricing_versions_from_year,
     create_accounting_entry,
     create_accounting_entry_template,
@@ -426,6 +428,31 @@ async def create_pricing_version_endpoint(
         action="create_pricing_version",
         user_id=current_user.id,
         pricing_version_uuid=version.uuid,
+        fiscal_year_uuid=version.fiscal_year_uuid,
+    )
+    return version
+
+
+@router.post(
+    "/pricing/versions/{version_uuid}/clone",
+    response_model=PricingVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses=PRICING_VALIDATION_ERRORS,
+)
+async def clone_pricing_version_endpoint(
+    version_uuid: UUID,
+    request: PricingVersionCloneRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Clone a pricing version into a new Draft version with copied items and tiers."""
+    version = await clone_pricing_version(db, version_uuid, request, current_user.id)
+    _log_accounting_audit(
+        action="clone_pricing_version",
+        user_id=current_user.id,
+        source_pricing_version_uuid=version_uuid,
+        cloned_pricing_version_uuid=version.uuid,
         fiscal_year_uuid=version.fiscal_year_uuid,
     )
     return version

@@ -490,6 +490,14 @@ export type CopyPricingVersionsPayload = {
   target_fiscal_year_uuid: string
 }
 
+export type ClonePricingVersionPayload = {
+  source_version_uuid: string
+  name: string
+  from_date: string
+  to_date?: string | null
+  use_pack?: boolean
+}
+
 export type CopyPricingVersionsResult = {
   copied: number
   skipped: number
@@ -575,6 +583,24 @@ export function useCopyPricingVersionsMutation() {
       await queryClient.invalidateQueries({
         queryKey: banqueQueryKeys.pricingVersions(variables.target_fiscal_year_uuid),
       })
+    },
+  })
+}
+
+export function useClonePricingVersionMutation(fiscalYearUuid: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: ClonePricingVersionPayload) => {
+      const { source_version_uuid, ...rest } = payload
+      const { data } = await apiClient.post<PricingVersion>(
+        `/api/v1/accounting/pricing/versions/${source_version_uuid}/clone`,
+        rest,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions(fiscalYearUuid) })
     },
   })
 }

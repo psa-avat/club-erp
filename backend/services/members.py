@@ -551,6 +551,8 @@ async def complete_member_registration(
         )
 
     member.registration_status = 3
+    member.status = 1
+    member.is_active = True
     member.last_registration_year = year
     member.updated_by = updated_by_user_id
     await db.commit()

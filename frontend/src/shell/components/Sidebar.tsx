@@ -13,9 +13,19 @@ export function Sidebar() {
   const capabilities = useAuthStore((state) => state.user?.capabilities ?? [])
   const location = useLocation()
 
-  const visibleLinks = shellNavItems.filter((link) =>
-    !link.requiredCapability || capabilities.includes(link.requiredCapability),
-  )
+  const visibleLinks = shellNavItems
+    .map((link) => ({
+      ...link,
+      children: (link.children ?? []).filter(
+        (child) => !child.requiredCapability || capabilities.includes(child.requiredCapability),
+      ),
+    }))
+    .filter(
+      (link) =>
+        !link.requiredCapability ||
+        capabilities.includes(link.requiredCapability) ||
+        (link.children?.length ?? 0) > 0,
+    )
 
   return (
     <aside className="hidden w-64 shrink-0 border-r border-outline-variant bg-surface md:block">
@@ -24,7 +34,12 @@ export function Sidebar() {
           const isGroupActive =
             link.to === '/dashboard'
               ? location.pathname === '/dashboard'
-              : location.pathname === link.to || location.pathname.startsWith(link.to + '/')
+              : location.pathname === link.to ||
+                location.pathname.startsWith(link.to + '/') ||
+                (link.children ?? []).some(
+                  (child) =>
+                    location.pathname === child.to || location.pathname.startsWith(child.to + '/'),
+                )
 
           // Expandable group: show section header + children when active
           if (link.children && link.children.length > 0 && isGroupActive) {
