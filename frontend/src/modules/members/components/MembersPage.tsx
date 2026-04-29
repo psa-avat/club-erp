@@ -300,6 +300,7 @@ export function MembersPage() {
   const sheets = memberSheetsQuery.data ?? []
   const selectedYearSheet = sheets.find((sheet) => sheet.year === selectedYear) ?? null
   const selectedTemplate = accountingTemplatesQuery.data?.find((template) => template.uuid === registrationForm.accounting_template_uuid)
+  const isRegistrationCompleted = selectedMember?.registration_status === 3
 
   useEffect(() => {
     if (selectedMember) {
@@ -686,6 +687,17 @@ export function MembersPage() {
                 <CardDescription>{t('form.description')}</CardDescription>
               </CardHeader>
               <CardContent>
+                {selectedMemberId ? (
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-sky-900">{t('actions.completeRegistration')}</p>
+                      <p className="text-xs text-sky-700">{t('registrationWizard.checklistTitle')}</p>
+                    </div>
+                    <Button disabled={completeRegistrationMutation.isPending} type="button" onClick={handleOpenRegistrationDialog}>
+                      {t('actions.completeRegistration')}
+                    </Button>
+                  </div>
+                ) : null}
                 <form className="grid gap-4 md:grid-cols-2" onSubmit={handleMemberSubmit}>
                   <SelectField
                     id="member-genre"
@@ -732,6 +744,7 @@ export function MembersPage() {
                       { value: '4', label: t('statuses.anonymized') },
                     ]}
                     value={memberForm.status}
+                    disabled={isRegistrationCompleted}
                     onChange={(value) => setMemberForm({ ...memberForm, status: value })}
                   />
                   <SelectField
@@ -744,6 +757,7 @@ export function MembersPage() {
                       { value: '4', label: t('registration.archived') },
                     ]}
                     value={memberForm.registration_status}
+                    disabled={isRegistrationCompleted}
                     onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
                   />
                   <div className="space-y-2 md:col-span-2">
@@ -756,7 +770,7 @@ export function MembersPage() {
                     />
                   </div>
                   <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2 md:grid-cols-3">
-                    <CheckboxField label={t('form.active')} checked={memberForm.is_active} onChange={(checked) => setMemberForm({ ...memberForm, is_active: checked })} />
+                    <CheckboxField label={t('form.active')} checked={memberForm.is_active} disabled onChange={() => {}} />
                     <CheckboxField label={t('form.canFly')} checked={memberForm.can_fly} onChange={(checked) => setMemberForm({ ...memberForm, can_fly: checked })} />
                     <CheckboxField label={t('form.externalAuth')} checked={memberForm.external_auth_enabled} onChange={(checked) => setMemberForm({ ...memberForm, external_auth_enabled: checked })} />
                     <CheckboxField label={t('flags.instructor')} checked={memberForm.is_instructor} onChange={(checked) => setMemberForm({ ...memberForm, is_instructor: checked })} />
@@ -1148,12 +1162,14 @@ function SelectField({
   label,
   value,
   onChange,
+  disabled = false,
   options,
 }: {
   id: string
   label: string
   value: string
   onChange: (value: string) => void
+  disabled?: boolean
   options: Array<{ value: string; label: string }>
 }) {
   return (
@@ -1161,7 +1177,13 @@ function SelectField({
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
-        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-400"
+        disabled={disabled}
+        className={[
+          'flex h-10 w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none',
+          disabled
+            ? 'border-slate-100 bg-slate-100 text-slate-500'
+            : 'border-slate-200 bg-white text-slate-900 focus:border-slate-400',
+        ].join(' ')}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -1179,14 +1201,16 @@ function CheckboxField({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-slate-700">
-      <input checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
+    <label className={`flex items-center gap-2 text-sm ${disabled ? 'text-slate-400' : 'text-slate-700'}`}>
+      <input disabled={disabled} checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
   )

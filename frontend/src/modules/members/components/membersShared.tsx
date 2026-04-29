@@ -298,14 +298,16 @@ export function CheckboxField({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-on-surface-variant">
-      <input checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
+    <label className={`flex items-center gap-2 text-sm ${disabled ? 'text-outline' : 'text-on-surface-variant'}`}>
+      <input disabled={disabled} checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
   )

@@ -50,31 +50,12 @@ import {
 } from './membersShared'
 import { ClubPageShell } from './ClubPageShell'
 
-type RegistrationFormState = {
-  start_date: string
-  end_date: string
-  registration_type: string
-  status: string
-  notes: string
-}
-
-function createRegistrationForm(selectedYear: number, category?: number): RegistrationFormState {
-  return {
-    start_date: `${selectedYear}-01-01`,
-    end_date: `${selectedYear}-12-31`,
-    registration_type: category ? String(category) : '',
-    status: '1',
-    notes: '',
-  }
-}
-
 export function MembersListPage() {
   const { t } = useTranslation('members')
   const { t: tCommon } = useTranslation('common')
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
 
   const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
-  const [registrationForm, setRegistrationForm] = useState<RegistrationFormState>(() => createRegistrationForm(selectedYear))
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   const membersQuery = useMembersQuery(filters)
@@ -90,17 +71,14 @@ export function MembersListPage() {
   useEffect(() => {
     if (selectedMember) {
       setMemberForm(mapMemberToForm(selectedMember))
-      setRegistrationForm(createRegistrationForm(selectedYear, selectedMember.member_category))
     } else {
       setMemberForm(createEmptyMemberForm())
-      setRegistrationForm(createRegistrationForm(selectedYear))
     }
-  }, [selectedMember, selectedYear])
+  }, [selectedMember])
 
   function handleNewMember() {
     setSelectedMemberId(null)
     setMemberForm(createEmptyMemberForm())
-    setRegistrationForm(createRegistrationForm(selectedYear))
   }
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -120,17 +98,15 @@ export function MembersListPage() {
     setSelectedMemberId(created.uuid)
   }
 
-  async function handleCompleteRegistration() {
-    if (!selectedMemberId) return
+  async function handleCompleteRegistrationFromList(memberUuid: string, memberCategory: number) {
     const completed = await completeRegistrationMutation.mutateAsync({
-      memberUuid: selectedMemberId,
+      memberUuid,
       payload: {
         year: selectedYear,
-        start_date: registrationForm.start_date,
-        end_date: registrationForm.end_date,
-        ...(registrationForm.registration_type ? { registration_type: Number(registrationForm.registration_type) } : {}),
-        status: Number(registrationForm.status),
-        ...(registrationForm.notes.trim() ? { notes: registrationForm.notes.trim() } : {}),
+        start_date: `${selectedYear}-01-01`,
+        end_date: `${selectedYear}-12-31`,
+        registration_type: memberCategory,
+        status: 1,
       },
     })
     setSelectedMemberId(completed.uuid)
@@ -287,6 +263,19 @@ export function MembersListPage() {
                     </span>
                     <span>{member.is_active ? t('statuses.active') : t('states.inactive')}</span>
                   </div>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      size="sm"
+                      type="button"
+                      disabled={completeRegistrationMutation.isPending}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void handleCompleteRegistrationFromList(member.uuid, member.member_category)
+                      }}
+                    >
+                      {t('actions.completeRegistration')}
+                    </Button>
+                  </div>
                 </button>
               ))}
             </div>
@@ -421,7 +410,8 @@ export function MembersListPage() {
                 <CheckboxField
                   label={t('form.active')}
                   checked={memberForm.is_active}
-                  onChange={(checked) => setMemberForm({ ...memberForm, is_active: checked })}
+                  disabled
+                  onChange={() => {}}
                 />
                 <CheckboxField
                   label={t('form.canFly')}
@@ -454,59 +444,6 @@ export function MembersListPage() {
                   onChange={(checked) => setMemberForm({ ...memberForm, is_board_member: checked })}
                 />
               </div>
-              {selectedMemberId ? (
-                <div className="grid gap-3 rounded-shape-md border border-outline-variant bg-surface-variant p-4 md:col-span-2 md:grid-cols-2">
-                  <TextField
-                    id="member-registration-start-date"
-                    label={t('registrationPeriod.startDate')}
-                    type="date"
-                    value={registrationForm.start_date}
-                    onChange={(value) => setRegistrationForm({ ...registrationForm, start_date: value })}
-                  />
-                  <TextField
-                    id="member-registration-end-date"
-                    label={t('registrationPeriod.endDate')}
-                    type="date"
-                    value={registrationForm.end_date}
-                    onChange={(value) => setRegistrationForm({ ...registrationForm, end_date: value })}
-                  />
-                  <SelectField
-                    id="member-registration-type"
-                    label={t('registrationPeriod.type')}
-                    options={[
-                      { value: '', label: t('registrationPeriod.useMemberCategory') },
-                      { value: '1', label: t('categories.full') },
-                      { value: '2', label: t('categories.temporary') },
-                      { value: '3', label: t('categories.nonFlying') },
-                      { value: '4', label: t('categories.shortPeriod') },
-                      { value: '5', label: t('categories.externalPilot') },
-                      { value: '6', label: t('categories.volunteer') },
-                    ]}
-                    value={registrationForm.registration_type}
-                    onChange={(value) => setRegistrationForm({ ...registrationForm, registration_type: value })}
-                  />
-                  <SelectField
-                    id="member-registration-period-status"
-                    label={t('registrationPeriod.status')}
-                    options={[
-                      { value: '1', label: t('registrationPeriod.active') },
-                      { value: '2', label: t('registrationPeriod.cancelled') },
-                      { value: '3', label: t('registrationPeriod.superseded') },
-                    ]}
-                    value={registrationForm.status}
-                    onChange={(value) => setRegistrationForm({ ...registrationForm, status: value })}
-                  />
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="member-registration-notes">{t('registrationPeriod.notes')}</Label>
-                    <textarea
-                      id="member-registration-notes"
-                      className="min-h-20 w-full rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
-                      value={registrationForm.notes}
-                      onChange={(event) => setRegistrationForm({ ...registrationForm, notes: event.target.value })}
-                    />
-                  </div>
-                </div>
-              ) : null}
               <div className="flex flex-wrap gap-2 md:col-span-2">
                 <Button
                   disabled={createMemberMutation.isPending || updateMemberMutation.isPending}
@@ -514,16 +451,6 @@ export function MembersListPage() {
                 >
                   {selectedMemberId ? t('actions.saveChanges') : t('actions.createMember')}
                 </Button>
-                {selectedMemberId ? (
-                  <Button
-                    disabled={completeRegistrationMutation.isPending}
-                    type="button"
-                    variant="secondary"
-                    onClick={handleCompleteRegistration}
-                  >
-                    {t('actions.completeRegistration')}
-                  </Button>
-                ) : null}
                 <Button type="button" variant="ghost" onClick={handleNewMember}>
                   {t('actions.reset')}
                 </Button>
