@@ -15,6 +15,7 @@ from api.security import require_capability
 from constants import CAP_MANAGE_USERS
 from models import User
 from schemas.members import (
+    AnonymizationResultResponse,
     CommitteeCreateRequest,
     CommitteeMembershipReplaceRequest,
     CommitteeMembershipResponse,
@@ -25,6 +26,9 @@ from schemas.members import (
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
+    MemberRegistrationCreateRequest,
+    MemberRegistrationResponse,
+    MemberRegistrationUpdateRequest,
     MemberSheetResponse,
     MemberSheetUpsertRequest,
     MemberSummaryResponse,
@@ -32,9 +36,11 @@ from schemas.members import (
     RegistrationCompletionRequest,
 )
 from services.members import (
+    anonymize_inactive_members,
     complete_member_registration,
     create_committee,
     create_member,
+    create_member_registration,
     disable_member_sheet_expense_access,
     enable_member_sheet_expense_access,
     get_committee_or_404,
@@ -42,12 +48,14 @@ from services.members import (
     get_member_sheet_or_404,
     import_members_from_csv,
     list_committees,
+    list_member_registrations,
     list_member_sheets,
     list_members,
     replace_committee_members,
     serialize_member_detail,
     update_committee,
     update_member,
+    update_member_registration,
     upsert_member_sheet,
 )
 
@@ -69,6 +77,7 @@ async def list_members_endpoint(
     is_board_member: Optional[bool] = Query(default=None),
     is_active: Optional[bool] = Query(default=None),
     year: Optional[int] = Query(default=None, ge=2000, le=9999),
+    registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
@@ -85,8 +94,18 @@ async def list_members_endpoint(
         is_board_member=is_board_member,
         is_active=is_active,
         year=year,
+        registration_state=registration_state,
     )
     return await list_members(db=db, filters=filters)
+
+
+@router.post("/anonymize-inactive", response_model=AnonymizationResultResponse)
+async def anonymize_inactive_members_endpoint(
+    reference_year: Optional[int] = Query(default=None, ge=2000, le=9999),
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await anonymize_inactive_members(db=db, reference_year=reference_year)
 
 
 @router.post("", response_model=MemberDetailResponse)
@@ -198,10 +217,52 @@ async def complete_member_registration_endpoint(
     member = await complete_member_registration(
         db=db,
         member_uuid=member_uuid,
-        year=payload.year,
+        payload=payload,
         updated_by_user_id=current_user.id,
     )
     return await serialize_member_detail(db=db, member=member)
+
+
+@router.get("/{member_uuid}/registrations", response_model=list[MemberRegistrationResponse])
+async def list_member_registrations_endpoint(
+    member_uuid: UUID,
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_member_registrations(db=db, member_uuid=member_uuid)
+
+
+@router.post("/{member_uuid}/registrations", response_model=MemberRegistrationResponse)
+async def create_member_registration_endpoint(
+    member_uuid: UUID,
+    payload: MemberRegistrationCreateRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    registration = await create_member_registration(
+        db=db,
+        member_uuid=member_uuid,
+        payload=payload,
+        registered_by_user_id=current_user.id,
+    )
+    return MemberRegistrationResponse.model_validate(registration)
+
+
+@router.patch("/{member_uuid}/registrations/{registration_uuid}", response_model=MemberRegistrationResponse)
+async def update_member_registration_endpoint(
+    member_uuid: UUID,
+    registration_uuid: UUID,
+    payload: MemberRegistrationUpdateRequest,
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    registration = await update_member_registration(
+        db=db,
+        member_uuid=member_uuid,
+        registration_uuid=registration_uuid,
+        payload=payload,
+    )
+    return MemberRegistrationResponse.model_validate(registration)
 
 
 @router.get("/{member_uuid}/sheets", response_model=list[MemberSheetResponse])

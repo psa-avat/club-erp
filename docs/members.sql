@@ -160,6 +160,29 @@ CREATE TABLE IF NOT EXISTS member_sheets (
     CHECK (remaining_hours_in_pack >= 0)
 );
 
+CREATE TABLE IF NOT EXISTS member_registrations (
+  uuid UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  member_uuid UUID NOT NULL REFERENCES members(uuid) ON DELETE CASCADE,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  registered_for_year SMALLINT NOT NULL,
+  registration_type SMALLINT NOT NULL,
+  status SMALLINT NOT NULL DEFAULT 1,
+  registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  registered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  notes TEXT,
+
+  CONSTRAINT uq_member_registrations_period UNIQUE (member_uuid, start_date, end_date),
+  CONSTRAINT chk_member_registrations_year
+    CHECK (registered_for_year BETWEEN 2000 AND 9999),
+  CONSTRAINT chk_member_registrations_type
+    CHECK (registration_type BETWEEN 1 AND 6),
+  CONSTRAINT chk_member_registrations_status
+    CHECK (status BETWEEN 1 AND 3),
+  CONSTRAINT chk_member_registrations_date_range
+    CHECK (end_date >= start_date)
+);
+
 -- =========================
 -- INDEXES
 -- =========================
@@ -208,6 +231,18 @@ ON member_sheets(member_uuid);
 CREATE INDEX IF NOT EXISTS idx_member_sheets_year
 ON member_sheets(year);
 
+CREATE INDEX IF NOT EXISTS idx_member_registrations_member_uuid
+ON member_registrations(member_uuid);
+
+CREATE INDEX IF NOT EXISTS idx_member_registrations_period
+ON member_registrations(start_date, end_date);
+
+CREATE INDEX IF NOT EXISTS idx_member_registrations_registered_for_year
+ON member_registrations(registered_for_year);
+
+CREATE INDEX IF NOT EXISTS idx_member_registrations_status
+ON member_registrations(status);
+
 -- =========================
 -- TRIGGERS
 -- =========================
@@ -243,4 +278,6 @@ COMMENT ON TABLE committees IS 'Committees with optional manager and optional bu
 COMMENT ON TABLE committee_members IS 'Yearly committee membership assignments for members.';
 COMMENT ON TABLE member_sheets IS 'Yearly flying member summary and expense access controls.';
 COMMENT ON COLUMN member_sheets.fare_type IS '1=Standard, 2=Student, 3=Discovery, 4=Pack, 5=Other.';
-
+COMMENT ON TABLE member_registrations IS 'Dated member registration periods. A member is registered for a year when an active period overlaps that calendar year.';
+COMMENT ON COLUMN member_registrations.registration_type IS 'Snapshot of member category at registration time: 1=Full, 2=Temporary, 3=Non-Flying, 4=Short Period, 5=External Pilot, 6=Volunteer.';
+COMMENT ON COLUMN member_registrations.status IS '1=Active, 2=Cancelled, 3=Superseded.';

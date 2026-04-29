@@ -53,7 +53,7 @@ Each member has:
 - zero or more operational role flags
 - contact and identity fields
 - lifecycle state
-- registration completion state
+- profile/onboarding completion state
 
 ### 2. Member Role Flags
 
@@ -95,20 +95,28 @@ The member sheet stores annual flying-related data for members who can fly.
 
 There is at most one member sheet per member per year.
 
-### 6. Member Registration (yearly)
+### 6. Member Registration Periods
 
-The yearly registration is a distinct workflow that runs once per member per calendar year.
+Registration is a distinct dated validity period, not a single field on `members`.
 
-It is separate from `registration_status`, which tracks the overall member lifecycle (draft → completed).
+It is separate from `registration_status`, which tracks the overall member profile/onboarding lifecycle (draft → completed) and must not be used to decide whether the member is registered for the active year.
 
-A yearly registration record:
+A registration record:
 
-- marks the member as registered for a given year
+- marks the member as registered for a date range
+- stores the target reporting year
+- stores the member category snapshot used for the registration
 - triggers the creation of accounting writings based on the applicable price list entries
-- creates or confirms the member sheet for that year if `can_fly = true`
+- creates or confirms the member sheet for the target year if `can_fly = true`
 - records who performed the registration and when
 
-Only one registration record may exist per `(member_uuid, year)` pair.
+A member is considered registered for a year when an active registration period overlaps that calendar year.
+
+Examples:
+
+- a member registered in October for the rest of the current year and next year has a period spanning both years
+- a pilot registered in December for the next year has a period starting on January 1 of the next year
+- temporary members use exact short validity periods
 
 ### 7. Price List
 
@@ -317,21 +325,28 @@ References:
 
 ### Table: `member_registrations`
 
-Tracks one yearly registration event per member.
+Tracks dated registration validity periods. This table is the source of truth for annual activity.
 
 Required columns:
 
 - `uuid UUID PRIMARY KEY`
 - `member_uuid UUID NOT NULL`
-- `year SMALLINT NOT NULL`
+- `start_date DATE NOT NULL`
+- `end_date DATE NOT NULL`
+- `registered_for_year SMALLINT NOT NULL`
+- `registration_type SMALLINT NOT NULL`
+- `status SMALLINT NOT NULL DEFAULT 1`
 - `registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
-- `registered_by INTEGER NOT NULL`
+- `registered_by INTEGER NULL`
 - `notes TEXT NULL`
-- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 
 Constraints:
 
-- unique on `(member_uuid, year)` — only one registration per member per year
+- unique on `(member_uuid, start_date, end_date)`
+- check valid `registered_for_year`
+- check valid `registration_type`
+- check valid `status`: `1=Active`, `2=Cancelled`, `3=Superseded`
+- check `end_date >= start_date`
 
 References:
 
@@ -341,7 +356,8 @@ References:
 Notes:
 
 - creating this row triggers generation of `accounting_writings` and creation/confirmation of `member_sheets`
-- the row itself is immutable; corrections require a reversal workflow (v1.1)
+- `members.last_registration_year` is deprecated compatibility data derived from the latest registration
+- yearly committee membership should be renewed explicitly, not inferred forever from previous years
 
 ### Table: `price_list`
 
@@ -441,7 +457,7 @@ Rules:
 
 ### Annual Re-Registration Workflow
 
-Each year, active members who were previously fully registered must go through the annual re-registration workflow.
+Each year, active members who were previously fully registered must go through the annual re-registration workflow unless an existing active registration period already overlaps the target year.
 
 This workflow is distinct from the initial member lifecycle and may be triggered by authorised staff at any point during the year.
 
@@ -451,29 +467,41 @@ The following must be true before a yearly registration is accepted:
 
 - member `status` is `Active`
 - member `registration_status` is `Completed`
-- no `member_registrations` row exists for `(member_uuid, current_year)`
+- no active `member_registrations` period already covers the exact same `(member_uuid, start_date, end_date)`
+- at least one committee membership exists for the target year
 - at least one active `price_list` row exists for the target year (matching the member's category or universal)
 
 #### Workflow Steps (atomic transaction)
 
 1. **Resolve applicable price list entries** — select all active `price_list` rows where `year = target_year` and (`member_category = member.member_category` OR `member_category IS NULL`), ordered by `sort_order`.
-2. **Create `member_registrations` row** — records the event with `year`, `registered_by`, and `registered_at`.
+2. **Create `member_registrations` row** — records `start_date`, `end_date`, `registered_for_year`, `registration_type`, `registered_by`, and `registered_at`.
 3. **Create `accounting_writings` rows** — one row per resolved price list entry, snapshotting `label`, `amount`, and `account_id`.
 4. **Create or confirm `member_sheets` row** — if `can_fly = true` and no sheet exists for `(member_uuid, year)`, create it with default values.
-5. **Update `members.last_registration_year`** — set to the target year.
+5. **Update compatibility fields** — set `members.last_registration_year` to the latest target year and keep `members.is_active = true`.
 
 All five steps execute inside a single database transaction. If any step fails, the entire workflow rolls back.
 
 #### Post-conditions
 
-- one `member_registrations` row exists for the year
+- one active `member_registrations` period exists
 - one or more `accounting_writings` rows exist
 - if `can_fly`, one `member_sheets` row exists for the year
-- `members.last_registration_year` reflects the current year
+- `members.last_registration_year` reflects the latest registered target year for compatibility only
 
 #### Cancellation (v1.1, not in scope for v1)
 
-Cancelling a registration produces reversal `accounting_writings` rows (one per original writing, with `is_reversal = true`) and removes the `member_registrations` row. The member sheet is not automatically deleted.
+Cancelling a registration produces reversal `accounting_writings` rows (one per original writing, with `is_reversal = true`) and changes the registration period status to `Cancelled`. The member sheet is not automatically deleted.
+
+### Inactive Member Anonymization
+
+Members with no active registration period for the configured number of full years are anonymized.
+
+Configuration is stored in module settings:
+
+- `members.anonymize_after_unregistered_years`
+- default: `5`
+
+Anonymization keeps the member row active for referential integrity and preserves `uuid` and `account_id`, but clears direct personal data such as email, phone, birth date, photo URL, FFVP id, and notes.
 
 ## Flying Rules
 
@@ -563,7 +591,8 @@ Filters for list endpoint:
 - `is_executive`
 - `is_board_member`
 - `is_active`
-- `last_registration_year` — filter by year of last registration
+- `year`
+- `registration_state` — `registered` or `unregistered` for the selected year, based on active registration periods
 
 #### Committees
 
@@ -583,9 +612,11 @@ Filters for list endpoint:
 
 #### Annual Registrations
 
-- `POST /api/v1/members/{member_uuid}/registrations` — execute the annual registration workflow for a given year (body: `{ "year": 2026 }`)
-- `GET /api/v1/members/{member_uuid}/registrations` — list all yearly registration records for a member
-- `GET /api/v1/members/{member_uuid}/registrations/{year}` — detail of one yearly registration including its accounting writings
+- `POST /api/v1/members/{member_uuid}/complete-registration` — validate committee membership and create a registration period
+- `POST /api/v1/members/{member_uuid}/registrations` — create a dated registration period
+- `GET /api/v1/members/{member_uuid}/registrations` — list all registration periods for a member
+- `PATCH /api/v1/members/{member_uuid}/registrations/{registration_uuid}` — update period dates/status/notes
+- `POST /api/v1/members/anonymize-inactive` — anonymize members after the configured number of unregistered full years
 
 #### Price List
 
@@ -610,6 +641,8 @@ The service layer must enforce:
 - `is_employee` cannot be combined with `is_executive`
 - `is_employee` cannot be combined with `is_board_member`
 - registration completion requires at least one committee membership for the target year
+- registration period end date must be on or after start date
+- registered/unregistered list filters must be based on active registration-period overlap with the selected year
 - member sheet uniqueness by member and year
 - negative hours and pack counts are rejected
 
@@ -624,12 +657,14 @@ Member list response should include:
 - registration status
 - current committee count
 - current year member sheet availability
+- selected-year registration availability
 
 Member detail response should include:
 
 - all editable fields
 - yearly committee assignments
 - yearly member sheets
+- dated registration periods
 
 ## Frontend Specification
 
@@ -693,7 +728,7 @@ Capabilities:
 - edit member
 - open member detail
 - quick active toggle if allowed
-- visual indicator when a member is not yet registered for the current year (`last_registration_year < current_year`)
+- visual indicator when a member is not registered for the selected year, based on active registration periods
 
 ### Member Form
 

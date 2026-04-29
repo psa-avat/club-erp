@@ -87,6 +87,7 @@ class MemberListFilters(BaseModel):
     is_board_member: Optional[bool] = None
     is_active: Optional[bool] = None
     year: Optional[int] = Field(default=None, ge=2000, le=9999)
+    registration_state: Optional[str] = Field(default=None, pattern="^(registered|unregistered)$")
 
 
 class CommitteeCreateRequest(BaseModel):
@@ -131,6 +132,33 @@ class RegistrationCompletionRequest(BaseModel):
     """Payload for registration completion."""
 
     year: int = Field(ge=2000, le=9999)
+    start_date: date
+    end_date: date
+    registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    status: int = Field(default=1, ge=1, le=3)
+    notes: Optional[str] = None
+
+
+class MemberRegistrationCreateRequest(BaseModel):
+    """Payload for creating a member registration period."""
+
+    start_date: date
+    end_date: date
+    registered_for_year: int = Field(ge=2000, le=9999)
+    registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    status: int = Field(default=1, ge=1, le=3)
+    notes: Optional[str] = None
+
+
+class MemberRegistrationUpdateRequest(BaseModel):
+    """Payload for updating a member registration period."""
+
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    registered_for_year: Optional[int] = Field(default=None, ge=2000, le=9999)
+    registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    status: Optional[int] = Field(default=None, ge=1, le=3)
+    notes: Optional[str] = None
 
 
 class CommitteeMembershipResponse(BaseModel):
@@ -179,6 +207,23 @@ class MemberSheetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberRegistrationResponse(BaseModel):
+    """Serialized dated member registration."""
+
+    uuid: UUID
+    member_uuid: UUID
+    start_date: date
+    end_date: date
+    registered_for_year: int
+    registration_type: int
+    status: int
+    registered_at: datetime
+    registered_by: Optional[int] = None
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class MemberSummaryResponse(BaseModel):
     """Serialized member summary for list views."""
 
@@ -198,6 +243,7 @@ class MemberSummaryResponse(BaseModel):
     is_board_member: bool
     committee_count: int = 0
     has_member_sheet_for_year: bool = False
+    is_registered_for_year: bool = False
 
 
 class MemberDetailResponse(BaseModel):
@@ -230,6 +276,7 @@ class MemberDetailResponse(BaseModel):
     updated_at: datetime
     committees: list[CommitteeMembershipResponse] = Field(default_factory=list)
     member_sheets: list[MemberSheetResponse] = Field(default_factory=list)
+    registrations: list[MemberRegistrationResponse] = Field(default_factory=list)
 
 
 class ExpenseAccessResponse(BaseModel):
@@ -260,3 +307,9 @@ class ImportResultResponse(BaseModel):
     skipped: int
     errors: list[ImportRowError]
 
+
+class AnonymizationResultResponse(BaseModel):
+    """Summary returned after applying inactive-member anonymization."""
+
+    anonymized: int
+    threshold_year: int

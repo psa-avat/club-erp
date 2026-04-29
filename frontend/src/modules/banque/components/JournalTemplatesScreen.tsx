@@ -27,6 +27,7 @@ import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
+import { useMembersQuery } from '../../members/api'
 import {
   useAccountingEntryModelsQuery,
   useAccountsQuery,
@@ -60,10 +61,12 @@ export function JournalTemplatesScreen() {
   const journalsQuery = useJournalsQuery(canView)
   const accountsQuery = useAccountsQuery(canView)
   const modelsQuery = useAccountingEntryModelsQuery(canView)
+  const membersQuery = useMembersQuery({ search: '' })
 
   const journals = journalsQuery.data ?? []
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
   const models = modelsQuery.data ?? []
+  const members = membersQuery.data?.filter((m) => m.is_active) ?? []
 
   const [modelForm, setModelForm] = useState<ModelFormState>(() => emptyModelForm())
   const [selectedModelUuid, setSelectedModelUuid] = useState<string | null>(null)
@@ -280,6 +283,7 @@ export function JournalTemplatesScreen() {
               title={t('journal.models.linesTitle')}
               lines={modelForm.lines}
               accounts={accounts}
+              members={members}
               onChange={updateModelLine}
               onAdd={() => setModelForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}
               onRemove={(index) =>

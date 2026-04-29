@@ -40,9 +40,9 @@ export const RECURRENCE_OPTIONS = [1, 2, 3, 4] as const
 
 export type LineFormState = {
   account_uuid: string
-  debit: string
-  credit: string
+  amount: string // signed: positive = debit, negative = credit
   description: string
+  member_uuid: string
 }
 
 export type EntryFormState = {
@@ -79,7 +79,7 @@ export function toErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function emptyLine(): LineFormState {
-  return { account_uuid: '', debit: '', credit: '', description: '' }
+  return { account_uuid: '', amount: '', description: '', member_uuid: '' }
 }
 
 export function emptyEntryForm(today: string): EntryFormState {
@@ -116,14 +116,19 @@ export function decimalOrZero(value: string): Decimal {
 }
 
 export function isBalanced(lines: LineFormState[]): boolean {
-  const debit = lines.reduce((sum, line) => sum.plus(decimalOrZero(line.debit)), new Decimal(0))
-  const credit = lines.reduce((sum, line) => sum.plus(decimalOrZero(line.credit)), new Decimal(0))
-  return debit.equals(credit) && debit.greaterThan(0)
+  const net = lines.reduce((sum, line) => sum.plus(decimalOrZero(line.amount)), new Decimal(0))
+  return net.equals(0) && lines.some((line) => !decimalOrZero(line.amount).equals(0))
 }
 
 export function totals(lines: LineFormState[]): { debit: string; credit: string } {
-  const debit = lines.reduce((sum, line) => sum.plus(decimalOrZero(line.debit)), new Decimal(0))
-  const credit = lines.reduce((sum, line) => sum.plus(decimalOrZero(line.credit)), new Decimal(0))
+  const debit = lines.reduce((sum, line) => {
+    const amount = decimalOrZero(line.amount)
+    return amount.greaterThan(0) ? sum.plus(amount) : sum
+  }, new Decimal(0))
+  const credit = lines.reduce((sum, line) => {
+    const amount = decimalOrZero(line.amount)
+    return amount.lessThan(0) ? sum.plus(amount.abs()) : sum
+  }, new Decimal(0))
   return { debit: debit.toFixed(2), credit: credit.toFixed(2) }
 }
 
@@ -134,12 +139,17 @@ export function mapEntryToForm(entry: AccountingEntry): EntryFormState {
     entry_date: entry.entry_date,
     description: entry.description,
     reference: entry.reference ?? '',
-    lines: entry.lines.map((line) => ({
-      account_uuid: line.account_uuid,
-      debit: line.debit,
-      credit: line.credit,
-      description: line.description ?? '',
-    })),
+    lines: entry.lines.map((line) => {
+      const debit = decimalOrZero(line.debit)
+      const credit = decimalOrZero(line.credit)
+      const amount = debit.greaterThan(0) ? debit : credit.negated()
+      return {
+        account_uuid: line.account_uuid,
+        amount: amount.toFixed(2),
+        description: line.description ?? '',
+        member_uuid: line.member_uuid ?? '',
+      }
+    }),
   }
 }
 
@@ -152,31 +162,48 @@ export function mapModelToForm(model: AccountingEntryModel): ModelFormState {
     default_reference: model.default_reference ?? '',
     recurrence_type: model.recurrence_type,
     is_active: model.is_active,
-    lines: model.lines.map((line) => ({
-      account_uuid: line.account_uuid,
-      debit: line.debit,
-      credit: line.credit,
-      description: line.description ?? '',
-    })),
+    lines: model.lines.map((line) => {
+      const debit = decimalOrZero(line.debit)
+      const credit = decimalOrZero(line.credit)
+      const amount = debit.greaterThan(0) ? debit : credit.negated()
+      return {
+        account_uuid: line.account_uuid,
+        amount: amount.toFixed(2),
+        description: line.description ?? '',
+        member_uuid: line.member_uuid ?? '',
+      }
+    }),
   }
 }
 
 export function buildEntryLines(lines: LineFormState[]): AccountingEntryLinePayload[] {
-  return lines.map((line) => ({
-    account_uuid: line.account_uuid,
-    debit: line.debit.trim() === '' ? '0' : line.debit.trim(),
-    credit: line.credit.trim() === '' ? '0' : line.credit.trim(),
-    description: line.description.trim() === '' ? null : line.description.trim(),
-  }))
+  return lines.map((line) => {
+    const amount = decimalOrZero(line.amount)
+    const debit = amount.greaterThan(0) ? amount.toFixed(2) : '0'
+    const credit = amount.lessThan(0) ? amount.abs().toFixed(2) : '0'
+    return {
+      account_uuid: line.account_uuid,
+      debit,
+      credit,
+      description: line.description.trim() === '' ? null : line.description.trim(),
+      member_uuid: line.member_uuid.trim() === '' ? null : line.member_uuid.trim(),
+    }
+  })
 }
 
 export function buildModelLines(lines: LineFormState[]): AccountingEntryModelLinePayload[] {
-  return lines.map((line) => ({
-    account_uuid: line.account_uuid,
-    debit: line.debit.trim() === '' ? '0' : line.debit.trim(),
-    credit: line.credit.trim() === '' ? '0' : line.credit.trim(),
-    description: line.description.trim() === '' ? null : line.description.trim(),
-  }))
+  return lines.map((line) => {
+    const amount = decimalOrZero(line.amount)
+    const debit = amount.greaterThan(0) ? amount.toFixed(2) : '0'
+    const credit = amount.lessThan(0) ? amount.abs().toFixed(2) : '0'
+    return {
+      account_uuid: line.account_uuid,
+      debit,
+      credit,
+      description: line.description.trim() === '' ? null : line.description.trim(),
+      member_uuid: line.member_uuid.trim() === '' ? null : line.member_uuid.trim(),
+    }
+  })
 }
 
 export function recurrenceLabel(value: number, t: (key: string) => string): string {
@@ -219,6 +246,7 @@ export function LineEditor({
   title,
   lines,
   accounts,
+  members,
   onChange,
   onAdd,
   onRemove,
@@ -227,6 +255,7 @@ export function LineEditor({
   title: string
   lines: LineFormState[]
   accounts: Array<{ uuid: string; code: string; name: string }>
+  members: Array<{ uuid: string; first_name: string; last_name: string }>
   onChange: (index: number, patch: Partial<LineFormState>) => void
   onAdd: () => void
   onRemove: (index: number) => void
@@ -244,9 +273,9 @@ export function LineEditor({
           <thead className="bg-surface-container">
             <tr>
               <th className="sticky left-0 z-10 bg-surface-container px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.account')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.debit')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.credit')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.amount')}</th>
               <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.lineDescription')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.tiers')}</th>
               <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.actions')}</th>
             </tr>
           </thead>
@@ -266,13 +295,22 @@ export function LineEditor({
                   </select>
                 </td>
                 <td className="px-3 py-2">
-                  <Input type="number" min="0" step="0.01" value={line.debit} onChange={(event) => onChange(index, { debit: event.target.value })} />
-                </td>
-                <td className="px-3 py-2">
-                  <Input type="number" min="0" step="0.01" value={line.credit} onChange={(event) => onChange(index, { credit: event.target.value })} />
+                  <Input type="number" step="0.01" value={line.amount} onChange={(event) => onChange(index, { amount: event.target.value })} placeholder={t('journal.forms.amountPlaceholder')} />
                 </td>
                 <td className="px-3 py-2">
                   <Input value={line.description} onChange={(event) => onChange(index, { description: event.target.value })} />
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    value={line.member_uuid}
+                    onChange={(event) => onChange(index, { member_uuid: event.target.value })}
+                    className="h-9 w-48 min-w-[12rem] rounded-shape-sm border border-outline bg-surface px-2 text-sm"
+                  >
+                    <option value="">{t('journal.forms.selectTiers')}</option>
+                    {members.map((member) => (
+                      <option key={member.uuid} value={member.uuid}>{member.first_name} {member.last_name}</option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-3 py-2">
                   <Button type="button" size="sm" variant="ghost" onClick={() => onRemove(index)}>
@@ -285,8 +323,11 @@ export function LineEditor({
           <tfoot className="bg-surface-container text-xs text-on-surface-variant">
             <tr>
               <td className="px-3 py-2 font-medium">{t('journal.forms.total')}</td>
-              <td className="px-3 py-2 font-mono">{summary.debit}</td>
-              <td className="px-3 py-2 font-mono">{summary.credit}</td>
+              <td colSpan={2} className="px-3 py-2">
+                <span className={`font-mono ${balanced ? 'text-success' : 'text-error'}`}>
+                  {t('journal.forms.debit')}: {summary.debit} · {t('journal.forms.credit')}: {summary.credit}
+                </span>
+              </td>
               <td className={`px-3 py-2 font-medium ${balanced ? 'text-success' : 'text-error'}`} colSpan={2}>
                 {balanced ? t('journal.forms.balanced') : t('journal.forms.unbalanced')}
               </td>

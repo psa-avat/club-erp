@@ -25,5 +25,14 @@
   {"code": "7071",  "name": "Ventes boutique",                            "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
   {"code": "7072",  "name": "Ventes bar et repas",                        "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
   {"code": "74",    "name": "Subventions d'exploitation",                 "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "789",   "name": "Report des ressources non utilisees",        "type": 5, "is_posting_allowed": true,  "is_reconcilable": false}
+  {"code": "789",   "name": "Report des ressources non utilisees",        "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
+  {"code": "8",     "name": "Contributions volontaires en nature",        "type": 4, "is_posting_allowed": false, "is_reconcilable": false},
+  {"code": "86",    "name": "Emplois des contributions volontaires",      "type": 4, "is_posting_allowed": false, "is_reconcilable": false},
+  {"code": "861",   "name": "Mises à disposition gratuites de biens",     "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
+  {"code": "862",   "name": "Prestations de services gratuites",          "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
+  {"code": "864",   "name": "Personnel bénévole",                         "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
+  {"code": "87",    "name": "Contributions volontaires en nature",        "type": 5, "is_posting_allowed": false, "is_reconcilable": false},
+  {"code": "870",   "name": "Dons en nature",                             "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
+  {"code": "871",   "name": "Prestations en nature",                      "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
+  {"code": "875",   "name": "Bénévolat",                                  "type": 5, "is_posting_allowed": true,  "is_reconcilable": false}
 ]

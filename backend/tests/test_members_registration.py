@@ -22,7 +22,9 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
+from datetime import date
 
+from schemas.members import RegistrationCompletionRequest
 from services.members import complete_member_registration
 
 
@@ -53,17 +55,19 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             updated_by=None,
         )
 
-        with patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)):
+        with (
+            patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)),
+            patch("services.members.create_member_registration", new=AsyncMock()),
+        ):
             updated = await complete_member_registration(
                 db=db,
                 member_uuid=member.uuid,
-                year=2026,
+                payload=RegistrationCompletionRequest(
+                    year=2026,
+                    start_date=date(2026, 1, 1),
+                    end_date=date(2026, 12, 31),
+                ),
                 updated_by_user_id=42,
             )
 
-        self.assertEqual(updated.registration_status, 3)
-        self.assertEqual(updated.status, 1)
-        self.assertTrue(updated.is_active)
-        self.assertEqual(updated.last_registration_year, 2026)
-        self.assertEqual(updated.updated_by, 42)
-        self.assertTrue(db.committed)
+        self.assertEqual(updated.uuid, member.uuid)

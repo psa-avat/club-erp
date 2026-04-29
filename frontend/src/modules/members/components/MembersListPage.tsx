@@ -50,12 +50,31 @@ import {
 } from './membersShared'
 import { ClubPageShell } from './ClubPageShell'
 
+type RegistrationFormState = {
+  start_date: string
+  end_date: string
+  registration_type: string
+  status: string
+  notes: string
+}
+
+function createRegistrationForm(selectedYear: number, category?: number): RegistrationFormState {
+  return {
+    start_date: `${selectedYear}-01-01`,
+    end_date: `${selectedYear}-12-31`,
+    registration_type: category ? String(category) : '',
+    status: '1',
+    notes: '',
+  }
+}
+
 export function MembersListPage() {
   const { t } = useTranslation('members')
   const { t: tCommon } = useTranslation('common')
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
 
-  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm(selectedYear))
+  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
+  const [registrationForm, setRegistrationForm] = useState<RegistrationFormState>(() => createRegistrationForm(selectedYear))
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   const membersQuery = useMembersQuery(filters)
@@ -71,14 +90,17 @@ export function MembersListPage() {
   useEffect(() => {
     if (selectedMember) {
       setMemberForm(mapMemberToForm(selectedMember))
+      setRegistrationForm(createRegistrationForm(selectedYear, selectedMember.member_category))
     } else {
-      setMemberForm(createEmptyMemberForm(selectedYear))
+      setMemberForm(createEmptyMemberForm())
+      setRegistrationForm(createRegistrationForm(selectedYear))
     }
   }, [selectedMember, selectedYear])
 
   function handleNewMember() {
     setSelectedMemberId(null)
-    setMemberForm(createEmptyMemberForm(selectedYear))
+    setMemberForm(createEmptyMemberForm())
+    setRegistrationForm(createRegistrationForm(selectedYear))
   }
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -102,7 +124,14 @@ export function MembersListPage() {
     if (!selectedMemberId) return
     const completed = await completeRegistrationMutation.mutateAsync({
       memberUuid: selectedMemberId,
-      payload: { year: selectedYear },
+      payload: {
+        year: selectedYear,
+        start_date: registrationForm.start_date,
+        end_date: registrationForm.end_date,
+        ...(registrationForm.registration_type ? { registration_type: Number(registrationForm.registration_type) } : {}),
+        status: Number(registrationForm.status),
+        ...(registrationForm.notes.trim() ? { notes: registrationForm.notes.trim() } : {}),
+      },
     })
     setSelectedMemberId(completed.uuid)
   }
@@ -189,6 +218,22 @@ export function MembersListPage() {
               setFilters({ ...filters, can_fly: value ? value === 'true' : undefined })
             }
           />
+          <SelectField
+            id="members-registration-state-filter"
+            label={t('filters.registration')}
+            options={[
+              { value: '', label: t('filters.all') },
+              { value: 'registered', label: t('filters.registered') },
+              { value: 'unregistered', label: t('filters.unregistered') },
+            ]}
+            value={filters.registration_state ?? ''}
+            onChange={(value) =>
+              setFilters({
+                ...filters,
+                registration_state: value ? (value as 'registered' | 'unregistered') : undefined,
+              })
+            }
+          />
         </CardContent>
       </Card>
 
@@ -229,6 +274,7 @@ export function MembersListPage() {
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <Pill active={member.is_registered_for_year}>{t('list.registered')}</Pill>
                     <Pill active={member.can_fly}>{t('list.canFly')}</Pill>
                     <Pill active={member.is_instructor}>{t('flags.instructor')}</Pill>
                     <Pill active={member.is_employee}>{t('flags.employee')}</Pill>
@@ -333,13 +379,6 @@ export function MembersListPage() {
                 onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })}
               />
               <TextField
-                id="member-last-registration-year"
-                label={t('form.registrationYear')}
-                type="number"
-                value={memberForm.last_registration_year}
-                onChange={(value) => setMemberForm({ ...memberForm, last_registration_year: value })}
-              />
-              <TextField
                 id="member-photo-url"
                 label={t('form.photoUrl')}
                 value={memberForm.photo_url}
@@ -415,6 +454,59 @@ export function MembersListPage() {
                   onChange={(checked) => setMemberForm({ ...memberForm, is_board_member: checked })}
                 />
               </div>
+              {selectedMemberId ? (
+                <div className="grid gap-3 rounded-shape-md border border-outline-variant bg-surface-variant p-4 md:col-span-2 md:grid-cols-2">
+                  <TextField
+                    id="member-registration-start-date"
+                    label={t('registrationPeriod.startDate')}
+                    type="date"
+                    value={registrationForm.start_date}
+                    onChange={(value) => setRegistrationForm({ ...registrationForm, start_date: value })}
+                  />
+                  <TextField
+                    id="member-registration-end-date"
+                    label={t('registrationPeriod.endDate')}
+                    type="date"
+                    value={registrationForm.end_date}
+                    onChange={(value) => setRegistrationForm({ ...registrationForm, end_date: value })}
+                  />
+                  <SelectField
+                    id="member-registration-type"
+                    label={t('registrationPeriod.type')}
+                    options={[
+                      { value: '', label: t('registrationPeriod.useMemberCategory') },
+                      { value: '1', label: t('categories.full') },
+                      { value: '2', label: t('categories.temporary') },
+                      { value: '3', label: t('categories.nonFlying') },
+                      { value: '4', label: t('categories.shortPeriod') },
+                      { value: '5', label: t('categories.externalPilot') },
+                      { value: '6', label: t('categories.volunteer') },
+                    ]}
+                    value={registrationForm.registration_type}
+                    onChange={(value) => setRegistrationForm({ ...registrationForm, registration_type: value })}
+                  />
+                  <SelectField
+                    id="member-registration-period-status"
+                    label={t('registrationPeriod.status')}
+                    options={[
+                      { value: '1', label: t('registrationPeriod.active') },
+                      { value: '2', label: t('registrationPeriod.cancelled') },
+                      { value: '3', label: t('registrationPeriod.superseded') },
+                    ]}
+                    value={registrationForm.status}
+                    onChange={(value) => setRegistrationForm({ ...registrationForm, status: value })}
+                  />
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="member-registration-notes">{t('registrationPeriod.notes')}</Label>
+                    <textarea
+                      id="member-registration-notes"
+                      className="min-h-20 w-full rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
+                      value={registrationForm.notes}
+                      onChange={(event) => setRegistrationForm({ ...registrationForm, notes: event.target.value })}
+                    />
+                  </div>
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2 md:col-span-2">
                 <Button
                   disabled={createMemberMutation.isPending || updateMemberMutation.isPending}

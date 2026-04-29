@@ -28,6 +28,7 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SectionHeader } from '../../../components/ui/section-header'
 import { useCapability } from '../../../auth/hooks/useCapability'
+import { useMembersQuery } from '../../members/api'
 import {
   useAccountingEntriesQuery,
   useAccountsQuery,
@@ -75,6 +76,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const journalsQuery = useJournalsQuery(canView)
   const accountsQuery = useAccountsQuery(canView)
   const modelsQuery = useAccountingEntryModelsQuery(canView)
+  const membersQuery = useMembersQuery({ search: '' })
 
   const [entryForm, setEntryForm] = useState<EntryFormState>(() => emptyEntryForm(today))
   const [selectedEntryUuid, setSelectedEntryUuid] = useState<string | null>(entryUuid)
@@ -91,6 +93,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const journals = journalsQuery.data ?? []
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
   const models = modelsQuery.data ?? []
+  const members = membersQuery.data?.filter((m) => m.is_active) ?? []
 
   // Derive a minimal filter to load the forced entry when a UUID is provided
   const forcedEntryFilters = useMemo(
@@ -199,12 +202,17 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
       journal_uuid: model.journal_uuid,
       reference: model.default_reference ?? prev.reference,
       description: model.description ?? model.name,
-      lines: model.lines.map((line) => ({
-        account_uuid: line.account_uuid,
-        debit: line.debit,
-        credit: line.credit,
-        description: line.description ?? '',
-      })),
+      lines: model.lines.map((line) => {
+        const debit = decimalOrZero(line.debit)
+        const credit = decimalOrZero(line.credit)
+        const amount = debit.greaterThan(0) ? debit : credit.negated()
+        return {
+          account_uuid: line.account_uuid,
+          amount: amount.toFixed(2),
+          description: line.description ?? '',
+          member_uuid: line.member_uuid ?? '',
+        }
+      }),
     }))
   }
 
@@ -224,8 +232,8 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
       description: `${t('journal.entries.pricing.generatedPrefix')} ${item.name}`,
       reference: item.name,
       lines: [
-        { account_uuid: priceDebitAccountUuid, debit: amount, credit: '0', description: item.name },
-        { account_uuid: item.gl_account_credit_uuid ?? '', debit: '0', credit: amount, description: item.name },
+        { account_uuid: priceDebitAccountUuid, amount: amount, description: item.name, member_uuid: '' },
+        { account_uuid: item.gl_account_credit_uuid ?? '', amount: new Decimal(amount).negated().toFixed(2), description: item.name, member_uuid: '' },
       ],
     }))
     setLocalError(null)
@@ -471,6 +479,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             title={t('journal.forms.linesTitle')}
             lines={entryForm.lines}
             accounts={accounts}
+            members={members}
             onChange={updateEntryLine}
             onAdd={() => setEntryForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}
             onRemove={(index) =>
