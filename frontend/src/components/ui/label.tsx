@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
 function Label({ className, ...props }: React.ComponentProps<'label'>) {
   return (
     <label
-      className={cn('text-sm font-medium leading-none text-slate-700', className)}
+      className={cn('text-sm font-medium leading-none text-on-surface', className)}
       {...props}
     />
   )

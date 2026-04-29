@@ -377,7 +377,7 @@ export function AssetsListPage() {
         <ImportDialog
           title={tCommon('import.button')}
           onUpload={(file) => importAssetsMutation.mutateAsync(file)}
-          sampleCsvHref="/docs/assets-sample.csv"
+          sampleCsvHref="/samples/assets-sample.csv"
           onClose={() => setShowImportDialog(false)}
         />
       )}

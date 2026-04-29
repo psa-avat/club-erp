@@ -906,7 +906,7 @@ export function MembersPage() {
         <ImportDialog
           title={tCommon('import.button')}
           onUpload={(file) => importMembersMutation.mutateAsync(file)}
-          sampleCsvHref="/docs/members-sample.csv"
+          sampleCsvHref="/samples/members-sample.csv"
           onClose={() => setShowImportDialog(false)}
         />
       )}

@@ -1,5 +1,73 @@
 @import 'tailwindcss';
 
+/* =============================================================
+   Design Token System — Material 3 inspired, Club ERP palette
+   Phase 2: tokens in @theme → utility classes (bg-primary,
+   text-on-surface, rounded-shape-md, shadow-surface-2, …)
+   AND exposed as CSS custom properties via the Tailwind @theme
+   mechanism (--color-primary, --radius-shape-sm, etc.)
+   ============================================================= */
+@theme {
+  /* --- Color Roles ----------------------------------------- */
+  --color-primary:                  #0f172a;  /* slate-900  */
+  --color-primary-hover:            #1e293b;  /* slate-800  */
+  --color-on-primary:               #ffffff;
+  --color-primary-container:        #f1f5f9;  /* slate-100  */
+  --color-on-primary-container:     #1e293b;  /* slate-800  */
+
+  --color-secondary:                #475569;  /* slate-600  */
+  --color-secondary-hover:          #334155;  /* slate-700  */
+  --color-on-secondary:             #ffffff;
+  --color-secondary-container:      #e2e8f0;  /* slate-200  */
+  --color-on-secondary-container:   #334155;  /* slate-700  */
+
+  --color-surface:                  #ffffff;
+  --color-surface-variant:          #f8fafc;  /* slate-50   */
+  --color-surface-container:        #f1f5f9;  /* slate-100  */
+  --color-surface-container-high:   #e2e8f0;  /* slate-200  */
+  --color-on-surface:               #0f172a;  /* slate-900  */
+  --color-on-surface-variant:       #64748b;  /* slate-500  */
+
+  --color-outline:                  #cbd5e1;  /* slate-300  */
+  --color-outline-variant:          #e2e8f0;  /* slate-200  */
+
+  --color-error:                    #e11d48;  /* rose-600   */
+  --color-error-hover:              #f43f5e;  /* rose-500   */
+  --color-on-error:                 #ffffff;
+  --color-error-container:          #fff1f2;  /* rose-50    */
+  --color-on-error-container:       #be123c;  /* rose-700   */
+
+  --color-success:                  #15803d;  /* green-700  */
+  --color-on-success:               #ffffff;
+  --color-success-container:        #f0fdf4;  /* green-50   */
+  --color-on-success-container:     #166534;  /* green-800  */
+
+  --color-warning:                  #b45309;  /* amber-700  */
+  --color-on-warning:               #ffffff;
+  --color-warning-container:        #fffbeb;  /* amber-50   */
+  --color-on-warning-container:     #92400e;  /* amber-800  */
+
+  --color-info:                     #0369a1;  /* sky-700    */
+  --color-on-info:                  #ffffff;
+  --color-info-container:           #f0f9ff;  /* sky-50     */
+  --color-on-info-container:        #075985;  /* sky-800    */
+
+  /* --- Shape Scale ----------------------------------------- */
+  --radius-shape-xs:   0.25rem;    /* ~rounded    */
+  --radius-shape-sm:   0.375rem;   /* ~rounded-md */
+  --radius-shape-md:   0.5rem;     /* ~rounded-lg */
+  --radius-shape-lg:   0.75rem;    /* ~rounded-xl */
+  --radius-shape-xl:   1rem;       /* ~rounded-2xl */
+  --radius-shape-full: 9999px;
+
+  /* --- Elevation / Shadow Scale ---------------------------- */
+  --shadow-surface-0: none;
+  --shadow-surface-1: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-surface-2: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-surface-3: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-surface-4: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
 :root {
   font-family: 'Manrope', 'Segoe UI', sans-serif;
   font-synthesis: none;

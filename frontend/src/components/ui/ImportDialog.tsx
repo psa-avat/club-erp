@@ -81,12 +81,12 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+      <div className="w-full max-w-2xl rounded-shape-md bg-surface p-6 shadow-surface-4">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <h2 className="text-lg font-semibold text-on-surface">{title}</h2>
           <button
-            className="text-slate-400 hover:text-slate-600"
+            className="text-on-surface-variant hover:text-on-surface"
             onClick={onClose}
             aria-label={t('import.close')}
           >
@@ -96,7 +96,7 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
 
         {/* Sample CSV link */}
         {sampleCsvHref && (
-          <p className="mb-3 text-sm text-slate-500">
+          <p className="mb-3 text-sm text-on-surface-variant">
             {t('import.sampleDownloadPrefix')}{' '}
             <a
               href={sampleCsvHref}
@@ -124,14 +124,14 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
           >
             {t('import.chooseFile')}
           </Button>
-          <span className="text-sm text-slate-600">
+          <span className="text-sm text-on-surface-variant">
             {selectedFile ? selectedFile.name : t('import.noFileChosen')}
           </span>
         </div>
 
         {/* Upload error */}
         {uploadError && (
-          <p className="mb-3 rounded bg-rose-50 p-2 text-sm text-rose-700">
+          <p className="mb-3 rounded-shape-xs bg-error-container p-2 text-sm text-on-error-container">
             {uploadError}
           </p>
         )}
@@ -139,21 +139,21 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
         {/* Results */}
         {result && (
           <div className="mb-4 space-y-2">
-            <p className="text-sm text-slate-700">
-              <span className="font-medium text-green-700">{t('import.created')}: {result.created}</span>
+            <p className="text-sm text-on-surface">
+              <span className="font-medium text-success">{t('import.created')}: {result.created}</span>
               {' · '}
-              <span className="font-medium text-amber-600">{t('import.skipped')}: {result.skipped}</span>
+              <span className="font-medium text-warning">{t('import.skipped')}: {result.skipped}</span>
               {result.errors.length > 0 && (
                 <>
                   {' · '}
-                  <span className="font-medium text-rose-600">{t('import.errors')}: {result.errors.length}</span>
+                  <span className="font-medium text-error">{t('import.errors')}: {result.errors.length}</span>
                 </>
               )}
             </p>
             {result.errors.length > 0 && (
-              <div className="max-h-48 overflow-auto rounded border border-rose-200">
+              <div className="max-h-48 overflow-auto rounded-shape-xs border border-error-container">
                 <table className="w-full text-xs">
-                  <thead className="bg-rose-50 text-left">
+                  <thead className="bg-error-container text-left">
                     <tr>
                       <th className="px-2 py-1 font-medium">{t('import.colRow')}</th>
                       <th className="px-2 py-1 font-medium">{t('import.colField')}</th>
@@ -162,7 +162,7 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
                   </thead>
                   <tbody>
                     {result.errors.map((err, i) => (
-                      <tr key={i} className="border-t border-rose-100">
+                      <tr key={i} className="border-t border-outline-variant">
                         <td className="px-2 py-1">{err.row}</td>
                         <td className="px-2 py-1">{err.field ?? '—'}</td>
                         <td className="px-2 py-1">{err.message}</td>

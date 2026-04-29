@@ -1,0 +1,4 @@
+first_name,last_name,member_category,genre,email,phone,date_of_birth,status,registration_status,is_instructor,can_fly,ffvp_id,account_id
+Jean,Dupont,1,M,jean.dupont@example.com,+33612345678,1980-04-15,1,1,false,true,FFVP-001,MBR-001
+Marie,Martin,2,F,marie.martin@example.com,+33698765432,1990-08-22,1,1,false,false,,MBR-002
+Pierre,Bernard,1,M,pierre.bernard@example.com,,1975-11-03,1,0,true,true,FFVP-002,MBR-003
