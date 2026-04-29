@@ -21,7 +21,9 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
+import { Banner } from '../../../components/ui/banner'
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
@@ -67,6 +69,7 @@ export function JournalTemplatesScreen() {
   const [selectedModelUuid, setSelectedModelUuid] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [confirmDeleteUuid, setConfirmDeleteUuid] = useState<string | null>(null)
 
   const createModelMutation = useCreateAccountingEntryModelMutation()
   const updateModelMutation = useUpdateAccountingEntryModelMutation()
@@ -136,7 +139,6 @@ export function JournalTemplatesScreen() {
   }
 
   async function handleDeleteModel(templateUuid: string) {
-    if (!window.confirm(t('journal.models.confirmDelete'))) return
     setLocalError(null)
     try {
       await deleteModelMutation.mutateAsync(templateUuid)
@@ -148,8 +150,8 @@ export function JournalTemplatesScreen() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('journal.noPermission')}</p>
+      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+        <p className="text-sm text-on-surface-variant">{t('journal.noPermission')}</p>
       </section>
     )
   }
@@ -165,14 +167,28 @@ export function JournalTemplatesScreen() {
 
   return (
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
+      <ConfirmDialog
+        open={confirmDeleteUuid !== null}
+        title={t('journal.models.confirmDeleteTitle')}
+        body={t('journal.models.confirmDelete')}
+        confirmLabel={t('journal.models.deleteModel')}
+        variant="destructive"
+        onConfirm={() => {
+          if (confirmDeleteUuid) void handleDeleteModel(confirmDeleteUuid)
+          setConfirmDeleteUuid(null)
+        }}
+        onCancel={() => setConfirmDeleteUuid(null)}
+      />
       {anyError && <Alert>{anyError}</Alert>}
-      {successMessage && <Alert className="border-green-200 bg-green-50 text-green-800">{successMessage}</Alert>}
+      {successMessage && (
+        <Banner variant="success" message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      )}
 
       <div className="space-y-4">
         {/* Template editor */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-lg font-semibold text-on-surface">
               {selectedModelUuid ? t('journal.models.editTitle') : t('journal.models.newTitle')}
             </h2>
             <Button type="button" variant="ghost" onClick={resetModelForm}>
@@ -181,7 +197,7 @@ export function JournalTemplatesScreen() {
           </div>
 
           {!canManageModels && (
-            <p className="mt-3 text-sm text-slate-500">{t('journal.models.noPermission')}</p>
+            <p className="mt-3 text-sm text-on-surface-variant">{t('journal.models.noPermission')}</p>
           )}
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -206,7 +222,7 @@ export function JournalTemplatesScreen() {
               <select
                 value={modelForm.journal_uuid}
                 onChange={(event) => setModelForm((prev) => ({ ...prev, journal_uuid: event.target.value }))}
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
                 disabled={!canManageModels}
               >
                 <option value="">{t('journal.entries.selectJournal')}</option>
@@ -220,7 +236,7 @@ export function JournalTemplatesScreen() {
               <select
                 value={modelForm.recurrence_type}
                 onChange={(event) => setModelForm((prev) => ({ ...prev, recurrence_type: Number(event.target.value) }))}
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
                 disabled={!canManageModels}
               >
                 {RECURRENCE_OPTIONS.map((value) => (
@@ -287,7 +303,7 @@ export function JournalTemplatesScreen() {
               {selectedModelUuid && (
                 <Button
                   type="button" variant="destructive"
-                  onClick={() => void handleDeleteModel(selectedModelUuid)}
+                  onClick={() => setConfirmDeleteUuid(selectedModelUuid)}
                 >
                   {t('journal.models.deleteModel')}
                 </Button>
@@ -297,21 +313,21 @@ export function JournalTemplatesScreen() {
         </div>
 
         {/* Template list */}
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">{t('journal.models.listTitle')}</h2>
-          <p className="mt-1 text-sm text-slate-500">{t('journal.models.listDescription')}</p>
+        <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+          <h2 className="text-lg font-semibold text-on-surface">{t('journal.models.listTitle')}</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">{t('journal.models.listDescription')}</p>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {modelsQuery.isLoading ? (
-              <p className="text-sm text-slate-500">{t('settings.loading')}</p>
+              <p className="text-sm text-on-surface-variant">{t('settings.loading')}</p>
             ) : models.length === 0 ? (
-              <p className="text-sm text-slate-500">{t('journal.models.empty')}</p>
+              <p className="text-sm text-on-surface-variant">{t('journal.models.empty')}</p>
             ) : (
               models.map((model) => (
-                <div key={model.uuid} className="rounded-lg border border-slate-200 p-4">
+                <div key={model.uuid} className="rounded-shape-md border border-outline-variant p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{model.code} · {model.name}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-sm font-semibold text-on-surface">{model.code} · {model.name}</p>
+                      <p className="text-xs text-on-surface-variant">
                         {recurrenceLabel(model.recurrence_type, t)} ·{' '}
                         {model.is_active ? t('journal.models.statusActive') : t('journal.models.statusInactive')}
                       </p>
@@ -320,8 +336,8 @@ export function JournalTemplatesScreen() {
                       {t('journal.models.editAction')}
                     </Button>
                   </div>
-                  {model.description && <p className="mt-2 text-sm text-slate-600">{model.description}</p>}
-                  <div className="mt-3 text-xs text-slate-500">
+                  {model.description && <p className="mt-2 text-sm text-on-surface-variant">{model.description}</p>}
+                  <div className="mt-3 text-xs text-on-surface-variant">
                     {model.lines.length} {t('journal.entries.linesCount')}
                   </div>
                 </div>

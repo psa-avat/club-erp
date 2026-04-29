@@ -387,6 +387,8 @@ export const en = {
         reverseReason: 'Reversal reason',
         reverseAction: 'Create reversal',
         modelSourceTitle: 'Prefill from a model',
+        helpersTitle: 'Prefill tools',
+        coreTitle: 'Journal entry',
         selectModel: 'Select a model',
         applyModel: 'Apply model',
         pricing: {
@@ -417,6 +419,7 @@ export const en = {
         saveModel: 'Save model',
         saveChanges: 'Save changes',
         deleteModel: 'Delete model',
+        confirmDeleteTitle: 'Delete model?',
         confirmDelete: 'Delete this model? This action is irreversible.',
         saving: 'Saving...',
         saved: 'Model saved.',

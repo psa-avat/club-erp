@@ -387,6 +387,8 @@ export const fr = {
         reverseReason: 'Motif de contrepassation',
         reverseAction: 'Créer la contrepassation',
         modelSourceTitle: 'Préremplir depuis un modèle',
+        helpersTitle: 'Outils de pré-remplissage',
+        coreTitle: 'Écriture comptable',
         selectModel: 'Sélectionnez un modèle',
         applyModel: 'Appliquer le modèle',
         pricing: {
@@ -417,6 +419,7 @@ export const fr = {
         saveModel: 'Enregistrer le modèle',
         saveChanges: 'Enregistrer les modifications',
         deleteModel: 'Supprimer le modèle',
+        confirmDeleteTitle: 'Supprimer le modèle ?',
         confirmDelete: 'Supprimer ce modèle ? Cette action est irréversible.',
         saving: 'Enregistrement...',
         saved: 'Modèle enregistré.',

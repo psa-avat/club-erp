@@ -193,9 +193,9 @@ export function entryStateLabel(value: number, t: (key: string) => string): stri
 }
 
 export function entryStateBadgeClass(state: number): string {
-  if (state === ENTRY_STATE_POSTED) return 'bg-green-100 text-green-800'
-  if (state === 3) return 'bg-red-100 text-red-700'
-  return 'bg-amber-100 text-amber-800'
+  if (state === ENTRY_STATE_POSTED) return 'bg-success-container text-on-success-container'
+  if (state === 3) return 'bg-error-container text-on-error-container'
+  return 'bg-warning-container text-on-warning-container'
 }
 
 // ---------------------------------------------------------------------------
@@ -235,32 +235,29 @@ export function LineEditor({
   const summary = totals(lines)
   const balanced = isBalanced(lines)
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
-          {t('journal.forms.addLine')}
-        </Button>
+        <h3 className="text-sm font-semibold text-on-surface">{title}</h3>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50">
+      <div className="overflow-x-auto rounded-shape-md border border-outline-variant bg-surface">
+        <table className="min-w-full divide-y divide-outline-variant text-sm">
+          <thead className="bg-surface-container">
             <tr>
-              <th className="px-3 py-2 text-left font-medium text-slate-700">{t('journal.forms.account')}</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-700">{t('journal.forms.debit')}</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-700">{t('journal.forms.credit')}</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-700">{t('journal.forms.lineDescription')}</th>
-              <th className="px-3 py-2 text-left font-medium text-slate-700">{t('journal.forms.actions')}</th>
+              <th className="sticky left-0 z-10 bg-surface-container px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.account')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.debit')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.credit')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.lineDescription')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.actions')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-outline-variant">
             {lines.map((line, index) => (
               <tr key={index}>
-                <td className="px-3 py-2">
+                <td className="sticky left-0 z-10 bg-surface px-3 py-2">
                   <select
                     value={line.account_uuid}
                     onChange={(event) => onChange(index, { account_uuid: event.target.value })}
-                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"
+                    className="h-9 w-48 min-w-[12rem] rounded-shape-sm border border-outline bg-surface px-2 text-sm"
                   >
                     <option value="">{t('journal.forms.selectAccount')}</option>
                     {accounts.map((account) => (
@@ -285,17 +282,23 @@ export function LineEditor({
               </tr>
             ))}
           </tbody>
-          <tfoot className="bg-slate-50 text-xs text-slate-600">
+          <tfoot className="bg-surface-container text-xs text-on-surface-variant">
             <tr>
               <td className="px-3 py-2 font-medium">{t('journal.forms.total')}</td>
               <td className="px-3 py-2 font-mono">{summary.debit}</td>
               <td className="px-3 py-2 font-mono">{summary.credit}</td>
-              <td className={`px-3 py-2 font-medium ${balanced ? 'text-green-700' : 'text-red-600'}`} colSpan={2}>
+              <td className={`px-3 py-2 font-medium ${balanced ? 'text-success' : 'text-error'}`} colSpan={2}>
                 {balanced ? t('journal.forms.balanced') : t('journal.forms.unbalanced')}
               </td>
             </tr>
           </tfoot>
         </table>
+      </div>
+      {/* FA-03: duplicate add-line button at bottom so it's reachable after many rows */}
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
+          {t('journal.forms.addLine')}
+        </Button>
       </div>
     </div>
   )
@@ -324,20 +327,20 @@ export function JournalPageShell({
 
   const linkClass = (active: boolean) =>
     [
-      'rounded-lg border px-3 py-2 text-sm transition-colors',
+      'rounded-shape-sm border px-3 py-2 text-sm transition-colors',
       active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+        ? 'border-primary bg-primary text-on-primary'
+        : 'border-outline-variant bg-surface-variant text-on-surface hover:bg-surface-container',
     ].join(' ')
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
         <div className="mb-2">
-          <Link to="/banque" className="text-xs text-slate-500 hover:text-slate-800">← {t('journal.back')}</Link>
+          <Link to="/banque" className="text-xs text-on-surface-variant hover:text-on-surface">← {t('journal.back')}</Link>
         </div>
-        <h1 className="text-xl font-semibold text-slate-900">{t('journal.title')}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t('journal.description')}</p>
+        <h1 className="text-xl font-semibold text-on-surface">{t('journal.title')}</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">{t('journal.description')}</p>
         <nav className="mt-4 flex flex-wrap gap-2" aria-label="Journal navigation">
           <Link
             to="/banque/journal/entries"
@@ -392,10 +395,10 @@ export function JournalSubNav({
 }) {
   const linkClass = (active: boolean) =>
     [
-      'rounded-lg border px-3 py-2 text-sm transition-colors',
+      'rounded-shape-sm border px-3 py-2 text-sm transition-colors',
       active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100',
+        ? 'border-primary bg-primary text-on-primary'
+        : 'border-outline-variant bg-surface-variant text-on-surface hover:bg-surface-container',
     ].join(' ')
 
   return (

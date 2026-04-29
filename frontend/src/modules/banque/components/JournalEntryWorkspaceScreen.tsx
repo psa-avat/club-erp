@@ -22,9 +22,11 @@ import { useTranslation } from 'react-i18next'
 import Decimal from 'decimal.js'
 
 import { Alert } from '../../../components/ui/alert'
+import { Banner } from '../../../components/ui/banner'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { SectionHeader } from '../../../components/ui/section-header'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAccountingEntriesQuery,
@@ -299,8 +301,8 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('journal.noPermission')}</p>
+      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+        <p className="text-sm text-on-surface-variant">{t('journal.noPermission')}</p>
       </section>
     )
   }
@@ -317,12 +319,14 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   return (
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
       {anyError && <Alert>{anyError}</Alert>}
-      {successMessage && <Alert className="border-green-200 bg-green-50 text-green-800">{successMessage}</Alert>}
+      {successMessage && (
+        <Banner variant="success" message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      )}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-lg font-semibold text-on-surface">
               {selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}
             </h2>
             {selectedEntry && (
@@ -336,14 +340,17 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
           </Button>
         </div>
 
-        {/* Prefill helpers */}
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">{t('journal.entries.modelSourceTitle')}</h3>
+        {/* Prefill helpers — FA-01: visually separated from core entry */}
+        <div className="mt-4 border-t border-outline-variant pt-4">
+          <SectionHeader title={t('journal.entries.helpersTitle')} className="mb-3" />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
+            <h3 className="text-sm font-semibold text-on-surface">{t('journal.entries.modelSourceTitle')}</h3>
             <select
               value={applyModelUuid}
               onChange={(event) => setApplyModelUuid(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
               <option value="">{t('journal.entries.selectModel')}</option>
               {models.filter((model) => model.is_active).map((model) => (
@@ -355,12 +362,12 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             </Button>
           </div>
 
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">{t('journal.entries.pricing.title')}</h3>
+          <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
+            <h3 className="text-sm font-semibold text-on-surface">{t('journal.entries.pricing.title')}</h3>
             <select
               value={selectedPriceVersionUuid}
               onChange={(event) => { setSelectedPriceVersionUuid(event.target.value); setSelectedPriceItemUuid('') }}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
               <option value="">{t('journal.entries.pricing.selectVersion')}</option>
               {pricingVersions.map((version) => (
@@ -370,7 +377,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <select
               value={selectedPriceItemUuid}
               onChange={(event) => setSelectedPriceItemUuid(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
               <option value="">{t('journal.entries.pricing.selectItem')}</option>
               {pricingItems.map((item) => (
@@ -386,7 +393,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
               <select
                 value={priceDebitAccountUuid}
                 onChange={(event) => setPriceDebitAccountUuid(event.target.value)}
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
               >
                 <option value="">{t('journal.entries.pricing.selectDebit')}</option>
                 {accounts.map((account) => (
@@ -404,14 +411,17 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
           </div>
         </div>
 
-        {/* Entry header fields */}
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        {/* Core entry — FA-01: visually separated from helpers */}
+        <div className="mt-4 border-t border-outline-variant pt-4">
+          <SectionHeader title={t('journal.entries.coreTitle')} className="mb-3" />
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-1">
             <Label>{t('journal.entries.fiscalYear')}</Label>
             <select
               value={entryForm.fiscal_year_uuid}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: event.target.value }))}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
               <option value="">{t('journal.entries.selectFiscalYear')}</option>
               {fiscalYears.map((year) => (
@@ -424,7 +434,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <select
               value={entryForm.journal_uuid}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, journal_uuid: event.target.value }))}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
               <option value="">{t('journal.entries.selectJournal')}</option>
               {journals.map((journal) => (
@@ -492,7 +502,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
         </div>
 
         {selectedEntry && selectedEntry.state === ENTRY_STATE_POSTED && (
-          <div className="mt-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="mt-4 space-y-2 rounded-shape-md border border-warning-container bg-warning-container p-4">
             <Label>{t('journal.entries.reverseReason')}</Label>
             <div className="flex flex-wrap gap-2">
               <Input
