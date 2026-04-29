@@ -520,6 +520,7 @@ export const en = {
   },
   assets: {
     noPermission: 'You do not have permission to access this module.',
+    delete: 'Delete',
     list: {
       title: 'Aircraft & Assets',
       description: 'Browse club aircraft and equipment.',
@@ -534,6 +535,7 @@ export const en = {
       ownership: 'Ownership',
       allOwnership: 'All',
       activeOnly: 'Active only',
+      reset: 'Reset',
     },
     status: {
       operational: 'Operational',
@@ -647,6 +649,7 @@ export const en = {
       saving: 'Saving...',
       cancel: 'Cancel',
       confirmDeleteVersion: 'Delete version "{{name}}"?',
+      confirmDeleteVersionTitle: 'Delete version?',
       items: 'Pricing items',
       addItem: 'Add item',
       noItems: 'No pricing items.',
@@ -672,6 +675,7 @@ export const en = {
       removeTier: 'Remove',
       noTiers: 'No tiers configured.',
       confirmDeleteItem: 'Delete this pricing item?',
+      confirmDeleteItemTitle: 'Delete item?',
       unitFlightTime: 'Flight time',
       unitEngineTimeMin: 'Engine time (min)',
       unitEngineTime1_100h: 'Engine time (1/100 h)',

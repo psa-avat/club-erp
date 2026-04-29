@@ -48,10 +48,10 @@ const STATUS_LABELS: Record<number, string> = {
 }
 
 const STATUS_COLORS: Record<number, string> = {
-  1: 'bg-green-100 text-green-800',
-  2: 'bg-amber-100 text-amber-800',
-  3: 'bg-red-100 text-red-800',
-  4: 'bg-slate-100 text-slate-500',
+  1: 'bg-success-container text-on-success-container',
+  2: 'bg-warning-container text-on-warning-container',
+  3: 'bg-error-container text-on-error-container',
+  4: 'bg-surface-container text-on-surface-variant',
 }
 
 const NEXT_STATUSES: Record<number, number[]> = {
@@ -95,7 +95,7 @@ function StatusTimeline({
 }) {
   if (history.length === 0) {
     return (
-      <p className="text-xs text-slate-500">{t('detail.noHistory')}</p>
+      <p className="text-xs text-on-surface-variant">{t('detail.noHistory')}</p>
     )
   }
 
@@ -104,16 +104,15 @@ function StatusTimeline({
       {[...history].reverse().map((entry) => (
         <li key={entry.uuid} className="flex items-start gap-3">
           <span
-            className={`mt-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[entry.status] ?? 'bg-slate-100 text-slate-500'}`}
+            className={`mt-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[entry.status] ?? 'bg-surface-container text-on-surface-variant'}`}
           >
             {t(`status.${STATUS_LABELS[entry.status] ?? 'unknown'}`)}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-slate-500">
-              {formatDate(entry.changed_at)}
+            <p className="text-xs text-on-surface-variant">
               {entry.changed_by != null && ` · #${entry.changed_by}`}
             </p>
-            {entry.reason && <p className="text-xs text-slate-700">{entry.reason}</p>}
+            {entry.reason && <p className="text-xs text-on-surface">{entry.reason}</p>}
           </div>
         </li>
       ))}
@@ -141,13 +140,13 @@ function TransitionForm({
   if (nextStatuses.length === 0) return null
 
   return (
-    <div className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
+    <div className="mt-4 grid gap-3 rounded-shape-md border border-outline-variant bg-surface-variant p-4 sm:grid-cols-3">
       <div className="space-y-1">
         <Label className="text-xs">{t('detail.newStatus')}</Label>
         <select
           value={status}
           onChange={(e) => setStatus(Number(e.target.value))}
-          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm text-on-surface outline-none focus:border-primary"
         >
           {nextStatuses.map((s) => (
             <option key={s} value={s}>
@@ -182,9 +181,9 @@ function TransitionForm({
 
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
-    <div className="flex justify-between gap-2 border-b border-slate-100 py-1.5 last:border-0">
-      <span className="text-xs text-slate-500">{label}</span>
-      <span className="text-xs font-medium text-slate-800">{value ?? '�?"'}</span>
+    <div className="flex justify-between gap-2 border-b border-outline-variant py-1.5 last:border-0">
+      <span className="text-xs text-on-surface-variant">{label}</span>
+      <span className="text-xs font-medium text-on-surface">{value ?? '—'}</span>
     </div>
   )
 }
@@ -275,16 +274,16 @@ export function AssetDetailPage() {
 
   if (assetQuery.isLoading) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('states.loading')}</p>
+      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+        <p className="text-sm text-on-surface-variant">{t('states.loading')}</p>
       </section>
     )
   }
 
   if (!asset) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('states.notFound')}</p>
+      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+        <p className="text-sm text-on-surface-variant">{t('states.notFound')}</p>
       </section>
     )
   }
@@ -298,19 +297,19 @@ export function AssetDetailPage() {
   return (
     <section className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <button
               type="button"
-              className="mb-2 flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+              className="mb-2 flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface"
               onClick={() => navigate('/assets')}
             >
               <ArrowLeft className="h-3 w-3" />
               {t('actions.backToList')}
             </button>
-            <h1 className="text-xl font-semibold text-slate-900">{asset.name}</h1>
-            <p className="mt-0.5 text-sm text-slate-500">{asset.code}</p>
+            <h1 className="text-xl font-semibold text-on-surface">{asset.name}</h1>
+            <p className="mt-0.5 text-sm text-on-surface-variant">{asset.code}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${currentStatusColor}`}>
@@ -419,8 +418,8 @@ export function AssetDetailPage() {
 
       {/* Lifecycle / status transitions */}
       {canManage && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('detail.lifecycle')}</h2>
+        <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+          <h2 className="mb-4 text-sm font-semibold text-on-surface-variant">{t('detail.lifecycle')}</h2>
           <StatusTimeline history={statusHistory} t={t} />
           <TransitionForm
             currentStatus={asset.status}

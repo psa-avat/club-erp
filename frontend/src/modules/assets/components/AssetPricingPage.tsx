@@ -26,6 +26,7 @@ import { Plus, Pencil, Trash2, Check, X, ArrowLeft } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
@@ -75,9 +76,9 @@ function extractError(e: unknown, fallback: string): string {
 }
 
 function versionStatusClass(status: number): string {
-  if (status === VERSION_STATUS_DRAFT) return 'bg-yellow-100 text-yellow-800'
-  if (status === VERSION_STATUS_ACTIVE) return 'bg-green-100 text-green-800'
-  return 'bg-slate-100 text-slate-500'
+  if (status === VERSION_STATUS_DRAFT) return 'bg-warning-container text-on-warning-container'
+  if (status === VERSION_STATUS_ACTIVE) return 'bg-success-container text-on-success-container'
+  return 'bg-surface-container text-on-surface-variant'
 }
 
 function timelineBar(fy: FiscalYear, version: AssetPricingVersion) {
@@ -149,7 +150,7 @@ function VersionForm({
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-4">
+    <div className="grid gap-3 rounded-shape-md border border-outline-variant bg-surface-variant p-4 sm:grid-cols-4">
       <div className="space-y-1 sm:col-span-2">
         <Label className="text-xs">{t('pricing.versionName')}</Label>
         <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
@@ -167,7 +168,7 @@ function VersionForm({
         <select
           value={form.status}
           onChange={(e) => set('status', Number(e.target.value))}
-          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm text-on-surface outline-none focus:border-primary"
         >
           <option value={VERSION_STATUS_DRAFT}>{t('pricing.statusDraft')}</option>
           <option value={VERSION_STATUS_ACTIVE}>{t('pricing.statusActive')}</option>
@@ -180,17 +181,17 @@ function VersionForm({
           type="checkbox"
           checked={form.use_pack}
           onChange={(e) => set('use_pack', e.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-slate-900"
+          className="h-4 w-4 rounded border-outline"
         />
         <Label htmlFor="use-pack" className="text-xs">{t('pricing.usePack')}</Label>
-        <span className="text-[11px] text-slate-500">{t('pricing.usePackHelp')}</span>
+        <span className="text-[11px] text-on-surface-variant">{t('pricing.usePackHelp')}</span>
       </div>
       <div className="flex items-end gap-2 sm:col-span-3">
         <Button className="h-8 rounded-md px-3 text-xs" onClick={() => onSave(form)} disabled={saving || !form.name || !form.from_date}>
           <Check className="mr-1 h-3 w-3" />
           {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
-        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" onClick={onCancel}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
           {t('pricing.cancel')}
         </Button>
@@ -297,7 +298,7 @@ function PricingItemForm({
   const valid = form.name.trim() !== '' && form.base_price !== ''
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-variant p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
           <Label className="text-xs">{t('pricing.itemName')} *</Label>
@@ -308,7 +309,7 @@ function PricingItemForm({
           <select
             value={form.unit}
             onChange={(e) => set('unit', Number(e.target.value))}
-            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm text-on-surface outline-none focus:border-primary"
           >
             {Object.entries(UNIT_LABELS).map(([k, label]) => (
               <option key={k} value={Number(k)}>
@@ -328,7 +329,7 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-slate-500">{t('pricing.basePriceHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.basePriceHelp')}</p>
         </div>
         {usePack && (
           <div className="space-y-1">
@@ -342,7 +343,7 @@ function PricingItemForm({
               placeholder="0.00"
               className="h-8 text-sm font-mono"
             />
-            <p className="text-[11px] text-slate-500">{t('pricing.packPriceHelp')}</p>
+            <p className="text-[11px] text-on-surface-variant">{t('pricing.packPriceHelp')}</p>
           </div>
         )}
         <div className="space-y-1">
@@ -357,28 +358,28 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-slate-500">{t('pricing.ageDiscountPercentHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.ageDiscountPercentHelp')}</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.glAccountCredit')}</Label>
           <select
             value={form.gl_account_credit_uuid}
             onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
-            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm text-on-surface outline-none focus:border-primary"
           >
             <option value="">{t('pricing.noAccount')}</option>
             {revenueAccounts.map((a) => (
               <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-500">{t('pricing.glAccountCreditHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.glAccountCreditHelp')}</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.flightType')}</Label>
           <select
             value={form.flight_type_uuid}
             onChange={(e) => set('flight_type_uuid', e.target.value)}
-            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm text-on-surface outline-none focus:border-primary"
           >
             <option value="">{t('pricing.noFlightType')}</option>
             {flightTypes.map((ft) => (
@@ -391,13 +392,13 @@ function PricingItemForm({
       {/* Progressive price tiers */}
       <div className="space-y-2">
         <Label className="text-xs">{t('pricing.tiers')}</Label>
-        <p className="text-[11px] text-slate-500">{t('pricing.tiersHelp')}</p>
+        <p className="text-[11px] text-on-surface-variant">{t('pricing.tiersHelp')}</p>
         {form.tiers.length === 0 && (
-          <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>
+          <p className="text-xs text-on-surface-variant">{t('pricing.noTiers')}</p>
         )}
         {form.tiers.length > 0 && (
           <div className="space-y-1">
-            <div className={`grid gap-2 text-xs font-medium text-slate-500 ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
+            <div className={`grid gap-2 text-xs font-medium text-on-surface-variant ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
               <span>{t('pricing.tierFrom')}</span>
               <span>{t('pricing.tierPrice')}</span>
               {usePack && <span>{t('pricing.tierPackPrice')}</span>}
@@ -436,7 +437,7 @@ function PricingItemForm({
                 )}
                 <button
                   type="button"
-                  className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
                   onClick={() => removeTier(i)}
                 >
                   <X className="h-3.5 w-3.5" />
@@ -445,7 +446,7 @@ function PricingItemForm({
             ))}
           </div>
         )}
-        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" type="button" onClick={addTier}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container" type="button" onClick={addTier}>
           <Plus className="mr-1 h-3 w-3" />
           {t('pricing.addTier')}
         </Button>
@@ -456,7 +457,7 @@ function PricingItemForm({
           <Check className="mr-1 h-3 w-3" />
           {saving ? t('pricing.saving') : t('pricing.save')}
         </Button>
-        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" onClick={onCancel}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
           {t('pricing.cancel')}
         </Button>
@@ -492,6 +493,7 @@ function PricingItemsPanel({
   const [showForm, setShowForm] = useState(false)
   const [editingItem, setEditingItem] = useState<PricingItem | null>(null)
   const [itemError, setItemError] = useState<string | null>(null)
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<PricingItem | null>(null)
 
   async function handleCreate(form: ItemFormState) {
     try {
@@ -515,7 +517,6 @@ function PricingItemsPanel({
   }
 
   async function handleDelete(item: PricingItem) {
-    if (!window.confirm(t('pricing.confirmDeleteItem'))) return
     try {
       await deleteMutation.mutateAsync(item.uuid)
       setItemError(null)
@@ -528,18 +529,18 @@ function PricingItemsPanel({
   const editable = canEdit && !isLocked && version.status === VERSION_STATUS_DRAFT
 
   return (
-    <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+    <div className="mt-4 space-y-3 border-t border-outline-variant pt-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-slate-700">{t('pricing.items')}</h3>
+        <h3 className="text-xs font-semibold text-on-surface-variant">{t('pricing.items')}</h3>
         {editable && !showForm && !editingItem && (
-          <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-slate-700 hover:bg-slate-100" onClick={() => setShowForm(true)}>
+          <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container" onClick={() => setShowForm(true)}>
             <Plus className="mr-1 h-3 w-3" />
             {t('pricing.addItem')}
           </Button>
         )}
       </div>
 
-      {itemError && <p className="text-xs text-red-600">{itemError}</p>}
+      {itemError && <p className="text-xs text-error">{itemError}</p>}
 
       {showForm && (
         <PricingItemForm
@@ -555,9 +556,9 @@ function PricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-slate-500">{t('states.loading')}</p>
+        <p className="text-xs text-on-surface-variant">{t('states.loading')}</p>
       ) : items.length === 0 && !showForm ? (
-        <p className="rounded border border-dashed border-slate-200 py-3 text-center text-xs text-slate-500">
+        <p className="rounded-shape-sm border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
           {t('pricing.noItems')}
         </p>
       ) : (
@@ -578,11 +579,11 @@ function PricingItemsPanel({
             ) : (
               <div
                 key={item.uuid}
-                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2"
+                className="flex items-center gap-3 rounded-shape-sm border border-outline-variant bg-surface px-4 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{item.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
+                  <p className="text-xs text-on-surface-variant">
                     {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
                     {formatPrice(item.base_price)}
                     {item.pack_price && ` · Pack: ${formatPrice(item.pack_price)}`}
@@ -593,15 +594,15 @@ function PricingItemsPanel({
                   <div className="flex shrink-0 gap-1">
                     <button
                       type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
                       onClick={() => setEditingItem(item)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                      onClick={() => handleDelete(item)}
+                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                      onClick={() => setConfirmDeleteItem(item)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -611,6 +612,16 @@ function PricingItemsPanel({
             ),
           )}
         </div>
+      )}
+      {confirmDeleteItem && (
+        <ConfirmDialog
+          open={!!confirmDeleteItem}
+          title={t('pricing.confirmDeleteItemTitle')}
+          body={t('pricing.confirmDeleteItem')}
+          confirmLabel={t('delete')}
+          onConfirm={() => { setConfirmDeleteItem(null); handleDelete(confirmDeleteItem) }}
+          onCancel={() => setConfirmDeleteItem(null)}
+        />
       )}
     </div>
   )
@@ -672,6 +683,7 @@ export function AssetPricingPage() {
   const [showNewVersionForm, setShowNewVersionForm] = useState(false)
   const [editingVersion, setEditingVersion] = useState<AssetPricingVersion | null>(null)
   const [expandedVersionUuid, setExpandedVersionUuid] = useState<string | null>(null)
+  const [confirmDeleteVersion, setConfirmDeleteVersion] = useState<AssetPricingVersion | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function handleCreateVersion(form: VersionFormState) {
@@ -710,7 +722,6 @@ export function AssetPricingPage() {
   }
 
   async function handleDeleteVersion(v: AssetPricingVersion) {
-    if (!window.confirm(t('pricing.confirmDeleteVersion', { name: v.name }))) return
     try {
       await deleteVersionMutation.mutateAsync(v.uuid)
       if (expandedVersionUuid === v.uuid) setExpandedVersionUuid(null)
@@ -725,8 +736,8 @@ export function AssetPricingPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('noPermission')}</p>
+      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+        <p className="text-sm text-on-surface-variant">{t('noPermission')}</p>
       </section>
     )
   }
@@ -734,20 +745,20 @@ export function AssetPricingPage() {
   return (
     <section className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
         <button
           type="button"
-          className="mb-2 flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+          className="mb-2 flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface"
           onClick={() => navigate(uuid ? `/assets/${uuid}` : '/assets')}
         >
           <ArrowLeft className="h-3 w-3" />
           {t('actions.backToDetail')}
         </button>
-        <h1 className="text-xl font-semibold text-slate-900">
+        <h1 className="text-xl font-semibold text-on-surface">
           {asset ? `${asset.name} — ` : ''}{t('pricing.title')}
         </h1>
         {assetType && (
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-on-surface-variant">
             {t('pricing.typeLabel')}: {assetType.name}
           </p>
         )}
@@ -760,7 +771,7 @@ export function AssetPricingPage() {
       )}
 
       {/* FY Selector */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-4 shadow-surface-1">
         <div className="flex flex-wrap items-center gap-3">
           <Label className="text-xs font-semibold">{t('pricing.fiscalYear')}</Label>
           <div className="flex flex-wrap gap-2">
@@ -775,28 +786,28 @@ export function AssetPricingPage() {
                 }}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   (selectedFy?.uuid ?? defaultFy?.uuid) === fy.uuid
-                    ? 'bg-slate-800 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-container text-on-surface-variant hover:bg-surface-variant'
                 }`}
               >
                 {fy.code}
                 {fy.state === FY_STATE_CLOSED && (
-                  <span className="ml-1 text-slate-400">({t('pricing.fyClosed')})</span>
+                  <span className="ml-1 text-on-surface-variant">({t('pricing.fyClosed')})</span>
                 )}
               </button>
             ))}
             {allFy.length === 0 && (
-              <p className="text-xs text-slate-500">{t('pricing.noFiscalYears')}</p>
+              <p className="text-xs text-on-surface-variant">{t('pricing.noFiscalYears')}</p>
             )}
           </div>
         </div>
       </div>
 
       {selectedFy && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
           {/* Version header */}
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">
+            <h2 className="text-sm font-semibold text-on-surface-variant">
               {t('pricing.versions')} — {selectedFy.label}
             </h2>
             {canEdit && !showNewVersionForm && !editingVersion && (
@@ -826,16 +837,16 @@ export function AssetPricingPage() {
           )}
 
           {versionsQuery.isLoading ? (
-            <p className="text-sm text-slate-500">{t('states.loading')}</p>
+            <p className="text-sm text-on-surface-variant">{t('states.loading')}</p>
           ) : versions.length === 0 && !showNewVersionForm ? (
-            <p className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+            <p className="rounded-shape-md border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
               {t('pricing.noVersions')}
             </p>
           ) : (
             <>
               {/* Visual timeline */}
               {versions.length > 0 && (
-                <div className="mb-4 relative h-6 rounded-md bg-slate-100">
+                <div className="relative mb-4 h-6 rounded-shape-sm bg-surface-container">
                   {versions.map((v) => {
                     const { left, width } = timelineBar(selectedFy, v)
                     return (
@@ -871,7 +882,7 @@ export function AssetPricingPage() {
                   ) : (
                     <div
                       key={v.uuid}
-                      className="rounded-lg border border-slate-200 bg-white"
+                      className="rounded-shape-md border border-outline-variant bg-surface"
                     >
                       {/* Version header row */}
                       <div
@@ -883,14 +894,14 @@ export function AssetPricingPage() {
                         }
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-900">{v.name}</p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-sm font-medium text-on-surface">{v.name}</p>
+                          <p className="text-xs text-on-surface-variant">
                             {v.from_date} → {v.to_date ?? t('pricing.openEnd')}
                           </p>
                         </div>
                         <VersionBadge status={v.status} t={t} />
                         {v.is_locked && (
-                          <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">
+                          <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
                             {t('pricing.locked')}
                           </span>
                         )}
@@ -901,15 +912,15 @@ export function AssetPricingPage() {
                           >
                             <button
                               type="button"
-                              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                              className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
                               onClick={() => setEditingVersion(v)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                             <button
                               type="button"
-                              className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                              onClick={() => handleDeleteVersion(v)}
+                              className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                              onClick={() => setConfirmDeleteVersion(v)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -934,6 +945,16 @@ export function AssetPricingPage() {
             </>
           )}
         </div>
+      )}
+      {confirmDeleteVersion && (
+        <ConfirmDialog
+          open={!!confirmDeleteVersion}
+          title={t('pricing.confirmDeleteVersionTitle')}
+          body={t('pricing.confirmDeleteVersion', { name: confirmDeleteVersion.name })}
+          confirmLabel={t('delete')}
+          onConfirm={() => { const v = confirmDeleteVersion; setConfirmDeleteVersion(null); handleDeleteVersion(v) }}
+          onCancel={() => setConfirmDeleteVersion(null)}
+        />
       )}
     </section>
   )

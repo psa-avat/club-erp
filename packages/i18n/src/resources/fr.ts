@@ -520,6 +520,7 @@ export const fr = {
   },
   assets: {
     noPermission: "Vous n'avez pas les droits pour accéder à ce module.",
+    delete: 'Supprimer',
     list: {
       title: 'Aéronefs et équipements',
       description: 'Parcourez les aéronefs et équipements du club.',
@@ -534,6 +535,7 @@ export const fr = {
       ownership: 'Propriété',
       allOwnership: 'Toutes',
       activeOnly: 'Actifs uniquement',
+      reset: 'Réinitialiser',
     },
     status: {
       operational: 'En service',
@@ -647,6 +649,7 @@ export const fr = {
       saving: 'Enregistrement...',
       cancel: 'Annuler',
       confirmDeleteVersion: 'Supprimer la version "{{name}}" ?',
+      confirmDeleteVersionTitle: 'Supprimer la version ?',
       items: 'Lignes tarifaires',
       addItem: 'Ajouter une ligne',
       noItems: 'Aucune ligne tarifaire.',
@@ -679,6 +682,7 @@ export const fr = {
       includeInsurance: 'Assurance incluse',
       includeFuel: 'Carburant inclus',
       confirmDeleteItem: 'Supprimer cette ligne tarifaire ?',
+      confirmDeleteItemTitle: 'Supprimer la ligne ?',
       unitFlightTime: 'Temps de vol',
       unitEngineTimeMin: 'Temps moteur (min)',
       unitEngineTime1_100h: 'Temps moteur (1/100 h)',

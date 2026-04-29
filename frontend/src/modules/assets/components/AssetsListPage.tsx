@@ -23,8 +23,9 @@ import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
 import { Plus, Wrench, Ban, CheckCircle2, Trash2 } from 'lucide-react'
 
-import { Alert } from '../../../components/ui/alert'
+import { Banner } from '../../../components/ui/banner'
 import { Button } from '../../../components/ui/button'
+import { EmptyState } from '../../../components/ui/empty-state'
 import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
@@ -55,15 +56,15 @@ function statusLabel(
 ): { label: string; className: string } {
   switch (status) {
     case ASSET_STATUS_OPERATIONAL:
-      return { label: t('status.operational'), className: 'bg-green-100 text-green-800' }
+      return { label: t('status.operational'), className: 'bg-success-container text-on-success-container' }
     case ASSET_STATUS_MAINTENANCE:
-      return { label: t('status.maintenance'), className: 'bg-amber-100 text-amber-800' }
+      return { label: t('status.maintenance'), className: 'bg-warning-container text-on-warning-container' }
     case ASSET_STATUS_OUT_OF_SERVICE:
-      return { label: t('status.outOfService'), className: 'bg-red-100 text-red-800' }
+      return { label: t('status.outOfService'), className: 'bg-error-container text-on-error-container' }
     case ASSET_STATUS_DISPOSED:
-      return { label: t('status.disposed'), className: 'bg-slate-100 text-slate-500' }
+      return { label: t('status.disposed'), className: 'bg-surface-container text-on-surface-variant' }
     default:
-      return { label: String(status), className: 'bg-slate-100 text-slate-500' }
+      return { label: String(status), className: 'bg-surface-container text-on-surface-variant' }
   }
 }
 
@@ -107,7 +108,7 @@ function StatusActions({
           type="button"
           title={t('actions.setOperational')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OPERATIONAL)}
-          className="rounded p-1 text-slate-400 hover:bg-green-50 hover:text-green-700"
+          className="rounded p-1 text-on-surface-variant hover:bg-success-container hover:text-success"
         >
           <CheckCircle2 className="h-4 w-4" />
         </button>
@@ -117,7 +118,7 @@ function StatusActions({
           type="button"
           title={t('actions.setMaintenance')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_MAINTENANCE)}
-          className="rounded p-1 text-slate-400 hover:bg-amber-50 hover:text-amber-700"
+          className="rounded p-1 text-on-surface-variant hover:bg-warning-container hover:text-warning"
         >
           <Wrench className="h-4 w-4" />
         </button>
@@ -127,7 +128,7 @@ function StatusActions({
           type="button"
           title={t('actions.setOutOfService')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OUT_OF_SERVICE)}
-          className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-700"
+          className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
         >
           <Ban className="h-4 w-4" />
         </button>
@@ -136,7 +137,7 @@ function StatusActions({
         type="button"
         title={t('actions.setDisposed')}
         onClick={() => onTransition(asset.uuid, ASSET_STATUS_DISPOSED)}
-        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -197,8 +198,8 @@ export function AssetsListPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('noPermission')}</p>
+      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+        <p className="text-sm text-on-surface-variant">{t('noPermission')}</p>
       </section>
     )
   }
@@ -206,11 +207,11 @@ export function AssetsListPage() {
   return (
     <section className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">{t('list.title')}</h1>
-            <p className="mt-1 text-sm text-slate-500">{t('list.description')}</p>
+            <h1 className="text-xl font-semibold text-on-surface">{t('list.title')}</h1>
+            <p className="mt-1 text-sm text-on-surface-variant">{t('list.description')}</p>
           </div>
           {canManage && (
             <div className="flex shrink-0 gap-2">
@@ -230,7 +231,7 @@ export function AssetsListPage() {
       </div>
 
       {/* Filters */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface p-4 shadow-surface-1">
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           {/* Text search */}
           <div className="space-y-1">
@@ -249,7 +250,7 @@ export function AssetsListPage() {
             <select
               value={filters.asset_type_uuid ?? ''}
               onChange={(e) => setFilter('asset_type_uuid', e.target.value || undefined)}
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allTypes')}</option>
               {types.map((ty) => (
@@ -268,7 +269,7 @@ export function AssetsListPage() {
               onChange={(e) =>
                 setFilter('status', e.target.value ? Number(e.target.value) : undefined)
               }
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allStatuses')}</option>
               <option value={ASSET_STATUS_OPERATIONAL}>{t('status.operational')}</option>
@@ -286,7 +287,7 @@ export function AssetsListPage() {
               onChange={(e) =>
                 setFilter('ownership', e.target.value ? Number(e.target.value) : undefined)
               }
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allOwnership')}</option>
               <option value={ASSET_OWNERSHIP_CLUB}>{t('ownership.club')}</option>
@@ -295,36 +296,46 @@ export function AssetsListPage() {
           </div>
         </div>
 
-        {/* Active toggle */}
-        <div className="mt-3 flex items-center gap-2">
-          <input
-            id="active-filter"
-            type="checkbox"
-            checked={filters.is_active ?? false}
-            onChange={(e) => setFilter('is_active', e.target.checked ? true : undefined)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          <Label htmlFor="active-filter" className="cursor-pointer text-xs">
-            {t('filters.activeOnly')}
-          </Label>
+        {/* Active toggle + reset */}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              id="active-filter"
+              type="checkbox"
+              checked={filters.is_active ?? false}
+              onChange={(e) => setFilter('is_active', e.target.checked ? true : undefined)}
+              className="h-4 w-4 rounded border-outline"
+            />
+            <Label htmlFor="active-filter" className="cursor-pointer text-xs">
+              {t('filters.activeOnly')}
+            </Label>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => { setFilters({ is_active: true }); setSearch('') }}
+          >
+            {t('filters.reset')}
+          </Button>
         </div>
       </div>
 
       {/* Error */}
       {transitionError && (
-        <Alert>
-          <p className="text-sm">{transitionError}</p>
-        </Alert>
+        <Banner variant="error" message={transitionError} onDismiss={() => setTransitionError(null)} />
       )}
 
       {/* List */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-shape-lg border border-outline-variant bg-surface shadow-surface-1">
         {assetsQuery.isLoading ? (
-          <p className="p-6 text-sm text-slate-500">{t('states.loading')}</p>
+          <p className="p-6 text-sm text-on-surface-variant">{t('states.loading')}</p>
         ) : filtered.length === 0 ? (
-          <p className="p-6 text-sm text-slate-500">{t('states.empty')}</p>
+          <EmptyState title={t('states.empty')} description="" action={
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setFilters({ is_active: true }); setSearch('') }}>{t('filters.reset')}</Button>
+          } />
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-outline-variant">
             {filtered.map((asset) => (
               <div
                 key={asset.uuid}
@@ -334,12 +345,12 @@ export function AssetsListPage() {
                 <div className="min-w-0 flex-1">
                   <button
                     type="button"
-                    className="truncate text-sm font-medium text-slate-900 hover:text-blue-700"
+                    className="truncate text-sm font-medium text-on-surface hover:text-primary"
                     onClick={() => navigate(`/assets/${asset.uuid}`)}
                   >
                     {asset.name}
                   </button>
-                  <p className="truncate text-xs text-slate-500">
+                  <p className="truncate text-xs text-on-surface-variant">
                     {asset.code} · {asset.asset_type_name} ·{' '}
                     {ownershipLabel(asset.ownership, t)}
                   </p>
@@ -354,7 +365,7 @@ export function AssetsListPage() {
                 {canManage && (
                   <button
                     type="button"
-                    className="shrink-0 rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-50"
+                    className="shrink-0 rounded px-2 py-1 text-xs text-primary hover:bg-primary-container"
                     onClick={() => navigate(`/assets/${asset.uuid}/edit`)}
                   >
                     {t('actions.edit')}
@@ -363,7 +374,7 @@ export function AssetsListPage() {
 
                 <button
                   type="button"
-                  className="shrink-0 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+                  className="shrink-0 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container"
                   onClick={() => navigate(`/assets/${asset.uuid}/pricing`)}
                 >
                   {t('actions.pricing')}
