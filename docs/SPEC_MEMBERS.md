@@ -898,3 +898,195 @@ These are not blockers for v1 but should be clarified later:
 - whether a member can be registered for a past year (back-registration) and if so what validation applies
 - whether accounting writings feed directly into a future general ledger module or remain standalone
 - cancellation/reversal workflow priority for v1.1
+
+---
+
+## Members UX V2 – Directory First
+
+This section defines the V2 frontend redesign requirements. It supersedes the v1 frontend spec above for the members route and adds the Committees Management route. Backend contracts remain unchanged unless noted under "Backend changes required."
+
+### Canonical Routes
+
+| Route | Component | Nav label |
+|---|---|---|
+| `/members` | `MembersListPage` | MEMBERS |
+| `/commissions` | `CommitteesManagementPage` | COMMISSIONS |
+
+`MembersPage` is the legacy migration source. It must not be added to routing; its useful logic (committee forms, roster, sheet panels) must be migrated to the new components before removal.
+
+---
+
+### Members Directory (`/members`)
+
+#### Page header
+- Title: "Members Directory", subtitle: "Manage club personnel, certifications, and operational status."
+- Actions (top-right): `Export CSV` button, `Add New Member` primary button.
+
+#### KPI strip
+Four tiles derived client-side from the loaded list query result. No separate backend aggregate endpoint.
+
+| Tile | Derivation | Highlight color |
+|---|---|---|
+| Total Members | `members.length` | neutral |
+| Pending Renewals | `members` where `last_registration_year < selectedYear && is_active` | orange |
+| Active Instructors | `members` where `is_instructor && is_active` | neutral |
+| Guest / Temp Passes | `members` where `member_category === 2` | neutral |
+
+KPI values are recalculated whenever the query result changes.
+
+#### Filter bar
+- Full-width text search input (searches name, account_id, email) — maps to `search` filter param.
+- Quick filter: Category (select) — maps to `member_category`.
+- Quick filter: Role (select for instructor / employee / executive / board) — maps to role flag params.
+- Quick filter: Can Fly (toggle) — maps to `can_fly`.
+- Advanced filter icon — opens a side drawer exposing: `registration_status`, `is_active`, all four role flags, `committee_uuid`, `year`.
+- Rule: `registration_status` filter only shown when `year` is also set; inline guidance shown otherwise.
+- Backend errors from filter queries must surface inline below the filter bar.
+
+#### Directory table
+
+A density table (`<table>` element, not a card list). Columns:
+
+| Column | Source | Notes |
+|---|---|---|
+| NAME & ID | `first_name`, `last_name`, `account_id` | Initials avatar (no photo), account_id in monospace sub-label. ⚠ warning triangle if `last_registration_year < selectedYear && is_active`. Optional left-border stripe for members with renewal issues. |
+| CATEGORY | `member_category` | Plain text label from `memberCategoryLabel()`. |
+| ROLE FLAGS | `is_instructor`, `is_employee`, `is_executive`, `is_board_member` | Colored compact tags. Show "NO ROLES" in muted text when all flags are false. |
+| OPERATIONAL STATUS | `status` | Badge: Active (green), Suspended (red), Resigned (muted), Anonymized (muted). |
+| REGISTRATION | `registration_status`, `has_member_sheet_for_year` | Year-aware badge: ✅ COMPLETED, ⏳ DRAFT, ⏸ IN PROGRESS, 🗄 ARCHIVED. |
+| COMMISSION | `committee_codes` | Compact code badge(s) for current year (e.g. SAFETY, EVENTS). Empty cell if unassigned. See backend note below. |
+| ACTIONS | — | Pencil icon → edit drawer. Kebab menu → "Finalize Registration", "View Sheet", other future actions. |
+
+Responsive: ROLE FLAGS and COMMISSION columns collapse on mobile.
+
+#### Pagination footer
+- "Showing X to Y of N members" + page navigation.
+- If backend exposes `limit`/`offset` params, wire server-side pagination. Otherwise client-side at page size 25.
+
+#### Directory legend
+- Color key strip at the bottom of the page: Active / Suspended / Renewal Required / Can Fly.
+
+#### Acceptance criteria
+- Table renders all columns with correct data for each member in the query result.
+- KPI tiles update when filters change.
+- ⚠ indicator appears for every member where `last_registration_year < selectedYear && is_active`.
+- Clicking pencil opens the member edit drawer; `is_active` field is read-only in the drawer.
+- Kebab menu "Finalize Registration" opens the Registration Panel.
+- After successful registration, the row's REGISTRATION and COMMISSION badges update without full page reload.
+
+---
+
+### Registration Panel (slide-over)
+
+Triggered by "Finalize Registration" from a row kebab menu. Implemented as a shadcn `Sheet` (right slide-over), not a modal, so the directory remains visible behind it.
+
+#### Member header
+- Initials avatar, full name, lifecycle badge (e.g. RENEWAL REQUIRED), "Member since [month year]" from `created_at`, "Last Activity" placeholder.
+
+#### Step 1 – Administrative Checklist
+- Informational only in V2 (does not block the backend).
+- Static items with status chips derived from member data:
+  - Medical Certificate (Class 2) — chip: VALID / PENDING INPUT (based on presence/expiry data in V2)
+  - FFVP License Number — chip: PENDING INPUT if `ffvp_id` is null, else VALID
+  - Identity Document — chip: VERIFIED (static placeholder in V2)
+
+#### Step 2 – Fare Selection (REQUIRED)
+- Fetch applicable pricing items for `selectedYear` and the member's `member_category` via existing pricing API.
+- Render as a table: Description | Category | Amount | Select (checkbox).
+- Compute TOTAL AMOUNT DUE client-side using `decimal.js`.
+- At least one item must be checked for VALIDATE to be enabled.
+
+#### Step 3 – Accounting Preview (read-only)
+- Derive draft GL lines from selected fare items using the member's `account_id` and GL account mappings.
+- Columns: ACCOUNT | DEBIT | CREDIT.
+- Show a generated Invoice Reference preview (e.g. `INV-{YEAR}-{account_id}`).
+- This panel is informational; the actual GL entries are created by the backend during `complete-registration`.
+
+#### Step 4 – Committee Selection (MANDATORY)
+- Label: "Choix de Commission". Sub-label: "Members are required to participate in at least one working committee to support club operations." Badge: MANDATORY.
+- Fetch active committees via `useCommitteesQuery(activeOnly: true)`.
+- Render as a card grid: committee icon (emoji or generic), code, name, short description. Cards are selectable (toggle selection on click).
+- At least one card must be selected for VALIDATE to be enabled.
+
+#### Footer
+- Left: CANCEL button (closes panel, no mutation).
+- Center: Effective Date input (date picker, defaults to today).
+- Right: **VALIDATE & ACTIVATE REGISTRATION** primary button — disabled until Step 2 (fare) AND Step 4 (committee) are both satisfied.
+
+#### Submit sequence
+1. Call `useCompleteRegistrationMutation` with `{ year, template_uuid, selected_item_uuids }`.
+2. On success, for each selected committee UUID call `useReplaceCommitteeMembersMutation` (add this member to the existing roster).
+3. Invalidate `membersQueryKeys.root` and `membersQueryKeys.committees`.
+4. Close panel.
+
+#### Acceptance criteria
+- VALIDATE button is disabled when no fare is selected.
+- VALIDATE button is disabled when no committee is selected.
+- Deselecting all fares or all committees disables VALIDATE again.
+- Successful submit updates the row REGISTRATION badge to COMPLETED and COMMISSION badge to the selected committee code(s).
+- Backend errors surface inline in the panel footer, not as a toast only.
+
+---
+
+### Committees Management (`/commissions`)
+
+Standalone routed page. Accessible from the shell sidebar as COMMISSIONS.
+
+#### Page header
+- Title: "Committees Management", subtitle: "Manage operational working groups and active year assignments."
+- Actions (top-right): `Add Committee` primary button → opens create committee drawer.
+
+#### Card grid (active committees)
+- One card per active committee from `useCommitteesQuery(activeOnly: true)`.
+- Card contents: code badge (colored), committee name, description, active member count for `selectedYear`, member avatar stack (initials of first 3–4 members), status badge (ACTIVE / INACTIVE), alert badge if applicable (e.g. "5 Pending Reports" — placeholder in V2).
+- Actions per card: "Manage Roster" → opens `CommitteeRosterDrawer`; "View All" → scrolls to table row.
+
+#### Administrative Overview table
+- Columns: Code | Committee Name | Manager | Last Meeting | Budget Status | Actions.
+- Source: `useCommitteesQuery()`.
+- "Manager" column: resolve manager name from `manager_member_uuid` using the loaded members list.
+- "Last Meeting": placeholder field — display "—" until backend exposes `last_meeting_date`.
+- "Budget Status": derive from `budget_amount` presence — "ON TRACK" if set, "—" if null.
+- Row Actions: edit icon → opens edit committee drawer; roster icon → opens roster drawer.
+- Table header actions: `Export CSV` (client-side from query data), `Print Summary` (`window.print()`).
+
+#### Committee Roster Drawer (`CommitteeRosterDrawer`)
+- Triggered from card "Manage Roster" or table row action.
+- Header: committee name + current year.
+- Multi-select member list (checkbox per member, filtered to `is_active` members).
+- Pre-selects current roster from `useCommitteeMembersQuery(committeeUuid, selectedYear)`.
+- Save calls `useReplaceCommitteeMembersMutation`.
+
+#### Acceptance criteria
+- `/commissions` route renders without redirecting to `/members`.
+- Card grid shows all active committees with correct member counts.
+- Manage Roster drawer pre-populates current year assignments and saves correctly.
+- Add Committee creates a new committee and it appears in both the card grid and the table.
+- Edit committee updates the table row without full page reload.
+- Export CSV produces a valid CSV of the committee list.
+
+---
+
+### `is_active` Governance
+
+`is_active` must be read-only in all member-facing UI in V2.
+
+Rules:
+- Member edit drawer: render `is_active` as a locked status badge, not a checkbox.
+- `membersShared.tsx`: the `CheckboxField` for `is_active` must be replaced or wrapped with a read-only display primitive.
+- `buildMemberPayload` must not include `is_active` in the PATCH payload when called from the edit drawer.
+- `is_active` transitions happen only as a side effect of `complete-registration` (which sets `is_active = true`), not via direct field edits.
+
+Acceptance criterion: no UI path in V2 allows sending `is_active: false` or `is_active: true` directly from a form.
+
+---
+
+### Backend Changes Required for V2
+
+| Change | Priority | Reason |
+|---|---|---|
+| Add `committee_codes: string[]` to `MemberSummary` response (list of committee codes assigned to the member for the requested year) | High | Needed for COMMISSION column without per-row detail fetches. Requires a `year` query param on `GET /api/v1/members` or a JOIN in the list query. |
+| Clarify whether `complete-registration` accepts `committee_uuids` atomically or whether committee roster assignment is always a separate call | Medium | Determines submit sequence in the Registration Panel. |
+| Add `last_meeting_date DATE NULL` to `committees` table | Low | Needed for the Administrative Overview table "Last Meeting" column (V2.1). |
+
+Until `committee_codes` is available on the list endpoint, the COMMISSION column falls back to showing a generic "✓" badge when `committee_count > 0` and is left empty otherwise.

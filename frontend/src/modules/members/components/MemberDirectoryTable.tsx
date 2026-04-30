@@ -1,0 +1,234 @@
+/*
+    ERP-CLUB - ERP pour Club de vol à voile
+    - Logiciel libre de gestion d'un club de vol à voile
+    - members: Dense directory table for the Members Directory page
+    Copyright (C) 2026  SAFORCADA Patrick
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import { MoreVertical, Pencil } from 'lucide-react'
+
+import { DataTable } from '../../../components/ui/data-table'
+import type { ColumnDef } from '../../../components/ui/data-table'
+import type { MemberSummary } from '../types'
+import { memberCategoryLabel } from './membersShared'
+import {
+  CommissionBadge,
+  InitialsAvatar,
+  RegistrationBadge,
+  RenewalWarningIcon,
+  RoleFlagBadges,
+  StatusBadge,
+} from './MemberRowBadges'
+
+// ---------------------------------------------------------------------------
+// Kebab dropdown
+// ---------------------------------------------------------------------------
+
+type KebabItem = { label: string; onClick: () => void }
+
+function KebabMenu({ items }: { items: KebabItem[] }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="Plus d'actions"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-10 mt-1 min-w-[180px] rounded-shape-sm border border-outline-variant bg-surface py-1 shadow-lg"
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              className="w-full px-3 py-2 text-left text-sm text-on-surface transition-colors hover:bg-surface-container"
+              onClick={() => {
+                item.onClick()
+                setOpen(false)
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MemberDirectoryTable
+// ---------------------------------------------------------------------------
+
+type Props = {
+  members: MemberSummary[]
+  isLoading: boolean
+  selectedMemberId: string | null
+  selectedYear: number
+  onEditMember: (uuid: string) => void
+  onFinalizeRegistration: (uuid: string) => void
+}
+
+export function MemberDirectoryTable({
+  members,
+  isLoading,
+  selectedMemberId,
+  selectedYear,
+  onEditMember,
+  onFinalizeRegistration,
+}: Props) {
+  const columns: ColumnDef<MemberSummary>[] = [
+    {
+      key: 'name',
+      header: 'Nom & Identifiant',
+      sortable: true,
+      className: 'min-w-[200px]',
+      cell: (row) => {
+        const needsRenewal = row.is_active && row.registration_status !== 3
+        return (
+          <div className="flex items-center gap-3">
+            <InitialsAvatar firstName={row.first_name} lastName={row.last_name} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate font-medium text-on-surface">
+                  {row.first_name} {row.last_name}
+                </span>
+                {needsRenewal ? <RenewalWarningIcon /> : null}
+              </div>
+              <span className="font-mono text-xs text-on-surface-variant">{row.account_id}</span>
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'category',
+      header: 'Catégorie',
+      sortable: true,
+      className: 'min-w-[120px]',
+      cell: (row) => (
+        <span className="text-sm text-on-surface">{memberCategoryLabel(row.member_category)}</span>
+      ),
+    },
+    {
+      key: 'roles',
+      header: 'Rôles',
+      // Hidden on mobile via headerClassName + className responsive utilities
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell min-w-[140px]',
+      cell: (row) => <RoleFlagBadges member={row} />,
+    },
+    {
+      key: 'status',
+      header: 'Statut opérationnel',
+      sortable: true,
+      className: 'min-w-[130px]',
+      cell: (row) => <StatusBadge status={row.status} />,
+    },
+    {
+      key: 'registration',
+      header: `Inscription ${selectedYear}`,
+      sortable: true,
+      // Hidden on small screens
+      headerClassName: 'hidden sm:table-cell',
+      className: 'hidden sm:table-cell min-w-[130px]',
+      cell: (row) => <RegistrationBadge registrationStatus={row.registration_status} />,
+    },
+    {
+      key: 'commission',
+      header: 'Commission',
+      headerClassName: 'hidden md:table-cell',
+      className: 'hidden md:table-cell min-w-[100px]',
+      cell: (row) => <CommissionBadge committeeCount={row.committee_count} />,
+    },
+  ]
+
+  if (isLoading) {
+    return (
+      <div className="rounded-shape-md border border-outline-variant bg-surface p-8 text-center text-sm text-on-surface-variant">
+        Chargement de l'annuaire…
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-shape-md border border-outline-variant bg-surface">
+      <DataTable
+        columns={columns}
+        data={members}
+        getRowKey={(row) => row.uuid}
+        defaultSortKey="name"
+        className={undefined}
+        emptyState={
+          <p className="p-8 text-center text-sm text-on-surface-variant">
+            Aucun membre trouvé pour les filtres sélectionnés.
+          </p>
+        }
+        actions={(row) => (
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              aria-label={`Modifier ${row.first_name} ${row.last_name}`}
+              onClick={() => onEditMember(row.uuid)}
+              className={[
+                'rounded p-1 transition-colors',
+                selectedMemberId === row.uuid
+                  ? 'bg-primary text-on-primary'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface',
+              ].join(' ')}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <KebabMenu
+              items={[
+                {
+                  label: 'Finaliser l'inscription',
+                  onClick: () => onFinalizeRegistration(row.uuid),
+                },
+              ]}
+            />
+          </div>
+        )}
+      />
+      {members.length > 0 ? (
+        <div className="border-t border-outline-variant px-4 py-2 text-xs text-on-surface-variant">
+          {members.length} membre{members.length > 1 ? 's' : ''} affiché{members.length > 1 ? 's' : ''}
+        </div>
+      ) : null}
+    </div>
+  )
+}
