@@ -56,7 +56,7 @@ export function MembersListPage() {
   const { t: tCommon } = useTranslation('common')
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
 
-  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm(selectedYear))
+  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   const membersQuery = useMembersQuery(filters)
@@ -73,13 +73,13 @@ export function MembersListPage() {
     if (selectedMember) {
       setMemberForm(mapMemberToForm(selectedMember))
     } else {
-      setMemberForm(createEmptyMemberForm(selectedYear))
+      setMemberForm(createEmptyMemberForm())
     }
   }, [selectedMember, selectedYear])
 
   function handleNewMember() {
     setSelectedMemberId(null)
-    setMemberForm(createEmptyMemberForm(selectedYear))
+    setMemberForm(createEmptyMemberForm())
   }
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -104,7 +104,12 @@ export function MembersListPage() {
     if (!selectedMemberId) return
     const completed = await completeRegistrationMutation.mutateAsync({
       memberUuid: selectedMemberId,
-      payload: { year: selectedYear },
+      payload: {
+        year: selectedYear,
+        start_date: `${selectedYear}-01-01`,
+        end_date: `${selectedYear}-12-31`,
+        status: 1,
+      },
     })
     setSelectedMemberId(completed.uuid)
   }
@@ -114,7 +119,12 @@ export function MembersListPage() {
     setSelectedMemberId(memberUuid)
     const completed = await completeRegistrationMutation.mutateAsync({
       memberUuid,
-      payload: { year: selectedYear },
+      payload: {
+        year: selectedYear,
+        start_date: `${selectedYear}-01-01`,
+        end_date: `${selectedYear}-12-31`,
+        status: 1,
+      },
     })
     setSelectedMemberId(completed.uuid)
   }
@@ -322,13 +332,6 @@ export function MembersListPage() {
               type="number"
               value={memberForm.ffvp_id}
               onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })}
-            />
-            <TextField
-              id="member-last-registration-year"
-              label={t('form.registrationYear')}
-              type="number"
-              value={memberForm.last_registration_year}
-              onChange={(value) => setMemberForm({ ...memberForm, last_registration_year: value })}
             />
             <TextField
               id="member-photo-url"
