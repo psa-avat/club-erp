@@ -299,7 +299,7 @@ class Member(Base):
         CheckConstraint("member_category BETWEEN 1 AND 6", name="chk_members_category"),
         CheckConstraint("status BETWEEN 1 AND 4", name="chk_members_status"),
         CheckConstraint("registration_status BETWEEN 1 AND 4", name="chk_members_registration_status"),
-        CheckConstraint("seniority IS NULL OR seniority >= 0", name="chk_members_seniority"),
+        CheckConstraint("first_subscription_year IS NULL OR first_subscription_year BETWEEN 1950 AND 9999", name="chk_members_first_subscription_year"),
         CheckConstraint(
             "last_registration_year IS NULL OR last_registration_year BETWEEN 2000 AND 9999",
             name="chk_members_last_registration_year",
@@ -316,7 +316,7 @@ class Member(Base):
     email = Column(String(255), nullable=True, unique=True, index=True)
     phone = Column(String(50), nullable=True)
     member_category = Column(SmallInteger, nullable=False, index=True)
-    seniority = Column(SmallInteger, nullable=True)
+    first_subscription_year = Column(SmallInteger, nullable=True)
     ffvp_id = Column(BigInteger, nullable=True, unique=True, index=True)
     account_id = Column(String(32), nullable=False, unique=True, index=True)
     photo_url = Column(Text, nullable=True)

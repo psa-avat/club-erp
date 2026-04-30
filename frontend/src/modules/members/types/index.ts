@@ -63,7 +63,7 @@ export type MemberDetail = {
   email: string | null
   phone: string | null
   member_category: number
-  seniority: number | null
+  first_subscription_year: number | null
   ffvp_id: number | null
   account_id: string
   photo_url: string | null
@@ -127,7 +127,7 @@ export type CreateMemberPayload = {
   email?: string
   phone?: string
   member_category: number
-  seniority?: number
+  first_subscription_year?: number
   ffvp_id?: number
   account_id?: string
   photo_url?: string

@@ -281,6 +281,32 @@ function exportCsv(committees: Committee[], membersByUuid: Map<string, string>) 
   URL.revokeObjectURL(url)
 }
 
+function committeeBadgeClasses(code: string): string {
+  const prefix = code.toUpperCase().slice(0, 3)
+  const map: Record<string, string> = {
+    SAF: 'bg-red-100 text-red-800',
+    INS: 'bg-blue-100 text-blue-800',
+    EVT: 'bg-amber-100 text-amber-800',
+    MNT: 'bg-emerald-100 text-emerald-800',
+    SOC: 'bg-indigo-100 text-indigo-800',
+  }
+  return map[prefix] ?? 'bg-surface-container text-on-surface-variant'
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '??'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
+}
+
+function budgetStatus(committee: Committee): { label: string; className: string } {
+  if (!committee.budget_amount) {
+    return { label: 'PENDING REV.', className: 'bg-amber-100 text-amber-800' }
+  }
+  return { label: 'ON TRACK', className: 'bg-emerald-100 text-emerald-800' }
+}
+
 // ---------------------------------------------------------------------------
 // CommitteesManagementPage
 // ---------------------------------------------------------------------------
@@ -347,7 +373,10 @@ export function CommitteesManagementPage() {
                   className="flex flex-col gap-3 rounded-shape-md border border-outline-variant bg-surface p-4"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span className="rounded-shape-sm bg-primary-container px-2 py-0.5 text-xs font-bold text-on-primary-container">
+                    <span className={[
+                      'rounded-shape-sm px-2 py-0.5 text-xs font-bold',
+                      committeeBadgeClasses(committee.code),
+                    ].join(' ')}>
                       {committee.code}
                     </span>
                     <span
@@ -362,13 +391,21 @@ export function CommitteesManagementPage() {
                     </span>
                   </div>
 
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-on-surface">{committee.description}</p>
-                    {managerName ? (
-                      <p className="mt-1 text-xs text-on-surface-variant">
-                        {t('committees.manager')} : {managerName}
-                      </p>
-                    ) : null}
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-semibold text-on-surface">{committee.description}</p>
+                    <div className="rounded-shape-sm border border-outline-variant bg-surface-container p-2">
+                      <p className="text-[11px] uppercase tracking-wide text-on-surface-variant">Manager</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-shape-full bg-primary-container text-[11px] font-semibold text-on-primary-container">
+                          {initials(managerName ?? 'N/A')}
+                        </span>
+                        <span className="text-xs text-on-surface">{managerName ?? 'Non assigné'}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-shape-sm border border-outline-variant bg-surface-container p-2">
+                      <p className="text-[11px] uppercase tracking-wide text-on-surface-variant">Active members</p>
+                      <p className="mt-1 text-xs text-on-surface">Gestion via roster</p>
+                    </div>
                     {committee.budget_amount ? (
                       <p className="mt-0.5 text-xs text-on-surface-variant">
                         {t('committees.budget')} : {committee.budget_amount} €
@@ -384,6 +421,14 @@ export function CommitteesManagementPage() {
                       className="flex-1 text-xs"
                     >
                       {t('committees.rosterTitle')}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setRosterCommittee(committee)}
+                      className="text-xs"
+                    >
+                      + ASSIGN MEMBER
                     </Button>
                     <Button
                       type="button"
@@ -415,8 +460,8 @@ export function CommitteesManagementPage() {
                   <th className="px-3 py-2">{t('committees.code')}</th>
                   <th className="px-3 py-2">{t('sections.committees.title')}</th>
                   <th className="px-3 py-2">{t('committees.manager')}</th>
-                  <th className="px-3 py-2">{t('committees.budget')}</th>
-                  <th className="px-3 py-2">Statut</th>
+                  <th className="px-3 py-2">Last meeting</th>
+                  <th className="px-3 py-2">Budget status</th>
                   <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
@@ -443,19 +488,22 @@ export function CommitteesManagementPage() {
                           : '—'}
                       </td>
                       <td className="px-3 py-2 text-on-surface-variant">
-                        {committee.budget_amount ? `${committee.budget_amount} €` : '—'}
+                        —
                       </td>
                       <td className="px-3 py-2">
+                        {(() => {
+                          const status = budgetStatus(committee)
+                          return (
                         <span
                           className={[
                             'rounded-shape-full px-2 py-0.5 text-xs font-medium',
-                            committee.is_active
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-surface-container text-on-surface-variant',
+                                status.className,
                           ].join(' ')}
                         >
-                          {committee.is_active ? t('statuses.active') : t('states.inactive')}
+                              {status.label}
                         </span>
+                          )
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button

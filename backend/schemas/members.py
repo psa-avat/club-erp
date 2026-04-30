@@ -27,7 +27,7 @@ class MemberBase(MemberRoleFlags):
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(default=None, max_length=50)
     member_category: int = Field(ge=1, le=6)
-    seniority: Optional[int] = Field(default=None, ge=0)
+    first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     photo_url: Optional[str] = None
     is_active: bool = True
@@ -55,7 +55,7 @@ class MemberUpdateRequest(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(default=None, max_length=50)
     member_category: Optional[int] = Field(default=None, ge=1, le=6)
-    seniority: Optional[int] = Field(default=None, ge=0)
+    first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
     photo_url: Optional[str] = None
@@ -258,7 +258,7 @@ class MemberDetailResponse(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     member_category: int
-    seniority: Optional[int] = None
+    first_subscription_year: Optional[int] = None
     ffvp_id: Optional[int] = None
     account_id: str
     photo_url: Optional[str] = None

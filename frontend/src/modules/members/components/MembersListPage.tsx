@@ -17,7 +17,8 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
@@ -28,23 +29,14 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { PageHeader } from '../../../components/ui/page-header'
 import {
-  useCreateMemberMutation,
   useImportMembersMutation,
   useMemberQuery,
   useMembersQuery,
-  useUpdateMemberMutation,
 } from '../api'
 import { useMembersStore } from '../store'
-import type { UpdateMemberPayload } from '../types'
 import {
-  CheckboxField,
   SelectField,
-  TextField,
-  buildMemberPayload,
-  createEmptyMemberForm,
-  mapMemberToForm,
   toErrorMessage,
-  type MemberFormState,
 } from './membersShared'
 import { ClubPageShell } from './ClubPageShell'
 import { MemberDirectoryTable } from './MemberDirectoryTable'
@@ -55,51 +47,24 @@ import { RegistrationPanel } from './RegistrationPanel'
 export function MembersListPage() {
   const { t } = useTranslation('members')
   const { t: tCommon } = useTranslation('common')
+  const navigate = useNavigate()
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
 
-  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [registrationPanelOpen, setRegistrationPanelOpen] = useState(false)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
 
   const membersQuery = useMembersQuery(filters)
   const memberDetailQuery = useMemberQuery(selectedMemberId)
-  const createMemberMutation = useCreateMemberMutation()
-  const updateMemberMutation = useUpdateMemberMutation()
   const importMembersMutation = useImportMembersMutation()
 
   const members = membersQuery.data ?? []
   const selectedMember = memberDetailQuery.data ?? null
 
-  useEffect(() => {
-    if (selectedMember) {
-      setMemberForm(mapMemberToForm(selectedMember))
-    } else {
-      setMemberForm(createEmptyMemberForm())
-    }
-  }, [selectedMember, selectedYear])
-
   function handleNewMember() {
     setRegistrationPanelOpen(false)
     setSelectedMemberId(null)
-    setMemberForm(createEmptyMemberForm())
-  }
-
-  async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const payload = buildMemberPayload(memberForm)
-
-    if (selectedMemberId) {
-      const updated = await updateMemberMutation.mutateAsync({
-        memberUuid: selectedMemberId,
-        payload: payload as UpdateMemberPayload,
-      })
-      setSelectedMemberId(updated.uuid)
-      return
-    }
-
-    const created = await createMemberMutation.mutateAsync(payload)
-    setSelectedMemberId(created.uuid)
+    navigate('/club/members/new')
   }
 
   function handleOpenRegistrationPanel(memberUuid?: string) {
@@ -113,11 +78,14 @@ export function MembersListPage() {
     handleOpenRegistrationPanel(memberUuid)
   }
 
+  function handleEditMember(memberUuid: string) {
+    setSelectedMemberId(memberUuid)
+    navigate(`/club/members/${memberUuid}/edit`)
+  }
+
   const combinedError =
     membersQuery.error ??
-    memberDetailQuery.error ??
-    createMemberMutation.error ??
-    updateMemberMutation.error
+    memberDetailQuery.error
 
   return (
     <ClubPageShell>
@@ -224,7 +192,7 @@ export function MembersListPage() {
         isLoading={membersQuery.isLoading}
         selectedMemberId={selectedMemberId}
         selectedYear={selectedYear}
-        onEditMember={setSelectedMemberId}
+        onEditMember={handleEditMember}
         onFinalizeRegistration={handleFinalizeRegistration}
       />
 
@@ -240,201 +208,6 @@ export function MembersListPage() {
           <span className="inline-block h-3 w-3 text-orange-500">⚠</span> Renouvellement requis
         </span>
       </div>
-
-      {/* ── Member create / edit form ─────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{selectedMemberId ? t('form.editTitle') : t('form.createTitle')}</CardTitle>
-          <CardDescription>{t('form.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleMemberSubmit}>
-            <SelectField
-              id="member-genre"
-              label={t('form.genre')}
-              options={[
-                { value: '0', label: t('genres.unspecified') },
-                { value: '1', label: t('genres.male') },
-                { value: '2', label: t('genres.female') },
-                { value: '3', label: t('genres.other') },
-              ]}
-              value={memberForm.genre}
-              onChange={(value) => setMemberForm({ ...memberForm, genre: value })}
-            />
-            <SelectField
-              id="member-category"
-              label={t('form.category')}
-              options={[
-                { value: '1', label: t('categories.full') },
-                { value: '2', label: t('categories.temporary') },
-                { value: '3', label: t('categories.nonFlying') },
-                { value: '4', label: t('categories.shortPeriod') },
-                { value: '5', label: t('categories.externalPilot') },
-                { value: '6', label: t('categories.volunteer') },
-              ]}
-              value={memberForm.member_category}
-              onChange={(value) => setMemberForm({ ...memberForm, member_category: value })}
-            />
-            <TextField
-              id="member-first-name"
-              label={t('form.firstName')}
-              value={memberForm.first_name}
-              onChange={(value) => setMemberForm({ ...memberForm, first_name: value })}
-            />
-            <TextField
-              id="member-last-name"
-              label={t('form.lastName')}
-              value={memberForm.last_name}
-              onChange={(value) => setMemberForm({ ...memberForm, last_name: value })}
-            />
-            <TextField
-              id="member-email"
-              label={t('form.email')}
-              type="email"
-              value={memberForm.email}
-              onChange={(value) => setMemberForm({ ...memberForm, email: value })}
-            />
-            <TextField
-              id="member-phone"
-              label={t('form.phone')}
-              value={memberForm.phone}
-              onChange={(value) => setMemberForm({ ...memberForm, phone: value })}
-            />
-            <TextField
-              id="member-birthdate"
-              label={t('form.birthDate')}
-              type="date"
-              value={memberForm.date_of_birth}
-              onChange={(value) => setMemberForm({ ...memberForm, date_of_birth: value })}
-            />
-            <TextField
-              id="member-account-id"
-              label={t('form.accountId')}
-              value={memberForm.account_id}
-              onChange={(value) => setMemberForm({ ...memberForm, account_id: value.toUpperCase() })}
-            />
-            <TextField
-              id="member-seniority"
-              label={t('form.seniority')}
-              type="number"
-              value={memberForm.seniority}
-              onChange={(value) => setMemberForm({ ...memberForm, seniority: value })}
-            />
-            <TextField
-              id="member-ffvp"
-              label={t('form.ffvp')}
-              type="number"
-              value={memberForm.ffvp_id}
-              onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })}
-            />
-            <TextField
-              id="member-photo-url"
-              label={t('form.photoUrl')}
-              value={memberForm.photo_url}
-              onChange={(value) => setMemberForm({ ...memberForm, photo_url: value })}
-            />
-            <SelectField
-              id="member-status"
-              label={t('form.status')}
-              options={[
-                { value: '1', label: t('statuses.active') },
-                { value: '2', label: t('statuses.suspended') },
-                { value: '3', label: t('statuses.resigned') },
-                { value: '4', label: t('statuses.anonymized') },
-              ]}
-              value={memberForm.status}
-              onChange={(value) => setMemberForm({ ...memberForm, status: value })}
-            />
-            <SelectField
-              id="member-registration-status"
-              label={t('form.registrationStatus')}
-              options={[
-                { value: '1', label: t('registration.draft') },
-                { value: '2', label: t('registration.inProgress') },
-                { value: '3', label: t('registration.completed') },
-                { value: '4', label: t('registration.archived') },
-              ]}
-              value={memberForm.registration_status}
-              onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
-            />
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="member-notes">{t('form.notes')}</Label>
-              <textarea
-                id="member-notes"
-                className="min-h-28 w-full rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
-                value={memberForm.notes}
-                onChange={(event) => setMemberForm({ ...memberForm, notes: event.target.value })}
-              />
-            </div>
-            <div className="grid gap-2 rounded-shape-md border border-outline-variant bg-surface-variant p-4 md:col-span-2 md:grid-cols-3">
-              {/* is_active is governed by the registration flow only — displayed read-only */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-on-surface-variant">{t('form.active')} :</span>
-                <span
-                  className={[
-                    'rounded-shape-full px-2 py-0.5 text-xs font-medium',
-                    memberForm.is_active
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-surface-container text-on-surface-variant',
-                  ].join(' ')}
-                >
-                  {memberForm.is_active ? t('statuses.active') : t('states.inactive')}
-                </span>
-              </div>
-              <CheckboxField
-                label={t('form.canFly')}
-                checked={memberForm.can_fly}
-                onChange={(checked) => setMemberForm({ ...memberForm, can_fly: checked })}
-              />
-              <CheckboxField
-                label={t('form.externalAuth')}
-                checked={memberForm.external_auth_enabled}
-                onChange={(checked) => setMemberForm({ ...memberForm, external_auth_enabled: checked })}
-              />
-              <CheckboxField
-                label={t('flags.instructor')}
-                checked={memberForm.is_instructor}
-                onChange={(checked) => setMemberForm({ ...memberForm, is_instructor: checked })}
-              />
-              <CheckboxField
-                label={t('flags.employee')}
-                checked={memberForm.is_employee}
-                onChange={(checked) => setMemberForm({ ...memberForm, is_employee: checked })}
-              />
-              <CheckboxField
-                label={t('flags.executive')}
-                checked={memberForm.is_executive}
-                onChange={(checked) => setMemberForm({ ...memberForm, is_executive: checked })}
-              />
-              <CheckboxField
-                label={t('flags.board')}
-                checked={memberForm.is_board_member}
-                onChange={(checked) => setMemberForm({ ...memberForm, is_board_member: checked })}
-              />
-            </div>
-            <div className="flex flex-wrap gap-2 md:col-span-2">
-              <Button
-                disabled={createMemberMutation.isPending || updateMemberMutation.isPending}
-                type="submit"
-              >
-                {selectedMemberId ? t('actions.saveChanges') : t('actions.createMember')}
-              </Button>
-              {selectedMemberId ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => handleOpenRegistrationPanel()}
-                >
-                  {t('actions.completeRegistration')}
-                </Button>
-              ) : null}
-              <Button type="button" variant="ghost" onClick={handleNewMember}>
-                {t('actions.reset')}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
 
       <RegistrationPanel
         open={registrationPanelOpen}

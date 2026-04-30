@@ -239,7 +239,7 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
         email=member.email,
         phone=member.phone,
         member_category=member.member_category,
-        seniority=member.seniority,
+        first_subscription_year=member.first_subscription_year,
         ffvp_id=member.ffvp_id,
         account_id=member.account_id,
         photo_url=member.photo_url,
@@ -967,15 +967,15 @@ async def import_members_from_csv(
                 skipped += 1
                 continue
 
-        seniority = None
-        raw_seniority = row.get("seniority", "")
-        if raw_seniority:
+        first_subscription_year = None
+        raw_first_sub_year = row.get("first_subscription_year", "")
+        if raw_first_sub_year:
             try:
-                seniority = int(raw_seniority)
-                if seniority < 0:
+                first_subscription_year = int(raw_first_sub_year)
+                if not (1950 <= first_subscription_year <= 9999):
                     raise ValueError
             except ValueError:
-                errors.append(ImportRowError(row=row_index, field="seniority", message="Must be a non-negative integer"))
+                errors.append(ImportRowError(row=row_index, field="first_subscription_year", message="Must be a year between 1950 and 9999"))
                 skipped += 1
                 continue
 
@@ -1011,7 +1011,7 @@ async def import_members_from_csv(
             email=email_raw,  # type: ignore[arg-type]
             phone=phone,
             member_category=_MEMBER_CATEGORY_MAP[raw_category],
-            seniority=seniority,
+            first_subscription_year=first_subscription_year,
             ffvp_id=ffvp_id,
             account_id=account_id,
             is_active=_parse_bool_cell(row.get("is_active", "true"), default=True),

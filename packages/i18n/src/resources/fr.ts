@@ -149,7 +149,7 @@ export const fr = {
       phone: 'Téléphone',
       birthDate: 'Date de naissance',
       accountId: 'Identifiant compte',
-      seniority: 'Ancienneté',
+      firstSubscriptionYear: 'Année première adhésion',
       ffvp: 'Identifiant FFVP',
       registrationYear: "Année d'inscription",
       photoUrl: 'URL photo',
@@ -274,6 +274,7 @@ export const fr = {
     },
     registrationPanel: {
       title: "Finalisation d'inscription {{year}}",
+      memberSince: 'Membre depuis {{year}}',
       step1: '1. Checklist administrative',
       step2: '2. Sélection des tarifs',
       step3: '3. Aperçu comptable',

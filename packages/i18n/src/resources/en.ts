@@ -149,7 +149,7 @@ export const en = {
       phone: 'Phone',
       birthDate: 'Birth date',
       accountId: 'Account ID',
-      seniority: 'Seniority',
+      firstSubscriptionYear: 'First subscription year',
       ffvp: 'FFVP ID',
       registrationYear: 'Registration year',
       photoUrl: 'Photo URL',
@@ -274,6 +274,7 @@ export const en = {
     },
     registrationPanel: {
       title: 'Registration completion {{year}}',
+      memberSince: 'Member since {{year}}',
       step1: '1. Administrative checklist',
       step2: '2. Fare selection',
       step3: '3. Accounting preview',

@@ -42,7 +42,7 @@ export type MemberFormState = {
   email: string
   phone: string
   member_category: string
-  seniority: string
+  first_subscription_year: string
   ffvp_id: string
   account_id: string
   photo_url: string
@@ -89,7 +89,7 @@ export function createEmptyMemberForm(): MemberFormState {
     email: '',
     phone: '',
     member_category: '1',
-    seniority: '',
+    first_subscription_year: '',
     ffvp_id: '',
     account_id: '',
     photo_url: '',
@@ -137,7 +137,7 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
     email: member.email ?? '',
     phone: member.phone ?? '',
     member_category: String(member.member_category),
-    seniority: member.seniority === null ? '' : String(member.seniority),
+    first_subscription_year: member.first_subscription_year === null ? '' : String(member.first_subscription_year),
     ffvp_id: member.ffvp_id === null ? '' : String(member.ffvp_id),
     account_id: member.account_id,
     photo_url: member.photo_url ?? '',
@@ -163,7 +163,7 @@ export function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
     ...(form.email.trim() ? { email: form.email.trim() } : {}),
     ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
     member_category: Number(form.member_category),
-    ...(form.seniority ? { seniority: Number(form.seniority) } : {}),
+    ...(form.first_subscription_year ? { first_subscription_year: Number(form.first_subscription_year) } : {}),
     ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
     ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),

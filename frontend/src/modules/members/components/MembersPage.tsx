@@ -48,7 +48,7 @@ type MemberFormState = {
   email: string
   phone: string
   member_category: string
-  seniority: string
+  first_subscription_year: string
   ffvp_id: string
   account_id: string
   photo_url: string
@@ -123,7 +123,7 @@ function createEmptyMemberForm(): MemberFormState {
     email: '',
     phone: '',
     member_category: '1',
-    seniority: '',
+    first_subscription_year: '',
     ffvp_id: '',
     account_id: '',
     photo_url: '',
@@ -181,7 +181,7 @@ function mapMemberToForm(member: MemberDetail): MemberFormState {
     email: member.email ?? '',
     phone: member.phone ?? '',
     member_category: String(member.member_category),
-    seniority: member.seniority === null ? '' : String(member.seniority),
+    first_subscription_year: member.first_subscription_year === null ? '' : String(member.first_subscription_year),
     ffvp_id: member.ffvp_id === null ? '' : String(member.ffvp_id),
     account_id: member.account_id,
     photo_url: member.photo_url ?? '',
@@ -207,7 +207,7 @@ function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
     ...(form.email.trim() ? { email: form.email.trim() } : {}),
     ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
     member_category: Number(form.member_category),
-    ...(form.seniority ? { seniority: Number(form.seniority) } : {}),
+    ...(form.first_subscription_year ? { first_subscription_year: Number(form.first_subscription_year) } : {}),
     ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
     ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
@@ -731,7 +731,7 @@ export function MembersPage() {
                   <TextField id="member-phone" label={t('form.phone')} value={memberForm.phone} onChange={(value) => setMemberForm({ ...memberForm, phone: value })} />
                   <TextField id="member-birthdate" label={t('form.birthDate')} type="date" value={memberForm.date_of_birth} onChange={(value) => setMemberForm({ ...memberForm, date_of_birth: value })} />
                   <TextField id="member-account-id" label={t('form.accountId')} value={memberForm.account_id} onChange={(value) => setMemberForm({ ...memberForm, account_id: value.toUpperCase() })} />
-                  <TextField id="member-seniority" label={t('form.seniority')} type="number" value={memberForm.seniority} onChange={(value) => setMemberForm({ ...memberForm, seniority: value })} />
+                  <TextField id="member-first-subscription-year" label={t('form.firstSubscriptionYear')} type="number" value={memberForm.first_subscription_year} onChange={(value) => setMemberForm({ ...memberForm, first_subscription_year: value })} />
                   <TextField id="member-ffvp" label={t('form.ffvp')} type="number" value={memberForm.ffvp_id} onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })} />
                   <TextField id="member-photo-url" label={t('form.photoUrl')} value={memberForm.photo_url} onChange={(value) => setMemberForm({ ...memberForm, photo_url: value })} />
                   <SelectField
