@@ -340,6 +340,7 @@ async def disable_member_sheet_expense_access_endpoint(
 @router.post("/import", response_model=ImportResultResponse)
 async def import_members_endpoint(
     file: UploadFile = File(..., description="UTF-8 (or latin-1) CSV file with member data"),
+    update_existing: bool = Query(default=False, description="If true, update an existing member matched by ffvp_id, account_id, or email"),
     current_user: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
@@ -353,5 +354,6 @@ async def import_members_endpoint(
     return await import_members_from_csv(
         db=db,
         content=content,
+        update_existing=update_existing,
         updated_by_user_id=current_user.id,
     )

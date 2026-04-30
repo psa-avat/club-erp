@@ -888,6 +888,7 @@ async def import_members_from_csv(
     db: AsyncSession,
     content: bytes,
     *,
+    update_existing: bool = False,
     updated_by_user_id: Optional[int] = None,
 ) -> ImportResultResponse:
     """Parse a CSV file and bulk-create members, collecting per-row errors.
@@ -897,6 +898,7 @@ async def import_members_from_csv(
     """
     errors: list[ImportRowError] = []
     created = 0
+    updated = 0
     skipped = 0
 
     try:
@@ -941,16 +943,6 @@ async def import_members_from_csv(
         raw_genre = row.get("genre", "0").lower()
         genre = _GENRE_MAP.get(raw_genre, 0)
 
-        raw_status = row.get("status", "1").lower()
-        member_status = _STATUS_MAP.get(raw_status, 1)
-        if member_status is None:
-            errors.append(ImportRowError(row=row_index, field="status", message=f"Unknown value {raw_status!r}"))
-            skipped += 1
-            continue
-
-        raw_reg_status = row.get("registration_status", "1").lower()
-        reg_status = _REGISTRATION_STATUS_MAP.get(raw_reg_status, 1)
-
         email_raw = row.get("email", "") or None
         phone = row.get("phone", "") or None
         account_id = row.get("account_id", "") or None
@@ -991,6 +983,35 @@ async def import_members_from_csv(
                 skipped += 1
                 continue
 
+        existing_member: Optional[Member] = None
+        if update_existing:
+            if ffvp_id is not None:
+                existing_member = await db.scalar(select(Member).where(Member.ffvp_id == ffvp_id))
+            if existing_member is None and account_id:
+                existing_member = await db.scalar(select(Member).where(Member.account_id == account_id))
+            if existing_member is None and email_raw:
+                existing_member = await db.scalar(select(Member).where(Member.email == email_raw))
+
+        raw_status = row.get("status", "").lower()
+        if raw_status:
+            member_status = _STATUS_MAP.get(raw_status)
+            if member_status is None:
+                errors.append(ImportRowError(row=row_index, field="status", message=f"Unknown value {raw_status!r}"))
+                skipped += 1
+                continue
+        else:
+            member_status = existing_member.status if existing_member is not None else 1
+
+        raw_reg_status = row.get("registration_status", "").lower()
+        if raw_reg_status:
+            reg_status = _REGISTRATION_STATUS_MAP.get(raw_reg_status)
+            if reg_status is None:
+                errors.append(ImportRowError(row=row_index, field="registration_status", message=f"Unknown value {raw_reg_status!r}"))
+                skipped += 1
+                continue
+        else:
+            reg_status = existing_member.registration_status if existing_member is not None else 1
+
         last_reg_year = None
         raw_year = row.get("last_registration_year", "")
         if raw_year:
@@ -1003,32 +1024,62 @@ async def import_members_from_csv(
                 skipped += 1
                 continue
 
-        payload = MemberCreateRequest(
-            genre=genre,
-            first_name=first_name,
-            last_name=last_name,
-            date_of_birth=date_of_birth,
-            email=email_raw,  # type: ignore[arg-type]
-            phone=phone,
-            member_category=_MEMBER_CATEGORY_MAP[raw_category],
-            first_subscription_year=first_subscription_year,
-            ffvp_id=ffvp_id,
-            account_id=account_id,
-            is_active=_parse_bool_cell(row.get("is_active", "true"), default=True),
-            status=member_status,
-            registration_status=reg_status,
-            can_fly=_parse_bool_cell(row.get("can_fly", "false")),
-            is_instructor=_parse_bool_cell(row.get("is_instructor", "false")),
-            is_employee=_parse_bool_cell(row.get("is_employee", "false")),
-            is_executive=_parse_bool_cell(row.get("is_executive", "false")),
-            is_board_member=_parse_bool_cell(row.get("is_board_member", "false")),
-            last_registration_year=last_reg_year,
-            notes=notes,
-        )
-
         try:
-            await create_member(db=db, payload=payload, updated_by_user_id=updated_by_user_id)
-            created += 1
+            if existing_member is not None:
+                payload = MemberUpdateRequest(
+                    genre=genre,
+                    first_name=first_name,
+                    last_name=last_name,
+                    date_of_birth=date_of_birth,
+                    email=email_raw,  # type: ignore[arg-type]
+                    phone=phone,
+                    member_category=_MEMBER_CATEGORY_MAP[raw_category],
+                    first_subscription_year=first_subscription_year,
+                    ffvp_id=ffvp_id,
+                    account_id=account_id or existing_member.account_id,
+                    is_active=_parse_bool_cell(row.get("is_active", ""), default=existing_member.is_active),
+                    status=member_status,
+                    registration_status=reg_status,
+                    can_fly=_parse_bool_cell(row.get("can_fly", ""), default=existing_member.can_fly),
+                    is_instructor=_parse_bool_cell(row.get("is_instructor", ""), default=existing_member.is_instructor),
+                    is_employee=_parse_bool_cell(row.get("is_employee", ""), default=existing_member.is_employee),
+                    is_executive=_parse_bool_cell(row.get("is_executive", ""), default=existing_member.is_executive),
+                    is_board_member=_parse_bool_cell(row.get("is_board_member", ""), default=existing_member.is_board_member),
+                    last_registration_year=last_reg_year,
+                    notes=notes,
+                )
+                await update_member(
+                    db=db,
+                    member_uuid=existing_member.uuid,
+                    payload=payload,
+                    updated_by_user_id=updated_by_user_id,
+                )
+                updated += 1
+            else:
+                payload = MemberCreateRequest(
+                    genre=genre,
+                    first_name=first_name,
+                    last_name=last_name,
+                    date_of_birth=date_of_birth,
+                    email=email_raw,  # type: ignore[arg-type]
+                    phone=phone,
+                    member_category=_MEMBER_CATEGORY_MAP[raw_category],
+                    first_subscription_year=first_subscription_year,
+                    ffvp_id=ffvp_id,
+                    account_id=account_id,
+                    is_active=_parse_bool_cell(row.get("is_active", "true"), default=True),
+                    status=member_status,
+                    registration_status=reg_status,
+                    can_fly=_parse_bool_cell(row.get("can_fly", "false")),
+                    is_instructor=_parse_bool_cell(row.get("is_instructor", "false")),
+                    is_employee=_parse_bool_cell(row.get("is_employee", "false")),
+                    is_executive=_parse_bool_cell(row.get("is_executive", "false")),
+                    is_board_member=_parse_bool_cell(row.get("is_board_member", "false")),
+                    last_registration_year=last_reg_year,
+                    notes=notes,
+                )
+                await create_member(db=db, payload=payload, updated_by_user_id=updated_by_user_id)
+                created += 1
         except HTTPException as exc:
             errors.append(ImportRowError(row=row_index, field=None, message=exc.detail))
             skipped += 1
@@ -1037,4 +1088,4 @@ async def import_members_from_csv(
             errors.append(ImportRowError(row=row_index, field=None, message="Unexpected error — row skipped"))
             skipped += 1
 
-    return ImportResultResponse(created=created, skipped=skipped, errors=errors)
+    return ImportResultResponse(created=created, updated=updated, skipped=skipped, errors=errors)

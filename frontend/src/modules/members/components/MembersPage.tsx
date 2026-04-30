@@ -1099,7 +1099,8 @@ export function MembersPage() {
       {showImportDialog && (
         <ImportDialog
           title={tCommon('import.button')}
-          onUpload={(file) => importMembersMutation.mutateAsync(file)}
+          onUpload={(file, options) => importMembersMutation.mutateAsync({ file, updateExisting: options.updateExisting })}
+          showUpdateExistingToggle
           sampleCsvHref="/samples/members-sample.csv"
           onClose={() => setShowImportDialog(false)}
         />

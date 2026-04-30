@@ -76,11 +76,11 @@ export function ClubPageShell({
             {t('nav.clubMembers')}
           </NavLink>
           <NavLink
-            to="/club/committees"
+            to="/club/commissions"
             className={({ isActive }) => clubNavLinkClass(isActive)}
             aria-current={undefined}
           >
-            {t('nav.clubCommittees')}
+            {t('nav.clubCommissionsManagement')}
           </NavLink>
           <NavLink
             to="/club/sheets"

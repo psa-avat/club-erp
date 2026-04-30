@@ -30,25 +30,39 @@ export type ImportRowError = {
 
 export type ImportResult = {
   created: number
+  updated?: number
   skipped: number
   errors: ImportRowError[]
+}
+
+export type ImportOptions = {
+  updateExisting: boolean
 }
 
 type Props = {
   /** Dialog title */
   title: string
   /** Called with the selected file; must resolve to ImportResult */
-  onUpload: (file: File) => Promise<ImportResult>
+  onUpload: (file: File, options: ImportOptions) => Promise<ImportResult>
   /** Optional href for downloading a sample CSV file */
   sampleCsvHref?: string
+  /** Show a toggle allowing updates of existing records when supported by the endpoint */
+  showUpdateExistingToggle?: boolean
   /** Called when the dialog should close */
   onClose: () => void
 }
 
-export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props) {
+export function ImportDialog({
+  title,
+  onUpload,
+  sampleCsvHref,
+  showUpdateExistingToggle = false,
+  onClose,
+}: Props) {
   const { t } = useTranslation('common')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [updateExisting, setUpdateExisting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -65,7 +79,7 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
     setIsUploading(true)
     setUploadError(null)
     try {
-      const res = await onUpload(selectedFile)
+      const res = await onUpload(selectedFile, { updateExisting })
       setResult(res)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -129,6 +143,21 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
           </span>
         </div>
 
+        {showUpdateExistingToggle && (
+          <label className="mb-4 flex items-start gap-2 rounded-shape-xs border border-outline-variant p-3 text-sm text-on-surface">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={updateExisting}
+              onChange={(event) => setUpdateExisting(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium">{t('import.updateExisting')}</span>
+              <span className="block text-xs text-on-surface-variant">{t('import.updateExistingDescription')}</span>
+            </span>
+          </label>
+        )}
+
         {/* Upload error */}
         {uploadError && (
           <p className="mb-3 rounded-shape-xs bg-error-container p-2 text-sm text-on-error-container">
@@ -141,6 +170,12 @@ export function ImportDialog({ title, onUpload, sampleCsvHref, onClose }: Props)
           <div className="mb-4 space-y-2">
             <p className="text-sm text-on-surface">
               <span className="font-medium text-success">{t('import.created')}: {result.created}</span>
+              {typeof result.updated === 'number' && (
+                <>
+                  {' · '}
+                  <span className="font-medium text-blue-700">{t('import.updated')}: {result.updated}</span>
+                </>
+              )}
               {' · '}
               <span className="font-medium text-warning">{t('import.skipped')}: {result.skipped}</span>
               {result.errors.length > 0 && (

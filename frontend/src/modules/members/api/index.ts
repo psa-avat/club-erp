@@ -280,13 +280,18 @@ export function useImportMembersMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, updateExisting = false }: { file: File; updateExisting?: boolean }) => {
       const formData = new FormData()
       formData.append('file', file)
       const { data } = await apiClient.post<ImportResult>(
         '/api/v1/members/import',
         formData,
-        getAuthRequestConfig(),
+        {
+          ...getAuthRequestConfig(),
+          params: {
+            update_existing: updateExisting,
+          },
+        },
       )
       return data
     },

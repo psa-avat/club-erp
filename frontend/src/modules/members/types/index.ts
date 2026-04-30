@@ -192,6 +192,7 @@ export type ImportRowError = {
 
 export type ImportResult = {
   created: number
+  updated?: number
   skipped: number
   errors: ImportRowError[]
 }

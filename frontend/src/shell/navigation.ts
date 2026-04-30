@@ -13,7 +13,6 @@ export const shellNavItems: ShellNavItem[] = [
     labelKey: 'nav.club',
     children: [
       { to: '/club/members', labelKey: 'nav.clubMembers', requiredCapability: 'MANAGE_USERS' },
-      { to: '/club/committees', labelKey: 'nav.clubCommittees', requiredCapability: 'MANAGE_USERS' },
       { to: '/club/commissions', labelKey: 'nav.clubCommissionsManagement', requiredCapability: 'MANAGE_USERS' },
       { to: '/club/sheets', labelKey: 'nav.clubSheets', requiredCapability: 'MANAGE_USERS' },
       { to: '/assets', labelKey: 'nav.assets', requiredCapability: 'MANAGE_ASSETS' },

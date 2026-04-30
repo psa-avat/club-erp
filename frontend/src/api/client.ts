@@ -49,6 +49,15 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const normalizedToken = getAuthToken()
 
+  // Let the browser set multipart boundaries for FormData payloads.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    if (config.headers && typeof config.headers.delete === 'function') {
+      config.headers.delete('Content-Type')
+    } else if (config.headers) {
+      delete config.headers['Content-Type']
+    }
+  }
+
   if (normalizedToken) {
     if (config.headers && typeof config.headers.set === 'function') {
       config.headers.set('Authorization', `Bearer ${normalizedToken}`)

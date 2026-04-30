@@ -311,6 +311,7 @@ class ImportResultResponse(BaseModel):
     """Summary returned after a CSV bulk import."""
 
     created: int
+    updated: int = 0
     skipped: int
     errors: list[ImportRowError]
 
