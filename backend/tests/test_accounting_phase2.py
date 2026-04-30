@@ -28,7 +28,17 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from schemas.accounting import PricingVersionCreateRequest, SystemSettingUpdateRequest
-from services.accounting import create_pricing_version, ensure_default_system_settings, upsert_system_setting
+from schemas.accounting import PricingVersionUpdateRequest
+from services.accounting import (
+    PRICING_STATUS_ACTIVE,
+    PRICING_STATUS_ARCHIVED,
+    PRICING_STATUS_DRAFT,
+    _validate_pricing_status_transition,
+    create_pricing_version,
+    ensure_default_system_settings,
+    update_pricing_version,
+    upsert_system_setting,
+)
 
 
 class _FakeResult:
@@ -68,7 +78,23 @@ class _FakeDb:
         return None
 
 
+class _FakeVersion:
+    def __init__(self, *, fiscal_year_uuid, status=PRICING_STATUS_ACTIVE, to_date=None):
+        self.uuid = uuid4()
+        self.fiscal_year_uuid = fiscal_year_uuid
+        self.asset_type_uuid = None
+        self.name = "Active pricing"
+        self.from_date = date(2026, 1, 1)
+        self.to_date = to_date
+        self.status = status
+        self.is_locked = False
+        self.use_pack = True
+
+
 class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
+    def test_validate_pricing_status_transition_allows_active_to_draft(self):
+        _validate_pricing_status_transition(PRICING_STATUS_ACTIVE, PRICING_STATUS_DRAFT)
+
     async def test_default_settings_initializer_inserts_missing_modules(self):
         existing = SimpleNamespace(module_name="accounting")
         db = _FakeDb(execute_results=[_FakeResult([existing])])
@@ -200,6 +226,26 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(version.status, 2)
         self.assertTrue(db.committed)
         self.assertEqual(len(db.added), 1)
+
+    async def test_update_pricing_version_archive_defaults_end_date_to_today(self):
+        fiscal_year_uuid = uuid4()
+        fy = SimpleNamespace(
+            uuid=fiscal_year_uuid,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+        )
+        version = _FakeVersion(fiscal_year_uuid=fiscal_year_uuid, status=PRICING_STATUS_ACTIVE)
+        db = _FakeDb(execute_results=[_FakeResult([])])
+
+        request = PricingVersionUpdateRequest(status=PRICING_STATUS_ARCHIVED)
+
+        with patch("services.accounting.get_pricing_version", new=AsyncMock(return_value=version)), patch(
+            "services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)
+        ):
+            updated = await update_pricing_version(db, version.uuid, request)
+
+        self.assertEqual(updated.status, PRICING_STATUS_ARCHIVED)
+        self.assertEqual(updated.to_date, date.today())
 
     async def test_sql_contains_phase2_tables(self):
         sql_path = Path(__file__).resolve().parents[2] / "docs" / "account.sql"

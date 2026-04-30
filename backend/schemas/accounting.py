@@ -355,6 +355,14 @@ class PricingVersionUpdateRequest(BaseModel):
     use_pack: Optional[bool] = None
 
 
+class PricingVersionCloneRequest(BaseModel):
+    """Request to clone an existing pricing version into a new Draft version."""
+    name: str = Field(min_length=1, max_length=100)
+    from_date: date
+    to_date: Optional[date] = None
+    use_pack: Optional[bool] = None
+
+
 class CopyPricingVersionsRequest(BaseModel):
     """Request to copy pricing versions from one fiscal year to another as Draft."""
     source_fiscal_year_uuid: UUID

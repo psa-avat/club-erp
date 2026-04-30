@@ -6,16 +6,18 @@ import csv
 import io
 import logging
 import secrets
+from datetime import date
 from hashlib import sha256
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Committee, CommitteeMember, Member, MemberAccountCounter, MemberSheet
+from models import AccountingEntryTemplate, Committee, CommitteeMember, Member, MemberAccountCounter, MemberRegistration, MemberSheet, SystemSetting
 from schemas.members import (
+    AnonymizationResultResponse,
     CommitteeCreateRequest,
     CommitteeMembershipResponse,
     CommitteeMembershipReplaceRequest,
@@ -27,13 +29,21 @@ from schemas.members import (
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
+    MemberRegistrationCreateRequest,
+    MemberRegistrationResponse,
+    MemberRegistrationUpdateRequest,
     MemberSheetResponse,
     MemberSheetUpsertRequest,
     MemberSummaryResponse,
     MemberUpdateRequest,
+    RegistrationCompletionRequest,
 )
 
 logger = logging.getLogger(__name__)
+
+ACTIVE_REGISTRATION_STATUS = 1
+ANONYMIZED_MEMBER_STATUS = 4
+DEFAULT_ANONYMIZE_AFTER_YEARS = 5
 
 
 def _hash_token(raw_token: str) -> str:
@@ -57,6 +67,27 @@ def _validate_role_flags(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Employee and board member flags cannot be enabled together",
         )
+
+
+def _validate_registration_dates(start_date: date, end_date: date) -> None:
+    if end_date < start_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration end date must be on or after the start date",
+        )
+
+
+def _year_bounds(year: int) -> tuple[date, date]:
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+def _registration_overlaps_year_predicate(year: int):
+    start, end = _year_bounds(year)
+    return (
+        (MemberRegistration.status == ACTIVE_REGISTRATION_STATUS)
+        & (MemberRegistration.start_date <= end)
+        & (MemberRegistration.end_date >= start)
+    )
 
 
 async def generate_member_account_id(db: AsyncSession, *, year: Optional[int] = None) -> str:
@@ -151,6 +182,13 @@ async def _serialize_member_summary(
     if year is not None:
         member_sheet_query = member_sheet_query.where(MemberSheet.year == year)
     has_member_sheet = ((await db.scalar(member_sheet_query)) or 0) > 0
+    is_registered = False
+    if year is not None:
+        registration_query = select(func.count()).select_from(MemberRegistration).where(
+            MemberRegistration.member_uuid == member.uuid,
+            _registration_overlaps_year_predicate(year),
+        )
+        is_registered = ((await db.scalar(registration_query)) or 0) > 0
 
     return MemberSummaryResponse(
         uuid=member.uuid,
@@ -169,6 +207,7 @@ async def _serialize_member_summary(
         is_board_member=member.is_board_member,
         committee_count=committee_count,
         has_member_sheet_for_year=has_member_sheet,
+        is_registered_for_year=is_registered,
     )
 
 
@@ -184,6 +223,11 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
         select(MemberSheet)
         .where(MemberSheet.member_uuid == member.uuid)
         .order_by(MemberSheet.year.desc())
+    )
+    registrations_result = await db.execute(
+        select(MemberRegistration)
+        .where(MemberRegistration.member_uuid == member.uuid)
+        .order_by(MemberRegistration.start_date.desc(), MemberRegistration.registered_at.desc())
     )
 
     return MemberDetailResponse(
@@ -219,6 +263,10 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
             )
         ],
         member_sheets=[MemberSheetResponse.model_validate(sheet) for sheet in sheets_result.scalars().all()],
+        registrations=[
+            MemberRegistrationResponse.model_validate(registration)
+            for registration in registrations_result.scalars().all()
+        ],
     )
 
 
@@ -300,6 +348,17 @@ async def list_members(
         query = query.where(Member.is_board_member == filters.is_board_member)
     if filters.is_active is not None:
         query = query.where(Member.is_active == filters.is_active)
+    if filters.registration_state is not None:
+        if filters.year is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A year is required when filtering by registration state",
+            )
+        registration_exists = exists().where(
+            MemberRegistration.member_uuid == Member.uuid,
+            _registration_overlaps_year_predicate(filters.year),
+        )
+        query = query.where(registration_exists if filters.registration_state == "registered" else ~registration_exists)
     if filters.committee_uuid is not None:
         year = filters.year
         query = query.join(CommitteeMember, CommitteeMember.member_uuid == Member.uuid).where(
@@ -528,20 +587,121 @@ async def upsert_member_sheet(
     return sheet
 
 
+async def list_member_registrations(db: AsyncSession, member_uuid: UUID) -> list[MemberRegistrationResponse]:
+    """List dated registration periods for one member."""
+
+    await get_member_or_404(db, member_uuid)
+    result = await db.execute(
+        select(MemberRegistration)
+        .where(MemberRegistration.member_uuid == member_uuid)
+        .order_by(MemberRegistration.start_date.desc(), MemberRegistration.registered_at.desc())
+    )
+    return [MemberRegistrationResponse.model_validate(registration) for registration in result.scalars().all()]
+
+
+async def create_member_registration(
+    db: AsyncSession,
+    member_uuid: UUID,
+    payload: MemberRegistrationCreateRequest,
+    *,
+    registered_by_user_id: Optional[int] = None,
+) -> MemberRegistration:
+    """Create a dated member registration period and derived annual records."""
+
+    member = await get_member_or_404(db, member_uuid)
+    _validate_registration_dates(payload.start_date, payload.end_date)
+
+    registration = MemberRegistration(
+        member_uuid=member_uuid,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        registered_for_year=payload.registered_for_year,
+        registration_type=payload.registration_type or member.member_category,
+        status=payload.status,
+        registered_by=registered_by_user_id,
+        notes=payload.notes,
+    )
+    db.add(registration)
+
+    if member.can_fly and payload.status == ACTIVE_REGISTRATION_STATUS:
+        member.registration_status = 3
+        member.status = 1
+        member.is_active = True
+        member.last_registration_year = max(member.last_registration_year or payload.registered_for_year, payload.registered_for_year)
+        member.updated_by = registered_by_user_id
+
+        existing_sheet = await db.scalar(
+            select(MemberSheet).where(
+                MemberSheet.member_uuid == member_uuid,
+                MemberSheet.year == payload.registered_for_year,
+            )
+        )
+        if existing_sheet is None:
+            db.add(
+                MemberSheet(
+                    member_uuid=member_uuid,
+                    year=payload.registered_for_year,
+                    fare_type=1,
+                    updated_by=registered_by_user_id,
+                )
+            )
+    elif payload.status == ACTIVE_REGISTRATION_STATUS:
+        member.registration_status = 3
+        member.status = 1
+        member.is_active = True
+        member.last_registration_year = max(member.last_registration_year or payload.registered_for_year, payload.registered_for_year)
+        member.updated_by = registered_by_user_id
+
+    await db.commit()
+    await db.refresh(registration)
+    return registration
+
+
+async def update_member_registration(
+    db: AsyncSession,
+    member_uuid: UUID,
+    registration_uuid: UUID,
+    payload: MemberRegistrationUpdateRequest,
+) -> MemberRegistration:
+    """Update a dated registration period."""
+
+    result = await db.execute(
+        select(MemberRegistration).where(
+            MemberRegistration.uuid == registration_uuid,
+            MemberRegistration.member_uuid == member_uuid,
+        )
+    )
+    registration = result.scalar_one_or_none()
+    if registration is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member registration not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    start_date = updates.get("start_date", registration.start_date)
+    end_date = updates.get("end_date", registration.end_date)
+    _validate_registration_dates(start_date, end_date)
+
+    for field_name, value in updates.items():
+        setattr(registration, field_name, value)
+
+    await db.commit()
+    await db.refresh(registration)
+    return registration
+
+
 async def complete_member_registration(
     db: AsyncSession,
     member_uuid: UUID,
-    year: int,
+    payload: RegistrationCompletionRequest,
     *,
     updated_by_user_id: Optional[int] = None,
 ) -> Member:
-    """Mark a member registration as completed after committee validation."""
+    """Complete registration after committee validation and create a validity period."""
 
     member = await get_member_or_404(db, member_uuid)
     committee_count = await db.scalar(
         select(func.count()).select_from(CommitteeMember).where(
             CommitteeMember.member_uuid == member_uuid,
-            CommitteeMember.membership_year == year,
+            CommitteeMember.membership_year == payload.year,
         )
     )
     if not committee_count:
@@ -550,12 +710,88 @@ async def complete_member_registration(
             detail="At least one committee membership is required before completing registration",
         )
 
-    member.registration_status = 3
-    member.last_registration_year = year
-    member.updated_by = updated_by_user_id
-    await db.commit()
+    if payload.accounting_template_uuid is not None:
+        template_is_active = await db.scalar(
+            select(
+                exists().where(
+                    AccountingEntryTemplate.uuid == payload.accounting_template_uuid,
+                    AccountingEntryTemplate.is_active.is_(True),
+                )
+            )
+        )
+        if not template_is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected accounting template does not exist or is inactive",
+            )
+
+    registration_notes = payload.notes
+    if payload.accounting_template_uuid is not None:
+        template_trace = f"Registration template: {payload.accounting_template_uuid}"
+        registration_notes = template_trace if not registration_notes else f"{registration_notes}\n{template_trace}"
+
+    await create_member_registration(
+        db=db,
+        member_uuid=member_uuid,
+        payload=MemberRegistrationCreateRequest(
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            registered_for_year=payload.year,
+            registration_type=payload.registration_type or member.member_category,
+            status=payload.status,
+            notes=registration_notes,
+        ),
+        registered_by_user_id=updated_by_user_id,
+    )
     await db.refresh(member)
     return member
+
+
+async def anonymize_inactive_members(
+    db: AsyncSession,
+    *,
+    reference_year: Optional[int] = None,
+) -> AnonymizationResultResponse:
+    """Anonymize members with no active registration for the configured number of full years."""
+
+    settings = await db.scalar(select(SystemSetting).where(SystemSetting.module_name == "members"))
+    anonymize_after_years = DEFAULT_ANONYMIZE_AFTER_YEARS
+    if settings is not None:
+        raw_value = settings.settings.get("anonymize_after_unregistered_years")
+        if isinstance(raw_value, int) and raw_value > 0:
+            anonymize_after_years = raw_value
+
+    current_year = reference_year or date.today().year
+    threshold_year = current_year - anonymize_after_years
+    cutoff = date(threshold_year, 12, 31)
+
+    registered_since_threshold = exists().where(
+        MemberRegistration.member_uuid == Member.uuid,
+        MemberRegistration.status == ACTIVE_REGISTRATION_STATUS,
+        MemberRegistration.end_date > cutoff,
+    )
+    result = await db.execute(
+        select(Member).where(
+            Member.status != ANONYMIZED_MEMBER_STATUS,
+            ~registered_since_threshold,
+        )
+    )
+    members = result.scalars().all()
+    for member in members:
+        member.first_name = "Anonymized"
+        member.last_name = f"Member {str(member.uuid)[:8]}"
+        member.date_of_birth = None
+        member.email = None
+        member.phone = None
+        member.photo_url = None
+        member.ffvp_id = None
+        member.notes = None
+        member.status = ANONYMIZED_MEMBER_STATUS
+        member.is_active = True
+        member.external_auth_enabled = False
+
+    await db.commit()
+    return AnonymizationResultResponse(anonymized=len(members), threshold_year=threshold_year)
 
 
 async def enable_member_sheet_expense_access(

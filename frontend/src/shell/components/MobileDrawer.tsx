@@ -20,9 +20,19 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
 
   if (!open) return null
 
-  const visibleLinks = shellNavItems.filter((link) =>
-    !link.requiredCapability || capabilities.includes(link.requiredCapability),
-  )
+  const visibleLinks = shellNavItems
+    .map((link) => ({
+      ...link,
+      children: (link.children ?? []).filter(
+        (child) => !child.requiredCapability || capabilities.includes(child.requiredCapability),
+      ),
+    }))
+    .filter(
+      (link) =>
+        !link.requiredCapability ||
+        capabilities.includes(link.requiredCapability) ||
+        (link.children?.length ?? 0) > 0,
+    )
 
   return (
     <div
@@ -49,7 +59,12 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
             const isGroupActive =
               link.to === '/dashboard'
                 ? location.pathname === '/dashboard'
-                : location.pathname === link.to || location.pathname.startsWith(link.to + '/')
+                : location.pathname === link.to ||
+                  location.pathname.startsWith(link.to + '/') ||
+                  (link.children ?? []).some(
+                    (child) =>
+                      location.pathname === child.to || location.pathname.startsWith(child.to + '/'),
+                  )
 
             if (link.children && link.children.length > 0 && isGroupActive) {
               return (

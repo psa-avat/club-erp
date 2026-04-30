@@ -3,7 +3,7 @@ export type ShellNavItem = {
   labelKey: string
   requiredCapability?: string
   /** Optional sub-routes shown when this group is active in the sidebar */
-  children?: Array<{ to: string; labelKey: string }>
+  children?: Array<{ to: string; labelKey: string; requiredCapability?: string }>
 }
 
 export const shellNavItems: ShellNavItem[] = [
@@ -11,11 +11,11 @@ export const shellNavItems: ShellNavItem[] = [
   {
     to: '/club',
     labelKey: 'nav.club',
-    requiredCapability: 'MANAGE_USERS',
     children: [
-      { to: '/club/members', labelKey: 'nav.clubMembers' },
-      { to: '/club/committees', labelKey: 'nav.clubCommittees' },
-      { to: '/club/sheets', labelKey: 'nav.clubSheets' },
+      { to: '/club/members', labelKey: 'nav.clubMembers', requiredCapability: 'MANAGE_USERS' },
+      { to: '/club/committees', labelKey: 'nav.clubCommittees', requiredCapability: 'MANAGE_USERS' },
+      { to: '/club/sheets', labelKey: 'nav.clubSheets', requiredCapability: 'MANAGE_USERS' },
+      { to: '/assets', labelKey: 'nav.assets', requiredCapability: 'MANAGE_ASSETS' },
     ],
   },
   { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
@@ -31,6 +31,5 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings' },
     ],
   },
-  { to: '/assets', labelKey: 'nav.assets', requiredCapability: 'MANAGE_ASSETS' },
   { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
 ]

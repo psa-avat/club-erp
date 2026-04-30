@@ -54,6 +54,9 @@ from schemas.accounting import (
     AccountingEntryUpdateRequest,
     AccountingLineCreateRequest,
     FiscalYearCreateRequest,
+    PricingItemCreateRequest,
+    PricingItemTierCreate,
+    PricingVersionCloneRequest,
     PricingVersionCreateRequest,
     PricingVersionUpdateRequest,
     SystemSettingUpdateRequest,
@@ -549,7 +552,7 @@ def _validate_pricing_status_transition(current_status: int, next_status: int) -
         return
     allowed = {
         PRICING_STATUS_DRAFT: {PRICING_STATUS_ACTIVE, PRICING_STATUS_ARCHIVED},
-        PRICING_STATUS_ACTIVE: {PRICING_STATUS_ARCHIVED},
+        PRICING_STATUS_ACTIVE: {PRICING_STATUS_DRAFT, PRICING_STATUS_ARCHIVED},
         PRICING_STATUS_ARCHIVED: set(),
     }
     if next_status not in allowed.get(current_status, set()):
@@ -596,27 +599,39 @@ async def update_pricing_version(
     next_status = request.status if request.status is not None else current_status
     _validate_pricing_status_transition(current_status, next_status)
 
-    mutable_fields_requested = any(
-        field is not None
-        for field in (
-            request.name,
-            request.from_date,
-            request.to_date,
-            request.asset_type_uuid,
-            request.use_pack,
+    requested_mutable_fields = {
+        field_name
+        for field_name, field_value in (
+            ("name", request.name),
+            ("from_date", request.from_date),
+            ("to_date", request.to_date),
+            ("asset_type_uuid", request.asset_type_uuid),
+            ("use_pack", request.use_pack),
         )
-    )
+        if field_value is not None
+    }
+    mutable_fields_requested = len(requested_mutable_fields) > 0
     if mutable_fields_requested and current_status != PRICING_STATUS_DRAFT:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Only Draft pricing versions can modify name/date/scope/options. "
-                f"Current status is {_pricing_status_label(current_status)}."
-            ),
+        allow_archiving_end_date_update = (
+            current_status == PRICING_STATUS_ACTIVE
+            and next_status == PRICING_STATUS_ARCHIVED
+            and requested_mutable_fields.issubset({"to_date"})
         )
+        if not allow_archiving_end_date_update:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Only Draft pricing versions can modify name/date/scope/options. "
+                    f"Current status is {_pricing_status_label(current_status)}."
+                ),
+            )
 
     next_from = request.from_date if request.from_date is not None else version.from_date
-    next_to = request.to_date if request.to_date is not None else version.to_date
+    if current_status == PRICING_STATUS_ACTIVE and next_status == PRICING_STATUS_ARCHIVED and request.to_date is None:
+        # Archiving an active version closes its validity period at today by default.
+        next_to = date.today()
+    else:
+        next_to = request.to_date if request.to_date is not None else version.to_date
 
     if next_to is not None and next_to < next_from:
         raise HTTPException(
@@ -679,6 +694,62 @@ async def update_pricing_version(
     await db.commit()
     await db.refresh(version)
     return version
+
+
+async def clone_pricing_version(
+    db: AsyncSession,
+    source_version_uuid: UUID,
+    request: PricingVersionCloneRequest,
+    user_id: int,
+) -> PricingVersion:
+    """Clone one pricing version into a new Draft version with copied items and tiers."""
+    source_version = await get_pricing_version(db, source_version_uuid)
+    clone_request = PricingVersionCreateRequest(
+        fiscal_year_uuid=source_version.fiscal_year_uuid,
+        asset_type_uuid=source_version.asset_type_uuid,
+        name=request.name,
+        from_date=request.from_date,
+        to_date=request.to_date,
+        status=PRICING_STATUS_DRAFT,
+        use_pack=request.use_pack if request.use_pack is not None else source_version.use_pack,
+    )
+
+    cloned_version = await create_pricing_version(
+        db,
+        clone_request,
+        user_id=user_id,
+        asset_type_uuid=source_version.asset_type_uuid,
+    )
+
+    source_items_result = await db.execute(
+        select(PricingItem)
+        .where(PricingItem.pricing_version_uuid == source_version_uuid)
+        .options(selectinload(PricingItem.tiers))
+        .order_by(PricingItem.name.asc())
+    )
+    source_items = source_items_result.scalars().all()
+
+    for source_item in source_items:
+        item_request = PricingItemCreateRequest(
+            flight_type_uuid=source_item.flight_type_uuid,
+            name=source_item.name,
+            unit=source_item.unit,
+            base_price=source_item.base_price,
+            pack_price=source_item.pack_price,
+            age_discount_percent=source_item.age_discount_percent,
+            gl_account_credit_uuid=source_item.gl_account_credit_uuid,
+            tiers=[
+                PricingItemTierCreate(
+                    from_qty=tier.from_qty,
+                    price=tier.price,
+                    pack_price=tier.pack_price,
+                )
+                for tier in sorted(source_item.tiers, key=lambda t: t.sort_order)
+            ],
+        )
+        await create_pricing_item(db, cloned_version.uuid, item_request)
+
+    return cloned_version
 
 
 async def delete_pricing_version(db: AsyncSession, version_uuid: UUID) -> None:

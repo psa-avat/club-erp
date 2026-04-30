@@ -496,7 +496,7 @@ export function MembersListPage() {
   const { t: tCommon } = useTranslation('common')
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
 
-  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm(selectedYear))
+  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   const membersQuery = useMembersQuery(filters)
@@ -513,13 +513,13 @@ export function MembersListPage() {
     if (selectedMember) {
       setMemberForm(mapMemberToForm(selectedMember))
     } else {
-      setMemberForm(createEmptyMemberForm(selectedYear))
+      setMemberForm(createEmptyMemberForm())
     }
-  }, [selectedMember, selectedYear])
+  }, [selectedMember])
 
   function handleNewMember() {
     setSelectedMemberId(null)
-    setMemberForm(createEmptyMemberForm(selectedYear))
+    setMemberForm(createEmptyMemberForm())
   }
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -539,11 +539,16 @@ export function MembersListPage() {
     setSelectedMemberId(created.uuid)
   }
 
-  async function handleCompleteRegistration() {
-    if (!selectedMemberId) return
+  async function handleCompleteRegistrationFromList(memberUuid: string, memberCategory: number) {
     const completed = await completeRegistrationMutation.mutateAsync({
-      memberUuid: selectedMemberId,
-      payload: { year: selectedYear },
+      memberUuid,
+      payload: {
+        year: selectedYear,
+        start_date: `${selectedYear}-01-01`,
+        end_date: `${selectedYear}-12-31`,
+        registration_type: memberCategory,
+        status: 1,
+      },
     })
     setSelectedMemberId(completed.uuid)
   }
@@ -630,6 +635,22 @@ export function MembersListPage() {
               setFilters({ ...filters, can_fly: value ? value === 'true' : undefined })
             }
           />
+          <SelectField
+            id="members-registration-state-filter"
+            label={t('filters.registration')}
+            options={[
+              { value: '', label: t('filters.all') },
+              { value: 'registered', label: t('filters.registered') },
+              { value: 'unregistered', label: t('filters.unregistered') },
+            ]}
+            value={filters.registration_state ?? ''}
+            onChange={(value) =>
+              setFilters({
+                ...filters,
+                registration_state: value ? (value as 'registered' | 'unregistered') : undefined,
+              })
+            }
+          />
         </CardContent>
       </Card>
 
@@ -670,6 +691,7 @@ export function MembersListPage() {
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <Pill active={member.is_registered_for_year}>{t('list.registered')}</Pill>
                     <Pill active={member.can_fly}>{t('list.canFly')}</Pill>
                     <Pill active={member.is_instructor}>{t('flags.instructor')}</Pill>
                     <Pill active={member.is_employee}>{t('flags.employee')}</Pill>
@@ -681,6 +703,19 @@ export function MembersListPage() {
                       {t('list.committees')}: {member.committee_count}
                     </span>
                     <span>{member.is_active ? t('statuses.active') : t('states.inactive')}</span>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      size="sm"
+                      type="button"
+                      disabled={completeRegistrationMutation.isPending}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void handleCompleteRegistrationFromList(member.uuid, member.member_category)
+                      }}
+                    >
+                      {t('actions.completeRegistration')}
+                    </Button>
                   </div>
                 </button>
               ))}
@@ -774,13 +809,6 @@ export function MembersListPage() {
                 onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })}
               />
               <TextField
-                id="member-last-registration-year"
-                label={t('form.registrationYear')}
-                type="number"
-                value={memberForm.last_registration_year}
-                onChange={(value) => setMemberForm({ ...memberForm, last_registration_year: value })}
-              />
-              <TextField
                 id="member-photo-url"
                 label={t('form.photoUrl')}
                 value={memberForm.photo_url}
@@ -823,7 +851,8 @@ export function MembersListPage() {
                 <CheckboxField
                   label={t('form.active')}
                   checked={memberForm.is_active}
-                  onChange={(checked) => setMemberForm({ ...memberForm, is_active: checked })}
+                  disabled
+                  onChange={() => {}}
                 />
                 <CheckboxField
                   label={t('form.canFly')}
@@ -863,16 +892,6 @@ export function MembersListPage() {
                 >
                   {selectedMemberId ? t('actions.saveChanges') : t('actions.createMember')}
                 </Button>
-                {selectedMemberId ? (
-                  <Button
-                    disabled={completeRegistrationMutation.isPending}
-                    type="button"
-                    variant="secondary"
-                    onClick={handleCompleteRegistration}
-                  >
-                    {t('actions.completeRegistration')}
-                  </Button>
-                ) : null}
                 <Button type="button" variant="ghost" onClick={handleNewMember}>
                   {t('actions.reset')}
                 </Button>

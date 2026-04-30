@@ -2,6 +2,7 @@ BEGIN;
 
 -- MEMBERS (data + helper tables)
 DROP TABLE IF EXISTS member_sheets CASCADE;
+DROP TABLE IF EXISTS member_registrations CASCADE;
 DROP TABLE IF EXISTS committee_members CASCADE;
 DROP TABLE IF EXISTS committees CASCADE;
 DROP TABLE IF EXISTS members CASCADE;

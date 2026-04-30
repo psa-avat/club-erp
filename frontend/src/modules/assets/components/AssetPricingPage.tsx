@@ -27,6 +27,7 @@ import { Plus, Pencil, Trash2, Check, X, ArrowLeft } from 'lucide-react'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
+import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
@@ -42,6 +43,7 @@ import {
   useCreateAssetPricingVersionMutation,
   useUpdateAssetPricingVersionMutation,
   useDeleteAssetPricingVersionMutation,
+  useCloneAssetPricingVersionMutation,
   usePricingItemsQuery,
   useCreatePricingItemMutation,
   useUpdatePricingItemMutation,
@@ -95,6 +97,16 @@ function timelineBar(fy: FiscalYear, version: AssetPricingVersion) {
 function formatPrice(value: string | null | undefined): string {
   if (!value) return '—'
   try { return new Decimal(value).toFixed(2) } catch { return value }
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function addDaysIsoDate(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 function getFromQtyStep(unit: number): string {
@@ -679,11 +691,26 @@ export function AssetPricingPage() {
     selectedFy?.uuid ?? '',
     asset?.asset_type_uuid ?? '',
   )
+  const cloneVersionMutation = useCloneAssetPricingVersionMutation(
+    selectedFy?.uuid ?? '',
+    asset?.asset_type_uuid ?? '',
+  )
 
   const [showNewVersionForm, setShowNewVersionForm] = useState(false)
   const [editingVersion, setEditingVersion] = useState<AssetPricingVersion | null>(null)
   const [expandedVersionUuid, setExpandedVersionUuid] = useState<string | null>(null)
+  const [confirmActivateVersion, setConfirmActivateVersion] = useState<AssetPricingVersion | null>(null)
   const [confirmDeleteVersion, setConfirmDeleteVersion] = useState<AssetPricingVersion | null>(null)
+  const [confirmRevertVersion, setConfirmRevertVersion] = useState<AssetPricingVersion | null>(null)
+  const [archiveVersion, setArchiveVersion] = useState<AssetPricingVersion | null>(null)
+  const [archiveEndDate, setArchiveEndDate] = useState(todayIsoDate())
+  const [archiveCreateNext, setArchiveCreateNext] = useState(true)
+  const [archiveNextName, setArchiveNextName] = useState('')
+  const [archiveNextFromDate, setArchiveNextFromDate] = useState(todayIsoDate())
+  const [cloneSourceVersion, setCloneSourceVersion] = useState<AssetPricingVersion | null>(null)
+  const [cloneName, setCloneName] = useState('')
+  const [cloneFromDate, setCloneFromDate] = useState(todayIsoDate())
+  const [cloneToDate, setCloneToDate] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   async function handleCreateVersion(form: VersionFormState) {
@@ -728,6 +755,92 @@ export function AssetPricingPage() {
       setError(null)
     } catch (e) {
       setError(extractError(e, t('pricing.error.deleteFailed')))
+    }
+  }
+
+  async function handleActivateVersion(v: AssetPricingVersion) {
+    try {
+      await updateVersionMutation.mutateAsync({
+        uuid: v.uuid,
+        status: VERSION_STATUS_ACTIVE,
+      })
+      setError(null)
+    } catch (e) {
+      setError(extractError(e, t('pricing.error.saveFailed')))
+    }
+  }
+
+  async function handleRevertToDraft(v: AssetPricingVersion) {
+    try {
+      await updateVersionMutation.mutateAsync({
+        uuid: v.uuid,
+        status: VERSION_STATUS_DRAFT,
+      })
+      setError(null)
+    } catch (e) {
+      setError(extractError(e, t('pricing.error.saveFailed')))
+    }
+  }
+
+  function openCloneDialog(v: AssetPricingVersion) {
+    const defaultFromDate = v.to_date ? addDaysIsoDate(v.to_date, 1) : todayIsoDate()
+    setCloneSourceVersion(v)
+    setCloneName(`${v.name} - ${t('pricing.newVersion')}`)
+    setCloneFromDate(defaultFromDate)
+    setCloneToDate('')
+  }
+
+  async function handleCloneVersion() {
+    if (!cloneSourceVersion) return
+    try {
+      const cloned = await cloneVersionMutation.mutateAsync({
+        source_version_uuid: cloneSourceVersion.uuid,
+        name: cloneName,
+        from_date: cloneFromDate,
+        to_date: cloneToDate || null,
+        use_pack: cloneSourceVersion.use_pack,
+      })
+      setCloneSourceVersion(null)
+      setExpandedVersionUuid(cloned.uuid)
+      setError(null)
+    } catch (e) {
+      setError(extractError(e, t('pricing.error.saveFailed')))
+    }
+  }
+
+  function openArchiveDialog(v: AssetPricingVersion) {
+    const defaultEndDate = todayIsoDate()
+    setArchiveVersion(v)
+    setArchiveEndDate(defaultEndDate)
+    setArchiveCreateNext(true)
+    setArchiveNextName(`${v.name} - ${t('pricing.newVersion')}`)
+    setArchiveNextFromDate(addDaysIsoDate(defaultEndDate, 1))
+  }
+
+  async function handleArchiveVersion() {
+    if (!archiveVersion) return
+    try {
+      await updateVersionMutation.mutateAsync({
+        uuid: archiveVersion.uuid,
+        status: VERSION_STATUS_ARCHIVED,
+        to_date: archiveEndDate,
+      })
+
+      if (archiveCreateNext) {
+        const cloned = await cloneVersionMutation.mutateAsync({
+          source_version_uuid: archiveVersion.uuid,
+          name: archiveNextName,
+          from_date: archiveNextFromDate,
+          to_date: null,
+          use_pack: archiveVersion.use_pack,
+        })
+        setExpandedVersionUuid(cloned.uuid)
+      }
+
+      setArchiveVersion(null)
+      setError(null)
+    } catch (e) {
+      setError(extractError(e, t('pricing.error.saveFailed')))
     }
   }
 
@@ -912,6 +1025,13 @@ export function AssetPricingPage() {
                           >
                             <button
                               type="button"
+                              className="rounded px-2 py-1 text-xs text-success hover:bg-success-container"
+                              onClick={() => setConfirmActivateVersion(v)}
+                            >
+                              {t('pricing.activateVersion')}
+                            </button>
+                            <button
+                              type="button"
                               className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
                               onClick={() => setEditingVersion(v)}
                             >
@@ -923,6 +1043,34 @@ export function AssetPricingPage() {
                               onClick={() => setConfirmDeleteVersion(v)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                        {canEdit && !v.is_locked && v.status === VERSION_STATUS_ACTIVE && (
+                          <div
+                            className="flex shrink-0 gap-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                              onClick={() => openCloneDialog(v)}
+                            >
+                              {t('pricing.cloneFromVersion')}
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded px-2 py-1 text-xs text-warning hover:bg-warning-container"
+                              onClick={() => openArchiveDialog(v)}
+                            >
+                              {t('pricing.archiveVersion')}
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                              onClick={() => setConfirmRevertVersion(v)}
+                            >
+                              {t('pricing.revertToDraft')}
                             </button>
                           </div>
                         )}
@@ -956,6 +1104,126 @@ export function AssetPricingPage() {
           onCancel={() => setConfirmDeleteVersion(null)}
         />
       )}
+      {confirmActivateVersion && (
+        <ConfirmDialog
+          open={!!confirmActivateVersion}
+          title={t('pricing.confirmActivateVersionTitle')}
+          body={t('pricing.confirmActivateVersionBody')}
+          confirmLabel={t('pricing.activateVersion')}
+          onConfirm={() => {
+            const version = confirmActivateVersion
+            setConfirmActivateVersion(null)
+            handleActivateVersion(version)
+          }}
+          onCancel={() => setConfirmActivateVersion(null)}
+        />
+      )}
+      {confirmRevertVersion && (
+        <ConfirmDialog
+          open={!!confirmRevertVersion}
+          title={t('pricing.confirmRevertToDraftTitle')}
+          body={t('pricing.confirmRevertToDraftBody')}
+          confirmLabel={t('pricing.revertToDraft')}
+          onConfirm={() => {
+            const version = confirmRevertVersion
+            setConfirmRevertVersion(null)
+            handleRevertToDraft(version)
+          }}
+          onCancel={() => setConfirmRevertVersion(null)}
+        />
+      )}
+
+      <Dialog open={!!cloneSourceVersion} onClose={() => setCloneSourceVersion(null)}>
+        <div className="space-y-4 p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-on-surface">{t('pricing.cloneVersionTitle')}</h3>
+            <p className="mt-1 text-xs text-on-surface-variant">{t('pricing.cloneVersionDescription')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.versionName')}</Label>
+            <Input value={cloneName} onChange={(e) => setCloneName(e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">{t('pricing.fromDate')}</Label>
+              <Input type="date" value={cloneFromDate} onChange={(e) => setCloneFromDate(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t('pricing.toDate')}</Label>
+              <Input type="date" value={cloneToDate} onChange={(e) => setCloneToDate(e.target.value)} className="h-8 text-sm" />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setCloneSourceVersion(null)}>
+              {t('pricing.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCloneVersion}
+              disabled={cloneVersionMutation.isPending || !cloneName || !cloneFromDate}
+            >
+              {cloneVersionMutation.isPending ? t('pricing.saving') : t('pricing.cloneFromVersion')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog open={!!archiveVersion} onClose={() => setArchiveVersion(null)}>
+        <div className="space-y-4 p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-on-surface">{t('pricing.archiveVersionTitle')}</h3>
+            <p className="mt-1 text-xs text-on-surface-variant">{t('pricing.archiveVersionDescription')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.archiveEndDate')}</Label>
+            <Input type="date" value={archiveEndDate} onChange={(e) => setArchiveEndDate(e.target.value)} className="h-8 text-sm" />
+          </div>
+          <label className="flex items-center gap-2 text-xs text-on-surface">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-outline"
+              checked={archiveCreateNext}
+              onChange={(e) => setArchiveCreateNext(e.target.checked)}
+            />
+            {t('pricing.createNextVersion')}
+          </label>
+          {archiveCreateNext && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs">{t('pricing.nextVersionName')}</Label>
+                <Input value={archiveNextName} onChange={(e) => setArchiveNextName(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{t('pricing.nextVersionFromDate')}</Label>
+                <Input
+                  type="date"
+                  value={archiveNextFromDate}
+                  onChange={(e) => setArchiveNextFromDate(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setArchiveVersion(null)}>
+              {t('pricing.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleArchiveVersion}
+              disabled={
+                updateVersionMutation.isPending ||
+                !archiveEndDate ||
+                (archiveCreateNext && (!archiveNextName || !archiveNextFromDate))
+              }
+            >
+              {(updateVersionMutation.isPending || cloneVersionMutation.isPending)
+                ? t('pricing.saving')
+                : t('pricing.confirmArchive')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </section>
   )
 }

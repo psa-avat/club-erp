@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { Dialog } from '../../../components/ui/dialog'
 import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { type AccountingEntryModel, useAccountingEntryModelsQuery } from '../../banque/api'
 import {
   useCommitteeMembersQuery,
   useCommitteesQuery,
@@ -59,7 +61,6 @@ type MemberFormState = {
   is_board_member: boolean
   can_fly: boolean
   external_auth_enabled: boolean
-  last_registration_year: string
   notes: string
 }
 
@@ -79,6 +80,14 @@ type SheetFormState = {
   hours_done_in_pack: string
   remaining_hours_in_pack: string
   expense_access_enabled: boolean
+}
+
+type RegistrationFormState = {
+  start_date: string
+  end_date: string
+  registration_type: string
+  accounting_template_uuid: string
+  notes: string
 }
 
 function toErrorMessage(error: unknown): string {
@@ -105,7 +114,7 @@ function toErrorMessage(error: unknown): string {
   return 'Unexpected error'
 }
 
-function createEmptyMemberForm(selectedYear: number): MemberFormState {
+function createEmptyMemberForm(): MemberFormState {
   return {
     genre: '0',
     first_name: '',
@@ -127,7 +136,6 @@ function createEmptyMemberForm(selectedYear: number): MemberFormState {
     is_board_member: false,
     can_fly: true,
     external_auth_enabled: false,
-    last_registration_year: String(selectedYear),
     notes: '',
   }
 }
@@ -154,6 +162,16 @@ function createSheetForm(sheet?: MemberSheet | null): SheetFormState {
   }
 }
 
+function createRegistrationForm(year: number, member?: MemberDetail | null): RegistrationFormState {
+  return {
+    start_date: `${year}-01-01`,
+    end_date: `${year}-12-31`,
+    registration_type: member ? String(member.member_category) : '',
+    accounting_template_uuid: '',
+    notes: '',
+  }
+}
+
 function mapMemberToForm(member: MemberDetail): MemberFormState {
   return {
     genre: String(member.genre),
@@ -176,7 +194,6 @@ function mapMemberToForm(member: MemberDetail): MemberFormState {
     is_board_member: member.is_board_member,
     can_fly: member.can_fly,
     external_auth_enabled: member.external_auth_enabled,
-    last_registration_year: member.last_registration_year === null ? '' : String(member.last_registration_year),
     notes: member.notes ?? '',
   }
 }
@@ -203,7 +220,6 @@ function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
     is_board_member: form.is_board_member,
     can_fly: form.can_fly,
     external_auth_enabled: form.external_auth_enabled,
-    ...(form.last_registration_year ? { last_registration_year: Number(form.last_registration_year) } : {}),
     ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
   }
 }
@@ -247,18 +263,22 @@ export function MembersPage() {
   const { t } = useTranslation('members')
   const { selectedMemberId, setSelectedMemberId, selectedYear, setSelectedYear, filters, setFilters } = useMembersStore()
   const [activeSection, setActiveSection] = useState<MembersSection>('members')
-  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm(selectedYear))
+  const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
   const [selectedCommitteeId, setSelectedCommitteeId] = useState<string | null>(null)
   const [committeeForm, setCommitteeForm] = useState<CommitteeFormState>(() => createCommitteeForm())
   const [committeeRoster, setCommitteeRoster] = useState<string[]>([])
   const [sheetForm, setSheetForm] = useState<SheetFormState>(() => createSheetForm())
   const [expenseToken, setExpenseToken] = useState<string | null>(null)
+  const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false)
+  const [registrationForm, setRegistrationForm] = useState<RegistrationFormState>(() => createRegistrationForm(new Date().getFullYear()))
+  const [registrationError, setRegistrationError] = useState<string | null>(null)
 
   const membersQuery = useMembersQuery(filters)
   const memberDetailQuery = useMemberQuery(selectedMemberId)
   const committeesQuery = useCommitteesQuery()
   const committeeMembersQuery = useCommitteeMembersQuery(selectedCommitteeId, selectedYear)
   const memberSheetsQuery = useMemberSheetsQuery(selectedMemberId)
+  const accountingTemplatesQuery = useAccountingEntryModelsQuery(registrationDialogOpen && selectedMemberId !== null)
 
   const createMemberMutation = useCreateMemberMutation()
   const updateMemberMutation = useUpdateMemberMutation()
@@ -279,12 +299,14 @@ export function MembersPage() {
   const selectedCommittee = committees.find((committee) => committee.uuid === selectedCommitteeId) ?? null
   const sheets = memberSheetsQuery.data ?? []
   const selectedYearSheet = sheets.find((sheet) => sheet.year === selectedYear) ?? null
+  const selectedTemplate = accountingTemplatesQuery.data?.find((template) => template.uuid === registrationForm.accounting_template_uuid)
+  const isRegistrationCompleted = selectedMember?.registration_status === 3
 
   useEffect(() => {
     if (selectedMember) {
       setMemberForm(mapMemberToForm(selectedMember))
     } else {
-      setMemberForm(createEmptyMemberForm(selectedYear))
+      setMemberForm(createEmptyMemberForm())
     }
   }, [selectedMember, selectedYear])
 
@@ -305,7 +327,7 @@ export function MembersPage() {
   function handleNewMember() {
     setSelectedMemberId(null)
     setExpenseToken(null)
-    setMemberForm(createEmptyMemberForm(selectedYear))
+    setMemberForm(createEmptyMemberForm())
   }
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -325,16 +347,47 @@ export function MembersPage() {
     setSelectedMemberId(created.uuid)
   }
 
-  async function handleCompleteRegistration() {
-    if (!selectedMemberId) {
+  function handleOpenRegistrationDialog() {
+    if (!selectedMember) {
+      return
+    }
+    setRegistrationForm(createRegistrationForm(selectedYear, selectedMember))
+    setRegistrationError(null)
+    setRegistrationDialogOpen(true)
+  }
+
+  async function handleCompleteRegistrationFromDialog() {
+    if (!selectedMemberId || !selectedMember) {
+      return
+    }
+
+    if (registrationForm.start_date === '' || registrationForm.end_date === '') {
+      setRegistrationError(t('registrationWizard.errors.missingDates'))
+      return
+    }
+    if (registrationForm.end_date < registrationForm.start_date) {
+      setRegistrationError(t('registrationWizard.errors.invalidDateRange'))
+      return
+    }
+    if (registrationForm.accounting_template_uuid === '') {
+      setRegistrationError(t('registrationWizard.errors.templateRequired'))
       return
     }
 
     const completed = await completeRegistrationMutation.mutateAsync({
       memberUuid: selectedMemberId,
-      payload: { year: selectedYear },
+      payload: {
+        year: selectedYear,
+        start_date: registrationForm.start_date,
+        end_date: registrationForm.end_date,
+        registration_type: registrationForm.registration_type === '' ? undefined : Number(registrationForm.registration_type),
+        accounting_template_uuid: registrationForm.accounting_template_uuid,
+        notes: registrationForm.notes.trim() === '' ? undefined : registrationForm.notes.trim(),
+        status: 1,
+      },
     })
     setSelectedMemberId(completed.uuid)
+    setRegistrationDialogOpen(false)
   }
 
   async function handleCommitteeSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -421,6 +474,29 @@ export function MembersPage() {
     upsertMemberSheetMutation.error ??
     enableExpenseAccessMutation.error ??
     disableExpenseAccessMutation.error
+
+  const assignedCommitteesForYear = selectedMember
+    ? selectedMember.committees.filter((membership) => membership.membership_year === selectedYear)
+    : []
+  const hasProfileChecklist =
+    selectedMember !== null &&
+    selectedMember.first_name.trim() !== '' &&
+    selectedMember.last_name.trim() !== '' &&
+    (selectedMember.email ?? '').trim() !== ''
+  const hasCommitteeChecklist = assignedCommitteesForYear.length > 0
+  const hasPeriodChecklist =
+    registrationForm.start_date !== '' &&
+    registrationForm.end_date !== '' &&
+    registrationForm.end_date >= registrationForm.start_date
+  const hasTemplateChecklist =
+    registrationForm.accounting_template_uuid !== '' &&
+    selectedTemplate !== undefined &&
+    selectedTemplate.is_active
+  const canSubmitRegistrationChecklist =
+    hasProfileChecklist &&
+    hasCommitteeChecklist &&
+    hasPeriodChecklist &&
+    hasTemplateChecklist
 
   return (
     <section className="space-y-6">
@@ -611,6 +687,17 @@ export function MembersPage() {
                 <CardDescription>{t('form.description')}</CardDescription>
               </CardHeader>
               <CardContent>
+                {selectedMemberId ? (
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-sky-900">{t('actions.completeRegistration')}</p>
+                      <p className="text-xs text-sky-700">{t('registrationWizard.checklistTitle')}</p>
+                    </div>
+                    <Button disabled={completeRegistrationMutation.isPending} type="button" onClick={handleOpenRegistrationDialog}>
+                      {t('actions.completeRegistration')}
+                    </Button>
+                  </div>
+                ) : null}
                 <form className="grid gap-4 md:grid-cols-2" onSubmit={handleMemberSubmit}>
                   <SelectField
                     id="member-genre"
@@ -646,7 +733,6 @@ export function MembersPage() {
                   <TextField id="member-account-id" label={t('form.accountId')} value={memberForm.account_id} onChange={(value) => setMemberForm({ ...memberForm, account_id: value.toUpperCase() })} />
                   <TextField id="member-seniority" label={t('form.seniority')} type="number" value={memberForm.seniority} onChange={(value) => setMemberForm({ ...memberForm, seniority: value })} />
                   <TextField id="member-ffvp" label={t('form.ffvp')} type="number" value={memberForm.ffvp_id} onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })} />
-                  <TextField id="member-last-registration-year" label={t('form.registrationYear')} type="number" value={memberForm.last_registration_year} onChange={(value) => setMemberForm({ ...memberForm, last_registration_year: value })} />
                   <TextField id="member-photo-url" label={t('form.photoUrl')} value={memberForm.photo_url} onChange={(value) => setMemberForm({ ...memberForm, photo_url: value })} />
                   <SelectField
                     id="member-status"
@@ -658,6 +744,7 @@ export function MembersPage() {
                       { value: '4', label: t('statuses.anonymized') },
                     ]}
                     value={memberForm.status}
+                    disabled={isRegistrationCompleted}
                     onChange={(value) => setMemberForm({ ...memberForm, status: value })}
                   />
                   <SelectField
@@ -670,6 +757,7 @@ export function MembersPage() {
                       { value: '4', label: t('registration.archived') },
                     ]}
                     value={memberForm.registration_status}
+                    disabled={isRegistrationCompleted}
                     onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
                   />
                   <div className="space-y-2 md:col-span-2">
@@ -682,7 +770,7 @@ export function MembersPage() {
                     />
                   </div>
                   <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2 md:grid-cols-3">
-                    <CheckboxField label={t('form.active')} checked={memberForm.is_active} onChange={(checked) => setMemberForm({ ...memberForm, is_active: checked })} />
+                    <CheckboxField label={t('form.active')} checked={memberForm.is_active} disabled onChange={() => {}} />
                     <CheckboxField label={t('form.canFly')} checked={memberForm.can_fly} onChange={(checked) => setMemberForm({ ...memberForm, can_fly: checked })} />
                     <CheckboxField label={t('form.externalAuth')} checked={memberForm.external_auth_enabled} onChange={(checked) => setMemberForm({ ...memberForm, external_auth_enabled: checked })} />
                     <CheckboxField label={t('flags.instructor')} checked={memberForm.is_instructor} onChange={(checked) => setMemberForm({ ...memberForm, is_instructor: checked })} />
@@ -695,7 +783,7 @@ export function MembersPage() {
                       {selectedMemberId ? t('actions.saveChanges') : t('actions.createMember')}
                     </Button>
                     {selectedMemberId ? (
-                      <Button disabled={completeRegistrationMutation.isPending} type="button" variant="secondary" onClick={handleCompleteRegistration}>
+                      <Button disabled={completeRegistrationMutation.isPending} type="button" variant="secondary" onClick={handleOpenRegistrationDialog}>
                         {t('actions.completeRegistration')}
                       </Button>
                     ) : null}
@@ -902,6 +990,112 @@ export function MembersPage() {
           </Card>
         </div>
       ) : null}
+      <Dialog open={registrationDialogOpen} onClose={() => setRegistrationDialogOpen(false)} aria-labelledby="registration-checklist-title">
+        <div className="space-y-5 p-5">
+          <div className="space-y-1">
+            <h2 id="registration-checklist-title" className="text-lg font-semibold text-slate-900">
+              {t('registrationWizard.title', { year: selectedYear })}
+            </h2>
+            <p className="text-sm text-slate-600">
+              {selectedMember ? `${selectedMember.first_name} ${selectedMember.last_name}` : t('sheet.selectMember')}
+            </p>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-900">{t('registrationWizard.checklistTitle')}</p>
+            <ChecklistRow passed={hasProfileChecklist} label={t('registrationWizard.checks.profile')} />
+            <ChecklistRow passed={hasCommitteeChecklist} label={t('registrationWizard.checks.committee', { count: assignedCommitteesForYear.length })} />
+            <ChecklistRow passed={hasPeriodChecklist} label={t('registrationWizard.checks.period')} />
+            <ChecklistRow passed={hasTemplateChecklist} label={t('registrationWizard.checks.template')} />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <TextField
+              id="registration-start-date"
+              label={t('registrationPeriod.startDate')}
+              type="date"
+              value={registrationForm.start_date}
+              onChange={(value) => {
+                setRegistrationError(null)
+                setRegistrationForm((prev) => ({ ...prev, start_date: value }))
+              }}
+            />
+            <TextField
+              id="registration-end-date"
+              label={t('registrationPeriod.endDate')}
+              type="date"
+              value={registrationForm.end_date}
+              onChange={(value) => {
+                setRegistrationError(null)
+                setRegistrationForm((prev) => ({ ...prev, end_date: value }))
+              }}
+            />
+            <SelectField
+              id="registration-type"
+              label={t('registrationPeriod.type')}
+              options={[
+                { value: '', label: t('registrationPeriod.useMemberCategory') },
+                { value: '1', label: t('categories.full') },
+                { value: '2', label: t('categories.temporary') },
+                { value: '3', label: t('categories.nonFlying') },
+                { value: '4', label: t('categories.shortPeriod') },
+                { value: '5', label: t('categories.externalPilot') },
+                { value: '6', label: t('categories.volunteer') },
+              ]}
+              value={registrationForm.registration_type}
+              onChange={(value) => {
+                setRegistrationError(null)
+                setRegistrationForm((prev) => ({ ...prev, registration_type: value }))
+              }}
+            />
+            <SelectField
+              id="registration-template"
+              label={t('registrationWizard.templateLabel')}
+              options={[
+                { value: '', label: t('registrationWizard.templatePlaceholder') },
+                ...((accountingTemplatesQuery.data ?? []).map((template: AccountingEntryModel) => ({
+                  value: template.uuid,
+                  label: `${template.code} · ${template.name}`,
+                }))),
+              ]}
+              value={registrationForm.accounting_template_uuid}
+              onChange={(value) => {
+                setRegistrationError(null)
+                setRegistrationForm((prev) => ({ ...prev, accounting_template_uuid: value }))
+              }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="registration-notes">{t('registrationPeriod.notes')}</Label>
+            <textarea
+              id="registration-notes"
+              className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-400"
+              value={registrationForm.notes}
+              onChange={(event) => {
+                setRegistrationError(null)
+                setRegistrationForm((prev) => ({ ...prev, notes: event.target.value }))
+              }}
+            />
+          </div>
+
+          {accountingTemplatesQuery.error ? <Alert>{toErrorMessage(accountingTemplatesQuery.error)}</Alert> : null}
+          {registrationError ? <Alert>{registrationError}</Alert> : null}
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setRegistrationDialogOpen(false)}>
+              {t('actions.reset')}
+            </Button>
+            <Button
+              type="button"
+              disabled={completeRegistrationMutation.isPending || !canSubmitRegistrationChecklist}
+              onClick={handleCompleteRegistrationFromDialog}
+            >
+              {t('actions.completeRegistration')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
       {showImportDialog && (
         <ImportDialog
           title={tCommon('import.button')}
@@ -968,12 +1162,14 @@ function SelectField({
   label,
   value,
   onChange,
+  disabled = false,
   options,
 }: {
   id: string
   label: string
   value: string
   onChange: (value: string) => void
+  disabled?: boolean
   options: Array<{ value: string; label: string }>
 }) {
   return (
@@ -981,7 +1177,13 @@ function SelectField({
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
-        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-slate-400"
+        disabled={disabled}
+        className={[
+          'flex h-10 w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none',
+          disabled
+            ? 'border-slate-100 bg-slate-100 text-slate-500'
+            : 'border-slate-200 bg-white text-slate-900 focus:border-slate-400',
+        ].join(' ')}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -999,14 +1201,16 @@ function CheckboxField({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-slate-700">
-      <input checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
+    <label className={`flex items-center gap-2 text-sm ${disabled ? 'text-slate-400' : 'text-slate-700'}`}>
+      <input disabled={disabled} checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
   )
@@ -1018,4 +1222,19 @@ function Pill({ active, children }: { active: boolean; children: string }) {
   }
 
   return <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{children}</span>
+}
+
+function ChecklistRow({ passed, label }: { passed: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-slate-700">
+      <span
+        aria-hidden="true"
+        className={[
+          'inline-block h-2.5 w-2.5 rounded-full',
+          passed ? 'bg-emerald-500' : 'bg-amber-500',
+        ].join(' ')}
+      />
+      <span>{label}</span>
+    </div>
+  )
 }

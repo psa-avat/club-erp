@@ -24,6 +24,8 @@ import { AxiosError } from 'axios'
 import Decimal from 'decimal.js'
 
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
+import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
@@ -34,6 +36,7 @@ import {
   useCreatePricingVersionMutation,
   useUpdatePricingVersionMutation,
   useDeletePricingVersionMutation,
+  useClonePricingVersionMutation,
   useCopyPricingVersionsMutation,
   useAccountsQuery,
   type FiscalYear,
@@ -60,15 +63,15 @@ const FY_STATE_CLOSED = 2
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fyStateLabel(state: number, t: (k: string) => string): { label: string; className: string } {
-  if (state === FY_STATE_OPEN) return { label: t('pricing.fy.stateOpen'), className: 'bg-green-100 text-green-800' }
-  if (state === FY_STATE_CLOSED) return { label: t('pricing.fy.stateClosed'), className: 'bg-slate-100 text-slate-600' }
-  return { label: t('pricing.fy.stateReopened'), className: 'bg-amber-100 text-amber-800' }
+  if (state === FY_STATE_OPEN) return { label: t('pricing.fy.stateOpen'), className: 'bg-success-container text-on-success-container' }
+  if (state === FY_STATE_CLOSED) return { label: t('pricing.fy.stateClosed'), className: 'bg-surface-container text-on-surface-variant' }
+  return { label: t('pricing.fy.stateReopened'), className: 'bg-warning-container text-on-warning-container' }
 }
 
 function versionStatusLabel(status: number, t: (k: string) => string): { label: string; className: string } {
-  if (status === VERSION_STATUS_DRAFT) return { label: t('pricing.version.statusDraft'), className: 'bg-yellow-100 text-yellow-800' }
-  if (status === VERSION_STATUS_ACTIVE) return { label: t('pricing.version.statusActive'), className: 'bg-green-100 text-green-800' }
-  return { label: t('pricing.version.statusArchived'), className: 'bg-slate-100 text-slate-600' }
+  if (status === VERSION_STATUS_DRAFT) return { label: t('pricing.version.statusDraft'), className: 'bg-warning-container text-on-warning-container' }
+  if (status === VERSION_STATUS_ACTIVE) return { label: t('pricing.version.statusActive'), className: 'bg-success-container text-on-success-container' }
+  return { label: t('pricing.version.statusArchived'), className: 'bg-surface-container text-on-surface-variant' }
 }
 
 // ── Pricing item helpers ──────────────────────────────────────────────────────
@@ -93,6 +96,16 @@ function getFromQtyStep(unit: number): string {
 
 function getFromQtyPlaceholder(unit: number): string {
   return unit === 1 ? '0.0' : '0'
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function addDaysIsoDate(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 type ItemFormState = {
@@ -185,7 +198,7 @@ function PricingItemForm({
   }
   const valid = form.name.trim() !== '' && form.base_price !== ''
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
           <Label className="text-xs">{t('pricing.itemName')} *</Label>
@@ -196,7 +209,7 @@ function PricingItemForm({
           <select
             value={form.unit}
             onChange={(e) => set('unit', Number(e.target.value))}
-            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
           >
             {Object.entries(UNIT_LABELS).map(([k, label]) => (
               <option key={k} value={Number(k)}>{t(`pricing.unit${label}`)}</option>
@@ -212,7 +225,7 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-slate-500">{t('pricing.basePriceHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.basePriceHelp')}</p>
         </div>
         {usePack && (
           <div className="space-y-1">
@@ -224,7 +237,7 @@ function PricingItemForm({
               placeholder="0.00"
               className="h-8 text-sm font-mono"
             />
-            <p className="text-[11px] text-slate-500">{t('pricing.packPriceHelp')}</p>
+            <p className="text-[11px] text-on-surface-variant">{t('pricing.packPriceHelp')}</p>
           </div>
         )}
         <div className="space-y-1">
@@ -236,21 +249,21 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-slate-500">{t('pricing.ageDiscountPercentHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.ageDiscountPercentHelp')}</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.glAccountCredit')}</Label>
           <select
             value={form.gl_account_credit_uuid}
             onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
-            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
           >
             <option value="">{t('pricing.noAccount')}</option>
             {revenueAccounts.map((a) => (
               <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-500">{t('pricing.glAccountCreditHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.glAccountCreditHelp')}</p>
         </div>
         {flightTypes.length > 0 && (
           <div className="space-y-1">
@@ -258,7 +271,7 @@ function PricingItemForm({
             <select
               value={form.flight_type_uuid}
               onChange={(e) => set('flight_type_uuid', e.target.value)}
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
             >
               <option value="">{t('pricing.noFlightType')}</option>
               {flightTypes.map((ft) => (
@@ -270,11 +283,11 @@ function PricingItemForm({
       </div>
       <div className="space-y-2">
         <Label className="text-xs">{t('pricing.tiers')}</Label>
-        <p className="text-[11px] text-slate-500">{t('pricing.tiersHelp')}</p>
-        {form.tiers.length === 0 && <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>}
+        <p className="text-[11px] text-on-surface-variant">{t('pricing.tiersHelp')}</p>
+        {form.tiers.length === 0 && <p className="text-xs text-on-surface-variant">{t('pricing.noTiers')}</p>}
         {form.tiers.length > 0 && (
           <div className="space-y-1">
-            <div className={`grid gap-2 text-xs font-medium text-slate-500 ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
+            <div className={`grid gap-2 text-xs font-medium text-on-surface-variant ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
               <span>{t('pricing.tierFrom')}</span>
               <span>{t('pricing.tierPrice')}</span>
               {usePack && <span>{t('pricing.tierPackPrice')}</span>}
@@ -307,7 +320,7 @@ function PricingItemForm({
                     className="h-7 text-sm font-mono"
                   />
                 )}
-                <button type="button" className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeTier(i)}>
+                <button type="button" className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error" onClick={() => removeTier(i)}>
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -392,13 +405,13 @@ function PricingItemsPanel({
   const editable = canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT
 
   return (
-    <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+    <div className="mt-3 space-y-3 border-t border-outline-variant pt-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-slate-600">{t('pricing.items')}</p>
+        <p className="text-xs font-semibold text-on-surface-variant">{t('pricing.items')}</p>
         {editable && !showForm && !editingItem && (
           <button
             type="button"
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
             onClick={() => setShowForm(true)}
           >
             <Plus className="h-3 w-3" />
@@ -407,7 +420,7 @@ function PricingItemsPanel({
         )}
       </div>
 
-      {itemError && <p className="text-xs text-red-600">{itemError}</p>}
+      {itemError && <p className="text-xs text-error">{itemError}</p>}
 
       {showForm && (
         <PricingItemForm
@@ -422,9 +435,9 @@ function PricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-slate-400">{t('states.loading')}</p>
+        <p className="text-xs text-on-surface-variant">{t('states.loading')}</p>
       ) : items.length === 0 && !showForm ? (
-        <p className="rounded border border-dashed border-slate-200 py-3 text-center text-xs text-slate-400">
+        <p className="rounded border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
           {t('pricing.noItems')}
         </p>
       ) : (
@@ -444,11 +457,11 @@ function PricingItemsPanel({
             ) : (
               <div
                 key={item.uuid}
-                className="flex items-center gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-1.5"
+                className="flex items-center gap-3 rounded-shape-sm border border-outline-variant bg-surface-container-lowest px-3 py-1.5"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                  <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-on-surface-variant">
                     {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}
                     {' · '}{formatPrice(item.base_price)} €
                     {item.pack_price && <> · Pack: {formatPrice(item.pack_price)} €</>}
@@ -461,14 +474,14 @@ function PricingItemsPanel({
                   <div className="flex shrink-0 gap-0.5">
                     <button
                       type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                      className="rounded p-1 text-on-surface-variant hover:bg-white hover:text-on-surface"
                       onClick={() => setEditingItem(item)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
                       onClick={() => handleDelete(item)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -543,7 +556,7 @@ function VersionForm({
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-4">
+    <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4 md:grid-cols-4">
       <div className="space-y-1 md:col-span-2">
         <Label className="text-xs">{t('pricing.version.name')}</Label>
         <Input
@@ -576,7 +589,7 @@ function VersionForm({
         <select
           value={form.status}
           onChange={(e) => set('status', Number(e.target.value))}
-          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
         >
           <option value={VERSION_STATUS_DRAFT}>{t('pricing.version.statusDraft')}</option>
           <option value={VERSION_STATUS_ACTIVE}>{t('pricing.version.statusActive')}</option>
@@ -623,7 +636,7 @@ function NewFyForm({
   const [endDate, setEndDate] = useState(`${defaultYear}-12-31`)
 
   return (
-    <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
+    <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4 md:grid-cols-3">
       <div className="space-y-1">
         <Label className="text-xs">{t('pricing.fy.year')}</Label>
         <Input
@@ -678,6 +691,10 @@ function VersionTimeline({
   t,
   onDelete,
   onEdit,
+  onActivate,
+  onRevertToDraft,
+  onArchive,
+  onClone,
 }: {
   fy: FiscalYear
   versions: PricingVersion[]
@@ -685,12 +702,16 @@ function VersionTimeline({
   t: (k: string, opts?: Record<string, unknown>) => string
   onDelete: (v: PricingVersion) => void
   onEdit: (v: PricingVersion) => void
+  onActivate: (v: PricingVersion) => void
+  onRevertToDraft: (v: PricingVersion) => void
+  onArchive: (v: PricingVersion) => void
+  onClone: (v: PricingVersion) => void
 }) {
   const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
 
   if (versions.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
+      <p className="rounded-lg border border-dashed border-outline-variant p-4 text-center text-sm text-on-surface-variant">
         {t('pricing.version.empty')}
       </p>
     )
@@ -699,7 +720,7 @@ function VersionTimeline({
   return (
     <div className="space-y-3">
       {/* Visual timeline */}
-      <div className="relative h-6 rounded-md bg-slate-100">
+      <div className="relative h-6 rounded-shape-sm bg-surface-container">
         {versions.map((v) => {
           const { left, width } = timelineBar(fy, v)
           const { className } = versionStatusLabel(v.status, t)
@@ -721,13 +742,13 @@ function VersionTimeline({
           return (
             <div
               key={v.uuid}
-              className="rounded-lg border border-slate-200 bg-white"
+              className="rounded-lg border border-outline-variant bg-white"
             >
               {/* Version row header */}
               <div className="flex items-center gap-3 px-4 py-2">
                 <button
                   type="button"
-                  className="shrink-0 text-slate-400 hover:text-slate-700"
+                  className="shrink-0 text-on-surface-variant hover:text-on-surface"
                   title={isExpanded ? t('pricing.version.collapse') : t('pricing.version.expand')}
                   onClick={() => setExpandedUuid(isExpanded ? null : v.uuid)}
                 >
@@ -736,14 +757,14 @@ function VersionTimeline({
                     : <ChevronRight className="h-4 w-4" />}
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">{v.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="truncate text-sm font-medium text-on-surface">{v.name}</p>
+                  <p className="text-xs text-on-surface-variant">
                     {v.from_date} → {v.to_date ?? t('pricing.version.openEnd')}
                   </p>
                 </div>
                 <VersionBadge status={v.status} t={t} />
                 {v.is_locked && (
-                  <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600">
+                  <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
                     {t('pricing.version.locked')}
                   </span>
                 )}
@@ -751,7 +772,15 @@ function VersionTimeline({
                   <div className="flex shrink-0 gap-1">
                     <button
                       type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      className="rounded px-2 py-1 text-xs text-on-success-container hover:bg-success-container"
+                      title={t('pricing.version.activateTitle')}
+                      onClick={() => onActivate(v)}
+                    >
+                      {t('pricing.version.activate')}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
                       title={t('pricing.version.editTitle')}
                       onClick={() => onEdit(v)}
                     >
@@ -759,7 +788,7 @@ function VersionTimeline({
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
                       title={t('pricing.version.deleteTitle')}
                       onClick={() => onDelete(v)}
                     >
@@ -767,11 +796,39 @@ function VersionTimeline({
                     </button>
                   </div>
                 )}
+                {canEdit && !v.is_locked && v.status === VERSION_STATUS_ACTIVE && fy.state !== FY_STATE_CLOSED && (
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest"
+                      title={t('pricing.version.cloneTitle')}
+                      onClick={() => onClone(v)}
+                    >
+                      {t('pricing.version.clone')}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-on-warning-container hover:bg-warning-container"
+                      title={t('pricing.version.archiveTitle')}
+                      onClick={() => onArchive(v)}
+                    >
+                      {t('pricing.version.archive')}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest"
+                      title={t('pricing.version.revertTitle')}
+                      onClick={() => onRevertToDraft(v)}
+                    >
+                      {t('pricing.version.revert')}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Expanded: pricing items panel */}
               {isExpanded && (
-                <div className="border-t border-slate-100 px-4 pb-4">
+                <div className="border-t border-outline-variant px-4 pb-4">
                   <PricingItemsPanel version={v} canEdit={canEdit} />
                 </div>
               )}
@@ -825,12 +882,26 @@ export function BankPricingPage() {
   const createVersionMutation = useCreatePricingVersionMutation()
   const updateVersionMutation = useUpdatePricingVersionMutation(selectedFy?.uuid ?? '')
   const deleteVersionMutation = useDeletePricingVersionMutation(selectedFy?.uuid ?? '')
+  const cloneVersionMutation = useClonePricingVersionMutation(selectedFy?.uuid ?? '')
   const copyVersionsMutation = useCopyPricingVersionsMutation()
 
   // UI state
   const [showNewFyForm, setShowNewFyForm] = useState(false)
   const [showNewVersionForm, setShowNewVersionForm] = useState(false)
   const [editingVersion, setEditingVersion] = useState<PricingVersion | null>(null)
+  const [confirmDeleteVersion, setConfirmDeleteVersion] = useState<PricingVersion | null>(null)
+  const [confirmActivateVersion, setConfirmActivateVersion] = useState<PricingVersion | null>(null)
+  const [confirmRevertVersion, setConfirmRevertVersion] = useState<PricingVersion | null>(null)
+  const [confirmCopyFromPrev, setConfirmCopyFromPrev] = useState(false)
+  const [archiveVersion, setArchiveVersion] = useState<PricingVersion | null>(null)
+  const [archiveEndDate, setArchiveEndDate] = useState(todayIsoDate())
+  const [archiveCreateNext, setArchiveCreateNext] = useState(true)
+  const [archiveNextName, setArchiveNextName] = useState('')
+  const [archiveNextFromDate, setArchiveNextFromDate] = useState(todayIsoDate())
+  const [cloneSourceVersion, setCloneSourceVersion] = useState<PricingVersion | null>(null)
+  const [cloneName, setCloneName] = useState('')
+  const [cloneFromDate, setCloneFromDate] = useState(todayIsoDate())
+  const [cloneToDate, setCloneToDate] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // The previous FY for copy operation
@@ -897,7 +968,6 @@ export function BankPricingPage() {
   }
 
   async function handleDeleteVersion(v: PricingVersion) {
-    if (!window.confirm(t('pricing.version.confirmDelete', { name: v.name }))) return
     try {
       await deleteVersionMutation.mutateAsync(v.uuid)
       setError(null)
@@ -908,13 +978,95 @@ export function BankPricingPage() {
 
   async function handleCopyFromPrev() {
     if (!selectedFy || !prevFy) return
-    if (!window.confirm(t('pricing.version.confirmCopy', { from: prevFy.code, to: selectedFy.code })))
-      return
     try {
       await copyVersionsMutation.mutateAsync({
         source_fiscal_year_uuid: prevFy.uuid,
         target_fiscal_year_uuid: selectedFy.uuid,
       })
+      setError(null)
+    } catch (e) {
+      setError(extractError(e))
+    }
+  }
+
+  async function handleActivateVersion(v: PricingVersion) {
+    try {
+      await updateVersionMutation.mutateAsync({
+        uuid: v.uuid,
+        status: VERSION_STATUS_ACTIVE,
+      })
+      setError(null)
+    } catch (e) {
+      setError(extractError(e))
+    }
+  }
+
+  async function handleRevertToDraft(v: PricingVersion) {
+    try {
+      await updateVersionMutation.mutateAsync({
+        uuid: v.uuid,
+        status: VERSION_STATUS_DRAFT,
+      })
+      setError(null)
+    } catch (e) {
+      setError(extractError(e))
+    }
+  }
+
+  function openCloneDialog(v: PricingVersion) {
+    const defaultFromDate = v.to_date ? addDaysIsoDate(v.to_date, 1) : todayIsoDate()
+    setCloneSourceVersion(v)
+    setCloneName(`${v.name} - ${t('pricing.version.new')}`)
+    setCloneFromDate(defaultFromDate)
+    setCloneToDate('')
+  }
+
+  async function handleCloneVersion() {
+    if (!cloneSourceVersion) return
+    try {
+      await cloneVersionMutation.mutateAsync({
+        source_version_uuid: cloneSourceVersion.uuid,
+        name: cloneName,
+        from_date: cloneFromDate,
+        to_date: cloneToDate || null,
+        use_pack: cloneSourceVersion.use_pack,
+      })
+      setCloneSourceVersion(null)
+      setError(null)
+    } catch (e) {
+      setError(extractError(e))
+    }
+  }
+
+  function openArchiveDialog(v: PricingVersion) {
+    const defaultEndDate = todayIsoDate()
+    setArchiveVersion(v)
+    setArchiveEndDate(defaultEndDate)
+    setArchiveCreateNext(true)
+    setArchiveNextName(`${v.name} - ${t('pricing.version.new')}`)
+    setArchiveNextFromDate(addDaysIsoDate(defaultEndDate, 1))
+  }
+
+  async function handleArchiveVersion() {
+    if (!archiveVersion) return
+    try {
+      await updateVersionMutation.mutateAsync({
+        uuid: archiveVersion.uuid,
+        status: VERSION_STATUS_ARCHIVED,
+        to_date: archiveEndDate,
+      })
+
+      if (archiveCreateNext) {
+        await cloneVersionMutation.mutateAsync({
+          source_version_uuid: archiveVersion.uuid,
+          name: archiveNextName,
+          from_date: archiveNextFromDate,
+          to_date: null,
+          use_pack: archiveVersion.use_pack,
+        })
+      }
+
+      setArchiveVersion(null)
       setError(null)
     } catch (e) {
       setError(extractError(e))
@@ -934,8 +1086,8 @@ export function BankPricingPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('pricing.noPermission')}</p>
+      <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
+        <p className="text-sm text-on-surface-variant">{t('pricing.noPermission')}</p>
       </section>
     )
   }
@@ -943,11 +1095,11 @@ export function BankPricingPage() {
   return (
     <section className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{t('pricing.title')}</h1>
-            <p className="text-sm text-slate-600">{t('pricing.description')}</p>
+            <h1 className="text-2xl font-semibold text-on-surface">{t('pricing.title')}</h1>
+            <p className="text-sm text-on-surface-variant">{t('pricing.description')}</p>
           </div>
           {canManagePrices && !showNewFyForm && (
             <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>
@@ -971,14 +1123,14 @@ export function BankPricingPage() {
       </div>
 
       {fiscalYearsQuery.isLoading && (
-        <p className="text-sm text-slate-500">{t('pricing.loading')}</p>
+        <p className="text-sm text-on-surface-variant">{t('pricing.loading')}</p>
       )}
 
       {/* Fiscal year tabs */}
       {allFiscalYears.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-xl border border-outline-variant bg-white shadow-sm">
           {/* FY selector strip */}
-          <div className="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3">
+          <div className="flex flex-wrap gap-2 border-b border-outline-variant px-4 py-3">
             {/* Future fiscal years */}
             {futureFiscalYears.map((fy) => (
               <button
@@ -987,12 +1139,12 @@ export function BankPricingPage() {
                 onClick={() => handleSelectFy(fy.uuid)}
                 className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   (selectedFyUuid ?? defaultFy?.uuid) === fy.uuid
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-container text-on-surface hover:bg-surface-container-highest'
                 }`}
               >
                 {fy.code}
-                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
+                <span className="rounded-full bg-primary-container px-1.5 py-0.5 text-xs text-on-primary-container">
                   {t('pricing.fy.upcoming')}
                 </span>
               </button>
@@ -1006,8 +1158,8 @@ export function BankPricingPage() {
                 onClick={() => handleSelectFy(fy.uuid)}
                 className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   (selectedFyUuid ?? defaultFy?.uuid) === fy.uuid
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-container text-on-surface hover:bg-surface-container-highest'
                 }`}
               >
                 {fy.code}
@@ -1024,7 +1176,7 @@ export function BankPricingPage() {
                     : ''
                 }
                 onChange={(e) => e.target.value && handleSelectFy(e.target.value)}
-                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                className="rounded-full border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-outline-variant"
               >
                 <option value="">{t('pricing.fy.selectHistory')}</option>
                 {pastFiscalYears.map((fy) => (
@@ -1041,13 +1193,13 @@ export function BankPricingPage() {
             <div className="p-6 space-y-4">
               {/* FY info bar */}
               <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-lg font-semibold text-slate-900">{selectedFy.label}</h2>
+                <h2 className="text-lg font-semibold text-on-surface">{selectedFy.label}</h2>
                 <FyBadge state={selectedFy.state} t={t} />
-                <span className="text-sm text-slate-500">
+                <span className="text-sm text-on-surface-variant">
                   {selectedFy.start_date} → {selectedFy.end_date}
                 </span>
                 {isFyClosed && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                  <span className="rounded-full bg-surface-container px-2 py-0.5 text-xs text-on-surface-variant">
                     {t('pricing.fy.readOnly')}
                   </span>
                 )}
@@ -1055,11 +1207,11 @@ export function BankPricingPage() {
 
               {/* Error banner */}
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                <div className="rounded-lg border border-error bg-error-container px-4 py-2 text-sm text-error">
                   {error}
                   <button
                     type="button"
-                    className="ml-2 text-red-400 hover:text-red-600"
+                    className="ml-2 text-error opacity-60 hover:opacity-100"
                     onClick={() => setError(null)}
                   >
                     ×
@@ -1080,7 +1232,7 @@ export function BankPricingPage() {
                     size="sm"
                     variant="secondary"
                     disabled={copyVersionsMutation.isPending}
-                    onClick={handleCopyFromPrev}
+                    onClick={() => setConfirmCopyFromPrev(true)}
                   >
                     <Copy className="mr-1 h-4 w-4" />
                     {copyVersionsMutation.isPending
@@ -1124,32 +1276,36 @@ export function BankPricingPage() {
 
               {/* Versions timeline */}
               {versionsQuery.isLoading ? (
-                <p className="text-sm text-slate-500">{t('pricing.loading')}</p>
+                <p className="text-sm text-on-surface-variant">{t('pricing.loading')}</p>
               ) : (
                 <VersionTimeline
                   fy={selectedFy}
                   versions={versions}
                   canEdit={canEditVersions}
                   t={t}
-                  onDelete={handleDeleteVersion}
+                  onDelete={(v) => setConfirmDeleteVersion(v)}
                   onEdit={(v) => {
                     setEditingVersion(v)
                     setShowNewVersionForm(false)
                   }}
+                  onActivate={(v) => setConfirmActivateVersion(v)}
+                  onRevertToDraft={(v) => setConfirmRevertVersion(v)}
+                  onArchive={(v) => openArchiveDialog(v)}
+                  onClone={(v) => openCloneDialog(v)}
                 />
               )}
             </div>
           )}
 
           {allFiscalYears.length > 0 && !selectedFy && (
-            <p className="p-6 text-sm text-slate-500">{t('pricing.fy.selectPrompt')}</p>
+            <p className="p-6 text-sm text-on-surface-variant">{t('pricing.fy.selectPrompt')}</p>
           )}
         </div>
       )}
 
       {!fiscalYearsQuery.isLoading && allFiscalYears.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center">
-          <p className="text-sm text-slate-500">{t('pricing.fy.empty')}</p>
+        <div className="rounded-xl border border-dashed border-outline-variant bg-white p-8 text-center">
+          <p className="text-sm text-on-surface-variant">{t('pricing.fy.empty')}</p>
           {canManagePrices && !showNewFyForm && (
             <Button className="mt-3" size="sm" onClick={() => setShowNewFyForm(true)}>
               <Plus className="mr-1 h-4 w-4" />
@@ -1158,6 +1314,157 @@ export function BankPricingPage() {
           )}
         </div>
       )}
+
+      {confirmDeleteVersion && (
+        <ConfirmDialog
+          open={!!confirmDeleteVersion}
+          title={t('pricing.version.confirmDeleteTitle')}
+          body={t('pricing.version.confirmDelete', { name: confirmDeleteVersion.name })}
+          confirmLabel={t('pricing.version.deleteTitle')}
+          onConfirm={() => {
+            const version = confirmDeleteVersion
+            setConfirmDeleteVersion(null)
+            handleDeleteVersion(version)
+          }}
+          onCancel={() => setConfirmDeleteVersion(null)}
+        />
+      )}
+
+      {confirmActivateVersion && (
+        <ConfirmDialog
+          open={!!confirmActivateVersion}
+          title={t('pricing.version.confirmActivateTitle')}
+          body={t('pricing.version.confirmActivateBody')}
+          confirmLabel={t('pricing.version.activate')}
+          onConfirm={() => {
+            const version = confirmActivateVersion
+            setConfirmActivateVersion(null)
+            handleActivateVersion(version)
+          }}
+          onCancel={() => setConfirmActivateVersion(null)}
+        />
+      )}
+
+      {confirmRevertVersion && (
+        <ConfirmDialog
+          open={!!confirmRevertVersion}
+          title={t('pricing.version.confirmRevertTitle')}
+          body={t('pricing.version.confirmRevertBody')}
+          confirmLabel={t('pricing.version.revert')}
+          onConfirm={() => {
+            const version = confirmRevertVersion
+            setConfirmRevertVersion(null)
+            handleRevertToDraft(version)
+          }}
+          onCancel={() => setConfirmRevertVersion(null)}
+        />
+      )}
+
+      {confirmCopyFromPrev && selectedFy && prevFy && (
+        <ConfirmDialog
+          open={confirmCopyFromPrev}
+          title={t('pricing.version.confirmCopyTitle')}
+          body={t('pricing.version.confirmCopy', { from: prevFy.code, to: selectedFy.code })}
+          confirmLabel={t('pricing.version.copyFrom', { code: prevFy.code })}
+          onConfirm={() => {
+            setConfirmCopyFromPrev(false)
+            handleCopyFromPrev()
+          }}
+          onCancel={() => setConfirmCopyFromPrev(false)}
+        />
+      )}
+
+      <Dialog open={!!cloneSourceVersion} onClose={() => setCloneSourceVersion(null)}>
+        <div className="space-y-4 p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-on-surface">{t('pricing.version.cloneDialogTitle')}</h3>
+            <p className="mt-1 text-xs text-on-surface-variant">{t('pricing.version.cloneDialogBody')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.version.name')}</Label>
+            <Input value={cloneName} onChange={(e) => setCloneName(e.target.value)} className="h-8 text-sm" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-xs">{t('pricing.version.fromDate')}</Label>
+              <Input type="date" value={cloneFromDate} onChange={(e) => setCloneFromDate(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t('pricing.version.toDate')}</Label>
+              <Input type="date" value={cloneToDate} onChange={(e) => setCloneToDate(e.target.value)} className="h-8 text-sm" />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setCloneSourceVersion(null)}>
+              {t('pricing.version.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCloneVersion}
+              disabled={cloneVersionMutation.isPending || !cloneName || !cloneFromDate}
+            >
+              {cloneVersionMutation.isPending ? t('pricing.version.saving') : t('pricing.version.clone')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog open={!!archiveVersion} onClose={() => setArchiveVersion(null)}>
+        <div className="space-y-4 p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-on-surface">{t('pricing.version.archiveDialogTitle')}</h3>
+            <p className="mt-1 text-xs text-on-surface-variant">{t('pricing.version.archiveDialogBody')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.version.archiveEndDate')}</Label>
+            <Input type="date" value={archiveEndDate} onChange={(e) => setArchiveEndDate(e.target.value)} className="h-8 text-sm" />
+          </div>
+          <label className="flex items-center gap-2 text-xs text-on-surface">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-outline-variant"
+              checked={archiveCreateNext}
+              onChange={(e) => setArchiveCreateNext(e.target.checked)}
+            />
+            {t('pricing.version.createNext')}
+          </label>
+          {archiveCreateNext && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs">{t('pricing.version.nextName')}</Label>
+                <Input value={archiveNextName} onChange={(e) => setArchiveNextName(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">{t('pricing.version.nextFromDate')}</Label>
+                <Input
+                  type="date"
+                  value={archiveNextFromDate}
+                  onChange={(e) => setArchiveNextFromDate(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setArchiveVersion(null)}>
+              {t('pricing.version.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleArchiveVersion}
+              disabled={
+                updateVersionMutation.isPending ||
+                !archiveEndDate ||
+                (archiveCreateNext && (!archiveNextName || !archiveNextFromDate))
+              }
+            >
+              {(updateVersionMutation.isPending || cloneVersionMutation.isPending)
+                ? t('pricing.version.saving')
+                : t('pricing.version.archive')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </section>
   )
 }

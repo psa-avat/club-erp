@@ -74,6 +74,7 @@ class User(Base):
     updated_committees = relationship("Committee", back_populates="updated_by_user")
     assigned_committee_memberships = relationship("CommitteeMember", back_populates="assigned_by_user")
     updated_member_sheets = relationship("MemberSheet", back_populates="updated_by_user")
+    registered_member_registrations = relationship("MemberRegistration", back_populates="registered_by_user")
 
     def __repr__(self):
         return f"<User id={self.id} {self.prenom} {self.nom}>"
@@ -347,6 +348,7 @@ class Member(Base):
     managed_committees = relationship("Committee", back_populates="manager_member")
     committee_memberships = relationship("CommitteeMember", back_populates="member", cascade="all, delete-orphan")
     member_sheets = relationship("MemberSheet", back_populates="member", cascade="all, delete-orphan")
+    registrations = relationship("MemberRegistration", back_populates="member", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Member uuid={self.uuid} account_id={self.account_id} {self.first_name} {self.last_name}>"
@@ -460,6 +462,43 @@ class MemberSheet(Base):
 
     def __repr__(self):
         return f"<MemberSheet uuid={self.uuid} member_uuid={self.member_uuid} year={self.year}>"
+
+
+class MemberRegistration(Base):
+    """Dated registration validity period for a member."""
+
+    __tablename__ = "member_registrations"
+    __table_args__ = (
+        UniqueConstraint("member_uuid", "start_date", "end_date", name="uq_member_registrations_period"),
+        CheckConstraint("registered_for_year BETWEEN 2000 AND 9999", name="chk_member_registrations_year"),
+        CheckConstraint("registration_type BETWEEN 1 AND 6", name="chk_member_registrations_type"),
+        CheckConstraint("status BETWEEN 1 AND 3", name="chk_member_registrations_status"),
+        CheckConstraint("end_date >= start_date", name="chk_member_registrations_date_range"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+    registered_for_year = Column(SmallInteger, nullable=False, index=True)
+    registration_type = Column(SmallInteger, nullable=False)
+    status = Column(SmallInteger, nullable=False, default=1, index=True)
+    registered_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    registered_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    member = relationship("Member", back_populates="registrations")
+    registered_by_user = relationship("User", back_populates="registered_member_registrations")
+
+    def __repr__(self):
+        return (
+            f"<MemberRegistration uuid={self.uuid} member_uuid={self.member_uuid} "
+            f"{self.start_date}..{self.end_date}>"
+        )
 
 
 # ============================================================================
@@ -1030,4 +1069,3 @@ class CostProvisionRule(Base):
 
     def __repr__(self):
         return f"<CostProvisionRule asset_type={self.asset_type_uuid} metric={self.metric_name} fy={self.fiscal_year_uuid}>"
-

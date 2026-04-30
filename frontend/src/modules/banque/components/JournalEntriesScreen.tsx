@@ -30,7 +30,7 @@ import {
   useFiscalYearsQuery,
   useJournalsQuery,
 } from '../api'
-import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce } from './journalShared'
+import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero } from './journalShared'
 
 export function JournalEntriesScreen() {
   const { t } = useTranslation('banque')
@@ -165,12 +165,17 @@ export function JournalEntriesScreen() {
           ) : (
             entries.map((entry) => {
               const summary = totals(
-                entry.lines.map((line) => ({
-                  account_uuid: line.account_uuid,
-                  debit: line.debit,
-                  credit: line.credit,
-                  description: line.description ?? '',
-                })),
+                entry.lines.map((line) => {
+                  const debit = decimalOrZero(line.debit)
+                  const credit = decimalOrZero(line.credit)
+                  const amount = debit.greaterThan(0) ? debit : credit.negated()
+                  return {
+                    account_uuid: line.account_uuid,
+                    amount: amount.toFixed(2),
+                    description: line.description ?? '',
+                    member_uuid: line.member_uuid ?? '',
+                  }
+                }),
               )
               return (
                 <button

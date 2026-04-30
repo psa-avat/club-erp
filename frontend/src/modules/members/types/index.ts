@@ -15,6 +15,7 @@ export type MemberSummary = {
   is_board_member: boolean
   committee_count: number
   has_member_sheet_for_year: boolean
+  is_registered_for_year: boolean
 }
 
 export type CommitteeMembership = {
@@ -38,6 +39,19 @@ export type MemberSheet = {
   expense_access_enabled: boolean
   created_at: string
   updated_at: string
+}
+
+export type MemberRegistration = {
+  uuid: string
+  member_uuid: string
+  start_date: string
+  end_date: string
+  registered_for_year: number
+  registration_type: number
+  status: number
+  registered_at: string
+  registered_by: number | null
+  notes: string | null
 }
 
 export type MemberDetail = {
@@ -68,6 +82,7 @@ export type MemberDetail = {
   updated_at: string
   committees: CommitteeMembership[]
   member_sheets: MemberSheet[]
+  registrations: MemberRegistration[]
 }
 
 export type Committee = {
@@ -101,6 +116,7 @@ export type MemberFilters = {
   is_board_member?: boolean
   is_active?: boolean
   year?: number
+  registration_state?: 'registered' | 'unregistered'
 }
 
 export type CreateMemberPayload = {
@@ -132,6 +148,12 @@ export type UpdateMemberPayload = Partial<CreateMemberPayload>
 
 export type RegistrationCompletionPayload = {
   year: number
+  start_date: string
+  end_date: string
+  registration_type?: number
+  accounting_template_uuid?: string
+  status: number
+  notes?: string
 }
 
 export type CreateCommitteePayload = {
@@ -169,4 +191,3 @@ export type ImportResult = {
   skipped: number
   errors: ImportRowError[]
 }
-

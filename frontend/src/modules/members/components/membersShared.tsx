@@ -55,7 +55,6 @@ export type MemberFormState = {
   is_board_member: boolean
   can_fly: boolean
   external_auth_enabled: boolean
-  last_registration_year: string
   notes: string
 }
 
@@ -81,7 +80,7 @@ export type SheetFormState = {
 // Form initializers / mappers
 // ---------------------------------------------------------------------------
 
-export function createEmptyMemberForm(selectedYear: number): MemberFormState {
+export function createEmptyMemberForm(): MemberFormState {
   return {
     genre: '0',
     first_name: '',
@@ -103,7 +102,6 @@ export function createEmptyMemberForm(selectedYear: number): MemberFormState {
     is_board_member: false,
     can_fly: true,
     external_auth_enabled: false,
-    last_registration_year: String(selectedYear),
     notes: '',
   }
 }
@@ -152,7 +150,6 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
     is_board_member: member.is_board_member,
     can_fly: member.can_fly,
     external_auth_enabled: member.external_auth_enabled,
-    last_registration_year: member.last_registration_year === null ? '' : String(member.last_registration_year),
     notes: member.notes ?? '',
   }
 }
@@ -179,7 +176,6 @@ export function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
     is_board_member: form.is_board_member,
     can_fly: form.can_fly,
     external_auth_enabled: form.external_auth_enabled,
-    ...(form.last_registration_year ? { last_registration_year: Number(form.last_registration_year) } : {}),
     ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
   }
 }
@@ -302,14 +298,16 @@ export function CheckboxField({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-on-surface-variant">
-      <input checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
+    <label className={`flex items-center gap-2 text-sm ${disabled ? 'text-outline' : 'text-on-surface-variant'}`}>
+      <input disabled={disabled} checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
   )
