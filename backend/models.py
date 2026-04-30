@@ -360,12 +360,15 @@ class Committee(Base):
     __tablename__ = "committees"
     __table_args__ = (
         CheckConstraint("budget_amount IS NULL OR budget_amount >= 0", name="chk_committees_budget_amount"),
+        CheckConstraint("budget_status IS NULL OR budget_status BETWEEN 1 AND 3", name="chk_committees_budget_status"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     code = Column(String(32), nullable=False, unique=True, index=True)
     description = Column(String(255), nullable=False)
     budget_amount = Column(Numeric(12, 2), nullable=True)
+    last_meeting_date = Column(Date, nullable=True)
+    budget_status = Column(SmallInteger, nullable=True)
     manager_member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(

@@ -35,7 +35,8 @@ import {
   CheckboxField,
   SelectField,
   TextField,
-  buildMemberPayload,
+  buildMemberCreatePayload,
+  buildMemberUpdatePayload,
   createEmptyMemberForm,
   mapMemberToForm,
   toErrorMessage,
@@ -80,19 +81,18 @@ export function MemberFormPage() {
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const payload = buildMemberPayload(memberForm)
 
     if (memberUuid) {
       const updated = await updateMemberMutation.mutateAsync({
         memberUuid,
-        payload: payload as UpdateMemberPayload,
+        payload: buildMemberUpdatePayload(memberForm) as UpdateMemberPayload,
       })
       setSelectedMemberId(updated.uuid)
       navigate('/club/members')
       return
     }
 
-    const created = await createMemberMutation.mutateAsync(payload)
+    const created = await createMemberMutation.mutateAsync(buildMemberCreatePayload(memberForm))
     setSelectedMemberId(created.uuid)
     navigate('/club/members')
   }

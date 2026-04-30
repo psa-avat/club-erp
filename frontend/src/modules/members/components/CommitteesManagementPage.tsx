@@ -210,6 +210,25 @@ function CommitteeFormPanel({ open, onClose, committee, members }: CommitteeForm
               value={form.budget_amount}
               onChange={(value) => setForm({ ...form, budget_amount: value })}
             />
+            <TextField
+              id="cmgmt-last-meeting"
+              type="date"
+              label={t('committees.lastMeeting')}
+              value={form.last_meeting_date}
+              onChange={(value) => setForm({ ...form, last_meeting_date: value })}
+            />
+            <SelectField
+              id="cmgmt-budget-status"
+              label={t('committees.budgetStatus')}
+              options={[
+                { value: '', label: t('filters.all') },
+                { value: '1', label: t('committees.statusOnTrack') },
+                { value: '2', label: t('committees.statusPendingReview') },
+                { value: '3', label: t('committees.statusOverBudget') },
+              ]}
+              value={form.budget_status}
+              onChange={(value) => setForm({ ...form, budget_status: value })}
+            />
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="cmgmt-description">{t('committees.descriptionLabel')}</Label>
               <Input
@@ -284,11 +303,11 @@ function exportCsv(committees: Committee[], membersByUuid: Map<string, string>) 
 function committeeBadgeClasses(code: string): string {
   const prefix = code.toUpperCase().slice(0, 3)
   const map: Record<string, string> = {
-    SAF: 'bg-red-100 text-red-800',
-    INS: 'bg-blue-100 text-blue-800',
-    EVT: 'bg-amber-100 text-amber-800',
-    MNT: 'bg-emerald-100 text-emerald-800',
-    SOC: 'bg-indigo-100 text-indigo-800',
+    SAF: 'bg-error-container text-on-error-container',
+    INS: 'bg-primary-container text-on-primary-container',
+    EVT: 'bg-secondary-container text-on-secondary-container',
+    MNT: 'bg-tertiary-container text-on-tertiary-container',
+    SOC: 'bg-surface-container text-on-surface-variant',
   }
   return map[prefix] ?? 'bg-surface-container text-on-surface-variant'
 }
@@ -300,11 +319,65 @@ function initials(name: string): string {
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
 }
 
-function budgetStatus(committee: Committee): { label: string; className: string } {
-  if (!committee.budget_amount) {
-    return { label: 'PENDING REV.', className: 'bg-amber-100 text-amber-800' }
+function budgetStatus(committee: Committee): { labelKey: string; className: string } {
+  if (committee.budget_status === 1) {
+    return { labelKey: 'committees.statusOnTrack', className: 'bg-tertiary-container text-on-tertiary-container' }
   }
-  return { label: 'ON TRACK', className: 'bg-emerald-100 text-emerald-800' }
+  if (committee.budget_status === 3) {
+    return { labelKey: 'committees.statusOverBudget', className: 'bg-error-container text-on-error-container' }
+  }
+  return { labelKey: 'committees.statusPendingReview', className: 'bg-secondary-container text-on-secondary-container' }
+}
+
+// ---------------------------------------------------------------------------
+// Committee avatar stack — live roster per card
+// ---------------------------------------------------------------------------
+
+const AVATAR_MAX_VISIBLE = 4
+
+type CommitteeAvatarStackProps = {
+  committeeUuid: string
+  year: number
+}
+
+function CommitteeAvatarStack({ committeeUuid, year }: CommitteeAvatarStackProps) {
+  const { t } = useTranslation('members')
+  const query = useCommitteeMembersQuery(committeeUuid, year)
+  const members = query.data ?? []
+  const visible = members.slice(0, AVATAR_MAX_VISIBLE)
+  const overflow = members.length - AVATAR_MAX_VISIBLE
+
+  if (query.isLoading) {
+    return <p className="mt-1 text-xs text-on-surface-variant">…</p>
+  }
+
+  if (members.length === 0) {
+    return <p className="mt-1 text-xs text-on-surface-variant">{t('committees.noMembers')}</p>
+  }
+
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <div className="flex -space-x-2">
+        {visible.map((member) => (
+          <span
+            key={member.uuid}
+            title={`${member.first_name} ${member.last_name}`}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-shape-full border-2 border-surface bg-secondary-container text-[10px] font-semibold text-on-secondary-container"
+          >
+            {initials(`${member.first_name} ${member.last_name}`)}
+          </span>
+        ))}
+        {overflow > 0 && (
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-shape-full border-2 border-surface bg-surface-container text-[10px] font-semibold text-on-surface-variant">
+            +{overflow}
+          </span>
+        )}
+      </div>
+      <span className="text-xs text-on-surface-variant">
+        {t('committees.membersAssigned', { count: members.length })}
+      </span>
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +456,7 @@ export function CommitteesManagementPage() {
                       className={[
                         'rounded-shape-full px-2 py-0.5 text-xs font-medium',
                         committee.is_active
-                          ? 'bg-green-100 text-green-800'
+                          ? 'bg-primary-container text-on-primary-container'
                           : 'bg-surface-container text-on-surface-variant',
                       ].join(' ')}
                     >
@@ -404,7 +477,7 @@ export function CommitteesManagementPage() {
                     </div>
                     <div className="rounded-shape-sm border border-outline-variant bg-surface-container p-2">
                       <p className="text-[11px] uppercase tracking-wide text-on-surface-variant">Active members</p>
-                      <p className="mt-1 text-xs text-on-surface">Gestion via roster</p>
+                      <CommitteeAvatarStack committeeUuid={committee.uuid} year={selectedYear} />
                     </div>
                     {committee.budget_amount ? (
                       <p className="mt-0.5 text-xs text-on-surface-variant">
@@ -413,14 +486,14 @@ export function CommitteesManagementPage() {
                     ) : null}
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant="secondary"
                       onClick={() => setRosterCommittee(committee)}
-                      className="flex-1 text-xs"
+                      className="w-full text-xs sm:flex-1"
                     >
-                      {t('committees.rosterTitle')}
+                      {t('committees.manageRoster')}
                     </Button>
                     <Button
                       type="button"
@@ -428,7 +501,7 @@ export function CommitteesManagementPage() {
                       onClick={() => setRosterCommittee(committee)}
                       className="text-xs"
                     >
-                      + ASSIGN MEMBER
+                      {t('committees.assignMember')}
                     </Button>
                     <Button
                       type="button"
@@ -460,8 +533,8 @@ export function CommitteesManagementPage() {
                   <th className="px-3 py-2">{t('committees.code')}</th>
                   <th className="px-3 py-2">{t('sections.committees.title')}</th>
                   <th className="px-3 py-2">{t('committees.manager')}</th>
-                  <th className="px-3 py-2">Last meeting</th>
-                  <th className="px-3 py-2">Budget status</th>
+                  <th className="px-3 py-2">{t('committees.lastMeeting')}</th>
+                  <th className="px-3 py-2">{t('committees.budgetStatus')}</th>
                   <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
@@ -488,7 +561,7 @@ export function CommitteesManagementPage() {
                           : '—'}
                       </td>
                       <td className="px-3 py-2 text-on-surface-variant">
-                        —
+                        {committee.last_meeting_date ?? '—'}
                       </td>
                       <td className="px-3 py-2">
                         {(() => {
@@ -500,7 +573,7 @@ export function CommitteesManagementPage() {
                                 status.className,
                           ].join(' ')}
                         >
-                              {status.label}
+                          {t(status.labelKey)}
                         </span>
                           )
                         })()}

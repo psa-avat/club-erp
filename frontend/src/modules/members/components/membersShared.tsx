@@ -62,6 +62,8 @@ export type CommitteeFormState = {
   code: string
   description: string
   budget_amount: string
+  last_meeting_date: string
+  budget_status: string
   manager_member_uuid: string
   is_active: boolean
 }
@@ -111,6 +113,10 @@ export function createCommitteeForm(committee?: Committee | null): CommitteeForm
     code: committee?.code ?? '',
     description: committee?.description ?? '',
     budget_amount: committee?.budget_amount ?? '',
+    last_meeting_date: committee?.last_meeting_date ?? '',
+    budget_status: committee?.budget_status === null || committee?.budget_status === undefined
+      ? ''
+      : String(committee.budget_status),
     manager_member_uuid: committee?.manager_member_uuid ?? '',
     is_active: committee?.is_active ?? true,
   }
@@ -154,7 +160,7 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
   }
 }
 
-export function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
+export function buildMemberCreatePayload(form: MemberFormState): CreateMemberPayload {
   return {
     genre: Number(form.genre),
     first_name: form.first_name.trim(),
@@ -180,11 +186,36 @@ export function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
   }
 }
 
+export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPayload {
+  return {
+    genre: Number(form.genre),
+    first_name: form.first_name.trim(),
+    last_name: form.last_name.trim(),
+    ...(form.date_of_birth ? { date_of_birth: form.date_of_birth } : {}),
+    ...(form.email.trim() ? { email: form.email.trim() } : {}),
+    ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
+    member_category: Number(form.member_category),
+    ...(form.first_subscription_year ? { first_subscription_year: Number(form.first_subscription_year) } : {}),
+    ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
+    ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
+    ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
+    is_instructor: form.is_instructor,
+    is_employee: form.is_employee,
+    is_executive: form.is_executive,
+    is_board_member: form.is_board_member,
+    can_fly: form.can_fly,
+    external_auth_enabled: form.external_auth_enabled,
+    ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
+  }
+}
+
 export function buildCommitteePayload(form: CommitteeFormState): CreateCommitteePayload {
   return {
     code: form.code.trim(),
     description: form.description.trim(),
     ...(form.budget_amount.trim() ? { budget_amount: form.budget_amount.trim() } : {}),
+    ...(form.last_meeting_date ? { last_meeting_date: form.last_meeting_date } : {}),
+    ...(form.budget_status ? { budget_status: Number(form.budget_status) } : {}),
     ...(form.manager_member_uuid ? { manager_member_uuid: form.manager_member_uuid } : {}),
     is_active: form.is_active,
   }

@@ -88,14 +88,14 @@ type ChecklistState = 'valid' | 'pending'
 function ChecklistChip({ state, t }: { state: ChecklistState; t: (key: string) => string }) {
   if (state === 'valid') {
     return (
-      <span className="rounded-shape-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+      <span className="rounded-shape-full bg-tertiary-container px-2 py-0.5 text-xs font-medium text-on-tertiary-container">
         {t('registrationPanel.checklist.valid')}
       </span>
     )
   }
 
   return (
-    <span className="rounded-shape-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+    <span className="rounded-shape-full bg-secondary-container px-2 py-0.5 text-xs font-medium text-on-secondary-container">
       {t('registrationPanel.checklist.required')}
     </span>
   )
@@ -414,15 +414,16 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                 </div>
 
                 <div className="overflow-hidden rounded-shape-md border border-outline-variant">
-                  <table className="w-full text-sm">
-                    <thead className="bg-surface-container">
-                      <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
-                        <th className="px-3 py-2">{t('registrationPanel.accounting.colAccount')}</th>
-                        <th className="px-3 py-2 text-right">{t('registrationPanel.accounting.colDebit')}</th>
-                        <th className="px-3 py-2 text-right">{t('registrationPanel.accounting.colCredit')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface-container">
+                        <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
+                          <th className="px-3 py-2">{t('registrationPanel.accounting.colAccount')}</th>
+                          <th className="px-3 py-2 text-right">{t('registrationPanel.accounting.colDebit')}</th>
+                          <th className="px-3 py-2 text-right">{t('registrationPanel.accounting.colCredit')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                       <tr className="border-t border-outline-variant">
                         <td className="px-3 py-2 text-on-surface">
                           {t('registrationPanel.accounting.memberAccount', { accountId: member?.account_id ?? '—' })}
@@ -446,7 +447,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                           </tr>
                         ))}
                     </tbody>
-                  </table>
+                    </table>
+                  </div>
                 </div>
                 <p className="text-xs text-on-surface-variant">
                   {t('registrationPanel.accounting.invoiceRef', { ref: invoiceReference })}

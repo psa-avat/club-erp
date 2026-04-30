@@ -90,6 +90,8 @@ export type Committee = {
   code: string
   description: string
   budget_amount: string | null
+  last_meeting_date: string | null
+  budget_status: number | null
   manager_member_uuid: string | null
   is_active: boolean
   created_at: string
@@ -160,6 +162,8 @@ export type CreateCommitteePayload = {
   code: string
   description: string
   budget_amount?: string
+  last_meeting_date?: string
+  budget_status?: number
   manager_member_uuid?: string
   is_active: boolean
 }

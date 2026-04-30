@@ -96,6 +96,8 @@ class CommitteeCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=32)
     description: str = Field(min_length=1, max_length=255)
     budget_amount: Optional[Decimal] = Field(default=None, ge=0)
+    last_meeting_date: Optional[date] = None
+    budget_status: Optional[int] = Field(default=None, ge=1, le=3)
     manager_member_uuid: Optional[UUID] = None
     is_active: bool = True
 
@@ -106,6 +108,8 @@ class CommitteeUpdateRequest(BaseModel):
     code: Optional[str] = Field(default=None, min_length=1, max_length=32)
     description: Optional[str] = Field(default=None, min_length=1, max_length=255)
     budget_amount: Optional[Decimal] = Field(default=None, ge=0)
+    last_meeting_date: Optional[date] = None
+    budget_status: Optional[int] = Field(default=None, ge=1, le=3)
     manager_member_uuid: Optional[UUID] = None
     is_active: Optional[bool] = None
 
@@ -181,6 +185,8 @@ class CommitteeResponse(BaseModel):
     code: str
     description: str
     budget_amount: Optional[Decimal] = None
+    last_meeting_date: Optional[date] = None
+    budget_status: Optional[int] = Field(default=None, ge=1, le=3)
     manager_member_uuid: Optional[UUID] = None
     is_active: bool
     created_at: datetime

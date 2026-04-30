@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS committees (
   code VARCHAR(32) NOT NULL,
   description VARCHAR(255) NOT NULL,
   budget_amount NUMERIC(12,2),
+  last_meeting_date DATE,
+  budget_status SMALLINT,
   manager_member_uuid UUID REFERENCES members(uuid) ON DELETE SET NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -114,7 +116,9 @@ CREATE TABLE IF NOT EXISTS committees (
 
   CONSTRAINT uq_committees_code UNIQUE (code),
   CONSTRAINT chk_committees_budget_amount
-    CHECK (budget_amount IS NULL OR budget_amount >= 0)
+    CHECK (budget_amount IS NULL OR budget_amount >= 0),
+  CONSTRAINT chk_committees_budget_status
+    CHECK (budget_status IS NULL OR budget_status BETWEEN 1 AND 3)
 );
 
 CREATE TABLE IF NOT EXISTS committee_members (
