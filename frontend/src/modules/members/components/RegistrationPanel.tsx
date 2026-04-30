@@ -452,7 +452,7 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                   {t('registrationPanel.accounting.invoiceRef', { ref: invoiceReference })}
                 </p>
               </div>
-            </div>
+            </aside>
           </div>
 
           {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
