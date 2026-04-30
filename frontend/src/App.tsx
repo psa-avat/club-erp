@@ -12,7 +12,7 @@ import {
   BanquePcgPage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
-import { MembersListPage, CommitteesPage, MemberSheetsPage } from './modules/members'
+import { MembersListPage, CommitteesPage, CommitteesManagementPage, MemberSheetsPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { AppShell } from './shell/components'
@@ -32,6 +32,7 @@ function App() {
           <Route path="/club" element={<Navigate replace to="/club/members" />} />
           <Route path="/club/members" element={<MembersListPage />} />
           <Route path="/club/committees" element={<CommitteesPage />} />
+          <Route path="/club/commissions" element={<CommitteesManagementPage />} />
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/banque" element={<BanquePage />} />

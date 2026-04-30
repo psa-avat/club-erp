@@ -28,7 +28,6 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { PageHeader } from '../../../components/ui/page-header'
 import {
-  useCompleteRegistrationMutation,
   useCreateMemberMutation,
   useImportMembersMutation,
   useMemberQuery,
@@ -49,7 +48,9 @@ import {
 } from './membersShared'
 import { ClubPageShell } from './ClubPageShell'
 import { MemberDirectoryTable } from './MemberDirectoryTable'
+import { MemberFilterDrawer } from './MemberFilterDrawer'
 import { MemberKpiStrip } from './MemberKpiStrip'
+import { RegistrationPanel } from './RegistrationPanel'
 
 export function MembersListPage() {
   const { t } = useTranslation('members')
@@ -58,12 +59,13 @@ export function MembersListPage() {
 
   const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [registrationPanelOpen, setRegistrationPanelOpen] = useState(false)
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
 
   const membersQuery = useMembersQuery(filters)
   const memberDetailQuery = useMemberQuery(selectedMemberId)
   const createMemberMutation = useCreateMemberMutation()
   const updateMemberMutation = useUpdateMemberMutation()
-  const completeRegistrationMutation = useCompleteRegistrationMutation()
   const importMembersMutation = useImportMembersMutation()
 
   const members = membersQuery.data ?? []
@@ -78,6 +80,7 @@ export function MembersListPage() {
   }, [selectedMember, selectedYear])
 
   function handleNewMember() {
+    setRegistrationPanelOpen(false)
     setSelectedMemberId(null)
     setMemberForm(createEmptyMemberForm())
   }
@@ -99,42 +102,22 @@ export function MembersListPage() {
     setSelectedMemberId(created.uuid)
   }
 
-  // Used by the form action button (operates on selectedMemberId)
-  async function handleCompleteRegistration() {
-    if (!selectedMemberId) return
-    const completed = await completeRegistrationMutation.mutateAsync({
-      memberUuid: selectedMemberId,
-      payload: {
-        year: selectedYear,
-        start_date: `${selectedYear}-01-01`,
-        end_date: `${selectedYear}-12-31`,
-        status: 1,
-      },
-    })
-    setSelectedMemberId(completed.uuid)
+  function handleOpenRegistrationPanel(memberUuid?: string) {
+    if (memberUuid) {
+      setSelectedMemberId(memberUuid)
+    }
+    setRegistrationPanelOpen(true)
   }
 
-  // Used by the directory table row kebab menu (Phase 3 will replace this with the panel)
-  async function handleFinalizeRegistration(memberUuid: string) {
-    setSelectedMemberId(memberUuid)
-    const completed = await completeRegistrationMutation.mutateAsync({
-      memberUuid,
-      payload: {
-        year: selectedYear,
-        start_date: `${selectedYear}-01-01`,
-        end_date: `${selectedYear}-12-31`,
-        status: 1,
-      },
-    })
-    setSelectedMemberId(completed.uuid)
+  function handleFinalizeRegistration(memberUuid: string) {
+    handleOpenRegistrationPanel(memberUuid)
   }
 
   const combinedError =
     membersQuery.error ??
     memberDetailQuery.error ??
     createMemberMutation.error ??
-    updateMemberMutation.error ??
-    completeRegistrationMutation.error
+    updateMemberMutation.error
 
   return (
     <ClubPageShell>
@@ -163,8 +146,19 @@ export function MembersListPage() {
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>{t('filters.title')}</CardTitle>
-          <CardDescription>{t('filters.description')}</CardDescription>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <CardTitle>{t('filters.title')}</CardTitle>
+              <CardDescription>{t('filters.description')}</CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setFilterDrawerOpen(true)}
+            >
+              {t('filters.advancedButton')}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-5">
           <div className="space-y-2 md:col-span-2">
@@ -373,11 +367,20 @@ export function MembersListPage() {
               />
             </div>
             <div className="grid gap-2 rounded-shape-md border border-outline-variant bg-surface-variant p-4 md:col-span-2 md:grid-cols-3">
-              <CheckboxField
-                label={t('form.active')}
-                checked={memberForm.is_active}
-                onChange={(checked) => setMemberForm({ ...memberForm, is_active: checked })}
-              />
+              {/* is_active is governed by the registration flow only — displayed read-only */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-on-surface-variant">{t('form.active')} :</span>
+                <span
+                  className={[
+                    'rounded-shape-full px-2 py-0.5 text-xs font-medium',
+                    memberForm.is_active
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-surface-container text-on-surface-variant',
+                  ].join(' ')}
+                >
+                  {memberForm.is_active ? t('statuses.active') : t('states.inactive')}
+                </span>
+              </div>
               <CheckboxField
                 label={t('form.canFly')}
                 checked={memberForm.can_fly}
@@ -418,10 +421,9 @@ export function MembersListPage() {
               </Button>
               {selectedMemberId ? (
                 <Button
-                  disabled={completeRegistrationMutation.isPending}
                   type="button"
                   variant="secondary"
-                  onClick={handleCompleteRegistration}
+                  onClick={() => handleOpenRegistrationPanel()}
                 >
                   {t('actions.completeRegistration')}
                 </Button>
@@ -433,6 +435,24 @@ export function MembersListPage() {
           </form>
         </CardContent>
       </Card>
+
+      <RegistrationPanel
+        open={registrationPanelOpen}
+        onClose={() => setRegistrationPanelOpen(false)}
+        member={selectedMember}
+        year={selectedYear}
+        onCompleted={(memberUuid) => {
+          setSelectedMemberId(memberUuid)
+          setRegistrationPanelOpen(false)
+        }}
+      />
+
+      <MemberFilterDrawer
+        open={filterDrawerOpen}
+        onClose={() => setFilterDrawerOpen(false)}
+        filters={filters}
+        onApply={(newFilters) => setFilters(newFilters)}
+      />
 
       {/* ── Import dialog ─────────────────────────────────────────────── */}
       {showImportDialog ? (

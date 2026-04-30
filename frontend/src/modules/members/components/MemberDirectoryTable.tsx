@@ -103,6 +103,8 @@ type Props = {
   onFinalizeRegistration: (uuid: string) => void
 }
 
+const PAGE_SIZE = 25
+
 export function MemberDirectoryTable({
   members,
   isLoading,
@@ -111,6 +113,17 @@ export function MemberDirectoryTable({
   onEditMember,
   onFinalizeRegistration,
 }: Props) {
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // Reset to first page whenever the data changes (filter applied)
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [members])
+
+  const totalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE))
+  const pageStart = (currentPage - 1) * PAGE_SIZE
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, members.length)
+  const visibleMembers = members.slice(pageStart, pageEnd)
   const columns: ColumnDef<MemberSummary>[] = [
     {
       key: 'name',
@@ -189,7 +202,7 @@ export function MemberDirectoryTable({
     <div className="overflow-hidden rounded-shape-md border border-outline-variant bg-surface">
       <DataTable
         columns={columns}
-        data={members}
+        data={visibleMembers}
         getRowKey={(row) => row.uuid}
         defaultSortKey="name"
         className={undefined}
@@ -224,11 +237,39 @@ export function MemberDirectoryTable({
           </div>
         )}
       />
-      {members.length > 0 ? (
-        <div className="border-t border-outline-variant px-4 py-2 text-xs text-on-surface-variant">
-          {members.length} membre{members.length > 1 ? 's' : ''} affiché{members.length > 1 ? 's' : ''}
-        </div>
-      ) : null}
+      {/* Pagination footer */}
+      <div className="flex items-center justify-between border-t border-outline-variant px-4 py-2 text-xs text-on-surface-variant">
+        <span>
+          {members.length === 0
+            ? 'Aucun membre'
+            : `${pageStart + 1}–${pageEnd} sur ${members.length} membre${members.length > 1 ? 's' : ''}`}
+        </span>
+        {totalPages > 1 ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="rounded px-2 py-1 transition-colors hover:bg-surface-container disabled:opacity-40"
+              aria-label="Page précédente"
+            >
+              ‹
+            </button>
+            <span className="px-1">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded px-2 py-1 transition-colors hover:bg-surface-container disabled:opacity-40"
+              aria-label="Page suivante"
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -73,7 +73,7 @@ The design follows the v2 wireframe (Processus d'Adhésion v2 + Annuaire des Mem
 - Add ⚠ warning indicator for members with `last_registration_year < selectedYear && is_active`.
 - Keep desktop-first density; collapse role flags and registration column on mobile.
 
-#### Phase 3 – Registration slide-over panel (depends on Phase 2)
+#### Phase 3 – Registration slide-over panel (depends on Phase 2) ✅
 - Create `RegistrationPanel.tsx` component (slide-over drawer pattern using shadcn Sheet).
 - Panel triggered by "Finalize Registration" in row kebab menu.
 - **Step 1 – Administrative Checklist**: render checklist items with status derived from member data (ffvp_id presence, etc.). Informational only in V2.
@@ -84,25 +84,25 @@ The design follows the v2 wireframe (Processus d'Adhésion v2 + Annuaire des Mem
 - Footer: Effective Date (date input, defaults to today), CANCEL (close panel), VALIDATE & ACTIVATE REGISTRATION (calls `useCompleteRegistrationMutation` with `{ year, template_uuid, selected_items[] }` then committee roster mutations sequentially).
 - On success: close panel, invalidate member list + committees queries, update row REGISTRATION and COMMISSION badges without full reload.
 
-#### Phase 4 – Filter expansion + advanced filter panel (parallel with Phase 3)
+#### Phase 4 – Filter expansion + advanced filter panel (parallel with Phase 3) ✅
 - Add advanced filter drawer triggered by the filter icon in the filter bar.
 - Expose: `registration_status`, `is_active`, role flags (`is_instructor`, `is_employee`, `is_executive`, `is_board_member`), `committee_uuid`, `year`.
 - Rule: `registration_state` filter requires `year` to be set; show inline guidance if year is missing.
 - Keep quick filters (Category, Role, Can Fly) in the always-visible bar.
 - Surface backend filter errors clearly in the filter bar.
 
-#### Phase 5 – Form governance and lifecycle locking (depends on Phase 3)
+#### Phase 5 – Form governance and lifecycle locking (depends on Phase 3) ✅
 - In `membersShared.tsx`: make `is_active` field render as a read-only display, not an editable checkbox.
 - Member edit form (pencil icon → drawer/sheet): show `is_active` as a locked status badge.
 - Ensure no UI path allows toggling `is_active` directly; lifecycle changes happen only via registration/business flows.
 
-#### Phase 6 – Pagination (depends on Phase 2)
+#### Phase 6 – Pagination (depends on Phase 2) ✅
 - Add pagination footer: "Showing X to Y of N members".
 - If backend supports `limit`/`offset` or `page`/`size` query params, wire up page navigation.
 - If backend returns the full list, implement client-side pagination (page size 25).
 - Check `MemberFilters` and backend route for pagination param support first.
 
-#### Phase 7 – Committees Management page (can start after Phase 1)
+#### Phase 7 – Committees Management page (can start after Phase 1) ✅
 - Create `CommitteesManagementPage.tsx` as a standalone routed component at `/commissions`.
 - **Card grid section**: map over `useCommitteesQuery()` data; each card shows code badge, name, description, active member count, member avatar stack (first 3–4), status badge, alert badge if applicable.
   - "Manage Roster" button opens `CommitteeRosterDrawer.tsx` (member multi-select, saves via `useReplaceCommitteeMembersMutation` — migrated from `MembersPage`).
