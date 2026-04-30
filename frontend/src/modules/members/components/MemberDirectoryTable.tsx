@@ -216,7 +216,7 @@ export function MemberDirectoryTable({
             <KebabMenu
               items={[
                 {
-                  label: 'Finaliser l'inscription',
+                  label: "Finaliser l'inscription",
                   onClick: () => onFinalizeRegistration(row.uuid),
                 },
               ]}
