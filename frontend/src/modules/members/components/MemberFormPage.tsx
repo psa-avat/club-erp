@@ -179,6 +179,7 @@ export function MemberFormPage() {
                   { value: '4', label: t('categories.shortPeriod') },
                   { value: '5', label: t('categories.externalPilot') },
                   { value: '6', label: t('categories.volunteer') },
+                  { value: '7', label: t('categories.externalOrganization') },
                 ]}
                 value={memberForm.member_category}
                 onChange={(value) => setMemberForm({ ...memberForm, member_category: value })}
@@ -194,6 +195,7 @@ export function MemberFormPage() {
                 id="member-account-id"
                 label={t('form.accountId')}
                 value={memberForm.account_id}
+                disabled={isEditMode}
                 onChange={(value) => setMemberForm({ ...memberForm, account_id: value.toUpperCase() })}
               />
               <TextField

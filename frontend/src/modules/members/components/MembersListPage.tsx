@@ -149,6 +149,7 @@ export function MembersListPage() {
               { value: '4', label: t('categories.shortPeriod') },
               { value: '5', label: t('categories.externalPilot') },
               { value: '6', label: t('categories.volunteer') },
+              { value: '7', label: t('categories.externalOrganization') },
             ]}
             value={filters.member_category ? String(filters.member_category) : ''}
             onChange={(value) =>

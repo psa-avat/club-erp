@@ -197,7 +197,6 @@ export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPay
     member_category: Number(form.member_category),
     ...(form.first_subscription_year ? { first_subscription_year: Number(form.first_subscription_year) } : {}),
     ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
-    ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
     is_instructor: form.is_instructor,
     is_employee: form.is_employee,
@@ -245,6 +244,7 @@ export function memberCategoryLabel(category: number) {
     4: 'Short period',
     5: 'External pilot',
     6: 'Volunteer',
+    7: 'External organization',
   }
   return map[category] ?? `#${category}`
 }
@@ -278,17 +278,19 @@ export function TextField({
   value,
   onChange,
   type = 'text',
+  disabled = false,
 }: {
   id: string
   label: string
   value: string
   onChange: (value: string) => void
   type?: string
+  disabled?: boolean
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input id={id} type={type} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
     </div>
   )
 }

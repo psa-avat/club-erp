@@ -234,6 +234,7 @@ export const en = {
       shortPeriod: 'Short-period member',
       externalPilot: 'External pilot',
       volunteer: 'Volunteer',
+      externalOrganization: 'External organization',
     },
     statuses: {
       active: 'Active',

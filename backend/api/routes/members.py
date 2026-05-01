@@ -67,7 +67,7 @@ members_guard = Depends(require_capability(CAP_MANAGE_USERS))
 async def list_members_endpoint(
     search: Optional[str] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=4),
-    member_category: Optional[int] = Query(default=None, ge=1, le=6),
+    member_category: Optional[int] = Query(default=None, ge=1, le=7),
     registration_status: Optional[int] = Query(default=None, ge=1, le=4),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),

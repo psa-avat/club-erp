@@ -224,6 +224,12 @@ function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
   }
 }
 
+function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPayload {
+  const { account_id, ...payload } = buildMemberPayload(form)
+  void account_id
+  return payload as UpdateMemberPayload
+}
+
 function buildCommitteePayload(form: CommitteeFormState): CreateCommitteePayload {
   return {
     code: form.code.trim(),
@@ -332,17 +338,17 @@ export function MembersPage() {
 
   async function handleMemberSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const payload = buildMemberPayload(memberForm)
 
     if (selectedMemberId) {
       const updated = await updateMemberMutation.mutateAsync({
         memberUuid: selectedMemberId,
-        payload: payload as UpdateMemberPayload,
+        payload: buildMemberUpdatePayload(memberForm),
       })
       setSelectedMemberId(updated.uuid)
       return
     }
 
+    const payload = buildMemberPayload(memberForm)
     const created = await createMemberMutation.mutateAsync(payload)
     setSelectedMemberId(created.uuid)
   }
@@ -584,6 +590,7 @@ export function MembersPage() {
                   { value: '4', label: t('categories.shortPeriod') },
                   { value: '5', label: t('categories.externalPilot') },
                   { value: '6', label: t('categories.volunteer') },
+                  { value: '7', label: t('categories.externalOrganization') },
                 ]}
                 value={filters.member_category ? String(filters.member_category) : ''}
                 onChange={(value) =>
@@ -721,6 +728,7 @@ export function MembersPage() {
                       { value: '4', label: t('categories.shortPeriod') },
                       { value: '5', label: t('categories.externalPilot') },
                       { value: '6', label: t('categories.volunteer') },
+                      { value: '7', label: t('categories.externalOrganization') },
                     ]}
                     value={memberForm.member_category}
                     onChange={(value) => setMemberForm({ ...memberForm, member_category: value })}
@@ -730,7 +738,7 @@ export function MembersPage() {
                   <TextField id="member-email" label={t('form.email')} type="email" value={memberForm.email} onChange={(value) => setMemberForm({ ...memberForm, email: value })} />
                   <TextField id="member-phone" label={t('form.phone')} value={memberForm.phone} onChange={(value) => setMemberForm({ ...memberForm, phone: value })} />
                   <TextField id="member-birthdate" label={t('form.birthDate')} type="date" value={memberForm.date_of_birth} onChange={(value) => setMemberForm({ ...memberForm, date_of_birth: value })} />
-                  <TextField id="member-account-id" label={t('form.accountId')} value={memberForm.account_id} onChange={(value) => setMemberForm({ ...memberForm, account_id: value.toUpperCase() })} />
+                  <TextField id="member-account-id" label={t('form.accountId')} value={memberForm.account_id} disabled={Boolean(selectedMemberId)} onChange={(value) => setMemberForm({ ...memberForm, account_id: value.toUpperCase() })} />
                   <TextField id="member-first-subscription-year" label={t('form.firstSubscriptionYear')} type="number" value={memberForm.first_subscription_year} onChange={(value) => setMemberForm({ ...memberForm, first_subscription_year: value })} />
                   <TextField id="member-ffvp" label={t('form.ffvp')} type="number" value={memberForm.ffvp_id} onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })} />
                   <TextField id="member-photo-url" label={t('form.photoUrl')} value={memberForm.photo_url} onChange={(value) => setMemberForm({ ...memberForm, photo_url: value })} />
@@ -1041,6 +1049,7 @@ export function MembersPage() {
                 { value: '4', label: t('categories.shortPeriod') },
                 { value: '5', label: t('categories.externalPilot') },
                 { value: '6', label: t('categories.volunteer') },
+                { value: '7', label: t('categories.externalOrganization') },
               ]}
               value={registrationForm.registration_type}
               onChange={(value) => {
@@ -1143,17 +1152,19 @@ function TextField({
   value,
   onChange,
   type = 'text',
+  disabled = false,
 }: {
   id: string
   label: string
   value: string
   onChange: (value: string) => void
   type?: string
+  disabled?: boolean
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input id={id} type={type} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
     </div>
   )
 }

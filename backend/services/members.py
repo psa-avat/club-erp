@@ -271,7 +271,7 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
 
 
 def _apply_member_updates(member: Member, payload: MemberUpdateRequest) -> None:
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude_unset=True, exclude={"account_id"})
     for field_name, value in updates.items():
         setattr(member, field_name, value)
 
@@ -392,12 +392,17 @@ async def update_member(
         is_board_member=is_board_member,
     )
 
-    account_id = preview.get("account_id", member.account_id)
+    if payload.account_id is not None and payload.account_id != member.account_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="account_id cannot be modified once created",
+        )
+
     email = preview.get("email", member.email)
     ffvp_id = preview.get("ffvp_id", member.ffvp_id)
     await _ensure_unique_member_fields(
         db,
-        account_id=account_id,
+        account_id=member.account_id,
         email=str(email) if email is not None else None,
         ffvp_id=ffvp_id,
         exclude_member_uuid=member.uuid,
@@ -851,6 +856,7 @@ _MEMBER_CATEGORY_MAP: dict[str, int] = {
     "4": 4, "short_period": 4, "court_sejour": 4,
     "5": 5, "external_pilot": 5, "pilote_externe": 5,
     "6": 6, "volunteer": 6, "benevole": 6,
+    "7": 7, "external_organization": 7, "organisation_externe": 7, "club": 7, "ce": 7,
 }
 
 _GENRE_MAP: dict[str, int] = {

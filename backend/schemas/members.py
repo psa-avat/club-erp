@@ -26,7 +26,7 @@ class MemberBase(MemberRoleFlags):
     date_of_birth: Optional[date] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(default=None, max_length=50)
-    member_category: int = Field(ge=1, le=6)
+    member_category: int = Field(ge=1, le=7)
     first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     photo_url: Optional[str] = None
@@ -54,7 +54,7 @@ class MemberUpdateRequest(BaseModel):
     date_of_birth: Optional[date] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(default=None, max_length=50)
-    member_category: Optional[int] = Field(default=None, ge=1, le=6)
+    member_category: Optional[int] = Field(default=None, ge=1, le=7)
     first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
@@ -77,7 +77,7 @@ class MemberListFilters(BaseModel):
 
     search: Optional[str] = None
     status: Optional[int] = Field(default=None, ge=1, le=4)
-    member_category: Optional[int] = Field(default=None, ge=1, le=6)
+    member_category: Optional[int] = Field(default=None, ge=1, le=7)
     registration_status: Optional[int] = Field(default=None, ge=1, le=4)
     committee_uuid: Optional[UUID] = None
     can_fly: Optional[bool] = None
@@ -138,7 +138,7 @@ class RegistrationCompletionRequest(BaseModel):
     year: int = Field(ge=2000, le=9999)
     start_date: date
     end_date: date
-    registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    registration_type: Optional[int] = Field(default=None, ge=1, le=7)
     accounting_template_uuid: Optional[UUID] = None
     status: int = Field(default=1, ge=1, le=3)
     notes: Optional[str] = None
@@ -150,7 +150,7 @@ class MemberRegistrationCreateRequest(BaseModel):
     start_date: date
     end_date: date
     registered_for_year: int = Field(ge=2000, le=9999)
-    registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    registration_type: Optional[int] = Field(default=None, ge=1, le=7)
     status: int = Field(default=1, ge=1, le=3)
     notes: Optional[str] = None
 
@@ -161,7 +161,7 @@ class MemberRegistrationUpdateRequest(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     registered_for_year: Optional[int] = Field(default=None, ge=2000, le=9999)
-    registration_type: Optional[int] = Field(default=None, ge=1, le=6)
+    registration_type: Optional[int] = Field(default=None, ge=1, le=7)
     status: Optional[int] = Field(default=None, ge=1, le=3)
     notes: Optional[str] = None
 
