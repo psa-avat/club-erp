@@ -20,7 +20,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, status, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -55,6 +55,8 @@ from schemas.accounting import (
     SeedPcgResponse,
     PcgSeedExportResponse,
     PcgSeedImportRequest,
+    AccountingImportPreviewResponse,
+    AccountingImportApplyResponse,
     SystemSettingResponse,
     SystemSettingUpdateRequest,
 )
@@ -97,6 +99,8 @@ from services.accounting import (
     update_accounting_entry,
     update_accounting_entry_template,
     _replace_pricing_item_tiers,
+    preview_accounting_import,
+    apply_accounting_import,
 )
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["accounting"])
@@ -834,3 +838,72 @@ async def delete_entry_model_endpoint(
     await delete_accounting_entry_template(db, template_uuid)
     _log_accounting_audit(action="delete_entry_model", user_id=current_user.id, template_uuid=template_uuid)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Legacy CSV Import endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/entries/import/preview", response_model=AccountingImportPreviewResponse)
+async def preview_entry_import_endpoint(
+    file: UploadFile = File(...),
+    fiscal_year_uuid: UUID = Form(...),
+    journal_uuid: UUID = Form(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+):
+    """Preview a legacy CSV accounting import without persisting any entries."""
+    content = await file.read()
+    return await preview_accounting_import(
+        db,
+        content=content,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+    )
+
+
+@router.post(
+    "/entries/import",
+    response_model=AccountingImportApplyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def apply_entry_import_endpoint(
+    file: UploadFile = File(...),
+    fiscal_year_uuid: UUID = Form(...),
+    journal_uuid: UUID = Form(...),
+    selected_keys: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Import selected entries from a legacy CSV as Draft accounting entries.
+
+    ``selected_keys`` must be a JSON-encoded list of entry key strings returned
+    by the preview endpoint (e.g. ``'["abc123...", "def456..."]'``).
+    """
+    import json as _json
+    try:
+        keys: list[str] = _json.loads(selected_keys)
+        if not isinstance(keys, list):
+            raise ValueError
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="selected_keys must be a JSON-encoded list of entry key strings",
+        )
+    content = await file.read()
+    result = await apply_accounting_import(
+        db,
+        content=content,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+        selected_keys=keys,
+        user_id=current_user.id,
+    )
+    _log_accounting_audit(
+        action="csv_import",
+        user_id=current_user.id,
+        import_batch_id=result.import_batch_id,
+        imported_count=result.imported_count,
+    )
+    return result

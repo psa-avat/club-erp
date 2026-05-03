@@ -674,3 +674,112 @@ export function useApplyPcgSeedMutation() {
     },
   })
 }
+
+// ── Legacy CSV Import ────────────────────────────────────────────────────────
+
+export type ImportPreviewLine = {
+  account_code: string
+  account_uuid: string | null
+  description: string | null
+  member_account_id: string | null
+  member_uuid: string | null
+  debit: string
+  credit: string
+  errors: string[]
+}
+
+export type ImportPreviewEntry = {
+  entry_key: string
+  entry_date: string
+  description: string
+  row_start: number
+  row_end: number
+  total_debit: string
+  total_credit: string
+  importable: boolean
+  already_imported: boolean
+  errors: string[]
+  lines: ImportPreviewLine[]
+}
+
+export type ImportPreviewResponse = {
+  source_system: string
+  fiscal_year_uuid: string
+  journal_uuid: string
+  entries: ImportPreviewEntry[]
+  importable_count: number
+  blocked_count: number
+}
+
+export type ImportApplyResponse = {
+  source_system: string
+  import_batch_id: string
+  imported_count: number
+  skipped_count: number
+  created_entry_uuids: string[]
+}
+
+export function usePreviewAccountingImportMutation() {
+  return useMutation({
+    mutationFn: async ({
+      file,
+      fiscal_year_uuid,
+      journal_uuid,
+    }: {
+      file: File
+      fiscal_year_uuid: string
+      journal_uuid: string
+    }) => {
+      const authConfig = getAuthRequestConfig()
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('fiscal_year_uuid', fiscal_year_uuid)
+      formData.append('journal_uuid', journal_uuid)
+      const { data } = await apiClient.post<ImportPreviewResponse>(
+        '/api/v1/accounting/entries/import/preview',
+        formData,
+        {
+          ...(authConfig ?? {}),
+          headers: { ...(authConfig?.headers ?? {}) },
+        },
+      )
+      return data
+    },
+  })
+}
+
+export function useApplyAccountingImportMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      file,
+      fiscal_year_uuid,
+      journal_uuid,
+      selected_keys,
+    }: {
+      file: File
+      fiscal_year_uuid: string
+      journal_uuid: string
+      selected_keys: string[]
+    }) => {
+      const authConfig = getAuthRequestConfig()
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('fiscal_year_uuid', fiscal_year_uuid)
+      formData.append('journal_uuid', journal_uuid)
+      formData.append('selected_keys', JSON.stringify(selected_keys))
+      const { data } = await apiClient.post<ImportApplyResponse>(
+        '/api/v1/accounting/entries/import',
+        formData,
+        {
+          ...(authConfig ?? {}),
+          headers: { ...(authConfig?.headers ?? {}) },
+        },
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}

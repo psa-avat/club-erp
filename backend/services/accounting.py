@@ -17,7 +17,9 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
+import csv
 import hashlib
+import io
 import json
 import logging
 import re
@@ -40,6 +42,7 @@ from models import (
     AccountingJournal,
     AccountingLine,
     CostProvisionRule,
+    Member,
     PricingItem,
     PricingItemTier,
     PricingVersion,
@@ -1911,3 +1914,344 @@ async def list_journals(db: AsyncSession, skip: int = 0, limit: int = 100) -> li
     stmt = select(AccountingJournal).offset(skip).limit(limit).order_by(AccountingJournal.code)
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Legacy CSV Import helpers
+# ---------------------------------------------------------------------------
+
+_IMPORT_SOURCE_SYSTEM = "legacy-accounting-csv"
+_MEMBER_ACCOUNT_PREFIX = "411"
+
+
+def _parse_accounting_import_date(raw: str) -> date:
+    """Accept dd/mm/YYYY or dd/mm/YY."""
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(raw.strip(), fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognised date format: {raw!r}")
+
+
+def _make_entry_key(rows: list[dict]) -> str:
+    """Deterministic SHA-256 key from the raw CSV rows of one balanced group."""
+    payload = "\n".join(
+        "|".join([
+            r.get("date", ""),
+            r.get("label", ""),
+            r.get("account_code", ""),
+            r.get("member_account_id", ""),
+            r.get("debit", ""),
+            r.get("credit", ""),
+        ])
+        for r in rows
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+def _parse_csv_rows(content: bytes) -> list[dict]:
+    """Decode and parse the CSV bytes into a list of row dicts."""
+    text = content.decode("utf-8-sig")  # strip BOM if present
+    reader = csv.DictReader(io.StringIO(text))
+    rows = []
+    for row in reader:
+        rows.append({k.strip(): (v or "").strip() for k, v in row.items()})
+    return rows
+
+
+def _group_into_entries(rows: list[dict]) -> list[list[dict]]:
+    """Group consecutive CSV rows into balanced entry groups.
+
+    Rows are accumulated until debit total == credit total (and both > 0),
+    at which point the group is closed. A remainder that never balances is
+    returned as a single unbalanced tail group.
+    """
+    groups: list[list[dict]] = []
+    current: list[dict] = []
+    debit_acc = Decimal("0")
+    credit_acc = Decimal("0")
+
+    for row in rows:
+        try:
+            d = Decimal(row.get("debit", "0") or "0")
+            c = Decimal(row.get("credit", "0") or "0")
+        except Exception:
+            d, c = Decimal("0"), Decimal("0")
+        current.append(row)
+        debit_acc += d
+        credit_acc += c
+        if debit_acc > 0 and debit_acc == credit_acc:
+            groups.append(current)
+            current = []
+            debit_acc = Decimal("0")
+            credit_acc = Decimal("0")
+
+    if current:
+        groups.append(current)
+
+    return groups
+
+
+async def preview_accounting_import(
+    db: AsyncSession,
+    *,
+    content: bytes,
+    fiscal_year_uuid: UUID,
+    journal_uuid: UUID,
+):
+    """Parse a CSV file and return a structured preview without persisting anything."""
+    from schemas.accounting import (
+        AccountingImportPreviewLineResponse,
+        AccountingImportPreviewEntryResponse,
+        AccountingImportPreviewResponse,
+    )
+
+    fy = await validate_fiscal_year_open(db, fiscal_year_uuid)
+    await get_journal(db, journal_uuid)
+
+    acct_result = await db.execute(select(AccountingAccount))
+    accounts_by_code: dict[str, AccountingAccount] = {
+        a.code: a for a in acct_result.scalars().all()
+    }
+
+    mem_result = await db.execute(select(Member))
+    members_by_account_id: dict[str, Member] = {}
+    members_by_legacy_id: dict[str, Member] = {}
+    for m in mem_result.scalars().all():
+        members_by_account_id[m.account_id] = m
+        if m.legacy_account_id:
+            members_by_legacy_id[m.legacy_account_id] = m
+
+    existing_result = await db.execute(
+        select(AccountingEntry.external_id).where(
+            AccountingEntry.source_system == _IMPORT_SOURCE_SYSTEM,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+        )
+    )
+    already_imported_keys: set[str] = {row[0] for row in existing_result.all() if row[0]}
+
+    rows = _parse_csv_rows(content)
+    groups = _group_into_entries(rows)
+
+    preview_entries: list[AccountingImportPreviewEntryResponse] = []
+    row_cursor = 0
+
+    for group in groups:
+        row_start = row_cursor + 1
+        row_end = row_cursor + len(group)
+        row_cursor += len(group)
+
+        entry_key = _make_entry_key(group)
+        group_errors: list[str] = []
+        already_imported = entry_key in already_imported_keys
+
+        description = next((r.get("label", "") for r in group if r.get("label")), "")
+
+        entry_date: date | None = None
+        raw_date = group[0].get("date", "")
+        try:
+            entry_date = _parse_accounting_import_date(raw_date)
+        except ValueError:
+            group_errors.append(f"Invalid date {raw_date!r} on row {row_start}")
+
+        if entry_date is not None:
+            if entry_date < fy.start_date or entry_date > fy.end_date:
+                group_errors.append(
+                    f"Entry date {entry_date} outside fiscal year [{fy.start_date}, {fy.end_date}]"
+                )
+
+        total_debit = Decimal("0")
+        total_credit = Decimal("0")
+        for r in group:
+            try:
+                total_debit += Decimal(r.get("debit", "0") or "0")
+                total_credit += Decimal(r.get("credit", "0") or "0")
+            except Exception:
+                pass
+        if total_debit != total_credit:
+            group_errors.append(
+                f"Entry not balanced: debit={total_debit} credit={total_credit}"
+            )
+
+        preview_lines: list[AccountingImportPreviewLineResponse] = []
+        for r in group:
+            code = r.get("account_code", "").strip()
+            raw_mid = r.get("member_account_id", "").strip()
+            line_errors: list[str] = []
+
+            account = accounts_by_code.get(code)
+            if not account:
+                line_errors.append(f"Account code {code!r} not found")
+
+            member: Member | None = None
+            if code.startswith(_MEMBER_ACCOUNT_PREFIX) and raw_mid:
+                member = members_by_account_id.get(raw_mid) or members_by_legacy_id.get(raw_mid)
+                if not member:
+                    line_errors.append(
+                        f"Member {raw_mid!r} not found (checked account_id and legacy_account_id)"
+                    )
+
+            try:
+                line_debit = Decimal(r.get("debit", "0") or "0")
+                line_credit = Decimal(r.get("credit", "0") or "0")
+            except Exception:
+                line_debit = Decimal("0")
+                line_credit = Decimal("0")
+                line_errors.append("Invalid debit/credit value")
+
+            preview_lines.append(
+                AccountingImportPreviewLineResponse(
+                    account_code=code,
+                    account_uuid=account.uuid if account else None,
+                    description=r.get("label") or None,
+                    member_account_id=raw_mid or None,
+                    member_uuid=member.uuid if member else None,
+                    debit=line_debit,
+                    credit=line_credit,
+                    errors=line_errors,
+                )
+            )
+            group_errors.extend(line_errors)
+
+        importable = len(group_errors) == 0 and not already_imported
+
+        preview_entries.append(
+            AccountingImportPreviewEntryResponse(
+                entry_key=entry_key,
+                entry_date=entry_date or fy.start_date,
+                description=description,
+                row_start=row_start,
+                row_end=row_end,
+                total_debit=total_debit,
+                total_credit=total_credit,
+                importable=importable,
+                already_imported=already_imported,
+                errors=group_errors,
+                lines=preview_lines,
+            )
+        )
+
+    importable_count = sum(1 for e in preview_entries if e.importable)
+    blocked_count = len(preview_entries) - importable_count
+
+    return AccountingImportPreviewResponse(
+        source_system=_IMPORT_SOURCE_SYSTEM,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+        entries=preview_entries,
+        importable_count=importable_count,
+        blocked_count=blocked_count,
+    )
+
+
+async def apply_accounting_import(
+    db: AsyncSession,
+    *,
+    content: bytes,
+    fiscal_year_uuid: UUID,
+    journal_uuid: UUID,
+    selected_keys: list[str],
+    user_id: int,
+):
+    """Import selected preview entries from a CSV file as Draft accounting entries."""
+    from schemas.accounting import AccountingImportApplyResponse
+
+    import_batch_id = f"csv-import-{uuid4().hex[:12]}"
+
+    fy = await validate_fiscal_year_open(db, fiscal_year_uuid)
+    await get_journal(db, journal_uuid)
+
+    acct_result = await db.execute(select(AccountingAccount))
+    accounts_by_code: dict[str, AccountingAccount] = {
+        a.code: a for a in acct_result.scalars().all()
+    }
+
+    mem_result = await db.execute(select(Member))
+    members_by_account_id: dict[str, Member] = {}
+    members_by_legacy_id: dict[str, Member] = {}
+    for m in mem_result.scalars().all():
+        members_by_account_id[m.account_id] = m
+        if m.legacy_account_id:
+            members_by_legacy_id[m.legacy_account_id] = m
+
+    existing_result = await db.execute(
+        select(AccountingEntry.external_id).where(
+            AccountingEntry.source_system == _IMPORT_SOURCE_SYSTEM,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+        )
+    )
+    already_imported_keys: set[str] = {row[0] for row in existing_result.all() if row[0]}
+
+    selected_set = set(selected_keys)
+    rows = _parse_csv_rows(content)
+    groups = _group_into_entries(rows)
+
+    created_uuids: list[UUID] = []
+    skipped = 0
+
+    for group in groups:
+        entry_key = _make_entry_key(group)
+        if entry_key not in selected_set or entry_key in already_imported_keys:
+            skipped += 1
+            continue
+
+        raw_date = group[0].get("date", "")
+        entry_date = _parse_accounting_import_date(raw_date)
+        description = next((r.get("label", "") for r in group if r.get("label")), "")
+
+        entry_uuid = uuid4()
+        entry = AccountingEntry(
+            uuid=entry_uuid,
+            fiscal_year_uuid=fiscal_year_uuid,
+            journal_uuid=journal_uuid,
+            entry_date=entry_date,
+            description=description,
+            state=1,  # Draft
+            source_system=_IMPORT_SOURCE_SYSTEM,
+            external_id=entry_key,
+            import_batch_id=import_batch_id,
+            created_by=user_id,
+        )
+
+        for r in group:
+            code = r.get("account_code", "").strip()
+            raw_mid = r.get("member_account_id", "").strip()
+            account = accounts_by_code[code]
+
+            member: Member | None = None
+            if code.startswith(_MEMBER_ACCOUNT_PREFIX) and raw_mid:
+                member = (
+                    members_by_account_id.get(raw_mid)
+                    or members_by_legacy_id.get(raw_mid)
+                )
+
+            line = AccountingLine(
+                uuid=uuid4(),
+                fiscal_year_uuid=fiscal_year_uuid,
+                entry_uuid=entry_uuid,
+                account_uuid=account.uuid,
+                member_uuid=member.uuid if member else None,
+                member_account_id_snapshot=raw_mid if member else None,
+                debit=Decimal(r.get("debit", "0") or "0"),
+                credit=Decimal(r.get("credit", "0") or "0"),
+                description=r.get("label") or None,
+            )
+            entry.lines.append(line)
+
+        db.add(entry)
+        already_imported_keys.add(entry_key)
+        created_uuids.append(entry_uuid)
+
+    if created_uuids:
+        await db.commit()
+
+    _ = fy  # suppress unused-variable warning
+
+    return AccountingImportApplyResponse(
+        source_system=_IMPORT_SOURCE_SYSTEM,
+        import_batch_id=import_batch_id,
+        imported_count=len(created_uuids),
+        skipped_count=skipped,
+        created_entry_uuids=created_uuids,
+    )

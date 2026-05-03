@@ -31,19 +31,30 @@ import type { PcgSeedItem } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function toErrorMessage(error: unknown): string {
+function toErrorMessages(error: unknown): string[] {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const response = (error as { response?: { data?: { detail?: unknown; message?: string } } }).response
     const detail = response?.data?.detail
-    if (typeof detail === 'string' && detail.length > 0) return detail
+
+    if (typeof detail === 'object' && detail !== null && 'errors' in detail) {
+      const maybeErrors = (detail as { errors?: unknown }).errors
+      if (Array.isArray(maybeErrors)) {
+        const messages = maybeErrors.filter(
+          (value): value is string => typeof value === 'string' && value.length > 0,
+        )
+        if (messages.length > 0) return messages
+      }
+    }
+
+    if (typeof detail === 'string' && detail.length > 0) return [detail]
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0] as { msg?: string }
-      if (typeof first?.msg === 'string' && first.msg.length > 0) return first.msg
+      if (typeof first?.msg === 'string' && first.msg.length > 0) return [first.msg]
     }
     if (typeof response?.data?.message === 'string' && response.data.message.length > 0)
-      return response.data.message
+      return [response.data.message]
   }
-  return 'Unexpected error'
+  return ['Unexpected error']
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -147,6 +158,7 @@ export function BanquePcgPage() {
 
   const combinedError = importMutation.error ?? applyMutation.error
 
+  const combinedErrorMessages = combinedError ? toErrorMessages(combinedError) : []
   if (!canManage) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -293,7 +305,19 @@ export function BanquePcgPage() {
             </div>
 
             {localError && <Alert>{localError}</Alert>}
-            {combinedError && <Alert>{toErrorMessage(combinedError)}</Alert>}
+            {combinedErrorMessages.length > 0 && (
+              <Alert>
+                {combinedErrorMessages.length === 1 ? (
+                  combinedErrorMessages[0]
+                ) : (
+                  <ul className="list-disc space-y-1 pl-5">
+                    {combinedErrorMessages.map((message, index) => (
+                      <li key={`${message}-${index}`}>{message}</li>
+                    ))}
+                  </ul>
+                )}
+              </Alert>
+            )}
           </div>
         )}
       </div>

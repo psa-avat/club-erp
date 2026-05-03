@@ -31,6 +31,7 @@ import {
   useJournalsQuery,
 } from '../api'
 import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero } from './journalShared'
+import { AccountingImportDialog } from './AccountingImportDialog'
 
 export function JournalEntriesScreen() {
   const { t } = useTranslation('banque')
@@ -44,6 +45,7 @@ export function JournalEntriesScreen() {
 
   const [filters, setFilters] = useState({ fiscal_year_uuid: '', journal_uuid: '', state: 0, search: '' })
   const debouncedSearch = useDebounce(filters.search, 350)
+  const [importOpen, setImportOpen] = useState(false)
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
@@ -77,6 +79,7 @@ export function JournalEntriesScreen() {
   }
 
   return (
+    <>
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
       {/* Filters */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -149,9 +152,21 @@ export function JournalEntriesScreen() {
             <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
           </div>
           {canPost && (
-            <a href="/banque/journal/entry/new">
-              <Button type="button" size="sm">{t('journal.entries.newDraft')}</Button>
-            </a>
+            <div className="flex items-center gap-2">
+              {filters.fiscal_year_uuid && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setImportOpen(true)}
+                >
+                  {t('journal.import.openBtn')}
+                </Button>
+              )}
+              <a href="/banque/journal/entry/new">
+                <Button type="button" size="sm">{t('journal.entries.newDraft')}</Button>
+              </a>
+            </div>
           )}
         </div>
 
@@ -205,5 +220,14 @@ export function JournalEntriesScreen() {
         </div>
       </div>
     </JournalPageShell>
+
+    <AccountingImportDialog
+      open={importOpen}
+      onClose={() => setImportOpen(false)}
+      fiscalYears={fiscalYears}
+      journals={journals}
+      defaultFiscalYearUuid={filters.fiscal_year_uuid || undefined}
+    />
+  </>
   )
 }

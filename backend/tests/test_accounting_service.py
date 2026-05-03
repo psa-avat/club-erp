@@ -22,6 +22,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+import unittest
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -303,3 +304,102 @@ class AccountingServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(len(reversal.lines), len(posted.lines))
         self.assertEqual(reversal.lines[0].debit, posted.lines[0].credit)
         self.assertEqual(reversal.lines[0].credit, posted.lines[0].debit)
+
+
+class TestAccountingImportHelpers(unittest.TestCase):
+    """Unit tests for the pure CSV parsing and grouping helpers (no DB required)."""
+
+    def test_parse_csv_rows_basic(self):
+        from services.accounting import _parse_csv_rows
+        csv_bytes = (
+            b"date,label,account_code,member_account_id,debit,credit\n"
+            b"01/01/2026,Test 411,411,ME2026-0001,100.00,0.00\n"
+            b"01/01/2026,Test 110,110,,0.00,100.00\n"
+        )
+        rows = _parse_csv_rows(csv_bytes)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["account_code"], "411")
+        self.assertEqual(rows[0]["member_account_id"], "ME2026-0001")
+        self.assertEqual(rows[1]["account_code"], "110")
+
+    def test_parse_csv_rows_strips_bom(self):
+        from services.accounting import _parse_csv_rows
+        csv_bytes = (
+            b"\xef\xbb\xbf"  # UTF-8 BOM
+            b"date,label,account_code,member_account_id,debit,credit\n"
+            b"01/01/2026,X,110,,50.00,50.00\n"
+        )
+        rows = _parse_csv_rows(csv_bytes)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("date", rows[0])
+
+    def test_group_two_balanced_entries(self):
+        from services.accounting import _group_into_entries
+        rows = [
+            {"debit": "100.00", "credit": "0.00"},
+            {"debit": "0.00",   "credit": "100.00"},
+            {"debit": "50.00",  "credit": "0.00"},
+            {"debit": "0.00",   "credit": "50.00"},
+        ]
+        groups = _group_into_entries(rows)
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups[0]), 2)
+        self.assertEqual(len(groups[1]), 2)
+
+    def test_unbalanced_tail_is_own_group(self):
+        from services.accounting import _group_into_entries
+        rows = [
+            {"debit": "100.00", "credit": "0.00"},
+            {"debit": "0.00",   "credit": "100.00"},
+            {"debit": "75.00",  "credit": "0.00"},  # no matching credit
+        ]
+        groups = _group_into_entries(rows)
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups[1]), 1)
+
+    def test_multi_line_balanced_entry(self):
+        from services.accounting import _group_into_entries
+        rows = [
+            {"debit": "100.00", "credit": "0.00"},
+            {"debit": "50.00",  "credit": "0.00"},
+            {"debit": "0.00",   "credit": "150.00"},
+        ]
+        groups = _group_into_entries(rows)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]), 3)
+
+    def test_entry_key_is_deterministic(self):
+        from services.accounting import _make_entry_key
+        rows = [
+            {
+                "date": "01/01/2026", "label": "Test", "account_code": "411",
+                "member_account_id": "ME2026-0001", "debit": "100.00", "credit": "0.00",
+            }
+        ]
+        self.assertEqual(_make_entry_key(rows), _make_entry_key(rows))
+
+    def test_entry_key_differs_for_different_rows(self):
+        from services.accounting import _make_entry_key
+        rows_a = [{"date": "01/01/2026", "label": "A", "account_code": "411",
+                   "member_account_id": "ME2026-0001", "debit": "100.00", "credit": "0.00"}]
+        rows_b = [{"date": "01/01/2026", "label": "B", "account_code": "411",
+                   "member_account_id": "ME2026-0002", "debit": "100.00", "credit": "0.00"}]
+        self.assertNotEqual(_make_entry_key(rows_a), _make_entry_key(rows_b))
+
+    def test_parse_date_ddmmYYYY(self):
+        from services.accounting import _parse_accounting_import_date
+        from datetime import date
+        self.assertEqual(_parse_accounting_import_date("01/01/2026"), date(2026, 1, 1))
+        self.assertEqual(_parse_accounting_import_date("31/12/2025"), date(2025, 12, 31))
+
+    def test_parse_date_ddmmYY(self):
+        from services.accounting import _parse_accounting_import_date
+        from datetime import date
+        self.assertEqual(_parse_accounting_import_date("01/01/26"), date(2026, 1, 1))
+
+    def test_parse_date_invalid_raises(self):
+        from services.accounting import _parse_accounting_import_date
+        with self.assertRaises(ValueError):
+            _parse_accounting_import_date("2026-01-01")
+        with self.assertRaises(ValueError):
+            _parse_accounting_import_date("not-a-date")

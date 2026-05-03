@@ -478,3 +478,53 @@ class PricingItemResponse(BaseModel):
     tiers: list[PricingItemTierResponse] = []
     created_at: datetime
     updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Legacy CSV Import (fiscal year initialization)
+# ---------------------------------------------------------------------------
+
+class AccountingImportPreviewLineResponse(BaseModel):
+    """One line within a preview accounting entry from CSV import."""
+    account_code: str
+    account_uuid: Optional[UUID] = None
+    description: Optional[str] = None
+    member_account_id: Optional[str] = None
+    member_uuid: Optional[UUID] = None
+    debit: Decimal
+    credit: Decimal
+    errors: list[str] = []
+
+
+class AccountingImportPreviewEntryResponse(BaseModel):
+    """One grouped balanced entry from a CSV import preview."""
+    entry_key: str
+    entry_date: date
+    description: str
+    row_start: int
+    row_end: int
+    total_debit: Decimal
+    total_credit: Decimal
+    importable: bool
+    already_imported: bool = False
+    errors: list[str] = []
+    lines: list[AccountingImportPreviewLineResponse]
+
+
+class AccountingImportPreviewResponse(BaseModel):
+    """Full preview of a CSV accounting import before committing."""
+    source_system: str
+    fiscal_year_uuid: UUID
+    journal_uuid: UUID
+    entries: list[AccountingImportPreviewEntryResponse]
+    importable_count: int
+    blocked_count: int
+
+
+class AccountingImportApplyResponse(BaseModel):
+    """Result after applying a selective CSV accounting import."""
+    source_system: str
+    import_batch_id: str
+    imported_count: int
+    skipped_count: int
+    created_entry_uuids: list[UUID]
