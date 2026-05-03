@@ -1,38 +1,450 @@
 [
-  {"code": "1",     "name": "Capitaux permanents",                        "type": 2, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "102",   "name": "Fonds associatif sans droit de reprise",     "type": 2, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "19",    "name": "Fonds dedies",                               "type": 2, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "194",   "name": "Fonds dedies sur projets",                   "type": 2, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "4",     "name": "Comptes de tiers",                           "type": 1, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "41",    "name": "Membres et usagers",                         "type": 1, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "411",   "name": "Membres - Creances",                         "type": 1, "is_posting_allowed": true,  "is_reconcilable": true},
-  {"code": "445",   "name": "Etat - Taxes sur le CA",                     "type": 1, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "44566", "name": "TVA sur autres biens et services",           "type": 1, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "44571", "name": "TVA collectee",                              "type": 2, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "5",     "name": "Comptes financiers",                         "type": 1, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "512",   "name": "Banque",                                     "type": 1, "is_posting_allowed": true,  "is_reconcilable": true},
-  {"code": "530",   "name": "Caisse",                                     "type": 1, "is_posting_allowed": true,  "is_reconcilable": true},
-  {"code": "6",     "name": "Comptes de charges",                         "type": 4, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "6063",  "name": "Carburants",                                 "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "615",   "name": "Entretien et reparations",                   "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "616",   "name": "Primes d'assurances",                        "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "641",   "name": "Remunerations du personnel",                 "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "689",   "name": "Engagements a realiser sur fonds dedies",    "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "7",     "name": "Comptes de produits",                        "type": 5, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "7061",  "name": "Cotisations et adhesions",                   "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "7062",  "name": "Activite vol",                               "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "7063",  "name": "Lancements",                                 "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "7071",  "name": "Ventes boutique",                            "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "7072",  "name": "Ventes bar et repas",                        "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "74",    "name": "Subventions d'exploitation",                 "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "789",   "name": "Report des ressources non utilisees",        "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "8",     "name": "Contributions volontaires en nature",        "type": 4, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "86",    "name": "Emplois des contributions volontaires",      "type": 4, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "861",   "name": "Mises à disposition gratuites de biens",     "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "862",   "name": "Prestations de services gratuites",          "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "864",   "name": "Personnel bénévole",                         "type": 4, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "87",    "name": "Contributions volontaires en nature",        "type": 5, "is_posting_allowed": false, "is_reconcilable": false},
-  {"code": "870",   "name": "Dons en nature",                             "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "871",   "name": "Prestations en nature",                      "type": 5, "is_posting_allowed": true,  "is_reconcilable": false},
-  {"code": "875",   "name": "Bénévolat",                                  "type": 5, "is_posting_allowed": true,  "is_reconcilable": false}
+  {
+    "code": "1",
+    "name": "Capitaux permanents",
+    "type": 2,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "102",
+    "name": "Fonds associatif sans droit de reprise",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "19",
+    "name": "Fonds dedies",
+    "type": 2,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "194",
+    "name": "Fonds dedies sur projets",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "4",
+    "name": "Comptes de tiers",
+    "type": 1,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "41",
+    "name": "Membres et usagers",
+    "type": 1,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "411",
+    "name": "Membres - Creances",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "445",
+    "name": "Etat - Taxes sur le CA",
+    "type": 1,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "44566",
+    "name": "TVA sur autres biens et services",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "44571",
+    "name": "TVA collectee",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "5",
+    "name": "Comptes financiers",
+    "type": 1,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "512",
+    "name": "Banque",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "530",
+    "name": "Caisse",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "6",
+    "name": "Comptes de charges",
+    "type": 4,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "6063",
+    "name": "Carburants",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "615",
+    "name": "Entretien et reparations",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "616",
+    "name": "Primes d'assurances",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "641",
+    "name": "Remunerations du personnel",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "689",
+    "name": "Engagements a realiser sur fonds dedies",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7",
+    "name": "Comptes de produits",
+    "type": 5,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7061",
+    "name": "Cotisations et adhesions",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7062",
+    "name": "Activite vol",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7063",
+    "name": "Lancements",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7071",
+    "name": "Ventes boutique",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7072",
+    "name": "Ventes bar et repas",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "74",
+    "name": "Subventions d'exploitation",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "789",
+    "name": "Report des ressources non utilisees",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "8",
+    "name": "Contributions volontaires en nature",
+    "type": 4,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "86",
+    "name": "Emplois des contributions volontaires",
+    "type": 4,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "861",
+    "name": "Mises à disposition gratuites de biens",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "862",
+    "name": "Prestations de services gratuites",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "864",
+    "name": "Personnel bénévole",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "87",
+    "name": "Contributions volontaires en nature",
+    "type": 5,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "870",
+    "name": "Dons en nature",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "871",
+    "name": "Prestations en nature",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "875",
+    "name": "Bénévolat",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "102",
+    "name": "Fonds associatif sans droit de reprise",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "110",
+    "name": "Report à nouveau (solde créditeur)",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "194",
+    "name": "Fonds dédiés sur projets",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "212",
+    "name": "Agencements et aménagements des terrains",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "215",
+    "name": "Installations techniques, matériel et outillage",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "218",
+    "name": "Autres immobilisations corporelles",
+    "type": 1,
+    "is_posting_allowed": false,
+    "is_reconcilable": false
+  },
+  {
+    "code": "2185",
+    "name": "Matériel de transport (Aéronefs)",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "281",
+    "name": "Amortissements des immob. corporelles",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "401",
+    "name": "Fournisseurs",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "411",
+    "name": "Membres - Créances",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "44566",
+    "name": "TVA sur autres biens et services",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "44571",
+    "name": "TVA collectée",
+    "type": 2,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "512",
+    "name": "Banque",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "530",
+    "name": "Caisse",
+    "type": 1,
+    "is_posting_allowed": true,
+    "is_reconcilable": true
+  },
+  {
+    "code": "6063",
+    "name": "Carburants",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "615",
+    "name": "Entretien et réparations",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "616",
+    "name": "Primes d'assurances",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "641",
+    "name": "Rémunérations du personnel",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "681",
+    "name": "Dotations aux amortissements",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "689",
+    "name": "Engagements à réaliser sur fonds dédiés",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7061",
+    "name": "Cotisations et adhésions",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7062",
+    "name": "Activité vol (Heures cellule)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7063",
+    "name": "Produit des lancements (Treuil/Remorque)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "74",
+    "name": "Subventions d'exploitation",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7561",
+    "name": "Cotisations et adhésions (membres)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "789",
+    "name": "Report des ressources non utilisées",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "864",
+    "name": "Personnel bénévole (Emplois)",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "875",
+    "name": "Bénévolat (Ressources)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  }
 ]

@@ -300,10 +300,6 @@ class Member(Base):
         CheckConstraint("status BETWEEN 1 AND 4", name="chk_members_status"),
         CheckConstraint("registration_status BETWEEN 1 AND 4", name="chk_members_registration_status"),
         CheckConstraint("first_subscription_year IS NULL OR first_subscription_year BETWEEN 1950 AND 9999", name="chk_members_first_subscription_year"),
-        CheckConstraint(
-            "last_registration_year IS NULL OR last_registration_year BETWEEN 2000 AND 9999",
-            name="chk_members_last_registration_year",
-        ),
         CheckConstraint("NOT (is_employee AND is_executive)", name="chk_members_role_employee_executive"),
         CheckConstraint("NOT (is_employee AND is_board_member)", name="chk_members_role_employee_board"),
     )
@@ -329,7 +325,9 @@ class Member(Base):
     is_board_member = Column(Boolean, default=False, nullable=False)
     can_fly = Column(Boolean, default=False, nullable=False, index=True)
     external_auth_enabled = Column(Boolean, default=False, nullable=False)
-    last_registration_year = Column(SmallInteger, nullable=True, index=True)
+    last_registration_date = Column(Date, nullable=True, index=True)
+    trigram = Column(String(3), nullable=True)
+    legacy_account_id = Column(String(32), nullable=True, unique=True, index=True)
     notes = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True),

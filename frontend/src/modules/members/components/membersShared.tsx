@@ -45,6 +45,7 @@ export type MemberFormState = {
   first_subscription_year: string
   ffvp_id: string
   account_id: string
+  legacy_account_id: string
   photo_url: string
   is_active: boolean
   status: string
@@ -55,6 +56,7 @@ export type MemberFormState = {
   is_board_member: boolean
   can_fly: boolean
   external_auth_enabled: boolean
+  trigram: string
   notes: string
 }
 
@@ -94,6 +96,7 @@ export function createEmptyMemberForm(): MemberFormState {
     first_subscription_year: '',
     ffvp_id: '',
     account_id: '',
+    legacy_account_id: '',
     photo_url: '',
     is_active: true,
     status: '1',
@@ -104,6 +107,7 @@ export function createEmptyMemberForm(): MemberFormState {
     is_board_member: false,
     can_fly: true,
     external_auth_enabled: false,
+    trigram: '',
     notes: '',
   }
 }
@@ -146,6 +150,7 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
     first_subscription_year: member.first_subscription_year === null ? '' : String(member.first_subscription_year),
     ffvp_id: member.ffvp_id === null ? '' : String(member.ffvp_id),
     account_id: member.account_id,
+    legacy_account_id: member.legacy_account_id ?? '',
     photo_url: member.photo_url ?? '',
     is_active: member.is_active,
     status: String(member.status),
@@ -156,6 +161,7 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
     is_board_member: member.is_board_member,
     can_fly: member.can_fly,
     external_auth_enabled: member.external_auth_enabled,
+    trigram: member.trigram ?? '',
     notes: member.notes ?? '',
   }
 }
@@ -172,6 +178,7 @@ export function buildMemberCreatePayload(form: MemberFormState): CreateMemberPay
     ...(form.first_subscription_year ? { first_subscription_year: Number(form.first_subscription_year) } : {}),
     ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
     ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
+    ...(form.legacy_account_id.trim() ? { legacy_account_id: form.legacy_account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
     is_active: form.is_active,
     status: Number(form.status),
@@ -182,6 +189,7 @@ export function buildMemberCreatePayload(form: MemberFormState): CreateMemberPay
     is_board_member: form.is_board_member,
     can_fly: form.can_fly,
     external_auth_enabled: form.external_auth_enabled,
+    ...(form.trigram.trim() ? { trigram: form.trigram.trim().toUpperCase() } : {}),
     ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
   }
 }
@@ -197,6 +205,7 @@ export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPay
     member_category: Number(form.member_category),
     ...(form.first_subscription_year ? { first_subscription_year: Number(form.first_subscription_year) } : {}),
     ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
+    ...(form.legacy_account_id.trim() ? { legacy_account_id: form.legacy_account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
     is_instructor: form.is_instructor,
     is_employee: form.is_employee,
@@ -204,6 +213,7 @@ export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPay
     is_board_member: form.is_board_member,
     can_fly: form.can_fly,
     external_auth_enabled: form.external_auth_enabled,
+    ...(form.trigram.trim() ? { trigram: form.trigram.trim().toUpperCase() } : {}),
     ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
   }
 }

@@ -77,6 +77,7 @@ class MemberUpdateTests(IsolatedAsyncioTestCase):
         member = SimpleNamespace(
             uuid=uuid4(),
             account_id="ME2026-0002",
+            legacy_account_id="42",
             email="pilot@example.com",
             ffvp_id=123,
             first_name="Old",
@@ -102,3 +103,38 @@ class MemberUpdateTests(IsolatedAsyncioTestCase):
         self.assertEqual(updated.updated_by, 42)
         self.assertTrue(db.committed)
         self.assertTrue(db.refreshed)
+
+    async def test_update_member_passes_legacy_account_id_to_uniqueness_check(self):
+        db = _FakeDb()
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            account_id="ME2026-0002",
+            legacy_account_id="42",
+            email="pilot@example.com",
+            ffvp_id=123,
+            first_name="Old",
+            is_employee=False,
+            is_executive=False,
+            is_board_member=False,
+            updated_by=None,
+        )
+
+        with (
+            patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)),
+            patch("services.members._ensure_unique_member_fields", new=AsyncMock()) as ensure_unique,
+        ):
+            await update_member(
+                db=db,
+                member_uuid=member.uuid,
+                payload=MemberUpdateRequest(first_name="New", legacy_account_id="77"),
+                updated_by_user_id=42,
+            )
+
+        ensure_unique.assert_awaited_once_with(
+            db,
+            account_id="ME2026-0002",
+            email="pilot@example.com",
+            ffvp_id=123,
+            legacy_account_id="77",
+            exclude_member_uuid=member.uuid,
+        )

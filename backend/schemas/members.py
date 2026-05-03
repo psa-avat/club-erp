@@ -35,7 +35,8 @@ class MemberBase(MemberRoleFlags):
     registration_status: int = Field(default=1, ge=1, le=4)
     can_fly: bool = False
     external_auth_enabled: bool = False
-    last_registration_year: Optional[int] = Field(default=None, ge=2000, le=9999)
+    last_registration_date: Optional[date] = None
+    trigram: Optional[str] = Field(default=None, max_length=3)
     notes: Optional[str] = None
 
 
@@ -43,6 +44,7 @@ class MemberCreateRequest(MemberBase):
     """Payload for member creation."""
 
     account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
+    legacy_account_id: Optional[str] = Field(default=None, max_length=32)
 
 
 class MemberUpdateRequest(BaseModel):
@@ -68,7 +70,9 @@ class MemberUpdateRequest(BaseModel):
     is_board_member: Optional[bool] = None
     can_fly: Optional[bool] = None
     external_auth_enabled: Optional[bool] = None
-    last_registration_year: Optional[int] = Field(default=None, ge=2000, le=9999)
+    last_registration_date: Optional[date] = None
+    trigram: Optional[str] = Field(default=None, max_length=3)
+    legacy_account_id: Optional[str] = Field(default=None, max_length=32)
     notes: Optional[str] = None
 
 
@@ -267,6 +271,7 @@ class MemberDetailResponse(BaseModel):
     first_subscription_year: Optional[int] = None
     ffvp_id: Optional[int] = None
     account_id: str
+    legacy_account_id: Optional[str] = None
     photo_url: Optional[str] = None
     is_active: bool
     status: int
@@ -277,7 +282,8 @@ class MemberDetailResponse(BaseModel):
     is_board_member: bool
     can_fly: bool
     external_auth_enabled: bool
-    last_registration_year: Optional[int] = None
+    last_registration_date: Optional[date] = None
+    trigram: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime

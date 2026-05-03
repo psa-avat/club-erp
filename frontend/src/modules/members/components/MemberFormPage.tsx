@@ -205,6 +205,18 @@ export function MemberFormPage() {
                 value={memberForm.first_subscription_year}
                 onChange={(value) => setMemberForm({ ...memberForm, first_subscription_year: value })}
               />
+              <TextField
+                id="member-trigram"
+                label={t('form.trigram')}
+                value={memberForm.trigram}
+                onChange={(value) => setMemberForm({ ...memberForm, trigram: value.toUpperCase().slice(0, 3) })}
+              />
+              <TextField
+                id="member-legacy-account-id"
+                label={t('form.legacyAccountId')}
+                value={memberForm.legacy_account_id}
+                onChange={(value) => setMemberForm({ ...memberForm, legacy_account_id: value })}
+              />
             </CardContent>
           </Card>
 

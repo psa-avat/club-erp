@@ -114,6 +114,7 @@ async def _ensure_unique_member_fields(
     account_id: str,
     email: Optional[str] = None,
     ffvp_id: Optional[int] = None,
+    legacy_account_id: Optional[str] = None,
     exclude_member_uuid: Optional[UUID] = None,
 ) -> None:
     account_query = select(Member).where(Member.account_id == account_id)
@@ -122,6 +123,14 @@ async def _ensure_unique_member_fields(
     existing_account = await db.scalar(account_query)
     if existing_account is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account ID already exists")
+
+    if legacy_account_id:
+        legacy_query = select(Member).where(Member.legacy_account_id == legacy_account_id)
+        if exclude_member_uuid is not None:
+            legacy_query = legacy_query.where(Member.uuid != exclude_member_uuid)
+        existing_legacy = await db.scalar(legacy_query)
+        if existing_legacy is not None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Legacy account ID already exists")
 
     if email:
         email_query = select(Member).where(Member.email == email)
@@ -242,6 +251,7 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
         first_subscription_year=member.first_subscription_year,
         ffvp_id=member.ffvp_id,
         account_id=member.account_id,
+        legacy_account_id=member.legacy_account_id,
         photo_url=member.photo_url,
         is_active=member.is_active,
         status=member.status,
@@ -252,7 +262,8 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
         is_board_member=member.is_board_member,
         can_fly=member.can_fly,
         external_auth_enabled=member.external_auth_enabled,
-        last_registration_year=member.last_registration_year,
+        last_registration_date=member.last_registration_date,
+        trigram=member.trigram,
         notes=member.notes,
         created_at=member.created_at,
         updated_at=member.updated_at,
@@ -295,6 +306,7 @@ async def create_member(
         account_id=account_id,
         email=str(payload.email) if payload.email is not None else None,
         ffvp_id=payload.ffvp_id,
+        legacy_account_id=payload.legacy_account_id,
     )
 
     member = Member(
@@ -326,6 +338,7 @@ async def list_members(
                 Member.first_name.ilike(term),
                 Member.last_name.ilike(term),
                 Member.account_id.ilike(term),
+                Member.legacy_account_id.ilike(term),
                 Member.email.ilike(term),
             )
         )
@@ -400,11 +413,13 @@ async def update_member(
 
     email = preview.get("email", member.email)
     ffvp_id = preview.get("ffvp_id", member.ffvp_id)
+    legacy_account_id = preview.get("legacy_account_id", member.legacy_account_id)
     await _ensure_unique_member_fields(
         db,
         account_id=member.account_id,
         email=str(email) if email is not None else None,
         ffvp_id=ffvp_id,
+        legacy_account_id=legacy_account_id,
         exclude_member_uuid=member.uuid,
     )
 
@@ -632,7 +647,7 @@ async def create_member_registration(
         member.registration_status = 3
         member.status = 1
         member.is_active = True
-        member.last_registration_year = max(member.last_registration_year or payload.registered_for_year, payload.registered_for_year)
+        member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
 
         existing_sheet = await db.scalar(
@@ -654,7 +669,7 @@ async def create_member_registration(
         member.registration_status = 3
         member.status = 1
         member.is_active = True
-        member.last_registration_year = max(member.last_registration_year or payload.registered_for_year, payload.registered_for_year)
+        member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
 
     await db.commit()
@@ -953,6 +968,8 @@ async def import_members_from_csv(
         phone = row.get("phone", "") or None
         account_id = row.get("account_id", "") or None
         notes = row.get("notes", "") or None
+        trigram_raw = row.get("trigram", "").strip().upper() or None
+        legacy_account_id_raw = row.get("legacy_account_id", "").strip() or None
 
         date_of_birth = None
         raw_dob = row.get("date_of_birth", "")
@@ -993,6 +1010,8 @@ async def import_members_from_csv(
         if update_existing:
             if ffvp_id is not None:
                 existing_member = await db.scalar(select(Member).where(Member.ffvp_id == ffvp_id))
+            if existing_member is None and legacy_account_id_raw:
+                existing_member = await db.scalar(select(Member).where(Member.legacy_account_id == legacy_account_id_raw))
             if existing_member is None and account_id:
                 existing_member = await db.scalar(select(Member).where(Member.account_id == account_id))
             if existing_member is None and email_raw:
@@ -1006,7 +1025,7 @@ async def import_members_from_csv(
                 skipped += 1
                 continue
         else:
-            member_status = existing_member.status if existing_member is not None else 1
+            member_status = 1
 
         raw_reg_status = row.get("registration_status", "").lower()
         if raw_reg_status:
@@ -1016,44 +1035,63 @@ async def import_members_from_csv(
                 skipped += 1
                 continue
         else:
-            reg_status = existing_member.registration_status if existing_member is not None else 1
+            reg_status = 1
 
-        last_reg_year = None
-        raw_year = row.get("last_registration_year", "")
-        if raw_year:
+        last_reg_date = None
+        raw_reg_date = row.get("last_registration_date", "")
+        if raw_reg_date:
             try:
-                last_reg_year = int(raw_year)
-                if not (2000 <= last_reg_year <= 9999):
-                    raise ValueError
+                from datetime import date as _date
+                last_reg_date = _date.fromisoformat(raw_reg_date)
             except ValueError:
-                errors.append(ImportRowError(row=row_index, field="last_registration_year", message="Must be a year between 2000 and 9999"))
+                errors.append(ImportRowError(row=row_index, field="last_registration_date", message=f"Invalid date {raw_reg_date!r}. Use YYYY-MM-DD."))
                 skipped += 1
                 continue
 
         try:
             if existing_member is not None:
-                payload = MemberUpdateRequest(
-                    genre=genre,
-                    first_name=first_name,
-                    last_name=last_name,
-                    date_of_birth=date_of_birth,
-                    email=email_raw,  # type: ignore[arg-type]
-                    phone=phone,
-                    member_category=_MEMBER_CATEGORY_MAP[raw_category],
-                    first_subscription_year=first_subscription_year,
-                    ffvp_id=ffvp_id,
-                    account_id=account_id or existing_member.account_id,
-                    is_active=_parse_bool_cell(row.get("is_active", ""), default=existing_member.is_active),
-                    status=member_status,
-                    registration_status=reg_status,
-                    can_fly=_parse_bool_cell(row.get("can_fly", ""), default=existing_member.can_fly),
-                    is_instructor=_parse_bool_cell(row.get("is_instructor", ""), default=existing_member.is_instructor),
-                    is_employee=_parse_bool_cell(row.get("is_employee", ""), default=existing_member.is_employee),
-                    is_executive=_parse_bool_cell(row.get("is_executive", ""), default=existing_member.is_executive),
-                    is_board_member=_parse_bool_cell(row.get("is_board_member", ""), default=existing_member.is_board_member),
-                    last_registration_year=last_reg_year,
-                    notes=notes,
-                )
+                update_fields: dict = {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "member_category": _MEMBER_CATEGORY_MAP[raw_category],
+                }
+                if row.get("genre"):
+                    update_fields["genre"] = genre
+                if email_raw is not None:
+                    update_fields["email"] = email_raw
+                if phone is not None:
+                    update_fields["phone"] = phone
+                if date_of_birth is not None:
+                    update_fields["date_of_birth"] = date_of_birth
+                if first_subscription_year is not None:
+                    update_fields["first_subscription_year"] = first_subscription_year
+                if ffvp_id is not None:
+                    update_fields["ffvp_id"] = ffvp_id
+                if raw_status:
+                    update_fields["status"] = member_status
+                if raw_reg_status:
+                    update_fields["registration_status"] = reg_status
+                if row.get("is_active"):
+                    update_fields["is_active"] = _parse_bool_cell(row["is_active"], default=True)
+                if row.get("can_fly"):
+                    update_fields["can_fly"] = _parse_bool_cell(row["can_fly"], default=False)
+                if row.get("is_instructor"):
+                    update_fields["is_instructor"] = _parse_bool_cell(row["is_instructor"], default=False)
+                if row.get("is_employee"):
+                    update_fields["is_employee"] = _parse_bool_cell(row["is_employee"], default=False)
+                if row.get("is_executive"):
+                    update_fields["is_executive"] = _parse_bool_cell(row["is_executive"], default=False)
+                if row.get("is_board_member"):
+                    update_fields["is_board_member"] = _parse_bool_cell(row["is_board_member"], default=False)
+                if last_reg_date is not None:
+                    update_fields["last_registration_date"] = last_reg_date
+                if notes is not None:
+                    update_fields["notes"] = notes
+                if trigram_raw is not None:
+                    update_fields["trigram"] = trigram_raw
+                if legacy_account_id_raw is not None:
+                    update_fields["legacy_account_id"] = legacy_account_id_raw
+                payload = MemberUpdateRequest(**update_fields)
                 await update_member(
                     db=db,
                     member_uuid=existing_member.uuid,
@@ -1081,7 +1119,9 @@ async def import_members_from_csv(
                     is_employee=_parse_bool_cell(row.get("is_employee", "false")),
                     is_executive=_parse_bool_cell(row.get("is_executive", "false")),
                     is_board_member=_parse_bool_cell(row.get("is_board_member", "false")),
-                    last_registration_year=last_reg_year,
+                    last_registration_date=last_reg_date,
+                    trigram=trigram_raw,
+                    legacy_account_id=legacy_account_id_raw,
                     notes=notes,
                 )
                 await create_member(db=db, payload=payload, updated_by_user_id=updated_by_user_id)

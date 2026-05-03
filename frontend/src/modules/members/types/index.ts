@@ -66,6 +66,7 @@ export type MemberDetail = {
   first_subscription_year: number | null
   ffvp_id: number | null
   account_id: string
+  legacy_account_id: string | null
   photo_url: string | null
   is_active: boolean
   status: number
@@ -76,7 +77,8 @@ export type MemberDetail = {
   is_board_member: boolean
   can_fly: boolean
   external_auth_enabled: boolean
-  last_registration_year: number | null
+  last_registration_date: string | null
+  trigram: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -132,6 +134,7 @@ export type CreateMemberPayload = {
   first_subscription_year?: number
   ffvp_id?: number
   account_id?: string
+  legacy_account_id?: string
   photo_url?: string
   is_active: boolean
   status: number
@@ -142,7 +145,8 @@ export type CreateMemberPayload = {
   is_board_member: boolean
   can_fly: boolean
   external_auth_enabled: boolean
-  last_registration_year?: number
+  last_registration_date?: string
+  trigram?: string
   notes?: string
 }
 
