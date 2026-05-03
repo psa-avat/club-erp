@@ -386,6 +386,52 @@ class TestAccountingImportHelpers(unittest.TestCase):
                    "member_account_id": "ME2026-0002", "debit": "100.00", "credit": "0.00"}]
         self.assertNotEqual(_make_entry_key(rows_a), _make_entry_key(rows_b))
 
+    def test_entry_key_differs_for_different_journals(self):
+        from services.accounting import _make_entry_key
+        rows_a = [{"date": "01/01/2026", "journal": "BQ", "label": "A", "account_code": "411",
+                   "member_account_id": "ME2026-0001", "debit": "100.00", "credit": "0.00"}]
+        rows_b = [{"date": "01/01/2026", "journal": "CA", "label": "A", "account_code": "411",
+                   "member_account_id": "ME2026-0001", "debit": "100.00", "credit": "0.00"}]
+        self.assertNotEqual(_make_entry_key(rows_a), _make_entry_key(rows_b))
+
+    def test_group_closes_when_journal_changes(self):
+        from services.accounting import _group_into_entries
+        rows = [
+            {"journal": "BQ", "debit": "100.00", "credit": "0.00"},
+            {"journal": "CA", "debit": "0.00", "credit": "100.00"},
+        ]
+        groups = _group_into_entries(rows)
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(groups[0][0]["journal"], "BQ")
+        self.assertEqual(groups[1][0]["journal"], "CA")
+
+    def test_resolve_group_journal_code_prefers_csv_value(self):
+        from services.accounting import _resolve_group_journal_code
+        journal_code, errors = _resolve_group_journal_code(
+            [{"journal": "BQ"}, {"journal": "BQ"}],
+            "AN",
+        )
+        self.assertEqual(journal_code, "BQ")
+        self.assertEqual(errors, [])
+
+    def test_resolve_group_journal_code_falls_back_when_missing(self):
+        from services.accounting import _resolve_group_journal_code
+        journal_code, errors = _resolve_group_journal_code(
+            [{"journal": ""}, {}],
+            "AN",
+        )
+        self.assertEqual(journal_code, "AN")
+        self.assertEqual(errors, [])
+
+    def test_resolve_group_journal_code_rejects_multiple_journals(self):
+        from services.accounting import _resolve_group_journal_code
+        journal_code, errors = _resolve_group_journal_code(
+            [{"journal": "BQ"}, {"journal": "CA"}],
+            "AN",
+        )
+        self.assertIsNone(journal_code)
+        self.assertEqual(errors, ["Entry spans multiple journals: BQ, CA"])
+
     def test_parse_date_ddmmYYYY(self):
         from services.accounting import _parse_accounting_import_date
         from datetime import date

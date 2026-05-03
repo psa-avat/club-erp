@@ -1939,6 +1939,7 @@ def _make_entry_key(rows: list[dict]) -> str:
     payload = "\n".join(
         "|".join([
             r.get("date", ""),
+            r.get("journal", ""),
             r.get("label", ""),
             r.get("account_code", ""),
             r.get("member_account_id", ""),
@@ -1964,21 +1965,32 @@ def _group_into_entries(rows: list[dict]) -> list[list[dict]]:
     """Group consecutive CSV rows into balanced entry groups.
 
     Rows are accumulated until debit total == credit total (and both > 0),
-    at which point the group is closed. A remainder that never balances is
-    returned as a single unbalanced tail group.
+    at which point the group is closed. When the CSV provides a journal code,
+    a journal change also closes the current group so entries cannot span
+    multiple journals. A remainder that never balances is returned as a single
+    unbalanced tail group.
     """
     groups: list[list[dict]] = []
     current: list[dict] = []
     debit_acc = Decimal("0")
     credit_acc = Decimal("0")
+    current_journal = ""
 
     for row in rows:
+        row_journal = (row.get("journal", "") or "").strip()
+        if current and row_journal != current_journal:
+            groups.append(current)
+            current = []
+            debit_acc = Decimal("0")
+            credit_acc = Decimal("0")
+
         try:
             d = Decimal(row.get("debit", "0") or "0")
             c = Decimal(row.get("credit", "0") or "0")
         except Exception:
             d, c = Decimal("0"), Decimal("0")
         current.append(row)
+        current_journal = row_journal
         debit_acc += d
         credit_acc += c
         if debit_acc > 0 and debit_acc == credit_acc:
@@ -1986,11 +1998,35 @@ def _group_into_entries(rows: list[dict]) -> list[list[dict]]:
             current = []
             debit_acc = Decimal("0")
             credit_acc = Decimal("0")
+            current_journal = ""
 
     if current:
         groups.append(current)
 
     return groups
+
+
+def _resolve_group_journal_code(group: list[dict], fallback_journal_code: str | None) -> tuple[str | None, list[str]]:
+    """Resolve the journal code for one grouped entry.
+
+    CSV-provided journal codes take precedence. When absent, the caller-provided
+    fallback journal code is used to preserve backward compatibility.
+    """
+    journal_codes = sorted(
+        {
+            code
+            for code in ((row.get("journal", "") or "").strip() for row in group)
+            if code
+        }
+    )
+
+    if len(journal_codes) > 1:
+        return None, [f"Entry spans multiple journals: {', '.join(journal_codes)}"]
+    if journal_codes:
+        return journal_codes[0], []
+    if fallback_journal_code:
+        return fallback_journal_code, []
+    return None, ["Journal code is missing from CSV and no fallback journal was provided"]
 
 
 async def preview_accounting_import(
@@ -2008,7 +2044,12 @@ async def preview_accounting_import(
     )
 
     fy = await validate_fiscal_year_open(db, fiscal_year_uuid)
-    await get_journal(db, journal_uuid)
+    fallback_journal = await get_journal(db, journal_uuid)
+
+    journal_result = await db.execute(select(AccountingJournal))
+    journals_by_code: dict[str, AccountingJournal] = {
+        journal.code: journal for journal in journal_result.scalars().all()
+    }
 
     acct_result = await db.execute(select(AccountingAccount))
     accounts_by_code: dict[str, AccountingAccount] = {
@@ -2045,6 +2086,11 @@ async def preview_accounting_import(
         entry_key = _make_entry_key(group)
         group_errors: list[str] = []
         already_imported = entry_key in already_imported_keys
+
+        journal_code, journal_errors = _resolve_group_journal_code(group, fallback_journal.code)
+        group_errors.extend(journal_errors)
+        if journal_code and journal_code not in journals_by_code:
+            group_errors.append(f"Journal code {journal_code!r} not found")
 
         description = next((r.get("label", "") for r in group if r.get("label")), "")
 
@@ -2160,7 +2206,12 @@ async def apply_accounting_import(
     import_batch_id = f"csv-import-{uuid4().hex[:12]}"
 
     fy = await validate_fiscal_year_open(db, fiscal_year_uuid)
-    await get_journal(db, journal_uuid)
+    fallback_journal = await get_journal(db, journal_uuid)
+
+    journal_result = await db.execute(select(AccountingJournal))
+    journals_by_code: dict[str, AccountingJournal] = {
+        journal.code: journal for journal in journal_result.scalars().all()
+    }
 
     acct_result = await db.execute(select(AccountingAccount))
     accounts_by_code: dict[str, AccountingAccount] = {
@@ -2196,6 +2247,12 @@ async def apply_accounting_import(
             skipped += 1
             continue
 
+        journal_code, journal_errors = _resolve_group_journal_code(group, fallback_journal.code)
+        resolved_journal = journals_by_code.get(journal_code) if journal_code else None
+        if journal_errors or resolved_journal is None:
+            skipped += 1
+            continue
+
         raw_date = group[0].get("date", "")
         entry_date = _parse_accounting_import_date(raw_date)
         description = next((r.get("label", "") for r in group if r.get("label")), "")
@@ -2204,7 +2261,7 @@ async def apply_accounting_import(
         entry = AccountingEntry(
             uuid=entry_uuid,
             fiscal_year_uuid=fiscal_year_uuid,
-            journal_uuid=journal_uuid,
+            journal_uuid=resolved_journal.uuid,
             entry_date=entry_date,
             description=description,
             state=1,  # Draft
