@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import Decimal from 'decimal.js'
+import { useNavigate } from 'react-router-dom'
 
 import { Alert } from '../../../components/ui/alert'
 import { Banner } from '../../../components/ui/banner'
@@ -55,19 +56,20 @@ import {
   emptyEntryForm,
   emptyLine,
   entryStateBadgeClass,
-  entryStateLabel,
   isBalanced,
   mapEntryToForm,
   toErrorMessage,
   type EntryFormState,
   type LineFormState,
 } from './journalShared'
+import { ReversalDialog } from './ReversalDialog'
 
 type Props = {
   entryUuid?: string | null
 }
 
 export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
+  const navigate = useNavigate()
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
@@ -89,7 +91,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const [priceQuantity, setPriceQuantity] = useState('1')
   const [priceDebitAccountUuid, setPriceDebitAccountUuid] = useState('')
   const [applyModelUuid, setApplyModelUuid] = useState('')
-  const [reverseReason, setReverseReason] = useState('')
+  const [reversalDialogOpen, setReversalDialogOpen] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -186,7 +188,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
 
   function resetEntryForm() {
     setSelectedEntryUuid(null)
-    setReverseReason('')
+    setReversalDialogOpen(false)
     setSelectedPriceVersionUuid('')
     setSelectedPriceItemUuid('')
     setPriceQuantity('1')
@@ -295,17 +297,20 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
     }
   }
 
-  async function handleReverseEntry() {
-    if (!selectedEntry || reverseReason.trim() === '') return
+  async function handleCreateReversal(reason: string) {
+    if (!selectedEntry || reason.trim() === '') return
     setLocalError(null)
     try {
-      await reverseEntryMutation.mutateAsync({
+      const reversedDraft = await reverseEntryMutation.mutateAsync({
         entryUuid: selectedEntry.uuid,
         fiscal_year_uuid: selectedEntry.fiscal_year_uuid,
-        reversal_reason: reverseReason.trim(),
+        reversal_reason: reason.trim(),
         entry_date: entryForm.entry_date,
       })
-      setReverseReason('')
+      setReversalDialogOpen(false)
+      setSelectedEntryUuid(reversedDraft.uuid)
+      setEntryForm(mapEntryToForm(reversedDraft))
+      navigate(`/banque/journal/entry/${reversedDraft.uuid}`)
     } catch (error) {
       setLocalError(toErrorMessage(error, t('journal.errors.generic')))
     }
@@ -328,6 +333,9 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
         )
       : null)
 
+  const isPostedEntry = selectedEntry?.state === ENTRY_STATE_POSTED
+  const postedAtLabel = selectedEntry?.posted_at ? new Date(selectedEntry.posted_at).toLocaleString() : '—'
+
   return (
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
       {anyError && <Alert>{anyError}</Alert>}
@@ -341,9 +349,14 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <h2 className="text-lg font-semibold text-on-surface">
               {selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}
             </h2>
-            {selectedEntry && (
+            {selectedEntry && !isPostedEntry && (
               <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${entryStateBadgeClass(selectedEntry.state)}`}>
-                {entryStateLabel(selectedEntry.state, t)}
+                {t('journal.entries.draftStatus.badge')}
+              </span>
+            )}
+            {selectedEntry && isPostedEntry && (
+              <span className="shrink-0 rounded-full bg-success-container px-3 py-1 text-xs font-semibold text-on-success-container">
+                {t('journal.entries.locked.badge')}
               </span>
             )}
           </div>
@@ -351,6 +364,29 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             {t('journal.entries.resetDraft')}
           </Button>
         </div>
+
+        {selectedEntry && isPostedEntry && (
+          <div className="mt-4 space-y-2 rounded-shape-md border border-success-container bg-success-container p-4 text-on-success-container">
+            <p className="text-base font-semibold">{t('journal.entries.locked.badge')}</p>
+            <p className="text-sm">
+              {t('journal.entries.locked.meta', {
+                user: selectedEntry.created_by,
+                date: postedAtLabel,
+              })}
+            </p>
+          </div>
+        )}
+
+        {selectedEntry && selectedEntry.state === ENTRY_STATE_DRAFT && (
+          <div className="mt-4 space-y-2 rounded-shape-md border border-warning-container bg-warning-container p-4 text-on-warning-container">
+            <p className="text-base font-semibold">{t('journal.entries.draftStatus.badge')}</p>
+            <p className="text-sm">{t('journal.entries.draftStatus.subtext')}</p>
+          </div>
+        )}
+
+        {selectedEntry && isPostedEntry && (
+          <Alert>{t('journal.entries.locked.warning')}</Alert>
+        )}
 
         {/* Prefill helpers — FA-01: visually separated from core entry */}
         <div className="mt-4 border-t border-outline-variant pt-4">
@@ -361,6 +397,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <h3 className="text-sm font-semibold text-on-surface">{t('journal.entries.modelSourceTitle')}</h3>
             <select
               value={applyModelUuid}
+              disabled={isPostedEntry}
               onChange={(event) => setApplyModelUuid(event.target.value)}
               className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
@@ -369,7 +406,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
                 <option key={model.uuid} value={model.uuid}>{model.code} · {model.name}</option>
               ))}
             </select>
-            <Button type="button" variant="secondary" disabled={!applyModelUuid} onClick={applyModelToEntry}>
+            <Button type="button" variant="secondary" disabled={isPostedEntry || !applyModelUuid} onClick={applyModelToEntry}>
               {t('journal.entries.applyModel')}
             </Button>
           </div>
@@ -378,6 +415,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <h3 className="text-sm font-semibold text-on-surface">{t('journal.entries.pricing.title')}</h3>
             <select
               value={selectedPriceVersionUuid}
+              disabled={isPostedEntry}
               onChange={(event) => { setSelectedPriceVersionUuid(event.target.value); setSelectedPriceItemUuid('') }}
               className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
@@ -388,6 +426,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             </select>
             <select
               value={selectedPriceItemUuid}
+              disabled={isPostedEntry}
               onChange={(event) => setSelectedPriceItemUuid(event.target.value)}
               className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
@@ -399,11 +438,13 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 type="number" min="0.01" step="0.01" value={priceQuantity}
+                disabled={isPostedEntry}
                 onChange={(event) => setPriceQuantity(event.target.value)}
                 placeholder={t('journal.entries.pricing.quantity')}
               />
               <select
                 value={priceDebitAccountUuid}
+                disabled={isPostedEntry}
                 onChange={(event) => setPriceDebitAccountUuid(event.target.value)}
                 className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
               >
@@ -415,7 +456,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             </div>
             <Button
               type="button" variant="secondary"
-              disabled={!selectedPricingItem}
+              disabled={isPostedEntry || !selectedPricingItem}
               onClick={() => selectedPricingItem && buildFromPricingItem(selectedPricingItem)}
             >
               {t('journal.entries.pricing.apply')}
@@ -432,6 +473,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <Label>{t('journal.entries.fiscalYear')}</Label>
             <select
               value={entryForm.fiscal_year_uuid}
+              disabled={isPostedEntry}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: event.target.value }))}
               className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
@@ -445,6 +487,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <Label>{t('journal.entries.journal')}</Label>
             <select
               value={entryForm.journal_uuid}
+              disabled={isPostedEntry}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, journal_uuid: event.target.value }))}
               className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
@@ -458,6 +501,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <Label>{t('journal.entries.entryDate')}</Label>
             <Input
               type="date" value={entryForm.entry_date}
+              disabled={isPostedEntry}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, entry_date: event.target.value }))}
             />
           </div>
@@ -465,6 +509,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             <Label>{t('journal.entries.reference')}</Label>
             <Input
               value={entryForm.reference}
+              disabled={isPostedEntry}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, reference: event.target.value }))}
             />
           </div>
@@ -474,6 +519,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
           <Label>{t('journal.entries.descriptionLabel')}</Label>
           <Input
             value={entryForm.description}
+            disabled={isPostedEntry}
             onChange={(event) => setEntryForm((prev) => ({ ...prev, description: event.target.value }))}
           />
         </div>
@@ -489,51 +535,115 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
             onRemove={(index) =>
               setEntryForm((prev) => ({ ...prev, lines: prev.lines.filter((_, i) => i !== index) }))
             }
+            disabled={isPostedEntry}
             t={t}
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            disabled={!canPost || !entryCanSave || createEntryMutation.isPending || updateEntryMutation.isPending}
-            onClick={() => void handleSaveEntry()}
-          >
-            {createEntryMutation.isPending || updateEntryMutation.isPending
-              ? t('journal.entries.saving')
-              : selectedEntryUuid ? t('journal.entries.saveChanges') : t('journal.entries.saveDraft')}
-          </Button>
-          {selectedEntry && selectedEntry.state === ENTRY_STATE_DRAFT && (
-            <Button
-              type="button" variant="secondary"
-              disabled={!canPost || postEntryMutation.isPending}
-              onClick={() => void handlePostEntry()}
-            >
-              {postEntryMutation.isPending ? t('journal.entries.posting') : t('journal.entries.postDraft')}
-            </Button>
-          )}
-        </div>
+        {/* Balance indicator */}
+        {!isPostedEntry && entryForm.lines.length > 0 && (
+          <div className="mt-4 rounded-shape-md border border-outline-variant bg-surface-container p-4">
+            {(() => {
+              const { debit: debitStr, credit: creditStr } = (() => {
+                const debit = entryForm.lines.reduce((sum, line) => {
+                  const amount = decimalOrZero(line.amount)
+                  return amount.greaterThan(0) ? sum.plus(amount) : sum
+                }, new Decimal(0))
+                const credit = entryForm.lines.reduce((sum, line) => {
+                  const amount = decimalOrZero(line.amount)
+                  return amount.lessThan(0) ? sum.plus(amount.abs()) : sum
+                }, new Decimal(0))
+                return { debit: debit.toFixed(2), credit: credit.toFixed(2) }
+              })()
+              const debit = new Decimal(debitStr)
+              const credit = new Decimal(creditStr)
+              const isBalanced = debit.equals(credit) && debit.greaterThan(0)
+              const diff = debit.minus(credit).abs().toFixed(2)
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    {isBalanced ? (
+                      <>
+                        <span className="rounded-full bg-success-container px-3 py-1 text-xs font-semibold text-on-success-container">
+                          ✓ {t('journal.entries.balanceStatus.balanced')}
+                        </span>
+                        <p className="text-xs text-on-surface-variant">
+                          {t('journal.entries.balanceStatus.bothSidesMatch', { amount: debitStr })}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="rounded-full bg-warning-container px-3 py-1 text-xs font-semibold text-on-warning-container">
+                          ⚠ {t('journal.entries.balanceStatus.unbalanced')}
+                        </span>
+                        <p className="text-xs text-on-surface-variant">
+                          {t('journal.entries.balanceStatus.delta', { diff })}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded border border-outline-variant bg-surface px-2 py-1">
+                      <p className="text-on-surface-variant">{t('journal.entries.balanceStatus.debit')}</p>
+                      <p className="font-semibold text-on-surface">{debitStr} €</p>
+                    </div>
+                    <div className="rounded border border-outline-variant bg-surface px-2 py-1">
+                      <p className="text-on-surface-variant">{t('journal.entries.balanceStatus.credit')}</p>
+                      <p className="font-semibold text-on-surface">{creditStr} €</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        )}
 
-        {selectedEntry && selectedEntry.state === ENTRY_STATE_POSTED && (
-          <div className="mt-4 space-y-2 rounded-shape-md border border-warning-container bg-warning-container p-4">
-            <Label>{t('journal.entries.reverseReason')}</Label>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                value={reverseReason}
-                onChange={(event) => setReverseReason(event.target.value)}
-                className="max-w-xl"
-              />
+        {!isPostedEntry && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              disabled={!canPost || !entryCanSave || createEntryMutation.isPending || updateEntryMutation.isPending}
+              onClick={() => void handleSaveEntry()}
+            >
+              {createEntryMutation.isPending || updateEntryMutation.isPending
+                ? t('journal.entries.saving')
+                : selectedEntryUuid ? t('journal.entries.saveChanges') : t('journal.entries.saveDraft')}
+            </Button>
+            {selectedEntry && selectedEntry.state === ENTRY_STATE_DRAFT && (
               <Button
                 type="button" variant="secondary"
-                disabled={!canPost || reverseReason.trim() === '' || reverseEntryMutation.isPending}
-                onClick={() => void handleReverseEntry()}
+                disabled={!canPost || postEntryMutation.isPending}
+                onClick={() => void handlePostEntry()}
               >
-                {reverseEntryMutation.isPending ? t('journal.entries.reversing') : t('journal.entries.reverseAction')}
+                {postEntryMutation.isPending ? t('journal.entries.posting') : t('journal.entries.postDraft')}
               </Button>
-            </div>
+            )}
+          </div>
+        )}
+
+        {selectedEntry && isPostedEntry && (
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!canPost || reverseEntryMutation.isPending}
+              onClick={() => setReversalDialogOpen(true)}
+            >
+              {t('journal.entries.locked.reverseCta')}
+            </Button>
           </div>
         )}
       </div>
+
+      <ReversalDialog
+        open={reversalDialogOpen}
+        entry={selectedEntry}
+        accounts={accountsQuery.data ?? []}
+        isSubmitting={reverseEntryMutation.isPending}
+        onClose={() => setReversalDialogOpen(false)}
+        onConfirm={handleCreateReversal}
+        t={t}
+      />
     </JournalPageShell>
   )
 }

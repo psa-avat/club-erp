@@ -250,6 +250,7 @@ export function LineEditor({
   onChange,
   onAdd,
   onRemove,
+  disabled = false,
   t,
 }: {
   title: string
@@ -259,6 +260,7 @@ export function LineEditor({
   onChange: (index: number, patch: Partial<LineFormState>) => void
   onAdd: () => void
   onRemove: (index: number) => void
+  disabled?: boolean
   t: (key: string) => string
 }) {
   const summary = totals(lines)
@@ -285,6 +287,7 @@ export function LineEditor({
                 <td className="sticky left-0 z-10 bg-surface px-3 py-2">
                   <select
                     value={line.account_uuid}
+                    disabled={disabled}
                     onChange={(event) => onChange(index, { account_uuid: event.target.value })}
                     className="h-9 w-48 min-w-[12rem] rounded-shape-sm border border-outline bg-surface px-2 text-sm"
                   >
@@ -295,14 +298,26 @@ export function LineEditor({
                   </select>
                 </td>
                 <td className="px-3 py-2">
-                  <Input type="number" step="0.01" value={line.amount} onChange={(event) => onChange(index, { amount: event.target.value })} placeholder={t('journal.forms.amountPlaceholder')} />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={line.amount}
+                    disabled={disabled}
+                    onChange={(event) => onChange(index, { amount: event.target.value })}
+                    placeholder={t('journal.forms.amountPlaceholder')}
+                  />
                 </td>
                 <td className="px-3 py-2">
-                  <Input value={line.description} onChange={(event) => onChange(index, { description: event.target.value })} />
+                  <Input
+                    value={line.description}
+                    disabled={disabled}
+                    onChange={(event) => onChange(index, { description: event.target.value })}
+                  />
                 </td>
                 <td className="px-3 py-2">
                   <select
                     value={line.member_uuid}
+                    disabled={disabled}
                     onChange={(event) => onChange(index, { member_uuid: event.target.value })}
                     className="h-9 w-48 min-w-[12rem] rounded-shape-sm border border-outline bg-surface px-2 text-sm"
                   >
@@ -313,7 +328,7 @@ export function LineEditor({
                   </select>
                 </td>
                 <td className="px-3 py-2">
-                  <Button type="button" size="sm" variant="ghost" onClick={() => onRemove(index)}>
+                  <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => onRemove(index)}>
                     {t('journal.forms.remove')}
                   </Button>
                 </td>
@@ -337,7 +352,7 @@ export function LineEditor({
       </div>
       {/* FA-03: duplicate add-line button at bottom so it's reachable after many rows */}
       <div className="flex justify-end">
-        <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
+        <Button type="button" size="sm" variant="secondary" disabled={disabled} onClick={onAdd}>
           {t('journal.forms.addLine')}
         </Button>
       </div>

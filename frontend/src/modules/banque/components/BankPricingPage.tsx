@@ -528,6 +528,49 @@ function VersionBadge({ status, t }: { status: number; t: (k: string) => string 
   )
 }
 
+// ── Sub-component: Activate Button with GL Account Check ──────────────────────
+
+function ActivateVersionButton({
+  version,
+  onActivate,
+  t,
+}: {
+  version: PricingVersion
+  onActivate: (v: PricingVersion) => void
+  t: (k: string, opts?: Record<string, unknown>) => string
+}) {
+  const itemsQuery = usePricingItemsQuery(version.uuid, true)
+  const items = itemsQuery.data ?? []
+  
+  const missingGlCount = items.filter((item) => !item.gl_account_credit_uuid).length
+  const totalCount = items.length
+  const canActivate = missingGlCount === 0 && totalCount > 0
+  
+  const tooltip = missingGlCount > 0 
+    ? `Missing GL credit account on ${missingGlCount} of ${totalCount} item(s). Complete before activation.`
+    : totalCount === 0
+    ? 'Add items before activating this version.'
+    : `✓ All ${totalCount} item(s) have GL credit accounts — ready to activate`
+  
+  return (
+    <div title={tooltip}>
+      <button
+        type="button"
+        disabled={!canActivate}
+        className={`rounded px-2 py-1 text-xs transition-colors ${
+          canActivate
+            ? 'text-on-success-container hover:bg-success-container'
+            : 'text-on-surface-variant cursor-not-allowed opacity-50'
+        }`}
+        title={t('pricing.version.activateTitle')}
+        onClick={() => onActivate(version)}
+      >
+        {t('pricing.version.activate')}
+      </button>
+    </div>
+  )
+}
+
 // ── Sub-component: Inline version form ───────────────────────────────────────
 
 type VersionFormState = {
@@ -771,14 +814,7 @@ function VersionTimeline({
                 )}
                 {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
                   <div className="flex shrink-0 gap-1">
-                    <button
-                      type="button"
-                      className="rounded px-2 py-1 text-xs text-on-success-container hover:bg-success-container"
-                      title={t('pricing.version.activateTitle')}
-                      onClick={() => onActivate(v)}
-                    >
-                      {t('pricing.version.activate')}
-                    </button>
+                    <ActivateVersionButton version={v} onActivate={onActivate} t={t} />
                     <button
                       type="button"
                       className="rounded p-1 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
