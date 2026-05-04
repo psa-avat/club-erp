@@ -28,6 +28,7 @@ from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_ACCOUNTING_SETTINGS, CAP_MANAGE_PRICES, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_FINANCIALS
 from models import User
 from schemas.accounting import (
+    AccountBalanceResponse,
     AccountingEntryCreateRequest,
     AccountingEntryTemplateCreateRequest,
     AccountingEntryTemplateResponse,
@@ -64,6 +65,7 @@ from services.accounting import (
     close_fiscal_year,
     copy_cost_provision_rules_from_year,
     clone_pricing_version,
+    get_account_balances,
     copy_pricing_versions_from_year,
     create_accounting_entry,
     create_accounting_entry_template,
@@ -917,3 +919,17 @@ async def apply_entry_import_endpoint(
         imported_count=result.imported_count,
     )
     return result
+
+
+@router.get("/reports/account-balances", response_model=list[AccountBalanceResponse])
+async def get_account_balances_endpoint(
+    fiscal_year_uuid: UUID,
+    posted_only: bool = True,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_capability(CAP_VIEW_FINANCIALS)),
+):
+    """Return aggregated debit/credit/balance per account for a fiscal year.
+
+    Use ``posted_only=false`` to include draft entries as well.
+    """
+    return await get_account_balances(db, fiscal_year_uuid=fiscal_year_uuid, posted_only=posted_only)

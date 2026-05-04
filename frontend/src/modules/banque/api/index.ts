@@ -9,6 +9,8 @@ export const banqueQueryKeys = {
   journals: () => ['banque', 'journals'] as const,
   entries: (filters: Record<string, unknown>) => ['banque', 'entries', filters] as const,
   entryModels: () => ['banque', 'entry-models'] as const,
+  accountBalances: (fiscalYearUuid: string, postedOnly: boolean) =>
+    ['banque', 'account-balances', fiscalYearUuid, postedOnly] as const,
 }
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -266,6 +268,41 @@ export function useAccountsQuery(enabled = true) {
       const { data } = await apiClient.get<AccountOption[]>(
         '/api/v1/accounting/accounts?limit=500',
         getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+// ── Financial Reports ────────────────────────────────────────────────────────
+
+export type AccountBalance = {
+  account_uuid: string
+  code: string
+  name: string
+  type: number            // 1=Asset 2=Liability 3=Equity 4=Expense 5=Revenue
+  normal_balance: number  // 1=Debit 2=Credit
+  parent_account_uuid: string | null
+  total_debit: string
+  total_credit: string
+  balance: string         // debit − credit (signed)
+}
+
+export function useAccountBalancesQuery(
+  fiscalYearUuid: string | null,
+  postedOnly = true,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: banqueQueryKeys.accountBalances(fiscalYearUuid ?? '', postedOnly),
+    enabled: enabled && Boolean(fiscalYearUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountBalance[]>(
+        '/api/v1/accounting/reports/account-balances',
+        {
+          ...getAuthRequestConfig(),
+          params: { fiscal_year_uuid: fiscalYearUuid, posted_only: postedOnly },
+        },
       )
       return data
     },

@@ -7,3 +7,4 @@ export { BanqueJournalTemplatesPage } from './components/BanqueJournalTemplatesP
 export { BanqueSettingsPage } from './components/BanqueSettingsPage'
 export { BankPricingPage } from './components/BankPricingPage'
 export { BanquePcgPage } from './components/BanquePcgPage'
+export { FinancialReportsPage } from './components/FinancialReportsPage'

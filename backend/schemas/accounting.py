@@ -278,6 +278,22 @@ class SeedPcgResponse(BaseModel):
     total: int
 
 
+class AccountBalanceResponse(BaseModel):
+    """Account balance aggregated from posted lines in a fiscal year."""
+    account_uuid: UUID
+    code: str
+    name: str
+    type: int            # 1=Asset 2=Liability 3=Equity 4=Expense 5=Revenue
+    normal_balance: int  # 1=Debit 2=Credit
+    parent_account_uuid: Optional[UUID] = None
+    total_debit: Decimal = Decimal("0")
+    total_credit: Decimal = Decimal("0")
+    balance: Decimal = Decimal("0")  # debit − credit (signed)
+
+    class Config:
+        from_attributes = True
+
+
 class PcgSeedItem(BaseModel):
     """One entry in the PCG seed file."""
     code: str = Field(min_length=1, max_length=32)

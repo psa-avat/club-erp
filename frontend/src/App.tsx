@@ -12,6 +12,7 @@ import {
   BanqueSettingsPage,
   BankPricingPage,
   BanquePcgPage,
+  FinancialReportsPage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage } from './modules/members'
@@ -49,6 +50,7 @@ function App() {
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pcg" element={<BanquePcgPage />} />
+          <Route path="/banque/reports" element={<FinancialReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/pricing" element={<Navigate replace to="/banque/pricing" />} />
           <Route path="/assets" element={<AssetsListPage />} />

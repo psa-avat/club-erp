@@ -1939,6 +1939,66 @@ async def list_accounts(db: AsyncSession, skip: int = 0, limit: int = 100) -> li
     return result.scalars().all()
 
 
+async def get_account_balances(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+    posted_only: bool = True,
+) -> list[dict]:
+    """Return aggregated debit/credit/balance per account for a fiscal year.
+
+    Only posted entries (state=2) are included when ``posted_only`` is True.
+    Accounts with no lines are omitted from the result.
+    """
+    from decimal import Decimal as D
+    from sqlalchemy import func as sa_func
+
+    state_filter = [AccountingEntry.fiscal_year_uuid == fiscal_year_uuid]
+    if posted_only:
+        state_filter.append(AccountingEntry.state == 2)
+
+    stmt = (
+        select(
+            AccountingAccount.uuid,
+            AccountingAccount.code,
+            AccountingAccount.name,
+            AccountingAccount.type,
+            AccountingAccount.normal_balance,
+            AccountingAccount.parent_account_uuid,
+            sa_func.coalesce(sa_func.sum(AccountingLine.debit), D("0")).label("total_debit"),
+            sa_func.coalesce(sa_func.sum(AccountingLine.credit), D("0")).label("total_credit"),
+        )
+        .join(AccountingLine, AccountingLine.account_uuid == AccountingAccount.uuid)
+        .join(AccountingEntry, AccountingEntry.uuid == AccountingLine.entry_uuid)
+        .where(and_(*state_filter))
+        .group_by(
+            AccountingAccount.uuid,
+            AccountingAccount.code,
+            AccountingAccount.name,
+            AccountingAccount.type,
+            AccountingAccount.normal_balance,
+            AccountingAccount.parent_account_uuid,
+        )
+        .order_by(AccountingAccount.code)
+    )
+    rows = (await db.execute(stmt)).all()
+    result = []
+    for row in rows:
+        debit = row.total_debit or D("0")
+        credit = row.total_credit or D("0")
+        result.append({
+            "account_uuid": row.uuid,
+            "code": row.code,
+            "name": row.name,
+            "type": row.type,
+            "normal_balance": row.normal_balance,
+            "parent_account_uuid": row.parent_account_uuid,
+            "total_debit": debit,
+            "total_credit": credit,
+            "balance": debit - credit,
+        })
+    return result
+
+
 async def list_journals(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[AccountingJournal]:
     """List all journals."""
     stmt = select(AccountingJournal).offset(skip).limit(limit).order_by(AccountingJournal.code)
