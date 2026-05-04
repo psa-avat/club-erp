@@ -36,6 +36,7 @@ import {
   useUpdatePricingVersionMutation,
   useDeletePricingVersionMutation,
 } from '../../banque/api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
   useAssetTypesQuery,
   usePricingItemsQuery,
@@ -842,8 +843,12 @@ export function PricingPage() {
     [fyQuery.data],
   )
   const currentYear = new Date().getFullYear()
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const defaultFy =
-    allFy.find((fy) => fy.year === currentYear && fy.state !== FY_STATE_CLOSED) ?? allFy[0] ?? null
+    allFy.find((fy) => fy.uuid === activeFiscalYearUuid)
+    ?? allFy.find((fy) => fy.year === currentYear && fy.state !== FY_STATE_CLOSED)
+    ?? allFy[0]
+    ?? null
 
   const [selectedFyUuid, setSelectedFyUuid] = useState<string | null>(null)
   const selectedFy = allFy.find((fy) => fy.uuid === (selectedFyUuid ?? defaultFy?.uuid)) ?? null

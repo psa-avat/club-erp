@@ -1836,6 +1836,36 @@ async def list_fiscal_years(db: AsyncSession, skip: int = 0, limit: int = 100) -
     return result.scalars().all()
 
 
+async def get_active_fiscal_year(db: AsyncSession) -> AccountingFiscalYear:
+    """Return the currently open fiscal year, or the most recent one if none is open."""
+    # First: try state=Open (1) or state=Reopened (3)
+    stmt_open = (
+        select(AccountingFiscalYear)
+        .where(AccountingFiscalYear.state.in_([1, 3]))
+        .order_by(AccountingFiscalYear.year.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt_open)
+    fy = result.scalar_one_or_none()
+    if fy is not None:
+        return fy
+
+    # Fallback: most recent closed fiscal year
+    stmt_latest = (
+        select(AccountingFiscalYear)
+        .order_by(AccountingFiscalYear.end_date.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt_latest)
+    fy = result.scalar_one_or_none()
+    if fy is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No fiscal year found. Create one first.",
+        )
+    return fy
+
+
 async def create_reversal_entry(
     db: AsyncSession,
     entry_uuid: UUID,

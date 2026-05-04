@@ -33,7 +33,6 @@ import {
   useAccountingEntriesQuery,
   useAccountsQuery,
   useCreateAccountingEntryMutation,
-  useFiscalYearsQuery,
   useJournalsQuery,
   useAccountingEntryModelsQuery,
   usePostAccountingEntryMutation,
@@ -43,6 +42,7 @@ import {
   useUpdateAccountingEntryMutation,
   type PricingItem,
 } from '../api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
   ENTRY_STATE_DRAFT,
   ENTRY_STATE_POSTED,
@@ -77,6 +77,8 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const accountsQuery = useAccountsQuery(canView)
   const modelsQuery = useAccountingEntryModelsQuery(canView)
   const membersQuery = useMembersQuery({ search: '' })
+
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
   const [entryForm, setEntryForm] = useState<EntryFormState>(() => emptyEntryForm(today))
   const [selectedEntryUuid, setSelectedEntryUuid] = useState<string | null>(entryUuid)
@@ -150,12 +152,12 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
     }
   }, [reverseEntryMutation.isSuccess, t])
 
-  // Seed fiscal year / journal defaults once data arrives
+  // Seed fiscal year default from global store once on mount
   useEffect(() => {
-    if (fiscalYears.length > 0 && entryForm.fiscal_year_uuid === '') {
-      setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: fiscalYears[0].uuid }))
+    if (activeFiscalYearUuid && entryForm.fiscal_year_uuid === '') {
+      setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: activeFiscalYearUuid }))
     }
-  }, [fiscalYears, entryForm.fiscal_year_uuid])
+  }, [activeFiscalYearUuid, entryForm.fiscal_year_uuid])
 
   useEffect(() => {
     if (journals.length > 0 && entryForm.journal_uuid === '') {

@@ -42,6 +42,7 @@ import {
   type FiscalYear,
   type PricingVersion,
 } from '../api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
   usePricingItemsQuery,
   useCreatePricingItemMutation,
@@ -853,6 +854,8 @@ export function BankPricingPage() {
   const fiscalYearsQuery = useFiscalYearsQuery(canView)
   const allFiscalYears = fiscalYearsQuery.data ?? []
 
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+
   // Sort: future → current → past
   const sortedFiscalYears = useMemo(
     () => [...allFiscalYears].sort((a, b) => b.year - a.year),
@@ -867,8 +870,9 @@ export function BankPricingPage() {
     (fy) => fy.year < currentYear || fy.state === FY_STATE_CLOSED,
   )
 
-  // Selected FY
-  const defaultFy = currentFiscalYears[0] ?? futureFiscalYears[0] ?? pastFiscalYears[0] ?? null
+  // Selected FY: default to global store, then fall back to current/future/past
+  const defaultFy = allFiscalYears.find((fy) => fy.uuid === activeFiscalYearUuid)
+    ?? currentFiscalYears[0] ?? futureFiscalYears[0] ?? pastFiscalYears[0] ?? null
   const [selectedFyUuid, setSelectedFyUuid] = useState<string | null>(null)
   const selectedFy =
     allFiscalYears.find((fy) => fy.uuid === (selectedFyUuid ?? defaultFy?.uuid)) ?? null

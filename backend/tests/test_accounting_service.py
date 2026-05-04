@@ -36,6 +36,7 @@ from services.accounting import (
     create_accounting_entry,
     create_reversal_entry,
     ensure_fiscal_year_partitions,
+    get_active_fiscal_year,
     post_accounting_entry,
     seed_association_pcg_accounts,
     update_accounting_entry,
@@ -449,3 +450,83 @@ class TestAccountingImportHelpers(unittest.TestCase):
             _parse_accounting_import_date("2026-01-01")
         with self.assertRaises(ValueError):
             _parse_accounting_import_date("not-a-date")
+
+
+class TestGetActiveFiscalYear(IsolatedAsyncioTestCase):
+    """Tests for get_active_fiscal_year service function."""
+
+    def _make_fy(self, uuid=None, state=1, year=2026, end_date=None):
+        from datetime import date as d
+        return SimpleNamespace(
+            uuid=uuid or uuid4(),
+            state=state,
+            year=year,
+            end_date=end_date or d(year, 12, 31),
+        )
+
+    async def test_returns_open_fiscal_year(self):
+        open_fy = self._make_fy(state=1, year=2026)
+
+        class _Res:
+            def __init__(self, row):
+                self._row = row
+            def scalar_one_or_none(self):
+                return self._row
+
+        db = AsyncMock()
+        db.execute.return_value = _Res(open_fy)
+
+        result = await get_active_fiscal_year(db)
+        self.assertEqual(result.state, 1)
+        self.assertEqual(result.year, 2026)
+
+    async def test_returns_reopened_fiscal_year(self):
+        reopened_fy = self._make_fy(state=3, year=2025)
+
+        class _Res:
+            def __init__(self, row):
+                self._row = row
+            def scalar_one_or_none(self):
+                return self._row
+
+        db = AsyncMock()
+        db.execute.return_value = _Res(reopened_fy)
+
+        result = await get_active_fiscal_year(db)
+        self.assertEqual(result.state, 3)
+
+    async def test_falls_back_to_latest_closed_when_no_open(self):
+        closed_fy = self._make_fy(state=2, year=2024)
+
+        call_count = 0
+
+        class _Res:
+            def __init__(self, row):
+                self._row = row
+            def scalar_one_or_none(self):
+                return self._row
+
+        async def _execute(*_a, **_kw):
+            nonlocal call_count
+            call_count += 1
+            # First call (open query) returns None, second (fallback) returns closed FY
+            return _Res(None if call_count == 1 else closed_fy)
+
+        db = AsyncMock()
+        db.execute.side_effect = _execute
+
+        result = await get_active_fiscal_year(db)
+        self.assertEqual(result.state, 2)
+        self.assertEqual(result.year, 2024)
+
+    async def test_raises_404_when_no_fiscal_years_exist(self):
+        class _Res:
+            def scalar_one_or_none(self):
+                return None
+
+        db = AsyncMock()
+        db.execute.return_value = _Res()
+
+        with self.assertRaises(HTTPException) as ctx:
+            await get_active_fiscal_year(db)
+        self.assertEqual(ctx.exception.status_code, 404)

@@ -27,9 +27,9 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAccountingEntriesQuery,
-  useFiscalYearsQuery,
   useJournalsQuery,
 } from '../api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
 
@@ -43,31 +43,26 @@ export function JournalEntriesScreen() {
   const fiscalYearsQuery = useFiscalYearsQuery(canView)
   const journalsQuery = useJournalsQuery(canView)
 
-  const [filters, setFilters] = useState({ fiscal_year_uuid: '', journal_uuid: '', state: 0, search: '' })
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const [filters, setFilters] = useState({ journal_uuid: '', state: 0, search: '' })
   const debouncedSearch = useDebounce(filters.search, 350)
   const [importOpen, setImportOpen] = useState(false)
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
 
-  useEffect(() => {
-    if (fiscalYears.length > 0 && filters.fiscal_year_uuid === '') {
-      setFilters((prev) => ({ ...prev, fiscal_year_uuid: fiscalYears[0].uuid }))
-    }
-  }, [fiscalYears, filters.fiscal_year_uuid])
-
   const entryFilters = useMemo(
     () => ({
-      fiscal_year_uuid: filters.fiscal_year_uuid || undefined,
+      fiscal_year_uuid: activeFiscalYearUuid ?? undefined,
       journal_uuid: filters.journal_uuid || undefined,
       state: filters.state || undefined,
       search: debouncedSearch.trim() || undefined,
       limit: 200,
     }),
-    [filters.fiscal_year_uuid, filters.journal_uuid, filters.state, debouncedSearch],
+    [activeFiscalYearUuid, filters.journal_uuid, filters.state, debouncedSearch],
   )
 
-  const entriesQuery = useAccountingEntriesQuery(entryFilters, canView && Boolean(filters.fiscal_year_uuid))
+  const entriesQuery = useAccountingEntriesQuery(entryFilters, canView && Boolean(activeFiscalYearUuid))
   const entries = entriesQuery.data ?? []
 
   if (!canView) {
@@ -89,25 +84,12 @@ export function JournalEntriesScreen() {
             type="button"
             size="sm"
             variant="ghost"
-            onClick={() => setFilters((prev) => ({ fiscal_year_uuid: prev.fiscal_year_uuid, journal_uuid: '', state: 0, search: '' }))}
+            onClick={() => setFilters({ journal_uuid: '', state: 0, search: '' })}
           >
             {t('journal.entries.resetFilters')}
           </Button>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <div className="space-y-1">
-            <Label>{t('journal.entries.fiscalYear')}</Label>
-            <select
-              value={filters.fiscal_year_uuid}
-              onChange={(event) => setFilters((prev) => ({ ...prev, fiscal_year_uuid: event.target.value }))}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value="">{t('journal.entries.selectFiscalYear')}</option>
-              {fiscalYears.map((year) => (
-                <option key={year.uuid} value={year.uuid}>{year.code}</option>
-              ))}
-            </select>
-          </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <Label>{t('journal.entries.journal')}</Label>
             <select
@@ -173,7 +155,7 @@ export function JournalEntriesScreen() {
         <div className="mt-4 space-y-3">
           {entriesQuery.isLoading ? (
             <p className="text-sm text-slate-500">{t('settings.loading')}</p>
-          ) : !filters.fiscal_year_uuid ? (
+          ) : !activeFiscalYearUuid ? (
             <p className="text-sm text-slate-500">{t('journal.entries.selectFiscalYear')}</p>
           ) : entries.length === 0 ? (
             <p className="text-sm text-slate-500">{t('journal.entries.empty')}</p>

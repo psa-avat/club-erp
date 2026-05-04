@@ -6,7 +6,58 @@ import { useCurrentUser, useLogout } from '../../auth/api/useAuth'
 import { ChangePasswordDialog } from '../../auth/components/ChangePasswordDialog'
 import { useAuthStore } from '../../auth/store/authStore'
 import { Button } from '../../components/ui/button'
+import { useActiveFiscalYearQuery, useFiscalYearsQuery } from '../../modules/banque/api'
+import type { FiscalYear } from '../../modules/banque/api'
+import { useFiscalYearStore } from '../../store/fiscalYearStore'
 import { shellNavItems } from '../navigation'
+
+// ── FY state badge colours ────────────────────────────────────────────────────
+
+function fyStateBadgeClass(state: number): string {
+  if (state === 1) return 'bg-teal-100 text-teal-800'       // Open
+  if (state === 3) return 'bg-amber-100 text-amber-800'     // Reopened
+  return 'bg-slate-100 text-slate-600'                      // Closed
+}
+
+function fyStateLabel(state: number): string {
+  if (state === 1) return 'Open'
+  if (state === 3) return 'Reopened'
+  return 'Closed'
+}
+
+// ── Fiscal Year Selector widget ───────────────────────────────────────────────
+
+type FiscalYearSelectorProps = {
+  fiscalYears: FiscalYear[]
+  activeFiscalYearUuid: string | null
+  onSelect: (uuid: string) => void
+}
+
+function FiscalYearSelector({ fiscalYears, activeFiscalYearUuid, onSelect }: FiscalYearSelectorProps) {
+  const activeFY = fiscalYears.find((fy) => fy.uuid === activeFiscalYearUuid) ?? fiscalYears[0]
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {activeFY ? (
+        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${fyStateBadgeClass(activeFY.state)}`}>
+          {fyStateLabel(activeFY.state)}
+        </span>
+      ) : null}
+      <select
+        aria-label="Fiscal year"
+        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
+        value={activeFiscalYearUuid ?? ''}
+        onChange={(e) => { if (e.target.value) onSelect(e.target.value) }}
+      >
+        {fiscalYears.map((fy) => (
+          <option key={fy.uuid} value={fy.uuid}>
+            {fy.code}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
 
 type HeaderProps = {
   onOpenMobileMenu: () => void
@@ -26,6 +77,20 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
 
   const meQuery = useCurrentUser(Boolean(token))
   const canChangePassword = meQuery.data?.can_change_password !== false
+
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const setActiveFiscalYear = useFiscalYearStore((s) => s.setActiveFiscalYear)
+  const activeFiscalYearQuery = useActiveFiscalYearQuery(Boolean(token))
+  const fiscalYearsQuery = useFiscalYearsQuery(Boolean(token))
+  const fiscalYears = fiscalYearsQuery.data ?? []
+
+  // Initialise store on first load — pick active/most-recent FY from backend
+  useEffect(() => {
+    if (!activeFiscalYearUuid && activeFiscalYearQuery.data) {
+      const fy = activeFiscalYearQuery.data
+      setActiveFiscalYear(fy.uuid, fy)
+    }
+  }, [activeFiscalYearUuid, activeFiscalYearQuery.data, setActiveFiscalYear])
 
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -105,6 +170,17 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             <option value="fr">FR</option>
             <option value="en">EN</option>
           </select>
+
+          {token && fiscalYears.length > 0 ? (
+            <FiscalYearSelector
+              fiscalYears={fiscalYears}
+              activeFiscalYearUuid={activeFiscalYearUuid}
+              onSelect={(uuid) => {
+                const fy = fiscalYears.find((f) => f.uuid === uuid)
+                if (fy) setActiveFiscalYear(fy.uuid, fy)
+              }}
+            />
+          ) : null}
 
           {token ? (
             <div className="relative" ref={menuRef}>

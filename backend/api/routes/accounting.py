@@ -82,6 +82,7 @@ from services.accounting import (
     list_accounts,
     list_accounting_entries,
     list_accounting_entry_templates,
+    get_active_fiscal_year,
     list_fiscal_years,
     list_journals,
     list_pricing_items,
@@ -250,6 +251,15 @@ async def list_fiscal_years_endpoint(
     """List all fiscal years."""
     fiscal_years = await list_fiscal_years(db, skip=skip, limit=limit)
     return fiscal_years
+
+
+@router.get("/fiscal-years/active", response_model=FiscalYearResponse)
+async def get_active_fiscal_year_endpoint(
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Return the currently open fiscal year, or the most recent one if none is open."""
+    return await get_active_fiscal_year(db)
 
 
 @router.patch(

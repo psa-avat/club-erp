@@ -117,6 +117,21 @@ export function useFiscalYearsQuery(enabled = true) {
   })
 }
 
+export function useActiveFiscalYearQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['banque', 'fiscal-years', 'active'] as const,
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes — active FY changes rarely
+    queryFn: async () => {
+      const { data } = await apiClient.get<FiscalYear>(
+        '/api/v1/accounting/fiscal-years/active',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
 // ── Chart of Accounts ────────────────────────────────────────────────────────
 
 export type AccountOption = {
