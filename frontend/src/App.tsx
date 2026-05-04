@@ -4,6 +4,8 @@ import { LoginPage, ProtectedRoute, PublicOnlyRoute } from './auth'
 import { AdminPage } from './modules/admin'
 import {
   BanquePage,
+  BanqueDashboardPage,
+  BanqueCoaPage,
   BanqueJournalEntriesPage,
   BanqueJournalEntryWorkspacePage,
   BanqueJournalTemplatesPage,
@@ -37,6 +39,8 @@ function App() {
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/banque" element={<BanquePage />} />
+          <Route path="/banque/dashboard" element={<BanqueDashboardPage />} />
+          <Route path="/banque/accounts" element={<BanqueCoaPage />} />
           <Route path="/banque/journal" element={<BanqueJournalEntriesPage />} />
           <Route path="/banque/journal/entries" element={<BanqueJournalEntriesPage />} />
           <Route path="/banque/journal/entry/new" element={<BanqueJournalEntryWorkspacePage />} />
