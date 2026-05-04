@@ -75,12 +75,10 @@ function groupByClass(accounts: AccountBalance[]): Map<string, AccountBalance[]>
 
 function IncomeStatement({
   balances,
-  fy,
   t,
 }: {
   balances: AccountBalance[]
-  fy: FiscalYear | null
-  t: (key: string) => string
+  t: (key: string, opts?: Record<string, unknown>) => string
 }) {
   const revenues = balances.filter((a) => a.type === TYPE_REVENUE)
   const expenses = balances.filter((a) => a.type === TYPE_EXPENSE)
@@ -265,7 +263,7 @@ function BalanceSheet({
   t,
 }: {
   balances: AccountBalance[]
-  t: (key: string) => string
+  t: (key: string, opts?: Record<string, unknown>) => string
 }) {
   const assets = balances.filter((a) => a.type === TYPE_ASSET)
   const liabilities = balances.filter((a) => a.type === TYPE_LIABILITY)
@@ -552,7 +550,7 @@ export function FinancialReportsPage() {
 
           <div className="rounded-b-xl rounded-tr-xl">
             {activeTab === 'income' ? (
-              <IncomeStatement balances={balances} fy={selectedFy ?? null} t={t} />
+              <IncomeStatement balances={balances} t={t} />
             ) : (
               <BalanceSheet balances={balances} t={t} />
             )}
