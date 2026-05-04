@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -27,6 +27,7 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAccountingEntriesQuery,
+  useFiscalYearsQuery,
   useJournalsQuery,
 } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
@@ -135,7 +136,7 @@ export function JournalEntriesScreen() {
           </div>
           {canPost && (
             <div className="flex items-center gap-2">
-              {filters.fiscal_year_uuid && (
+              {activeFiscalYearUuid && (
                 <Button
                   type="button"
                   size="sm"
@@ -208,7 +209,7 @@ export function JournalEntriesScreen() {
       onClose={() => setImportOpen(false)}
       fiscalYears={fiscalYears}
       journals={journals}
-      defaultFiscalYearUuid={filters.fiscal_year_uuid || undefined}
+      defaultFiscalYearUuid={activeFiscalYearUuid || undefined}
     />
   </>
   )

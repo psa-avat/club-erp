@@ -33,6 +33,7 @@ import {
   useAccountingEntriesQuery,
   useAccountsQuery,
   useCreateAccountingEntryMutation,
+  useFiscalYearsQuery,
   useJournalsQuery,
   useAccountingEntryModelsQuery,
   usePostAccountingEntryMutation,
@@ -40,6 +41,7 @@ import {
   usePricingVersionsQuery,
   useReverseAccountingEntryMutation,
   useUpdateAccountingEntryMutation,
+  type FiscalYear,
   type PricingItem,
 } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
@@ -434,7 +436,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
               className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
             >
               <option value="">{t('journal.entries.selectFiscalYear')}</option>
-              {fiscalYears.map((year) => (
+              {fiscalYears.map((year: FiscalYear) => (
                 <option key={year.uuid} value={year.uuid}>{year.code}</option>
               ))}
             </select>
