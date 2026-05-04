@@ -99,7 +99,22 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const journals = journalsQuery.data ?? []
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
   const models = modelsQuery.data ?? []
-  const members = membersQuery.data?.filter((m) => m.is_active) ?? []
+  const allMembers = membersQuery.data ?? []
+  
+  // Include active members + any members referenced in the current entry (even if inactive)
+  const usedMemberUuids = useMemo(() => {
+    const uuids = new Set<string>()
+    entryForm.lines.forEach((line) => {
+      if (line.member_uuid) uuids.add(line.member_uuid)
+    })
+    return uuids
+  }, [entryForm.lines])
+  
+  const members = useMemo(() => {
+    const active = allMembers.filter((m) => m.is_active)
+    const referenced = allMembers.filter((m) => usedMemberUuids.has(m.uuid) && !m.is_active)
+    return [...active, ...referenced]
+  }, [allMembers, usedMemberUuids])
 
   // Derive a minimal filter to load the forced entry when a UUID is provided
   const forcedEntryFilters = useMemo(

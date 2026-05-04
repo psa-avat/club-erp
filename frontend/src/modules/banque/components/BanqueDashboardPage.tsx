@@ -100,8 +100,17 @@ export function BanqueDashboardPage() {
 
   const loading = draftQuery.isLoading || postedQuery.isLoading
 
-  const totalDebits = useMemo(() => sumDebit(postedEntries), [postedEntries])
-  const totalCredits = useMemo(() => sumCredit(postedEntries), [postedEntries])
+  // Totals for draft entries only
+  const draftDebits = useMemo(() => sumDebit(draftEntries), [draftEntries])
+  const draftCredits = useMemo(() => sumCredit(draftEntries), [draftEntries])
+  
+  // Totals for posted entries only
+  const postedDebits = useMemo(() => sumDebit(postedEntries), [postedEntries])
+  const postedCredits = useMemo(() => sumCredit(postedEntries), [postedEntries])
+  
+  // Overall totals (draft + posted)
+  const totalDebits = useMemo(() => draftDebits.plus(postedDebits), [draftDebits, postedDebits])
+  const totalCredits = useMemo(() => draftCredits.plus(postedCredits), [draftCredits, postedCredits])
 
   const journalActivity = useMemo(() => {
     const map = new Map<string, { name: string; code: string; count: number; debit: Decimal }>()
