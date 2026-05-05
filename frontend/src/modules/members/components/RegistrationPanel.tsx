@@ -22,7 +22,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Decimal from 'decimal.js'
 import { useTranslation } from 'react-i18next'
 
-import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Dialog } from '../../../components/ui/dialog'
@@ -31,9 +30,8 @@ import { Label } from '../../../components/ui/label'
 import {
   useCommitteesQuery,
   useCompleteRegistrationMutation,
-  useReplaceCommitteeMembersMutation,
 } from '../api'
-import type { MemberDetail, MemberSummary } from '../types'
+import type { MemberDetail } from '../types'
 import {
   type AccountingEntryModel,
   useAccountingEntryModelsQuery,
@@ -129,7 +127,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
   const committeesQuery = useCommitteesQuery(true)
 
   const completeRegistrationMutation = useCompleteRegistrationMutation()
-  const replaceCommitteeMembersMutation = useReplaceCommitteeMembersMutation()
   const createAccountingEntryMutation = useCreateAccountingEntryMutation()
 
   useEffect(() => {
@@ -168,7 +165,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     accountingTemplatesQuery.error ??
     committeesQuery.error ??
     completeRegistrationMutation.error ??
-    replaceCommitteeMembersMutation.error ??
     createAccountingEntryMutation.error
 
   const invoiceReference = member
@@ -194,17 +190,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     )
   }
 
-  async function fetchCommitteeRoster(committeeUuid: string): Promise<string[]> {
-    const { data } = await apiClient.get<MemberSummary[]>('/api/v1/members', {
-      ...getAuthRequestConfig(),
-      params: {
-        committee_uuid: committeeUuid,
-        year,
-      },
-    })
-    return data.map((m) => m.uuid)
-  }
-
   async function handleValidate() {
     if (!member) {
       setLocalError(t('sheet.selectMember'))
@@ -218,30 +203,7 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
 
     setLocalError(null)
 
-    // 1. Sync committee memberships FIRST — the backend validates them before allowing registration.
-    const before = new Set(
-      member.committees
-        .filter((membership) => membership.membership_year === year)
-        .map((membership) => membership.committee_uuid),
-    )
-    const after = new Set(selectedCommitteeUuids)
-    const impacted = new Set<string>([...Array.from(before), ...Array.from(after)])
-
-    for (const committeeUuid of impacted) {
-      const roster = new Set(await fetchCommitteeRoster(committeeUuid))
-      if (after.has(committeeUuid)) {
-        roster.add(member.uuid)
-      } else {
-        roster.delete(member.uuid)
-      }
-      await replaceCommitteeMembersMutation.mutateAsync({
-        committeeUuid,
-        year,
-        payload: { member_uuids: Array.from(roster) },
-      })
-    }
-
-    // 2. Complete registration (backend now finds the committee membership).
+    // 1. Complete registration and atomically attach selected committee memberships.
     await completeRegistrationMutation.mutateAsync({
       memberUuid: member.uuid,
       payload: {
@@ -250,12 +212,13 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
         end_date: `${year}-12-31`,
         registration_type: member.member_category,
         accounting_template_uuid: selectedTemplateUuid || undefined,
+        committee_uuids: selectedCommitteeUuids,
         notes: notes.trim() || undefined,
         status: 1,
       },
     })
 
-    // 3. If a template and fiscal year are selected, create a draft journal entry from the template.
+    // 2. If a template and fiscal year are selected, create a draft journal entry from the template.
     if (selectedTemplateUuid && fiscalYear) {
       const model = templates.find((tpl) => tpl.uuid === selectedTemplateUuid)
       if (model) {
@@ -387,7 +350,7 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                       <button
                         key={committee.uuid}
                         type="button"
-                        onClick={() => toggleCommittee(committee.uuid)}
+                        disabled={!canValidate || completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending}
                         className={[
                           'rounded-shape-md border p-3 text-left transition-colors',
                           selected
@@ -498,10 +461,10 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
               </Button>
               <Button
                 type="button"
-                disabled={!canValidate || completeRegistrationMutation.isPending || replaceCommitteeMembersMutation.isPending}
+                disabled={!canValidate || completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending}
                 onClick={handleValidate}
               >
-                {completeRegistrationMutation.isPending || replaceCommitteeMembersMutation.isPending
+                {completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending
                   ? t('registrationPanel.actions.validating')
                   : t('registrationPanel.actions.validate')}
               </Button>

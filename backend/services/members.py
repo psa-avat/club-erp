@@ -13,6 +13,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import AccountingEntryTemplate, Committee, CommitteeMember, Member, MemberAccountCounter, MemberRegistration, MemberSheet, SystemSetting
@@ -79,6 +80,18 @@ def _validate_registration_dates(start_date: date, end_date: date) -> None:
 
 def _year_bounds(year: int) -> tuple[date, date]:
     return date(year, 1, 1), date(year, 12, 31)
+
+
+def _is_duplicate_registration_period_error(exc: IntegrityError) -> bool:
+    """Return True when the DB error maps to duplicate member registration period."""
+
+    original = getattr(exc, "orig", None)
+    constraint_name = getattr(original, "constraint_name", None)
+    if constraint_name == "uq_member_registrations_period":
+        return True
+
+    message = str(original or exc)
+    return "uq_member_registrations_period" in message
 
 
 def _registration_overlaps_year_predicate(year: int):
@@ -631,6 +644,19 @@ async def create_member_registration(
     member = await get_member_or_404(db, member_uuid)
     _validate_registration_dates(payload.start_date, payload.end_date)
 
+    duplicate_registration = await db.scalar(
+        select(MemberRegistration.uuid).where(
+            MemberRegistration.member_uuid == member_uuid,
+            MemberRegistration.start_date == payload.start_date,
+            MemberRegistration.end_date == payload.end_date,
+        )
+    )
+    if duplicate_registration is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Member is already registered for this period",
+        )
+
     registration = MemberRegistration(
         member_uuid=member_uuid,
         start_date=payload.start_date,
@@ -672,7 +698,17 @@ async def create_member_registration(
         member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if _is_duplicate_registration_period_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Member is already registered for this period",
+            ) from exc
+        raise
+
     await db.refresh(registration)
     return registration
 
@@ -718,6 +754,40 @@ async def complete_member_registration(
     """Complete registration after committee validation and create a validity period."""
 
     member = await get_member_or_404(db, member_uuid)
+
+    if payload.committee_uuids:
+        requested_committee_uuids = set(payload.committee_uuids)
+        existing_committees_result = await db.execute(select(Committee.uuid).where(Committee.uuid.in_(requested_committee_uuids)))
+        existing_committees = set(existing_committees_result.scalars().all())
+        missing_committees = sorted(str(committee_uuid) for committee_uuid in requested_committee_uuids - existing_committees)
+        if missing_committees:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown committee UUIDs: {', '.join(missing_committees)}",
+            )
+
+        existing_assignments_result = await db.execute(
+            select(CommitteeMember.committee_uuid).where(
+                CommitteeMember.member_uuid == member_uuid,
+                CommitteeMember.membership_year == payload.year,
+                CommitteeMember.committee_uuid.in_(requested_committee_uuids),
+            )
+        )
+        existing_assignments = set(existing_assignments_result.scalars().all())
+
+        for committee_uuid in requested_committee_uuids:
+            if committee_uuid not in existing_assignments:
+                db.add(
+                    CommitteeMember(
+                        committee_uuid=committee_uuid,
+                        member_uuid=member_uuid,
+                        membership_year=payload.year,
+                        assigned_by=updated_by_user_id,
+                    )
+                )
+
+        await db.flush()
+
     committee_count = await db.scalar(
         select(func.count()).select_from(CommitteeMember).where(
             CommitteeMember.member_uuid == member_uuid,
@@ -728,6 +798,19 @@ async def complete_member_registration(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one committee membership is required before completing registration",
+        )
+
+    existing_active_for_year = await db.scalar(
+        select(MemberRegistration.uuid).where(
+            MemberRegistration.member_uuid == member_uuid,
+            MemberRegistration.registered_for_year == payload.year,
+            MemberRegistration.status == ACTIVE_REGISTRATION_STATUS,
+        )
+    )
+    if existing_active_for_year is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Member is already registered for year {payload.year}",
         )
 
     if payload.accounting_template_uuid is not None:

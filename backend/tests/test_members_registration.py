@@ -27,13 +27,18 @@ from datetime import date
 from fastapi import HTTPException
 
 from schemas.members import RegistrationCompletionRequest
-from services.members import complete_member_registration
+from schemas.members import MemberRegistrationCreateRequest
+from services.members import complete_member_registration, create_member_registration
 
 
 class _FakeDb:
     def __init__(self, scalar_values: list[object]):
         self._scalar_values = scalar_values
         self.committed = False
+        self.rolled_back = False
+
+    def add(self, *_args, **_kwargs):
+        return None
 
     async def scalar(self, *_args, **_kwargs):
         if not self._scalar_values:
@@ -43,13 +48,16 @@ class _FakeDb:
     async def commit(self):
         self.committed = True
 
+    async def rollback(self):
+        self.rolled_back = True
+
     async def refresh(self, *_args, **_kwargs):
         return None
 
 
 class MemberRegistrationTests(IsolatedAsyncioTestCase):
     async def test_complete_registration_activates_member(self):
-        db = _FakeDb(scalar_values=[1])
+        db = _FakeDb(scalar_values=[1, None])
         member = SimpleNamespace(
             uuid=uuid4(),
             member_category=1,
@@ -78,7 +86,7 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
         self.assertEqual(updated.uuid, member.uuid)
 
     async def test_complete_registration_rejects_unknown_template(self):
-        db = _FakeDb(scalar_values=[1, False])
+        db = _FakeDb(scalar_values=[1, None, False])
         member = SimpleNamespace(
             uuid=uuid4(),
             member_category=1,
@@ -108,3 +116,65 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "Selected accounting template does not exist or is inactive")
+
+    async def test_complete_registration_rejects_duplicate_year(self):
+        db = _FakeDb(scalar_values=[1, uuid4()])
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            member_category=1,
+            registration_status=1,
+            status=2,
+            is_active=False,
+            last_registration_year=None,
+            updated_by=None,
+        )
+
+        with (
+            patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)),
+            patch("services.members.create_member_registration", new=AsyncMock()),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await complete_member_registration(
+                    db=db,
+                    member_uuid=member.uuid,
+                    payload=RegistrationCompletionRequest(
+                        year=2026,
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31),
+                    ),
+                    updated_by_user_id=42,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "Member is already registered for year 2026")
+
+    async def test_create_registration_rejects_duplicate_period(self):
+        db = _FakeDb(scalar_values=[uuid4()])
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            member_category=1,
+            can_fly=False,
+            registration_status=1,
+            status=2,
+            is_active=False,
+            last_registration_date=None,
+            updated_by=None,
+        )
+
+        with patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)):
+            with self.assertRaises(HTTPException) as ctx:
+                await create_member_registration(
+                    db=db,
+                    member_uuid=member.uuid,
+                    payload=MemberRegistrationCreateRequest(
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31),
+                        registered_for_year=2026,
+                        status=1,
+                    ),
+                    registered_by_user_id=42,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "Member is already registered for this period")
+        self.assertFalse(db.committed)
