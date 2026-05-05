@@ -350,7 +350,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                       <button
                         key={committee.uuid}
                         type="button"
-                        disabled={!canValidate || completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending}
+                        onClick={() => toggleCommittee(committee.uuid)}
+                        disabled={completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending}
                         className={[
                           'rounded-shape-md border p-3 text-left transition-colors',
                           selected
