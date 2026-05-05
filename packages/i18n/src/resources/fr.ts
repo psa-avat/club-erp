@@ -208,6 +208,7 @@ export const fr = {
       title: 'Fiche Pilote',
       backToList: 'Retour à la liste',
       editMember: 'Modifier le profil',
+      addEntry: '+ Écriture manuelle',
       kpi: {
         balance: 'Solde Compte',
         flightHours: 'Heures de vol',

@@ -28,10 +28,13 @@ import { useMemberQuery } from '../api'
 import {
   useAccountingEntriesQuery,
   useFiscalYearsQuery,
+  useJournalsQuery,
   type AccountingEntry,
+  type JournalOption,
 } from '../../banque/api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { memberCategoryLabel } from './membersShared'
+import type { MemberSheet } from '../types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,6 +153,13 @@ function MemberHeader({
           >
             {t('pilotSheet.editMember')}
           </button>
+          <button
+            type="button"
+            onClick={() => navigate('/banque/journal/entry/new')}
+            className="inline-flex items-center gap-1.5 rounded-shape-sm bg-primary px-3 py-1.5 text-sm font-medium text-on-primary transition-colors hover:opacity-90"
+          >
+            {t('pilotSheet.addEntry')}
+          </button>
         </div>
       </div>
     </div>
@@ -178,15 +188,89 @@ function KpiCard({ label, value, valueClass = 'text-on-surface', sub }: KpiCardP
 }
 
 // ---------------------------------------------------------------------------
+// Top-level KPI strip (always visible regardless of active tab)
+// ---------------------------------------------------------------------------
+
+function MemberKpiStrip({
+  memberUuid,
+  memberAccountId,
+  memberSheets,
+}: {
+  memberUuid: string
+  memberAccountId: string
+  memberSheets: MemberSheet[]
+}) {
+  const { t } = useTranslation('members')
+  const entriesQuery = useAccountingEntriesQuery({ member_uuid: memberUuid, limit: 500 }, true)
+  const entries: AccountingEntry[] = entriesQuery.data ?? []
+
+  const balance = useMemo(() => {
+    let d = new Decimal(0)
+    let c = new Decimal(0)
+    for (const entry of entries) {
+      for (const line of entry.lines) {
+        if (line.member_uuid === memberUuid) {
+          d = d.plus(decimalOrZero(line.debit))
+          c = c.plus(decimalOrZero(line.credit))
+        }
+      }
+    }
+    return d.minus(c)
+  }, [entries, memberUuid])
+
+  const totalHours = useMemo(
+    () => memberSheets.reduce((acc, s) => acc.plus(decimalOrZero(s.hours_count)), new Decimal(0)),
+    [memberSheets],
+  )
+
+  // From the member's perspective: credit > debit = positive = green
+  const memberBalance = balance.negated()
+  const balanceColorClass = memberBalance.isZero()
+    ? 'text-on-surface'
+    : memberBalance.greaterThan(0)
+      ? 'text-emerald-700 font-semibold'
+      : 'text-error font-semibold'
+
+  const seasonCount = memberSheets.length
+  const seasonSub =
+    seasonCount > 0
+      ? `${seasonCount} saison${seasonCount > 1 ? 's' : ''}`
+      : t('pilotSheet.kpi.comingSoon')
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <KpiCard
+        label={t('pilotSheet.kpi.balance')}
+        value={
+          entriesQuery.isLoading
+            ? '…'
+            : `${memberBalance.greaterThan(0) ? '+' : ''}${formatEuro(memberBalance)} €`
+        }
+        valueClass={balanceColorClass}
+        sub={memberAccountId}
+      />
+      <KpiCard
+        label={t('pilotSheet.kpi.flightHours')}
+        value={totalHours.isZero() ? '—' : `${totalHours.toFixed(1)} h`}
+        sub={seasonSub}
+      />
+      <KpiCard
+        label={t('pilotSheet.kpi.lastFlight')}
+        value="—"
+        sub={t('pilotSheet.kpi.comingSoon')}
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Account tab
 // ---------------------------------------------------------------------------
 
 function AccountTab({
   memberUuid,
-  memberAccountId,
 }: {
   memberUuid: string
-  memberAccountId: string
 }) {
   const { t } = useTranslation('members')
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
@@ -196,6 +280,13 @@ function AccountTab({
 
   const fiscalYearsQuery = useFiscalYearsQuery(true)
   const fiscalYears = fiscalYearsQuery.data ?? []
+
+  const journalsQuery = useJournalsQuery(true)
+  const journalMap = useMemo(() => {
+    const map = new Map<string, JournalOption>()
+    for (const j of journalsQuery.data ?? []) map.set(j.uuid, j)
+    return map
+  }, [journalsQuery.data])
 
   const entryFilters = useMemo(
     () => ({
@@ -245,35 +336,16 @@ function AccountTab({
     return { debit: d, credit: c }
   }, [entries, memberUuid])
 
-  const balanceIsPositive = balance.greaterThan(0) // member owes money → debit-heavy → red
-  const balanceColorClass = balance.isZero()
+  // From the member's perspective: credit > debit = positive = green
+  const memberBalance = balance.negated()
+  const balanceColorClass = memberBalance.isZero()
     ? 'text-on-surface'
-    : balanceIsPositive
-      ? 'text-error font-semibold'
-      : 'text-emerald-700 font-semibold'
+    : memberBalance.greaterThan(0)
+      ? 'text-emerald-700 font-semibold'
+      : 'text-error font-semibold'
 
   return (
     <div className="space-y-4">
-      {/* KPI strip */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard
-          label={t('pilotSheet.kpi.balance')}
-          value={`${balance.isNegative() ? '' : balance.isZero() ? '' : '+'}${formatEuro(balance)} €`}
-          valueClass={balanceColorClass}
-          sub={memberAccountId}
-        />
-        <KpiCard
-          label={t('pilotSheet.kpi.flightHours')}
-          value="—"
-          sub={t('pilotSheet.kpi.comingSoon')}
-        />
-        <KpiCard
-          label={t('pilotSheet.kpi.lastFlight')}
-          value="—"
-          sub={t('pilotSheet.kpi.comingSoon')}
-        />
-      </div>
-
       {/* Fiscal year filter */}
       <div className="flex items-center gap-3">
         <label
@@ -318,9 +390,6 @@ function AccountTab({
                   </th>
                   <th className="px-3 py-2.5 text-right">{t('pilotSheet.account.columns.debit')}</th>
                   <th className="px-3 py-2.5 text-right">{t('pilotSheet.account.columns.credit')}</th>
-                  <th className="hidden px-3 py-2.5 lg:table-cell">
-                    {t('pilotSheet.account.columns.sequence')}
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
@@ -346,8 +415,7 @@ function AccountTab({
                       </td>
                       <td className="px-3 py-2">
                         <span className="rounded bg-surface-container px-1.5 py-0.5 font-mono text-xs text-on-surface-variant">
-                          {/* journal code available in entry if loaded */}
-                          {(entry as AccountingEntry & { journal?: { code?: string } }).journal?.code ?? '—'}
+                          {journalMap.get(entry.journal_uuid)?.code ?? '—'}
                         </span>
                       </td>
                       <td className="max-w-xs px-3 py-2">
@@ -373,9 +441,6 @@ function AccountTab({
                       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-on-surface">
                         {hasCredit ? formatEuro(lineCredit) : ''}
                       </td>
-                      <td className="hidden whitespace-nowrap px-3 py-2 font-mono text-xs text-on-surface-variant lg:table-cell">
-                        {entry.sequence_number ?? '—'}
-                      </td>
                     </tr>
                   )
                 })}
@@ -391,21 +456,19 @@ function AccountTab({
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                     {formatEuro(entryTotals.credit)}
                   </td>
-                  <td className="hidden lg:table-cell" />
                 </tr>
                 <tr className={`font-semibold ${balanceColorClass}`}>
                   <td colSpan={4} className="px-3 py-2 text-xs uppercase tracking-wide">
                     {t('pilotSheet.account.balance')}
                   </td>
                   <td colSpan={2} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
-                    {formatEuro(balance.abs())} €{' '}
-                    {balance.isZero()
+                    {memberBalance.greaterThan(0) ? '+' : ''}{formatEuro(memberBalance)} €{' '}
+                    {memberBalance.isZero()
                       ? ''
-                      : balanceIsPositive
-                        ? '(débiteur)'
-                        : '(créditeur)'}
+                      : memberBalance.greaterThan(0)
+                        ? '(créditeur)'
+                        : '(débiteur)'}
                   </td>
-                  <td className="hidden lg:table-cell" />
                 </tr>
               </tfoot>
             </table>
@@ -502,7 +565,7 @@ function FlightLogTab() {
 export function MemberPilotSheetPage() {
   const { t } = useTranslation('members')
   const { memberUuid } = useParams<{ memberUuid: string }>()
-  const [activeTab, setActiveTab] = useState<'account' | 'flights'>('account')
+  const [activeTab, setActiveTab] = useState<'account' | 'flights'>('flights')
 
   const memberQuery = useMemberQuery(memberUuid ?? null)
   const member = memberQuery.data ?? null
@@ -520,9 +583,16 @@ export function MemberPilotSheetPage() {
       {/* Header */}
       <MemberHeader memberUuid={memberUuid} />
 
+      {/* KPI strip — always visible */}
+      <MemberKpiStrip
+        memberUuid={memberUuid}
+        memberAccountId={member?.account_id ?? ''}
+        memberSheets={member?.member_sheets ?? []}
+      />
+
       {/* Tab strip */}
       <div className="flex border-b border-outline-variant">
-        {(['account', 'flights'] as const).map((tab) => (
+        {(['flights', 'account'] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -543,10 +613,7 @@ export function MemberPilotSheetPage() {
 
       {/* Tab content */}
       {activeTab === 'account' ? (
-        <AccountTab
-          memberUuid={memberUuid}
-          memberAccountId={member?.account_id ?? ''}
-        />
+        <AccountTab memberUuid={memberUuid} />
       ) : (
         <FlightLogTab />
       )}

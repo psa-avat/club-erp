@@ -215,17 +215,15 @@ export function MemberDirectoryTable({
         }
         actions={(row) => (
           <div className="flex items-center gap-0.5">
-            {row.can_fly ? (
-              <button
-                type="button"
-                aria-label={`Fiche pilote ${row.first_name} ${row.last_name}`}
-                onClick={() => onOpenPilotSheet(row.uuid)}
-                className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary"
-                title="Fiche pilote"
-              >
-                <ScrollText className="h-4 w-4" />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              aria-label={`Fiche pilote ${row.first_name} ${row.last_name}`}
+              onClick={() => onOpenPilotSheet(row.uuid)}
+              className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary"
+              title="Fiche pilote"
+            >
+              <ScrollText className="h-4 w-4" />
+            </button>
             <button
               type="button"
               aria-label={`Modifier ${row.first_name} ${row.last_name}`}

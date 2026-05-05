@@ -208,6 +208,7 @@ export const en = {
       title: 'Pilot Sheet',
       backToList: 'Back to list',
       editMember: 'Edit profile',
+      addEntry: '+ Manual Entry',
       kpi: {
         balance: 'Account Balance',
         flightHours: 'Flight Hours',
