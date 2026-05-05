@@ -34,6 +34,7 @@ interface SearchableSelectProps {
   onChange: (value: string) => void
   placeholder?: string
   searchPlaceholder?: string
+  noResultsText?: string
   disabled?: boolean
   className?: string
   id?: string
@@ -45,6 +46,7 @@ function SearchableSelect({
   onChange,
   placeholder = 'Sélectionner…',
   searchPlaceholder = 'Rechercher…',
+  noResultsText = 'Aucun résultat',
   disabled = false,
   className,
   id,
@@ -149,7 +151,7 @@ function SearchableSelect({
           {/* Options */}
           <ul className="overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-on-surface-variant">Aucun résultat</li>
+              <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
             ) : (
               filtered.map(opt => (
                 <li

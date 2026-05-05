@@ -24,6 +24,7 @@ import { AxiosError } from 'axios'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { SearchableSelect } from '../../../components/ui/searchable-select'
 import type { AccountingEntry, AccountingEntryLinePayload, AccountingEntryModel, AccountingEntryModelLinePayload } from '../api'
 
 // ---------------------------------------------------------------------------
@@ -265,12 +266,17 @@ export function LineEditor({
 }) {
   const summary = totals(lines)
   const balanced = isBalanced(lines)
+  const memberOptions = members.map((member) => ({
+    value: member.uuid,
+    label: `${member.first_name} ${member.last_name}`.trim(),
+  }))
+
   return (
     <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-on-surface">{title}</h3>
       </div>
-      <div className="overflow-x-auto rounded-shape-md border border-outline-variant bg-surface">
+      <div className="overflow-x-auto overflow-y-visible rounded-shape-md border border-outline-variant bg-surface">
         <table className="min-w-full divide-y divide-outline-variant text-sm">
           <thead className="bg-surface-container">
             <tr>
@@ -315,17 +321,16 @@ export function LineEditor({
                   />
                 </td>
                 <td className="px-3 py-2">
-                  <select
+                  <SearchableSelect
                     value={line.member_uuid}
+                    options={memberOptions}
                     disabled={disabled}
-                    onChange={(event) => onChange(index, { member_uuid: event.target.value })}
-                    className="h-9 w-48 min-w-[12rem] rounded-shape-sm border border-outline bg-surface px-2 text-sm"
-                  >
-                    <option value="">{t('journal.forms.selectTiers')}</option>
-                    {members.map((member) => (
-                      <option key={member.uuid} value={member.uuid}>{member.first_name} {member.last_name}</option>
-                    ))}
-                  </select>
+                    onChange={(value) => onChange(index, { member_uuid: value })}
+                    placeholder={t('journal.forms.selectTiers')}
+                    searchPlaceholder={t('journal.forms.searchTiers')}
+                    noResultsText={t('journal.forms.noTiersResults')}
+                    className="w-48 min-w-[12rem]"
+                  />
                 </td>
                 <td className="px-3 py-2">
                   <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => onRemove(index)}>

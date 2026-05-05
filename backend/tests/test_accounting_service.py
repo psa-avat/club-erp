@@ -38,6 +38,7 @@ from services.accounting import (
     ensure_fiscal_year_partitions,
     get_active_fiscal_year,
     post_accounting_entry,
+    post_accounting_entries_batch,
     seed_association_pcg_accounts,
     update_accounting_entry,
     validate_entry_balance,
@@ -120,6 +121,29 @@ class AccountingServiceTests(IsolatedAsyncioTestCase):
                 await post_accounting_entry(db, uuid4(), uuid4())
 
         self.assertEqual(ctx.exception.status_code, 409)
+
+    async def test_post_batch_posts_entries_in_order_and_deduplicates(self):
+        db = AsyncMock()
+        fiscal_year_uuid = uuid4()
+        first_uuid = uuid4()
+        second_uuid = uuid4()
+        first_posted = SimpleNamespace(uuid=first_uuid)
+        second_posted = SimpleNamespace(uuid=second_uuid)
+
+        with patch(
+            "services.accounting.post_accounting_entry",
+            new=AsyncMock(side_effect=[first_posted, second_posted]),
+        ) as post_mock:
+            result = await post_accounting_entries_batch(
+                db=db,
+                fiscal_year_uuid=fiscal_year_uuid,
+                entry_uuids=[first_uuid, second_uuid, first_uuid],
+            )
+
+        self.assertEqual(result, [first_posted, second_posted])
+        self.assertEqual(post_mock.await_count, 2)
+        self.assertEqual(post_mock.await_args_list[0].kwargs["entry_uuid"], first_uuid)
+        self.assertEqual(post_mock.await_args_list[1].kwargs["entry_uuid"], second_uuid)
 
     async def test_validate_entry_date_in_fiscal_year_boundaries(self):
         fy = SimpleNamespace(start_date=date(2026, 1, 1), end_date=date(2026, 12, 31))

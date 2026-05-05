@@ -400,6 +400,29 @@ export function usePostAccountingEntryMutation() {
   })
 }
 
+export function useBulkPostAccountingEntriesMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      fiscal_year_uuid,
+      entry_uuids,
+    }: {
+      fiscal_year_uuid: string
+      entry_uuids: string[]
+    }) => {
+      const { data } = await apiClient.patch<AccountingEntry[]>(
+        '/api/v1/accounting/entries/post-bulk',
+        { fiscal_year_uuid, entry_uuids },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
 export function useReverseAccountingEntryMutation() {
   const queryClient = useQueryClient()
   return useMutation({

@@ -195,6 +195,12 @@ class AccountingEntryPostRequest(BaseModel):
     pass
 
 
+class AccountingEntriesBulkPostRequest(BaseModel):
+    """Request to post multiple Draft entries in one fiscal year."""
+    fiscal_year_uuid: UUID
+    entry_uuids: list[UUID] = Field(min_length=1)
+
+
 class AccountingEntryReverseRequest(BaseModel):
     """Request to create a reversal Draft entry from a Posted entry."""
     fiscal_year_uuid: UUID

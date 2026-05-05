@@ -59,6 +59,7 @@ export function ReversalDialog({
   }, [accounts])
 
   const lines = entry?.lines ?? []
+  const entryRef = entry?.sequence_number ?? entry?.uuid.slice(0, 8) ?? ''
 
   async function handleConfirm() {
     if (reason.trim() === '') return
@@ -142,13 +143,15 @@ export function ReversalDialog({
           <Label>{t('journal.entries.reversal.reason')}</Label>
           <Input
             value={reason}
+            disabled={isSubmitting}
             onChange={(event) => setReason(event.target.value)}
             placeholder={t('journal.entries.reversal.reasonPlaceholder')}
           />
         </div>
 
         <div className="mt-4 rounded-shape-md border border-success-container bg-success-container p-4 text-sm text-on-success-container">
-          <p>✓ {t('journal.entries.reversal.previewOriginal')}</p>
+          <p className="mb-2 font-semibold">{t('journal.entries.reversal.previewTitle')}</p>
+          <p>✓ {t('journal.entries.reversal.previewOriginal', { ref: entryRef })}</p>
           <p>✓ {t('journal.entries.reversal.previewNewDraft')}</p>
           <p>✓ {t('journal.entries.reversal.previewLink')}</p>
         </div>

@@ -29,6 +29,7 @@ from constants import CAP_MANAGE_ACCOUNTING_SETTINGS, CAP_MANAGE_PRICES, CAP_POS
 from models import User
 from schemas.accounting import (
     AccountBalanceResponse,
+    AccountingEntriesBulkPostRequest,
     AccountingEntryCreateRequest,
     AccountingEntryTemplateCreateRequest,
     AccountingEntryTemplateResponse,
@@ -91,6 +92,7 @@ from services.accounting import (
     list_pricing_versions,
     list_system_settings,
     post_accounting_entry,
+    post_accounting_entries_batch,
     reopen_fiscal_year,
     seed_association_pcg_accounts,
     export_pcg_seed,
@@ -762,6 +764,28 @@ async def post_entry_endpoint(
         state=entry.state,
     )
     return entry
+
+
+@router.patch("/entries/post-bulk", response_model=list[AccountingEntryResponse], responses=ENTRY_VALIDATION_ERRORS)
+async def post_entries_bulk_endpoint(
+    request: AccountingEntriesBulkPostRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Post multiple Draft accounting entries in the same fiscal year."""
+    entries = await post_accounting_entries_batch(
+        db=db,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        entry_uuids=request.entry_uuids,
+    )
+    _log_accounting_audit(
+        action="post_entries_batch",
+        user_id=current_user.id,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        entry_count=len(entries),
+    )
+    return entries
 
 
 @router.post("/entries/{entry_uuid}/reverse", response_model=AccountingEntryResponse, status_code=status.HTTP_201_CREATED)

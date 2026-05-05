@@ -533,27 +533,31 @@ function VersionBadge({ status, t }: { status: number; t: (k: string) => string 
 function ActivateVersionButton({
   version,
   onActivate,
+  disabled = false,
   t,
 }: {
   version: PricingVersion
   onActivate: (v: PricingVersion) => void
+  disabled?: boolean
   t: (k: string, opts?: Record<string, unknown>) => string
 }) {
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
-  
+
   const missingGlCount = items.filter((item) => !item.gl_account_credit_uuid).length
   const totalCount = items.length
-  const canActivate = missingGlCount === 0 && totalCount > 0
-  
-  const tooltip = missingGlCount > 0 
-    ? `Missing GL credit account on ${missingGlCount} of ${totalCount} item(s). Complete before activation.`
+  const completeCount = totalCount - missingGlCount
+  const readinessPct = totalCount > 0 ? Math.round((completeCount / totalCount) * 100) : 0
+  const canActivate = !disabled && missingGlCount === 0 && totalCount > 0
+
+  const helperText = missingGlCount > 0
+    ? t('pricing.version.guard.missingGlAccounts', { count: missingGlCount })
     : totalCount === 0
-    ? 'Add items before activating this version.'
-    : `✓ All ${totalCount} item(s) have GL credit accounts — ready to activate`
-  
+      ? t('pricing.version.guard.noItems')
+      : t('pricing.version.guard.ready')
+
   return (
-    <div title={tooltip}>
+    <div className="space-y-2" title={helperText}>
       <button
         type="button"
         disabled={!canActivate}
@@ -567,6 +571,23 @@ function ActivateVersionButton({
       >
         {t('pricing.version.activate')}
       </button>
+
+      <div className="w-44 space-y-1">
+        <div className="h-1.5 overflow-hidden rounded-full bg-surface-container">
+          <div
+            className={`h-full rounded-full transition-all ${
+              missingGlCount === 0 && totalCount > 0 ? 'bg-success-container' : 'bg-warning-container'
+            }`}
+            style={{ width: `${readinessPct}%` }}
+          />
+        </div>
+        <p className="text-[11px] text-on-surface-variant">
+          {t('pricing.version.guard.progress', { complete: completeCount, total: totalCount, pct: readinessPct })}
+        </p>
+        <p className={`text-[11px] ${missingGlCount === 0 && totalCount > 0 ? 'text-success' : 'text-on-surface-variant'}`}>
+          {helperText}
+        </p>
+      </div>
     </div>
   )
 }
@@ -732,6 +753,7 @@ function VersionTimeline({
   fy,
   versions,
   canEdit,
+  activationDisabled,
   t,
   onDelete,
   onEdit,
@@ -743,6 +765,7 @@ function VersionTimeline({
   fy: FiscalYear
   versions: PricingVersion[]
   canEdit: boolean
+  activationDisabled: boolean
   t: (k: string, opts?: Record<string, unknown>) => string
   onDelete: (v: PricingVersion) => void
   onEdit: (v: PricingVersion) => void
@@ -814,7 +837,12 @@ function VersionTimeline({
                 )}
                 {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
                   <div className="flex shrink-0 gap-1">
-                    <ActivateVersionButton version={v} onActivate={onActivate} t={t} />
+                    <ActivateVersionButton
+                      version={v}
+                      onActivate={onActivate}
+                      disabled={activationDisabled}
+                      t={t}
+                    />
                     <button
                       type="button"
                       className="rounded p-1 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
@@ -1322,6 +1350,7 @@ export function BankPricingPage() {
                   fy={selectedFy}
                   versions={versions}
                   canEdit={canEditVersions}
+                  activationDisabled={updateVersionMutation.isPending}
                   t={t}
                   onDelete={(v) => setConfirmDeleteVersion(v)}
                   onEdit={(v) => {

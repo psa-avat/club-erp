@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from api.routes import accounting
 from schemas.accounting import (
+    AccountingEntriesBulkPostRequest,
     AccountingEntryPostRequest,
     AccountingEntryReverseRequest,
     PricingVersionCreateRequest,
@@ -83,6 +84,30 @@ class AccountingAuditLoggingTests(IsolatedAsyncioTestCase):
 
         logger_mock.info.assert_called_once()
         self.assertIn("post_entry", logger_mock.info.call_args.args)
+
+    async def test_post_entries_bulk_logs_audit(self):
+        db = AsyncMock()
+        user = SimpleNamespace(id=103)
+        fiscal_year_uuid = uuid4()
+        entries = [
+            SimpleNamespace(uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, sequence_number="FY2026-001", state=2),
+            SimpleNamespace(uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, sequence_number="FY2026-002", state=2),
+        ]
+
+        with patch("api.routes.accounting.post_accounting_entries_batch", new=AsyncMock(return_value=entries)), patch(
+            "api.routes.accounting.logger"
+        ) as logger_mock:
+            await accounting.post_entries_bulk_endpoint(
+                request=AccountingEntriesBulkPostRequest(
+                    fiscal_year_uuid=fiscal_year_uuid,
+                    entry_uuids=[entries[0].uuid, entries[1].uuid],
+                ),
+                db=db,
+                current_user=user,
+            )
+
+        logger_mock.info.assert_called_once()
+        self.assertIn("post_entries_batch", logger_mock.info.call_args.args)
 
     async def test_reverse_entry_logs_audit(self):
         db = AsyncMock()

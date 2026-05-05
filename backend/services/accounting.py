@@ -1829,6 +1829,26 @@ async def post_accounting_entry(
     return entry
 
 
+async def post_accounting_entries_batch(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+    entry_uuids: list[UUID],
+) -> list[AccountingEntry]:
+    """Post multiple Draft entries sequentially using the same single-entry rules."""
+    posted_entries: list[AccountingEntry] = []
+
+    for entry_uuid in dict.fromkeys(entry_uuids):
+        posted_entries.append(
+            await post_accounting_entry(
+                db=db,
+                entry_uuid=entry_uuid,
+                fiscal_year_uuid=fiscal_year_uuid,
+            )
+        )
+
+    return posted_entries
+
+
 async def list_fiscal_years(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[AccountingFiscalYear]:
     """List all fiscal years."""
     stmt = select(AccountingFiscalYear).offset(skip).limit(limit).order_by(AccountingFiscalYear.year.desc())

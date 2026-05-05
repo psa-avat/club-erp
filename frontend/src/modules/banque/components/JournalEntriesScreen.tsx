@@ -17,21 +17,25 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import { Alert } from '../../../components/ui/alert'
+import { Banner } from '../../../components/ui/banner'
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAccountingEntriesQuery,
+  useBulkPostAccountingEntriesMutation,
   useFiscalYearsQuery,
   useJournalsQuery,
 } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero } from './journalShared'
+import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
 
 export function JournalEntriesScreen() {
@@ -46,8 +50,12 @@ export function JournalEntriesScreen() {
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const [filters, setFilters] = useState({ journal_uuid: '', state: 0, search: '' })
+  const [selectedEntryUuids, setSelectedEntryUuids] = useState<string[]>([])
   const debouncedSearch = useDebounce(filters.search, 350)
   const [importOpen, setImportOpen] = useState(false)
+  const [confirmBulkPostOpen, setConfirmBulkPostOpen] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
@@ -65,6 +73,61 @@ export function JournalEntriesScreen() {
 
   const entriesQuery = useAccountingEntriesQuery(entryFilters, canView && Boolean(activeFiscalYearUuid))
   const entries = entriesQuery.data ?? []
+  const bulkPostMutation = useBulkPostAccountingEntriesMutation()
+
+  const draftEntries = useMemo(
+    () => entries.filter((entry) => entry.state === 1),
+    [entries],
+  )
+  const allVisibleDraftsSelected =
+    draftEntries.length > 0 && draftEntries.every((entry) => selectedEntryUuids.includes(entry.uuid))
+
+  useEffect(() => {
+    setSelectedEntryUuids((prev) =>
+      prev.filter((uuid) => entries.some((entry) => entry.uuid === uuid && entry.state === 1)),
+    )
+  }, [entries])
+
+  useEffect(() => {
+    if (!successMessage) return
+    const id = setTimeout(() => setSuccessMessage(null), 3000)
+    return () => clearTimeout(id)
+  }, [successMessage])
+
+  const anyError = localError ?? (
+    bulkPostMutation.error ? toErrorMessage(bulkPostMutation.error, t('journal.errors.generic')) : null
+  )
+
+  function toggleEntrySelection(entryUuid: string) {
+    setSelectedEntryUuids((prev) =>
+      prev.includes(entryUuid)
+        ? prev.filter((uuid) => uuid !== entryUuid)
+        : [...prev, entryUuid],
+    )
+  }
+
+  function toggleSelectAllDrafts() {
+    if (allVisibleDraftsSelected) {
+      setSelectedEntryUuids([])
+      return
+    }
+    setSelectedEntryUuids(draftEntries.map((entry) => entry.uuid))
+  }
+
+  async function handleBulkPost() {
+    if (!activeFiscalYearUuid || selectedEntryUuids.length === 0) return
+    setLocalError(null)
+    try {
+      const postedEntries = await bulkPostMutation.mutateAsync({
+        fiscal_year_uuid: activeFiscalYearUuid,
+        entry_uuids: selectedEntryUuids,
+      })
+      setSelectedEntryUuids([])
+      setSuccessMessage(t('journal.entries.bulk.posted', { count: postedEntries.length }))
+    } catch (error) {
+      setLocalError(toErrorMessage(error, t('journal.errors.generic')))
+    }
+  }
 
   if (!canView) {
     return (
@@ -77,6 +140,10 @@ export function JournalEntriesScreen() {
   return (
     <>
     <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
+      {anyError && <Alert>{anyError}</Alert>}
+      {successMessage && (
+        <Banner variant="success" message={successMessage} onDismiss={() => setSuccessMessage(null)} />
+      )}
       {/* Filters */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3">
@@ -135,7 +202,31 @@ export function JournalEntriesScreen() {
             <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
           </div>
           {canPost && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {activeFiscalYearUuid && draftEntries.length > 0 && (
+                <>
+                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleDraftsSelected}
+                      onChange={toggleSelectAllDrafts}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span>{t('journal.entries.bulk.selectAllDrafts')}</span>
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={selectedEntryUuids.length === 0 || bulkPostMutation.isPending}
+                    onClick={() => setConfirmBulkPostOpen(true)}
+                  >
+                    {bulkPostMutation.isPending
+                      ? t('journal.entries.bulk.postingSelected')
+                      : t('journal.entries.bulk.postSelected', { count: selectedEntryUuids.length })}
+                  </Button>
+                </>
+              )}
               {activeFiscalYearUuid && (
                 <Button
                   type="button"
@@ -175,28 +266,43 @@ export function JournalEntriesScreen() {
                   }
                 }),
               )
+              const isDraftEntry = entry.state === 1
+              const entryRef = entry.sequence_number ?? entry.description
               return (
-                <button
-                  key={entry.uuid}
-                  type="button"
-                  onClick={() => navigate(`/banque/journal/entry/${entry.uuid}`)}
-                  className="w-full rounded-lg border border-slate-200 bg-white p-4 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{entry.sequence_number ?? t('journal.entries.draftSequence')}</p>
-                      <p className="text-sm text-slate-700">{entry.description}</p>
-                      <p className="text-xs text-slate-500">{entry.entry_date} · {entry.reference ?? t('journal.entries.noReference')}</p>
+                <div key={entry.uuid} className="flex items-stretch gap-3">
+                  {canPost && isDraftEntry ? (
+                    <label className="flex shrink-0 items-start pt-4" aria-label={t('journal.entries.bulk.selectOne', { ref: entryRef })}>
+                      <input
+                        type="checkbox"
+                        checked={selectedEntryUuids.includes(entry.uuid)}
+                        onChange={() => toggleEntrySelection(entry.uuid)}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                    </label>
+                  ) : (
+                    <div className="w-4 shrink-0" aria-hidden="true" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/banque/journal/entry/${entry.uuid}`)}
+                    className="w-full rounded-lg border border-slate-200 bg-white p-4 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{entry.sequence_number ?? t('journal.entries.draftSequence')}</p>
+                        <p className="text-sm text-slate-700">{entry.description}</p>
+                        <p className="text-xs text-slate-500">{entry.entry_date} · {entry.reference ?? t('journal.entries.noReference')}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${entryStateBadgeClass(entry.state)}`}>
+                        {entryStateLabel(entry.state, t)}
+                      </span>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${entryStateBadgeClass(entry.state)}`}>
-                      {entryStateLabel(entry.state, t)}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                    <span>{entry.lines.length} {t('journal.entries.linesCount')}</span>
-                    <span className="font-mono">D {summary.debit} / C {summary.credit}</span>
-                  </div>
-                </button>
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                      <span>{entry.lines.length} {t('journal.entries.linesCount')}</span>
+                      <span className="font-mono">D {summary.debit} / C {summary.credit}</span>
+                    </div>
+                  </button>
+                </div>
               )
             })
           )}
@@ -210,6 +316,19 @@ export function JournalEntriesScreen() {
       fiscalYears={fiscalYears}
       journals={journals}
       defaultFiscalYearUuid={activeFiscalYearUuid || undefined}
+    />
+
+    <ConfirmDialog
+      open={confirmBulkPostOpen}
+      title={t('journal.entries.bulk.confirmTitle')}
+      body={t('journal.entries.bulk.confirmBody', { count: selectedEntryUuids.length })}
+      confirmLabel={t('journal.entries.bulk.confirmAction', { count: selectedEntryUuids.length })}
+      cancelLabel={t('journal.entries.bulk.cancelAction')}
+      onCancel={() => setConfirmBulkPostOpen(false)}
+      onConfirm={() => {
+        setConfirmBulkPostOpen(false)
+        void handleBulkPost()
+      }}
     />
   </>
   )
