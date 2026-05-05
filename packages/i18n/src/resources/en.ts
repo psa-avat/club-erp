@@ -237,6 +237,8 @@ export const en = {
         stateDraft: 'Draft',
         statePosted: 'Posted',
         stateCancelled: 'Cancelled',
+        deleteEntry: 'Delete entry',
+        confirmDelete: 'Delete this draft entry?',
       },
       flights: {
         comingSoonTitle: 'Planche de Vol integration coming soon',

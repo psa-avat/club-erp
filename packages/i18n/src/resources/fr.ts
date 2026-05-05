@@ -237,6 +237,8 @@ export const fr = {
         stateDraft: 'Brouillon',
         statePosted: 'Validée',
         stateCancelled: 'Annulée',
+        deleteEntry: 'Supprimer l\'écriture',
+        confirmDelete: 'Supprimer cette écriture brouillon ?',
       },
       flights: {
         comingSoonTitle: 'Intégration Planche de Vol à venir',

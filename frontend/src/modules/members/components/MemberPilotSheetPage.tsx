@@ -21,12 +21,14 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import Decimal from 'decimal.js'
+import { Trash2 } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { ClubPageShell } from './ClubPageShell'
 import { useMemberQuery } from '../api'
 import {
   useAccountingEntriesQuery,
+  useDeleteAccountingEntryMutation,
   useFiscalYearsQuery,
   useJournalsQuery,
   type AccountingEntry,
@@ -281,6 +283,8 @@ function AccountTab({
   const fiscalYearsQuery = useFiscalYearsQuery(true)
   const fiscalYears = fiscalYearsQuery.data ?? []
 
+  const deleteEntryMutation = useDeleteAccountingEntryMutation()
+
   const journalsQuery = useJournalsQuery(true)
   const journalMap = useMemo(() => {
     const map = new Map<string, JournalOption>()
@@ -390,6 +394,7 @@ function AccountTab({
                   </th>
                   <th className="px-3 py-2.5 text-right">{t('pilotSheet.account.columns.debit')}</th>
                   <th className="px-3 py-2.5 text-right">{t('pilotSheet.account.columns.credit')}</th>
+                  <th className="px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
@@ -441,6 +446,26 @@ function AccountTab({
                       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-on-surface">
                         {hasCredit ? formatEuro(lineCredit) : ''}
                       </td>
+                      <td className="px-2 py-2 text-right">
+                        {entry.state === 1 && (
+                          <button
+                            type="button"
+                            title={t('pilotSheet.account.deleteEntry')}
+                            className="rounded p-1 text-error opacity-70 transition-opacity hover:opacity-100 disabled:opacity-30"
+                            disabled={deleteEntryMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm(t('pilotSheet.account.confirmDelete'))) {
+                                deleteEntryMutation.mutate({
+                                  entryUuid: entry.uuid,
+                                  fiscalYearUuid: entry.fiscal_year_uuid,
+                                })
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
@@ -456,19 +481,21 @@ function AccountTab({
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                     {formatEuro(entryTotals.credit)}
                   </td>
+                  <td />
                 </tr>
                 <tr className={`font-semibold ${balanceColorClass}`}>
                   <td colSpan={4} className="px-3 py-2 text-xs uppercase tracking-wide">
                     {t('pilotSheet.account.balance')}
                   </td>
                   <td colSpan={2} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
-                    {memberBalance.greaterThan(0) ? '+' : ''}{formatEuro(memberBalance)} €{' '}
+                    {memberBalance.greaterThan(0) ? '+' : ''}{formatEuro(memberBalance)} €{' '}
                     {memberBalance.isZero()
                       ? ''
                       : memberBalance.greaterThan(0)
                         ? '(créditeur)'
                         : '(débiteur)'}
                   </td>
+                  <td />
                 </tr>
               </tfoot>
             </table>

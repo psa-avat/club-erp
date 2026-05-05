@@ -511,6 +511,21 @@ export function useDeleteAccountingEntryModelMutation() {
   })
 }
 
+export function useDeleteAccountingEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entryUuid, fiscalYearUuid }: { entryUuid: string; fiscalYearUuid: string }) => {
+      await apiClient.delete(
+        `/api/v1/accounting/entries/${entryUuid}`,
+        { ...getAuthRequestConfig(), params: { fiscal_year_uuid: fiscalYearUuid } },
+      )
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
 export function useCreateFiscalYearMutation() {
   const queryClient = useQueryClient()
   return useMutation({

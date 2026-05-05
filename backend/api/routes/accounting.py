@@ -69,6 +69,8 @@ from services.accounting import (
     get_account_balances,
     copy_pricing_versions_from_year,
     create_accounting_entry,
+    count_accounting_entries,
+    delete_accounting_entry,
     create_accounting_entry_template,
     create_fiscal_year,
     create_pricing_item,
@@ -84,6 +86,7 @@ from services.accounting import (
     get_pricing_version,
     list_accounts,
     list_accounting_entries,
+    count_accounting_entries as _count_accounting_entries,
     list_accounting_entry_templates,
     get_active_fiscal_year,
     list_fiscal_years,
@@ -730,6 +733,24 @@ async def get_entry_endpoint(
     """Retrieve an accounting entry by UUID."""
     entry = await get_accounting_entry(db, entry_uuid, fiscal_year_uuid)
     return entry
+
+
+@router.delete("/entries/{entry_uuid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_entry_endpoint(
+    entry_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a Draft accounting entry."""
+    await delete_accounting_entry(db, entry_uuid, fiscal_year_uuid)
+    _log_accounting_audit(
+        action="delete_entry",
+        user_id=current_user.id,
+        entry_uuid=entry_uuid,
+        fiscal_year_uuid=fiscal_year_uuid,
+    )
 
 
 @router.put("/entries/{entry_uuid}", response_model=AccountingEntryResponse, responses=ENTRY_VALIDATION_ERRORS)

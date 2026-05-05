@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, delete, exists, select, text
+from sqlalchemy import and_, delete, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -1406,7 +1406,8 @@ async def list_accounting_entries(
     state: int | None = None,
     search: str | None = None,
     member_uuid: UUID | None = None,
-    limit: int = 200,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[AccountingEntry]:
     """List accounting entries with optional fiscal year, journal, state, member, and text filters."""
     stmt = (
@@ -1418,6 +1419,7 @@ async def list_accounting_entries(
         )
         .order_by(AccountingEntry.entry_date.desc(), AccountingEntry.created_at.desc())
         .limit(limit)
+        .offset(offset)
     )
 
     if fiscal_year_uuid is not None:
@@ -1447,6 +1449,45 @@ async def list_accounting_entries(
 
     result = await db.scalars(stmt)
     return result.unique().all()
+
+
+async def count_accounting_entries(
+    db: AsyncSession,
+    *,
+    fiscal_year_uuid: UUID | None = None,
+    journal_uuid: UUID | None = None,
+    state: int | None = None,
+    search: str | None = None,
+    member_uuid: UUID | None = None,
+) -> int:
+    """Return the total count of accounting entries matching the given filters."""
+    stmt = select(func.count()).select_from(AccountingEntry)
+    if fiscal_year_uuid is not None:
+        stmt = stmt.where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
+    if journal_uuid is not None:
+        stmt = stmt.where(AccountingEntry.journal_uuid == journal_uuid)
+    if state is not None:
+        stmt = stmt.where(AccountingEntry.state == state)
+    if member_uuid is not None:
+        stmt = stmt.where(
+            exists(
+                select(AccountingLine.uuid)
+                .where(
+                    AccountingLine.entry_uuid == AccountingEntry.uuid,
+                    AccountingLine.member_uuid == member_uuid,
+                )
+                .correlate(AccountingEntry)
+            )
+        )
+    if search:
+        term = f"%{search.strip()}%"
+        stmt = stmt.where(
+            AccountingEntry.description.ilike(term)
+            | AccountingEntry.reference.ilike(term)
+            | AccountingEntry.sequence_number.ilike(term)
+        )
+    result = await db.scalar(stmt)
+    return result or 0
 
 
 async def list_accounting_entry_templates(
@@ -1692,6 +1733,22 @@ async def get_accounting_entry(
             detail=f"Entry {entry_uuid} not found in fiscal year {fiscal_year_uuid}",
         )
     return entry
+
+
+async def delete_accounting_entry(
+    db: AsyncSession,
+    entry_uuid: UUID,
+    fiscal_year_uuid: UUID,
+) -> None:
+    """Delete a Draft accounting entry and all its lines."""
+    entry = await get_accounting_entry(db, entry_uuid, fiscal_year_uuid)
+    if entry.state != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete entry in state {entry.state} (Draft only)",
+        )
+    await db.delete(entry)
+    await db.commit()
 
 
 async def update_accounting_entry(
