@@ -8,6 +8,7 @@ export const banqueQueryKeys = {
   accounts: () => ['banque', 'accounts'] as const,
   journals: () => ['banque', 'journals'] as const,
   entries: (filters: Record<string, unknown>) => ['banque', 'entries', filters] as const,
+  entriesCount: (filters: Record<string, unknown>) => ['banque', 'entries-count', filters] as const,
   entryModels: () => ['banque', 'entry-models'] as const,
   accountBalances: (fiscalYearUuid: string, postedOnly: boolean) =>
     ['banque', 'account-balances', fiscalYearUuid, postedOnly] as const,
@@ -194,6 +195,7 @@ export type AccountingEntriesFilters = {
   search?: string
   member_uuid?: string
   limit?: number
+  offset?: number
 }
 
 export type AccountingEntryCreatePayload = {
@@ -338,6 +340,26 @@ export function useAccountingEntriesQuery(filters: AccountingEntriesFilters, ena
         },
       )
       return data
+    },
+  })
+}
+
+export function useAccountingEntriesCountQuery(
+  filters: Omit<AccountingEntriesFilters, 'limit' | 'offset'>,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: banqueQueryKeys.entriesCount(filters),
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ total: number }>(
+        '/api/v1/accounting/entries/count',
+        {
+          ...getAuthRequestConfig(),
+          params: filters,
+        },
+      )
+      return data.total
     },
   })
 }

@@ -86,7 +86,6 @@ from services.accounting import (
     get_pricing_version,
     list_accounts,
     list_accounting_entries,
-    count_accounting_entries as _count_accounting_entries,
     list_accounting_entry_templates,
     get_active_fiscal_year,
     list_fiscal_years,
@@ -699,6 +698,28 @@ async def create_entry_endpoint(
     return entry
 
 
+@router.get("/entries/count")
+async def count_entries_endpoint(
+    fiscal_year_uuid: UUID | None = None,
+    journal_uuid: UUID | None = None,
+    state: int | None = None,
+    search: str | None = None,
+    member_uuid: UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Return the total number of entries matching the given filters."""
+    total = await count_accounting_entries(
+        db,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+        state=state,
+        search=search,
+        member_uuid=member_uuid,
+    )
+    return {"total": total}
+
+
 @router.get("/entries", response_model=list[AccountingEntryResponse])
 async def list_entries_endpoint(
     fiscal_year_uuid: UUID | None = None,
@@ -706,7 +727,8 @@ async def list_entries_endpoint(
     state: int | None = None,
     search: str | None = None,
     member_uuid: UUID | None = None,
-    limit: int = 200,
+    limit: int = 50,
+    offset: int = 0,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
@@ -719,6 +741,7 @@ async def list_entries_endpoint(
         search=search,
         member_uuid=member_uuid,
         limit=limit,
+        offset=offset,
     )
 
 

@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Banner } from '../../../components/ui/banner'
@@ -30,7 +31,9 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAccountingEntriesQuery,
+  useAccountingEntriesCountQuery,
   useBulkPostAccountingEntriesMutation,
+  useDeleteAccountingEntryMutation,
   useFiscalYearsQuery,
   useJournalsQuery,
 } from '../api'
@@ -48,8 +51,11 @@ export function JournalEntriesScreen() {
   const fiscalYearsQuery = useFiscalYearsQuery(canView)
   const journalsQuery = useJournalsQuery(canView)
 
+  const PAGE_SIZE = 50
+
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const [filters, setFilters] = useState({ journal_uuid: '', state: 0, search: '' })
+  const [page, setPage] = useState(0)
   const [selectedEntryUuids, setSelectedEntryUuids] = useState<string[]>([])
   const debouncedSearch = useDebounce(filters.search, 350)
   const [importOpen, setImportOpen] = useState(false)
@@ -60,20 +66,28 @@ export function JournalEntriesScreen() {
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
 
-  const entryFilters = useMemo(
+  const baseFilters = useMemo(
     () => ({
       fiscal_year_uuid: activeFiscalYearUuid ?? undefined,
       journal_uuid: filters.journal_uuid || undefined,
       state: filters.state || undefined,
       search: debouncedSearch.trim() || undefined,
-      limit: 200,
     }),
     [activeFiscalYearUuid, filters.journal_uuid, filters.state, debouncedSearch],
   )
 
+  const entryFilters = useMemo(
+    () => ({ ...baseFilters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+    [baseFilters, page, PAGE_SIZE],
+  )
+
   const entriesQuery = useAccountingEntriesQuery(entryFilters, canView && Boolean(activeFiscalYearUuid))
+  const countQuery = useAccountingEntriesCountQuery(baseFilters, canView && Boolean(activeFiscalYearUuid))
   const entries = entriesQuery.data ?? []
+  const totalEntries = countQuery.data ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE))
   const bulkPostMutation = useBulkPostAccountingEntriesMutation()
+  const deleteEntryMutation = useDeleteAccountingEntryMutation()
 
   const draftEntries = useMemo(
     () => entries.filter((entry) => entry.state === 1),
@@ -87,6 +101,11 @@ export function JournalEntriesScreen() {
       prev.filter((uuid) => entries.some((entry) => entry.uuid === uuid && entry.state === 1)),
     )
   }, [entries])
+
+  // Reset to page 0 when filters change
+  useEffect(() => {
+    setPage(0)
+  }, [baseFilters])
 
   useEffect(() => {
     if (!successMessage) return
@@ -197,7 +216,11 @@ export function JournalEntriesScreen() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
               {t('journal.entries.listTitle')}
-              {entries.length > 0 && <span className="ml-2 text-sm font-normal text-slate-500">({entries.length})</span>}
+              {totalEntries > 0 && (
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  ({page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalEntries)} / {totalEntries})
+                </span>
+              )}
             </h2>
             <p className="mt-1 text-sm text-slate-500">{t('journal.entries.listDescription')}</p>
           </div>
@@ -302,11 +325,58 @@ export function JournalEntriesScreen() {
                       <span className="font-mono">D {summary.debit} / C {summary.credit}</span>
                     </div>
                   </button>
+                  {canPost && isDraftEntry && (
+                    <button
+                      type="button"
+                      title={t('journal.entries.deleteEntry')}
+                      disabled={deleteEntryMutation.isPending}
+                      className="flex shrink-0 items-center self-stretch rounded-lg border border-red-200 bg-white px-2 text-red-400 transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                      onClick={() => {
+                        if (window.confirm(t('journal.entries.confirmDelete'))) {
+                          deleteEntryMutation.mutate({
+                            entryUuid: entry.uuid,
+                            fiscalYearUuid: entry.fiscal_year_uuid,
+                          })
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               )
             })
           )}
         </div>
+
+        {/* Pagination */}
+        {totalEntries > PAGE_SIZE && (
+          <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+            <span className="text-sm text-slate-500">
+              {t('journal.entries.page', { current: page + 1, total: totalPages })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </JournalPageShell>
 
