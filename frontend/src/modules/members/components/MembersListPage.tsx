@@ -83,6 +83,10 @@ export function MembersListPage() {
     navigate(`/club/members/${memberUuid}/edit`)
   }
 
+  function handleOpenPilotSheet(memberUuid: string) {
+    navigate(`/club/members/${memberUuid}/pilot-sheet`)
+  }
+
   const combinedError =
     membersQuery.error ??
     memberDetailQuery.error
@@ -195,6 +199,7 @@ export function MembersListPage() {
         selectedYear={selectedYear}
         onEditMember={handleEditMember}
         onFinalizeRegistration={handleFinalizeRegistration}
+        onOpenPilotSheet={handleOpenPilotSheet}
       />
 
       {/* ── Directory legend ─────────────────────────────────────────── */}

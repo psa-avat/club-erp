@@ -33,10 +33,12 @@ import {
 } from '../api'
 import type { MemberDetail } from '../types'
 import {
-  type AccountingEntryModel,
-  useAccountingEntryModelsQuery,
+  type AccountOption,
+  type JournalOption,
+  useAccountsQuery,
   useCreateAccountingEntryMutation,
   useFiscalYearsQuery,
+  useJournalsQuery,
   usePricingVersionsQuery,
 } from '../../banque/api'
 import { usePricingItemsQuery } from '../../assets/api'
@@ -106,7 +108,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
   const [effectiveDate, setEffectiveDate] = useState(todayIso())
   const [selectedPricingItemUuids, setSelectedPricingItemUuids] = useState<string[]>([])
   const [selectedCommitteeUuids, setSelectedCommitteeUuids] = useState<string[]>([])
-  const [selectedTemplateUuid, setSelectedTemplateUuid] = useState('')
   const [notes, setNotes] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -123,7 +124,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
   }, [pricingVersionsQuery.data])
 
   const pricingItemsQuery = usePricingItemsQuery(activePricingVersion?.uuid ?? null, open)
-  const accountingTemplatesQuery = useAccountingEntryModelsQuery(open)
+  const accountsQuery = useAccountsQuery(open)
+  const journalsQuery = useJournalsQuery(open)
   const committeesQuery = useCommitteesQuery(true)
 
   const completeRegistrationMutation = useCompleteRegistrationMutation()
@@ -134,7 +136,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
 
     setEffectiveDate(todayIso())
     setSelectedPricingItemUuids([])
-    setSelectedTemplateUuid('')
     setNotes('')
     setLocalError(null)
 
@@ -148,7 +149,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
 
   const pricingItems = pricingItemsQuery.data ?? []
   const committees = committeesQuery.data ?? []
-  const templates = accountingTemplatesQuery.data ?? []
+  const accounts = accountsQuery.data ?? []
+  const journals = journalsQuery.data ?? []
 
   const totalAmountDue = useMemo(
     () => pricingItemTotal(pricingItems, selectedPricingItemUuids),
@@ -162,7 +164,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     fiscalYearsQuery.error ??
     pricingVersionsQuery.error ??
     pricingItemsQuery.error ??
-    accountingTemplatesQuery.error ??
+    accountsQuery.error ??
+    journalsQuery.error ??
     committeesQuery.error ??
     completeRegistrationMutation.error ??
     createAccountingEntryMutation.error
@@ -201,6 +204,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
       return
     }
 
+    const selectedPricingItems = pricingItems.filter((item) => selectedPricingItemUuids.includes(item.uuid))
+
     setLocalError(null)
 
     // 1. Complete registration and atomically attach selected committee memberships.
@@ -211,33 +216,59 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
         start_date: `${year}-01-01`,
         end_date: `${year}-12-31`,
         registration_type: member.member_category,
-        accounting_template_uuid: selectedTemplateUuid || undefined,
         committee_uuids: selectedCommitteeUuids,
         notes: notes.trim() || undefined,
         status: 1,
       },
     })
 
-    // 2. If a template and fiscal year are selected, create a draft journal entry from the template.
-    if (selectedTemplateUuid && fiscalYear) {
-      const model = templates.find((tpl) => tpl.uuid === selectedTemplateUuid)
-      if (model) {
-        await createAccountingEntryMutation.mutateAsync({
-          fiscal_year_uuid: fiscalYear.uuid,
-          journal_uuid: model.journal_uuid,
-          entry_date: effectiveDate,
-          description: `${model.description ?? model.name} — ${member.first_name} ${member.last_name}`,
-          reference: invoiceReference,
-          lines: model.lines.map((line) => ({
-            account_uuid: line.account_uuid,
-            debit: line.debit,
-            credit: line.credit,
-            description: line.description ?? '',
-            member_uuid: member.uuid,
-            analytical_asset_uuid: line.analytical_asset_uuid ?? undefined,
-          })),
-        })
+    // 2. Create a draft journal entry from selected fares.
+    if (fiscalYear) {
+      const memberAccount = accounts.find((account: AccountOption) => account.code === member.account_id)
+      if (!memberAccount) {
+        setLocalError(t('registrationPanel.accounting.memberAccountMissing', { accountId: member.account_id }))
+        return
       }
+
+      const salesJournal = journals.find((journal: JournalOption) => journal.is_active && journal.type === 1)
+      if (!salesJournal) {
+        setLocalError(t('registrationPanel.accounting.salesJournalMissing'))
+        return
+      }
+
+      const missingCreditAccounts = selectedPricingItems.filter((item) => !item.gl_account_credit_uuid)
+      if (missingCreditAccounts.length > 0) {
+        setLocalError(t('registrationPanel.accounting.creditAccountMissing'))
+        return
+      }
+
+      await createAccountingEntryMutation.mutateAsync({
+        fiscal_year_uuid: fiscalYear.uuid,
+        journal_uuid: salesJournal.uuid,
+        entry_date: effectiveDate,
+        description: t('registrationPanel.accounting.autoEntryDescription', { year, name: `${member.first_name} ${member.last_name}` }),
+        reference: invoiceReference,
+        source_system: 'members.registration',
+        lines: [
+          {
+            account_uuid: memberAccount.uuid,
+            debit: totalAmountDue,
+            credit: '0.00',
+            description: t('registrationPanel.accounting.memberDebitLine'),
+            member_uuid: member.uuid,
+          },
+          ...selectedPricingItems.map((item) => ({
+            account_uuid: item.gl_account_credit_uuid as string,
+            debit: '0.00',
+            credit: item.base_price,
+            description: item.name,
+            member_uuid: member.uuid,
+          })),
+        ],
+      })
+    } else {
+      setLocalError(t('registrationPanel.accounting.fiscalYearMissing', { year }))
+      return
     }
 
     onCompleted(member.uuid)
@@ -371,23 +402,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
             <aside className="space-y-3 lg:sticky lg:top-0 lg:self-start">
               <h3 className="text-sm font-semibold text-on-surface">{t('registrationPanel.step3')}</h3>
               <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface p-3">
-                <div className="space-y-2">
-                  <Label htmlFor="registration-template">{t('registrationPanel.accounting.templateLabel')}</Label>
-                  <select
-                    id="registration-template"
-                    value={selectedTemplateUuid}
-                    onChange={(event) => setSelectedTemplateUuid(event.target.value)}
-                    className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
-                  >
-                    <option value="">{t('registrationWizard.templatePlaceholder')}</option>
-                    {templates.map((template: AccountingEntryModel) => (
-                      <option key={template.uuid} value={template.uuid}>
-                        {template.code} · {template.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="registration-notes">{t('registrationPanel.accounting.notes')}</Label>
                   <Input

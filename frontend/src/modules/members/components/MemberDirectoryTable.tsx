@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { MoreVertical, Pencil } from 'lucide-react'
+import { MoreVertical, Pencil, ScrollText } from 'lucide-react'
 
 import { DataTable } from '../../../components/ui/data-table'
 import type { ColumnDef } from '../../../components/ui/data-table'
@@ -101,6 +101,7 @@ type Props = {
   selectedYear: number
   onEditMember: (uuid: string) => void
   onFinalizeRegistration: (uuid: string) => void
+  onOpenPilotSheet: (uuid: string) => void
 }
 
 const PAGE_SIZE = 25
@@ -112,6 +113,7 @@ export function MemberDirectoryTable({
   selectedYear,
   onEditMember,
   onFinalizeRegistration,
+  onOpenPilotSheet,
 }: Props) {
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -213,6 +215,17 @@ export function MemberDirectoryTable({
         }
         actions={(row) => (
           <div className="flex items-center gap-0.5">
+            {row.can_fly ? (
+              <button
+                type="button"
+                aria-label={`Fiche pilote ${row.first_name} ${row.last_name}`}
+                onClick={() => onOpenPilotSheet(row.uuid)}
+                className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary"
+                title="Fiche pilote"
+              >
+                <ScrollText className="h-4 w-4" />
+              </button>
+            ) : null}
             <button
               type="button"
               aria-label={`Modifier ${row.first_name} ${row.last_name}`}

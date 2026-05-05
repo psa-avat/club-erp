@@ -702,6 +702,7 @@ async def list_entries_endpoint(
     journal_uuid: UUID | None = None,
     state: int | None = None,
     search: str | None = None,
+    member_uuid: UUID | None = None,
     limit: int = 200,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
@@ -713,6 +714,7 @@ async def list_entries_endpoint(
         journal_uuid=journal_uuid,
         state=state,
         search=search,
+        member_uuid=member_uuid,
         limit=limit,
     )
 

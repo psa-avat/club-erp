@@ -755,28 +755,33 @@ async def complete_member_registration(
 
     member = await get_member_or_404(db, member_uuid)
 
-    if payload.committee_uuids:
+    if payload.committee_uuids is not None:
         requested_committee_uuids = set(payload.committee_uuids)
-        existing_committees_result = await db.execute(select(Committee.uuid).where(Committee.uuid.in_(requested_committee_uuids)))
-        existing_committees = set(existing_committees_result.scalars().all())
-        missing_committees = sorted(str(committee_uuid) for committee_uuid in requested_committee_uuids - existing_committees)
-        if missing_committees:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown committee UUIDs: {', '.join(missing_committees)}",
-            )
+        if requested_committee_uuids:
+            existing_committees_result = await db.execute(select(Committee.uuid).where(Committee.uuid.in_(requested_committee_uuids)))
+            existing_committees = set(existing_committees_result.scalars().all())
+            missing_committees = sorted(str(committee_uuid) for committee_uuid in requested_committee_uuids - existing_committees)
+            if missing_committees:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown committee UUIDs: {', '.join(missing_committees)}",
+                )
 
         existing_assignments_result = await db.execute(
-            select(CommitteeMember.committee_uuid).where(
+            select(CommitteeMember).where(
                 CommitteeMember.member_uuid == member_uuid,
                 CommitteeMember.membership_year == payload.year,
-                CommitteeMember.committee_uuid.in_(requested_committee_uuids),
             )
         )
-        existing_assignments = set(existing_assignments_result.scalars().all())
+        existing_assignments = existing_assignments_result.scalars().all()
+        existing_committee_uuids = {assignment.committee_uuid for assignment in existing_assignments}
+
+        for assignment in existing_assignments:
+            if assignment.committee_uuid not in requested_committee_uuids:
+                await db.delete(assignment)
 
         for committee_uuid in requested_committee_uuids:
-            if committee_uuid not in existing_assignments:
+            if committee_uuid not in existing_committee_uuids:
                 db.add(
                     CommitteeMember(
                         committee_uuid=committee_uuid,

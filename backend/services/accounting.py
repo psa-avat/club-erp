@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, delete, select, text
+from sqlalchemy import and_, delete, exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -1405,9 +1405,10 @@ async def list_accounting_entries(
     journal_uuid: UUID | None = None,
     state: int | None = None,
     search: str | None = None,
+    member_uuid: UUID | None = None,
     limit: int = 200,
 ) -> list[AccountingEntry]:
-    """List accounting entries with optional fiscal year, journal, state, and text filters."""
+    """List accounting entries with optional fiscal year, journal, state, member, and text filters."""
     stmt = (
         select(AccountingEntry)
         .options(
@@ -1425,6 +1426,17 @@ async def list_accounting_entries(
         stmt = stmt.where(AccountingEntry.journal_uuid == journal_uuid)
     if state is not None:
         stmt = stmt.where(AccountingEntry.state == state)
+    if member_uuid is not None:
+        stmt = stmt.where(
+            exists(
+                select(AccountingLine.uuid)
+                .where(
+                    AccountingLine.entry_uuid == AccountingEntry.uuid,
+                    AccountingLine.member_uuid == member_uuid,
+                )
+                .correlate(AccountingEntry)
+            )
+        )
     if search:
         term = f"%{search.strip()}%"
         stmt = stmt.where(

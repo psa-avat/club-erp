@@ -192,6 +192,7 @@ export type AccountingEntriesFilters = {
   journal_uuid?: string
   state?: number
   search?: string
+  member_uuid?: string
   limit?: number
 }
 
