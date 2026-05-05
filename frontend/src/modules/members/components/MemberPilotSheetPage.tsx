@@ -216,7 +216,7 @@ function AccountTab({
   )
 
   // Compute balance from lines tagged to this member
-  const { totalDebit, totalCredit, balance } = useMemo(() => {
+  const balance = useMemo(() => {
     let totalDebit = new Decimal(0)
     let totalCredit = new Decimal(0)
     for (const entry of entries) {
@@ -227,7 +227,7 @@ function AccountTab({
         }
       }
     }
-    return { totalDebit, totalCredit, balance: totalDebit.minus(totalCredit) }
+    return totalDebit.minus(totalCredit)
   }, [entries, memberUuid])
 
   // Entry-level debit/credit sums for the totals footer row
