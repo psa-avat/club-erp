@@ -37,6 +37,7 @@ import type { MemberDetail, MemberSummary } from '../types'
 import {
   type AccountingEntryModel,
   useAccountingEntryModelsQuery,
+  useCreateAccountingEntryMutation,
   useFiscalYearsQuery,
   usePricingVersionsQuery,
 } from '../../banque/api'
@@ -129,6 +130,7 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
 
   const completeRegistrationMutation = useCompleteRegistrationMutation()
   const replaceCommitteeMembersMutation = useReplaceCommitteeMembersMutation()
+  const createAccountingEntryMutation = useCreateAccountingEntryMutation()
 
   useEffect(() => {
     if (!open) return
@@ -166,7 +168,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     accountingTemplatesQuery.error ??
     committeesQuery.error ??
     completeRegistrationMutation.error ??
-    replaceCommitteeMembersMutation.error
+    replaceCommitteeMembersMutation.error ??
+    createAccountingEntryMutation.error
 
   const invoiceReference = member
     ? `REG-${year}-${member.account_id}-${effectiveDate.replaceAll('-', '')}`
@@ -215,7 +218,31 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
 
     setLocalError(null)
 
-    const completed = await completeRegistrationMutation.mutateAsync({
+    // 1. Sync committee memberships FIRST — the backend validates them before allowing registration.
+    const before = new Set(
+      member.committees
+        .filter((membership) => membership.membership_year === year)
+        .map((membership) => membership.committee_uuid),
+    )
+    const after = new Set(selectedCommitteeUuids)
+    const impacted = new Set<string>([...Array.from(before), ...Array.from(after)])
+
+    for (const committeeUuid of impacted) {
+      const roster = new Set(await fetchCommitteeRoster(committeeUuid))
+      if (after.has(committeeUuid)) {
+        roster.add(member.uuid)
+      } else {
+        roster.delete(member.uuid)
+      }
+      await replaceCommitteeMembersMutation.mutateAsync({
+        committeeUuid,
+        year,
+        payload: { member_uuids: Array.from(roster) },
+      })
+    }
+
+    // 2. Complete registration (backend now finds the committee membership).
+    await completeRegistrationMutation.mutateAsync({
       memberUuid: member.uuid,
       payload: {
         year,
@@ -228,35 +255,29 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
       },
     })
 
-    // Sync committee assignment without destructive roster loss:
-    // fetch existing roster for each impacted committee, then add/remove current member and save.
-    const before = new Set(
-      member.committees
-        .filter((membership) => membership.membership_year === year)
-        .map((membership) => membership.committee_uuid),
-    )
-    const after = new Set(selectedCommitteeUuids)
-
-    const impacted = new Set<string>([...Array.from(before), ...Array.from(after)])
-
-    for (const committeeUuid of impacted) {
-      const roster = new Set(await fetchCommitteeRoster(committeeUuid))
-      if (after.has(committeeUuid)) {
-        roster.add(member.uuid)
-      } else {
-        roster.delete(member.uuid)
+    // 3. If a template and fiscal year are selected, create a draft journal entry from the template.
+    if (selectedTemplateUuid && fiscalYear) {
+      const model = templates.find((tpl) => tpl.uuid === selectedTemplateUuid)
+      if (model) {
+        await createAccountingEntryMutation.mutateAsync({
+          fiscal_year_uuid: fiscalYear.uuid,
+          journal_uuid: model.journal_uuid,
+          entry_date: effectiveDate,
+          description: `${model.description ?? model.name} — ${member.first_name} ${member.last_name}`,
+          reference: invoiceReference,
+          lines: model.lines.map((line) => ({
+            account_uuid: line.account_uuid,
+            debit: line.debit,
+            credit: line.credit,
+            description: line.description ?? '',
+            member_uuid: member.uuid,
+            analytical_asset_uuid: line.analytical_asset_uuid ?? undefined,
+          })),
+        })
       }
-
-      await replaceCommitteeMembersMutation.mutateAsync({
-        committeeUuid,
-        year,
-        payload: {
-          member_uuids: Array.from(roster),
-        },
-      })
     }
 
-    onCompleted(completed.uuid)
+    onCompleted(member.uuid)
   }
 
   return (

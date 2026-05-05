@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS member_registrations (
   CONSTRAINT chk_member_registrations_year
     CHECK (registered_for_year BETWEEN 2000 AND 9999),
   CONSTRAINT chk_member_registrations_type
-    CHECK (registration_type BETWEEN 1 AND 6),
+    CHECK (registration_type BETWEEN 1 AND 7),
   CONSTRAINT chk_member_registrations_status
     CHECK (status BETWEEN 1 AND 3),
   CONSTRAINT chk_member_registrations_date_range

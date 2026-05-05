@@ -472,7 +472,7 @@ class MemberRegistration(Base):
     __table_args__ = (
         UniqueConstraint("member_uuid", "start_date", "end_date", name="uq_member_registrations_period"),
         CheckConstraint("registered_for_year BETWEEN 2000 AND 9999", name="chk_member_registrations_year"),
-        CheckConstraint("registration_type BETWEEN 1 AND 6", name="chk_member_registrations_type"),
+        CheckConstraint("registration_type BETWEEN 1 AND 7", name="chk_member_registrations_type"),
         CheckConstraint("status BETWEEN 1 AND 3", name="chk_member_registrations_status"),
         CheckConstraint("end_date >= start_date", name="chk_member_registrations_date_range"),
     )
