@@ -1,14 +1,16 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import { getAuthToken } from '../../api/client'
 import { useCurrentUser } from '../api/useAuth'
 import { useAuthStore } from '../store/authStore'
 
 export function ProtectedRoute() {
   const { t } = useTranslation('common')
   const location = useLocation()
-  const token = useAuthStore((state) => state.token)
+  const storedToken = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
+  const token = storedToken ?? getAuthToken()
 
   const { isLoading } = useCurrentUser(Boolean(token && !user))
 

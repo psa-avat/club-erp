@@ -163,6 +163,8 @@ export type RegistrationCompletionPayload = {
   end_date: string
   registration_type?: number
   accounting_template_uuid?: string
+  pricing_item_uuids?: string[]
+  accounting_entry_date?: string
   committee_uuids?: string[]
   status: number
   notes?: string

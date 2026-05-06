@@ -7,6 +7,7 @@ import io
 import logging
 import secrets
 from datetime import date
+from decimal import Decimal
 from hashlib import sha256
 from typing import Optional
 from uuid import UUID
@@ -16,7 +17,23 @@ from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import AccountingEntryTemplate, Committee, CommitteeMember, Member, MemberAccountCounter, MemberRegistration, MemberSheet, SystemSetting
+from models import (
+    AccountingAccount,
+    AccountingEntry,
+    AccountingEntryTemplate,
+    AccountingFiscalYear,
+    AccountingJournal,
+    Committee,
+    CommitteeMember,
+    Member,
+    MemberAccountCounter,
+    MemberRegistration,
+    MemberSheet,
+    PricingItem,
+    PricingVersion,
+    SystemSetting,
+)
+from schemas.accounting import AccountingEntryCreateRequest, AccountingLineCreateRequest
 from schemas.members import (
     AnonymizationResultResponse,
     CommitteeCreateRequest,
@@ -46,6 +63,147 @@ logger = logging.getLogger(__name__)
 ACTIVE_REGISTRATION_STATUS = 1
 ANONYMIZED_MEMBER_STATUS = 4
 DEFAULT_ANONYMIZE_AFTER_YEARS = 5
+
+
+async def _create_registration_accounting_entry(
+    db: AsyncSession,
+    *,
+    member: Member,
+    payload: RegistrationCompletionRequest,
+    user_id: Optional[int],
+) -> None:
+    """Create the draft sales entry attached to selected registration pricing items."""
+
+    if not payload.pricing_item_uuids:
+        return
+
+    pricing_item_uuids = list(dict.fromkeys(payload.pricing_item_uuids))
+    fiscal_year = await db.scalar(select(AccountingFiscalYear).where(AccountingFiscalYear.year == payload.year))
+    if fiscal_year is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No fiscal year configured for year {payload.year}",
+        )
+
+    sales_journal = await db.scalar(
+        select(AccountingJournal)
+        .where(AccountingJournal.type == 1, AccountingJournal.is_active.is_(True))
+        .order_by(AccountingJournal.code)
+        .limit(1)
+    )
+    if sales_journal is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active sales journal is configured for automatic registration entry creation",
+        )
+
+    receivable_account = None
+    if sales_journal.default_account_uuid is not None:
+        receivable_account = await db.scalar(
+            select(AccountingAccount).where(
+                AccountingAccount.uuid == sales_journal.default_account_uuid,
+                AccountingAccount.is_active.is_(True),
+                AccountingAccount.is_posting_allowed.is_(True),
+            )
+        )
+
+    if receivable_account is None:
+        receivable_account = await db.scalar(
+            select(AccountingAccount).where(
+                AccountingAccount.code == "411",
+                AccountingAccount.is_active.is_(True),
+                AccountingAccount.is_posting_allowed.is_(True),
+            )
+        )
+
+    if receivable_account is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Member receivable account 411 does not exist or is not postable",
+        )
+
+    items_result = await db.execute(
+        select(PricingItem)
+        .join(PricingVersion, PricingVersion.uuid == PricingItem.pricing_version_uuid)
+        .where(
+            PricingItem.uuid.in_(pricing_item_uuids),
+            PricingVersion.fiscal_year_uuid == fiscal_year.uuid,
+        )
+    )
+    items_by_uuid = {item.uuid: item for item in items_result.scalars().all()}
+    missing_items = [str(item_uuid) for item_uuid in pricing_item_uuids if item_uuid not in items_by_uuid]
+    if missing_items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown pricing item UUIDs for registration fiscal year: {', '.join(missing_items)}",
+        )
+
+    selected_items = [items_by_uuid[item_uuid] for item_uuid in pricing_item_uuids]
+    missing_credit_accounts = [item.name for item in selected_items if item.gl_account_credit_uuid is None]
+    if missing_credit_accounts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Selected pricing items missing credit accounts: {', '.join(missing_credit_accounts)}",
+        )
+
+    total_amount = sum((item.base_price for item in selected_items), Decimal("0"))
+    if total_amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected pricing items must have a positive total amount",
+        )
+
+    entry_date = payload.accounting_entry_date or payload.start_date
+    invoice_reference = f"REG-{payload.year}-{member.account_id}-{entry_date.strftime('%Y%m%d')}"
+    existing_entry = await db.scalar(
+        select(
+            exists().where(
+                AccountingEntry.fiscal_year_uuid == fiscal_year.uuid,
+                AccountingEntry.source_system == "members.registration",
+                AccountingEntry.external_id == invoice_reference,
+            )
+        )
+    )
+    if existing_entry:
+        return
+
+    from services.accounting import create_accounting_entry
+
+    entry = await create_accounting_entry(
+        db,
+        AccountingEntryCreateRequest(
+            fiscal_year_uuid=fiscal_year.uuid,
+            journal_uuid=sales_journal.uuid,
+            entry_date=entry_date,
+            description=f"Registration {payload.year} - {member.first_name} {member.last_name}",
+            reference=invoice_reference,
+            source_system="members.registration",
+            external_id=invoice_reference,
+            lines=[
+                AccountingLineCreateRequest(
+                    account_uuid=receivable_account.uuid,
+                    debit=total_amount,
+                    credit=Decimal("0"),
+                    description="Member registration debit",
+                    member_uuid=member.uuid,
+                ),
+                *[
+                    AccountingLineCreateRequest(
+                        account_uuid=item.gl_account_credit_uuid,
+                        debit=Decimal("0"),
+                        credit=item.base_price,
+                        description=item.name,
+                    )
+                    for item in selected_items
+                ],
+            ],
+        ),
+        user_id=user_id or 0,
+    )
+    for line in entry.lines:
+        if line.member_uuid == member.uuid:
+            line.member_account_id_snapshot = member.account_id
+    await db.commit()
 
 
 def _apply_member_filters(
@@ -915,6 +1073,15 @@ async def complete_member_registration(
         )
     )
     if existing_active_for_year is not None:
+        if payload.pricing_item_uuids:
+            await _create_registration_accounting_entry(
+                db,
+                member=member,
+                payload=payload,
+                user_id=updated_by_user_id,
+            )
+            await db.refresh(member)
+            return member
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Member is already registered for year {payload.year}",
@@ -952,6 +1119,12 @@ async def complete_member_registration(
             notes=registration_notes,
         ),
         registered_by_user_id=updated_by_user_id,
+    )
+    await _create_registration_accounting_entry(
+        db,
+        member=member,
+        payload=payload,
+        user_id=updated_by_user_id,
     )
     await db.refresh(member)
     return member

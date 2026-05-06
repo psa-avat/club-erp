@@ -325,6 +325,8 @@ export function LineEditor({
                     value={line.member_uuid}
                     options={memberOptions}
                     disabled={disabled}
+                    clearable
+                    clearLabel={t('journal.forms.clearTiers')}
                     onChange={(value) => onChange(index, { member_uuid: value })}
                     placeholder={t('journal.forms.selectTiers')}
                     searchPlaceholder={t('journal.forms.searchTiers')}

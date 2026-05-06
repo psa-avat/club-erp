@@ -560,6 +560,7 @@ export const fr = {
         selectTiers: 'Sélectionnez un tiers (facultatif)',
         searchTiers: 'Rechercher un tiers…',
         noTiersResults: 'Aucun tiers correspondant.',
+        clearTiers: 'Effacer le tiers',
         total: 'Total',
         balanced: 'Écriture équilibrée',
         unbalanced: 'Écriture non équilibrée',

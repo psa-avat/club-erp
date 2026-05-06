@@ -8,6 +8,7 @@ export const banqueQueryKeys = {
   accounts: () => ['banque', 'accounts'] as const,
   journals: () => ['banque', 'journals'] as const,
   entries: (filters: Record<string, unknown>) => ['banque', 'entries', filters] as const,
+  entry: (entryUuid: string, fiscalYearUuid: string) => ['banque', 'entry', fiscalYearUuid, entryUuid] as const,
   entriesCount: (filters: Record<string, unknown>) => ['banque', 'entries-count', filters] as const,
   entryModels: () => ['banque', 'entry-models'] as const,
   accountBalances: (fiscalYearUuid: string, postedOnly: boolean) =>
@@ -337,6 +338,23 @@ export function useAccountingEntriesQuery(filters: AccountingEntriesFilters, ena
         {
           ...getAuthRequestConfig(),
           params: filters,
+        },
+      )
+      return data
+    },
+  })
+}
+
+export function useAccountingEntryQuery(entryUuid: string | null, fiscalYearUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.entry(entryUuid ?? 'none', fiscalYearUuid ?? 'none'),
+    enabled: enabled && Boolean(entryUuid && fiscalYearUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountingEntry>(
+        `/api/v1/accounting/entries/${entryUuid}`,
+        {
+          ...getAuthRequestConfig(),
+          params: { fiscal_year_uuid: fiscalYearUuid },
         },
       )
       return data

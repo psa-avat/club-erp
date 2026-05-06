@@ -36,6 +36,19 @@ interface LoginErrorResponse {
   detail?: string
 }
 
+function getPostLoginTarget(locationState: unknown): string {
+  if (
+    typeof locationState === 'object' &&
+    locationState !== null &&
+    'from' in locationState
+  ) {
+    const from = String(locationState.from)
+    return from === '/login' ? '/dashboard' : from
+  }
+
+  return '/dashboard'
+}
+
 export function LoginPage() {
   const { t } = useTranslation('common')
   const location = useLocation()
@@ -72,10 +85,7 @@ export function LoginPage() {
       }
     }
 
-    const targetPath =
-      typeof location.state === 'object' && location.state !== null && 'from' in location.state
-        ? String(location.state.from)
-        : '/dashboard'
+    const targetPath = getPostLoginTarget(location.state)
 
     navigate(targetPath, { replace: true })
   }
@@ -85,10 +95,7 @@ export function LoginPage() {
     : (loginMutation.error as AxiosError<LoginErrorResponse> | null))
   const statusCode = rawError?.response?.status
 
-  const targetPath =
-    typeof location.state === 'object' && location.state !== null && 'from' in location.state
-      ? String(location.state.from)
-      : '/dashboard'
+  const targetPath = getPostLoginTarget(location.state)
 
   let errorMessage: string | null = null
   if (statusCode === 401) {

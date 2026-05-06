@@ -93,6 +93,41 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(updated.uuid, member.uuid)
 
+    async def test_complete_registration_creates_accounting_entry_for_selected_prices(self):
+        db = _FakeDb(scalar_values=[1, None])
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            member_category=1,
+            registration_status=1,
+            status=2,
+            last_registration_year=None,
+            updated_by=None,
+        )
+        pricing_item_uuid = uuid4()
+
+        with (
+            patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)),
+            patch("services.members.create_member_registration", new=AsyncMock()),
+            patch("services.members._create_registration_accounting_entry", new=AsyncMock()) as create_entry_mock,
+        ):
+            updated = await complete_member_registration(
+                db=db,
+                member_uuid=member.uuid,
+                payload=RegistrationCompletionRequest(
+                    year=2026,
+                    start_date=date(2026, 1, 1),
+                    end_date=date(2026, 12, 31),
+                    pricing_item_uuids=[pricing_item_uuid],
+                    accounting_entry_date=date(2026, 5, 6),
+                ),
+                updated_by_user_id=42,
+            )
+
+        self.assertEqual(updated.uuid, member.uuid)
+        create_entry_mock.assert_awaited_once()
+        self.assertEqual(create_entry_mock.await_args.kwargs["member"], member)
+        self.assertEqual(create_entry_mock.await_args.kwargs["user_id"], 42)
+
     async def test_complete_registration_rejects_unknown_template(self):
         db = _FakeDb(scalar_values=[1, None, False])
         member = SimpleNamespace(

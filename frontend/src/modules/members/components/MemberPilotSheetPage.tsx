@@ -425,7 +425,7 @@ function AccountTab({
                       </td>
                       <td className="max-w-xs px-3 py-2">
                         <Link
-                          to={`/banque/journal/entry/${entry.uuid}`}
+                          to={`/banque/journal/entry/${entry.uuid}?fiscal_year_uuid=${entry.fiscal_year_uuid}`}
                           className="truncate text-primary underline-offset-2 hover:underline"
                           title={entry.description}
                         >

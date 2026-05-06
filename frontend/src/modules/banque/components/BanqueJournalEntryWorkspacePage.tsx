@@ -17,18 +17,25 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { Navigate, useParams } from 'react-router-dom'
+import { Navigate, useLocation, useParams } from 'react-router-dom'
 
 import { useCapability } from '../../../auth/hooks/useCapability'
 import { JournalEntryWorkspaceScreen } from './JournalEntryWorkspaceScreen'
 
 export function BanqueJournalEntryWorkspacePage() {
   const { entryUuid } = useParams<{ entryUuid: string }>()
+  const location = useLocation()
+  const searchParams = new URLSearchParams(location.search)
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
 
   if (!canPost) {
     return <Navigate replace to="/banque/journal/entries" />
   }
 
-  return <JournalEntryWorkspaceScreen entryUuid={entryUuid ?? null} />
+  return (
+    <JournalEntryWorkspaceScreen
+      entryUuid={entryUuid ?? null}
+      entryFiscalYearUuid={searchParams.get('fiscal_year_uuid')}
+    />
+  )
 }

@@ -34,12 +34,7 @@ import {
 } from '../api'
 import type { MemberDetail } from '../types'
 import {
-  type AccountOption,
-  type JournalOption,
-  useAccountsQuery,
-  useCreateAccountingEntryMutation,
   useFiscalYearsQuery,
-  useJournalsQuery,
   usePricingVersionsQuery,
 } from '../../banque/api'
 import { usePricingItemsQuery } from '../../assets/api'
@@ -141,13 +136,10 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
   }, [pricingVersionsQuery.data])
 
   const pricingItemsQuery = usePricingItemsQuery(activePricingVersion?.uuid ?? null, open)
-  const accountsQuery = useAccountsQuery(open)
-  const journalsQuery = useJournalsQuery(open)
   const committeesQuery = useCommitteesQuery(true)
 
   const completeRegistrationMutation = useCompleteRegistrationMutation()
   const updateRegistrationMutation = useUpdateMemberRegistrationMutation()
-  const createAccountingEntryMutation = useCreateAccountingEntryMutation()
 
   useEffect(() => {
     if (!open) return
@@ -167,8 +159,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
 
   const pricingItems = pricingItemsQuery.data ?? []
   const committees = committeesQuery.data ?? []
-  const accounts = accountsQuery.data ?? []
-  const journals = journalsQuery.data ?? []
 
   const totalAmountDue = useMemo(
     () => pricingItemTotal(pricingItems, selectedPricingItemUuids),
@@ -182,12 +172,9 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     fiscalYearsQuery.error ??
     pricingVersionsQuery.error ??
     pricingItemsQuery.error ??
-    accountsQuery.error ??
-    journalsQuery.error ??
     committeesQuery.error ??
     completeRegistrationMutation.error ??
-    updateRegistrationMutation.error ??
-    createAccountingEntryMutation.error
+    updateRegistrationMutation.error
 
   const invoiceReference = member
     ? `REG-${year}-${member.account_id}-${effectiveDate.replaceAll('-', '')}`
@@ -228,12 +215,10 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
       return
     }
 
-    const selectedPricingItems = pricingItems.filter((item) => selectedPricingItemUuids.includes(item.uuid))
-
     setLocalError(null)
 
-    // 1. Complete registration and atomically attach selected committee memberships.
-    // If the member is already registered for this year, continue to accounting entry creation.
+    // Complete registration, attach selected committee memberships, and create
+    // the draft accounting entry from selected pricing items on the backend.
     try {
       await completeRegistrationMutation.mutateAsync({
         memberUuid: member.uuid,
@@ -242,6 +227,8 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
           start_date: `${year}-01-01`,
           end_date: `${year}-12-31`,
           registration_type: member.member_category,
+          pricing_item_uuids: selectedPricingItemUuids,
+          accounting_entry_date: effectiveDate,
           committee_uuids: selectedCommitteeUuids,
           notes: notes.trim() || undefined,
           status: 1,
@@ -251,55 +238,6 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
       if (!isAlreadyRegisteredError(error)) {
         throw error
       }
-    }
-
-    // 2. Create a draft journal entry from selected fares.
-    if (fiscalYear) {
-      const memberAccount = accounts.find((account: AccountOption) => account.code === member.account_id)
-      if (!memberAccount) {
-        setLocalError(t('registrationPanel.accounting.memberAccountMissing', { accountId: member.account_id }))
-        return
-      }
-
-      const salesJournal = journals.find((journal: JournalOption) => journal.is_active && journal.type === 1)
-      if (!salesJournal) {
-        setLocalError(t('registrationPanel.accounting.salesJournalMissing'))
-        return
-      }
-
-      const missingCreditAccounts = selectedPricingItems.filter((item) => !item.gl_account_credit_uuid)
-      if (missingCreditAccounts.length > 0) {
-        setLocalError(t('registrationPanel.accounting.creditAccountMissing'))
-        return
-      }
-
-      await createAccountingEntryMutation.mutateAsync({
-        fiscal_year_uuid: fiscalYear.uuid,
-        journal_uuid: salesJournal.uuid,
-        entry_date: effectiveDate,
-        description: t('registrationPanel.accounting.autoEntryDescription', { year, name: `${member.first_name} ${member.last_name}` }),
-        reference: invoiceReference,
-        source_system: 'members.registration',
-        lines: [
-          {
-            account_uuid: memberAccount.uuid,
-            debit: totalAmountDue,
-            credit: '0.00',
-            description: t('registrationPanel.accounting.memberDebitLine'),
-            member_uuid: member.uuid,
-          },
-          ...selectedPricingItems.map((item) => ({
-            account_uuid: item.gl_account_credit_uuid as string,
-            debit: '0.00',
-            credit: item.base_price,
-            description: item.name,
-            member_uuid: member.uuid,
-          })),
-        ],
-      })
-    } else {
-      setLocalError(t('registrationPanel.accounting.fiscalYearMissing', { year }))
-      return
     }
 
     onCompleted(member.uuid)
@@ -461,7 +399,7 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                         key={committee.uuid}
                         type="button"
                         onClick={() => toggleCommittee(committee.uuid)}
-                        disabled={completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending}
+                        disabled={completeRegistrationMutation.isPending}
                         className={[
                           'rounded-shape-md border p-3 text-left transition-colors',
                           selected
@@ -555,10 +493,10 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
               </Button>
               <Button
                 type="button"
-                disabled={!canValidate || completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending}
+                disabled={!canValidate || completeRegistrationMutation.isPending}
                 onClick={handleValidate}
               >
-                {completeRegistrationMutation.isPending || createAccountingEntryMutation.isPending
+                {completeRegistrationMutation.isPending
                   ? t('registrationPanel.actions.validating')
                   : t('registrationPanel.actions.validate')}
               </Button>

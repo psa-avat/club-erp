@@ -32,6 +32,8 @@ interface SearchableSelectProps {
   options: SearchableSelectOption[]
   value?: string
   onChange: (value: string) => void
+  clearable?: boolean
+  clearLabel?: string
   placeholder?: string
   searchPlaceholder?: string
   noResultsText?: string
@@ -44,6 +46,8 @@ function SearchableSelect({
   options,
   value,
   onChange,
+  clearable = false,
+  clearLabel = 'Clear selection',
   placeholder = 'Sélectionner…',
   searchPlaceholder = 'Rechercher…',
   noResultsText = 'Aucun résultat',
@@ -106,22 +110,51 @@ function SearchableSelect({
         )}
       >
         <span className="truncate">{selected?.label ?? placeholder}</span>
-        <svg
-          aria-hidden="true"
-          className={cn(
-            'ml-2 h-4 w-4 shrink-0 text-on-surface-variant transition-transform',
-            open && 'rotate-180',
-          )}
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
+        <span className="ml-2 flex items-center gap-1">
+          {clearable && selected && !disabled ? (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={clearLabel}
+              title={clearLabel}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onChange('')
+                close()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onChange('')
+                  close()
+                }
+              }}
+              className="inline-flex h-4 w-4 items-center justify-center rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+            >
+              <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                <path fillRule="evenodd" d="M4.22 4.22a.75.75 0 011.06 0L10 8.94l4.72-4.72a.75.75 0 111.06 1.06L11.06 10l4.72 4.72a.75.75 0 11-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 11-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+              </svg>
+            </span>
+          ) : null}
+          <svg
+            aria-hidden="true"
+            className={cn(
+              'h-4 w-4 shrink-0 text-on-surface-variant transition-transform',
+              open && 'rotate-180',
+            )}
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
       </button>
 
       {/* Dropdown */}

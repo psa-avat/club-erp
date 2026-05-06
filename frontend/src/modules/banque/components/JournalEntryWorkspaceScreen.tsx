@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import Decimal from 'decimal.js'
 import { useNavigate } from 'react-router-dom'
@@ -31,7 +31,7 @@ import { SectionHeader } from '../../../components/ui/section-header'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import { useMembersQuery } from '../../members/api'
 import {
-  useAccountingEntriesQuery,
+  useAccountingEntryQuery,
   useAccountsQuery,
   useCreateAccountingEntryMutation,
   useFiscalYearsQuery,
@@ -66,9 +66,10 @@ import { ReversalDialog } from './ReversalDialog'
 
 type Props = {
   entryUuid?: string | null
+  entryFiscalYearUuid?: string | null
 }
 
-export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
+export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearUuid = null }: Props) {
   const navigate = useNavigate()
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
@@ -84,7 +85,10 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
-  const [entryForm, setEntryForm] = useState<EntryFormState>(() => emptyEntryForm(today))
+  const [entryForm, setEntryForm] = useState<EntryFormState>(() => ({
+    ...emptyEntryForm(today),
+    fiscal_year_uuid: entryFiscalYearUuid ?? '',
+  }))
   const [selectedEntryUuid, setSelectedEntryUuid] = useState<string | null>(entryUuid)
   const [selectedPriceVersionUuid, setSelectedPriceVersionUuid] = useState('')
   const [selectedPriceItemUuid, setSelectedPriceItemUuid] = useState('')
@@ -103,16 +107,12 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   
   const members = allMembers
 
-  // Derive a minimal filter to load the forced entry when a UUID is provided
-  const forcedEntryFilters = useMemo(
-    () => (entryUuid && entryForm.fiscal_year_uuid ? { fiscal_year_uuid: entryForm.fiscal_year_uuid, limit: 200 } : undefined),
-    [entryUuid, entryForm.fiscal_year_uuid],
+  const forcedEntryFiscalYearUuid = entryFiscalYearUuid || entryForm.fiscal_year_uuid || null
+  const forcedEntryQuery = useAccountingEntryQuery(
+    entryUuid,
+    forcedEntryFiscalYearUuid,
+    canView && Boolean(entryUuid && forcedEntryFiscalYearUuid),
   )
-  const entriesQuery = useAccountingEntriesQuery(
-    forcedEntryFilters ?? {},
-    canView && Boolean(forcedEntryFilters),
-  )
-  const entries = entriesQuery.data ?? []
 
   const pricingVersionsQuery = usePricingVersionsQuery(
     entryForm.fiscal_year_uuid || null,
@@ -126,7 +126,9 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
   const pricingVersions = pricingVersionsQuery.data ?? []
   const pricingItems = pricingItemsQuery.data ?? []
 
-  const selectedEntry = entries.find((entry) => entry.uuid === selectedEntryUuid) ?? null
+  const selectedEntry = forcedEntryQuery.data && forcedEntryQuery.data.uuid === selectedEntryUuid
+    ? forcedEntryQuery.data
+    : null
   const selectedPricingItem = pricingItems.find((item) => item.uuid === selectedPriceItemUuid) ?? null
 
   const createEntryMutation = useCreateAccountingEntryMutation()
@@ -160,10 +162,10 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
 
   // Seed fiscal year default from global store once on mount
   useEffect(() => {
-    if (activeFiscalYearUuid && entryForm.fiscal_year_uuid === '') {
+    if (!entryFiscalYearUuid && activeFiscalYearUuid && entryForm.fiscal_year_uuid === '') {
       setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: activeFiscalYearUuid }))
     }
-  }, [activeFiscalYearUuid, entryForm.fiscal_year_uuid])
+  }, [activeFiscalYearUuid, entryFiscalYearUuid, entryForm.fiscal_year_uuid])
 
   useEffect(() => {
     if (journals.length > 0 && entryForm.journal_uuid === '') {
@@ -173,13 +175,21 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null }: Props) {
 
   // Load entry when forced by URL param
   useEffect(() => {
-    if (!entryUuid || entries.length === 0) return
-    const forced = entries.find((entry) => entry.uuid === entryUuid)
+    if (!entryUuid) return
+    setSelectedEntryUuid(entryUuid)
+    if (entryFiscalYearUuid) {
+      setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: entryFiscalYearUuid }))
+    }
+  }, [entryUuid, entryFiscalYearUuid])
+
+  // Load entry when forced by URL param
+  useEffect(() => {
+    const forced = forcedEntryQuery.data
     if (!forced) return
     setSelectedEntryUuid(forced.uuid)
     setEntryForm(mapEntryToForm(forced))
     setLocalError(null)
-  }, [entries, entryUuid])
+  }, [forcedEntryQuery.data])
 
   function updateEntryLine(index: number, patch: Partial<LineFormState>) {
     setEntryForm((prev) => ({

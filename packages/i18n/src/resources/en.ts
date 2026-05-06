@@ -560,6 +560,7 @@ export const en = {
         selectTiers: 'Select a third party (optional)',
         searchTiers: 'Search a third party…',
         noTiersResults: 'No matching third party found.',
+        clearTiers: 'Clear third party',
         total: 'Total',
         balanced: 'Balanced entry',
         unbalanced: 'Unbalanced entry',
