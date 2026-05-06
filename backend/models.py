@@ -668,12 +668,12 @@ class AccountingJournal(Base):
     """Journal classification for accounting entries."""
 
     __tablename__ = "accounting_journals"
-    __table_args__ = (CheckConstraint("type IN (1, 2, 3, 4, 5, 6)", name="chk_journal_type"),)
+    __table_args__ = (CheckConstraint("type IN (1, 2, 3, 4, 5, 6, 7)", name="chk_journal_type"),)
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     code = Column(String(10), nullable=False, unique=True, index=True)
     name = Column(String(100), nullable=False)
-    type = Column(SmallInteger, nullable=False)  # 1=Sale,2=Purchase,3=Bank,4=Cash,5=General,6=Opening
+    type = Column(SmallInteger, nullable=False)  # 1=Sale,2=Purchase,3=Bank,4=Cash,5=General,6=Opening,7=Flights
     default_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
