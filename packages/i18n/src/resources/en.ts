@@ -494,6 +494,8 @@ export const en = {
         saving: 'Saving...',
         cancel: 'Cancel',
         editTitle: 'Edit',
+        editMetaTitle: 'Edit properties',
+        notFound: 'Pricing version not found.',
         deleteTitle: 'Delete',
         confirmDeleteTitle: 'Delete version?',
         activate: 'Activate',

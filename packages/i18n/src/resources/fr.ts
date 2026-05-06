@@ -494,6 +494,8 @@ export const fr = {
         saving: 'Enregistrement...',
         cancel: 'Annuler',
         editTitle: 'Modifier',
+        editMetaTitle: 'Modifier les propriétés',
+        notFound: 'Version tarifaire introuvable.',
         deleteTitle: 'Supprimer',
         confirmDeleteTitle: 'Supprimer la version ?',
         activate: 'Activer',

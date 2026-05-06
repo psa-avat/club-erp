@@ -6,5 +6,6 @@ export { BanqueJournalEntryWorkspacePage } from './components/BanqueJournalEntry
 export { BanqueJournalTemplatesPage } from './components/BanqueJournalTemplatesPage'
 export { BanqueSettingsPage } from './components/BanqueSettingsPage'
 export { BankPricingPage } from './components/BankPricingPage'
+export { BankPricingVersionEditPage } from './components/BankPricingVersionEditPage'
 export { BanquePcgPage } from './components/BanquePcgPage'
 export { FinancialReportsPage } from './components/FinancialReportsPage'

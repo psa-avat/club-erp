@@ -11,6 +11,7 @@ import {
   BanqueJournalTemplatesPage,
   BanqueSettingsPage,
   BankPricingPage,
+  BankPricingVersionEditPage,
   BanquePcgPage,
   FinancialReportsPage,
 } from './modules/banque'
@@ -51,6 +52,7 @@ function App() {
           <Route path="/banque/journal/templates" element={<BanqueJournalTemplatesPage />} />
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
+          <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
           <Route path="/banque/pcg" element={<BanquePcgPage />} />
           <Route path="/banque/reports" element={<FinancialReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />
