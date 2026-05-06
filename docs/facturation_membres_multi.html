@@ -1,0 +1,425 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);background:var(--color-background-tertiary);color:var(--color-text-primary)}
+.app{display:flex;flex-direction:column;min-height:600px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);flex-shrink:0}
+.topbar-brand{font-size:15px;font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-text-secondary)}
+.fy-badge{background:#D1FAE5;color:#065F46;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:500}
+.avatar{width:28px;height:28px;border-radius:50%;background:#1a1a2e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500}
+
+.body{display:flex;flex:1}
+.sidebar{width:190px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:12px 0}
+.nav-group{font-size:11px;font-weight:500;color:var(--color-text-tertiary);padding:14px 16px 4px;text-transform:uppercase;letter-spacing:0.06em}
+.nav-item{display:block;padding:7px 16px;font-size:13px;color:var(--color-text-secondary)}
+.nav-item.active{background:#1a1a2e;color:#fff;font-weight:500}
+.nav-item.sub{padding-left:24px}
+
+.content{flex:1;padding:24px 28px;overflow-y:auto}
+.breadcrumb{font-size:13px;color:var(--color-text-secondary);margin-bottom:16px;cursor:pointer}
+
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
+.page-title{font-size:20px;font-weight:500}
+.page-sub{font-size:13px;color:var(--color-text-secondary);margin-top:3px}
+
+.step-bar{display:flex;gap:0;margin-bottom:24px}
+.step{display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:13px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);flex:1}
+.step:first-child{border-radius:var(--border-radius-md) 0 0 var(--border-radius-md)}
+.step:last-child{border-radius:0 var(--border-radius-md) var(--border-radius-md) 0}
+.step+.step{border-left:none}
+.step-num{width:20px;height:20px;border-radius:50%;background:var(--color-background-secondary);font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--color-text-secondary)}
+.step.active .step-num{background:#1a1a2e;color:#fff}
+.step.done .step-num{background:#D1FAE5;color:#065F46}
+.step-label{font-size:12px;color:var(--color-text-secondary)}
+.step.active .step-label{color:var(--color-text-primary);font-weight:500}
+.step.done .step-label{color:#065F46}
+
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);margin-bottom:14px}
+.card-head{padding:12px 16px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:13px;font-weight:500}
+.card-body{padding:16px}
+
+.form-row{display:grid;gap:12px;margin-bottom:12px}
+.form-row.cols-4{grid-template-columns:1fr 1fr 1fr 1fr}
+.form-row.cols-3{grid-template-columns:1fr 1fr 1fr}
+.form-row.cols-2{grid-template-columns:1fr 1fr}
+label{font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px}
+input,select,textarea{width:100%;font-size:13px;padding:6px 10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary)}
+input:focus,select:focus{outline:none;border-color:#1a1a2e}
+
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;cursor:pointer;color:var(--color-text-primary)}
+.btn-sm:hover{background:var(--color-background-secondary)}
+.btn-primary{padding:6px 14px;font-size:13px;border-radius:var(--border-radius-md);border:none;background:#1a1a2e;color:#fff;cursor:pointer;font-weight:500}
+.btn-primary:hover{opacity:0.85}
+.btn-ghost{padding:4px 10px;font-size:12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:transparent;cursor:pointer;color:var(--color-text-secondary)}
+.btn-ghost:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.btn-danger{padding:4px 8px;font-size:12px;border-radius:var(--border-radius-md);border:0.5px solid #FCA5A5;background:transparent;cursor:pointer;color:#B91C1C}
+.btn-danger:hover{background:#FEE2E2}
+
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.b-draft{background:#FEF3C7;color:#92400E}
+.b-ok{background:#D1FAE5;color:#065F46}
+.b-info{background:#DBEAFE;color:#1E40AF}
+
+/* Article selector */
+.article-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{padding:5px 12px;border-radius:20px;font-size:12px;border:0.5px solid var(--color-border-secondary);cursor:pointer;background:var(--color-background-primary);color:var(--color-text-secondary)}
+.chip:hover{border-color:#1a1a2e;color:var(--color-text-primary)}
+.chip.selected{background:#1a1a2e;color:#fff;border-color:#1a1a2e}
+
+/* Member table */
+.member-table{width:100%;border-collapse:collapse;font-size:13px}
+.member-table th{font-size:11px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.04em;padding:6px 10px;text-align:left;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.member-table td{padding:8px 10px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:middle}
+.member-table tr:last-child td{border-bottom:none}
+.member-table input[type=text]{padding:4px 8px;font-size:13px}
+.member-table input[type=number]{padding:4px 8px;font-size:13px;width:80px}
+.member-select{display:flex;align-items:center;gap:8px}
+.member-avatar{width:26px;height:26px;border-radius:50%;background:#E0E7FF;color:#3730A3;font-size:10px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.discount-tag{font-size:11px;color:#065F46;background:#D1FAE5;padding:1px 6px;border-radius:10px;white-space:nowrap}
+
+/* Accounting preview */
+.acct-table{width:100%;border-collapse:collapse;font-size:13px}
+.acct-table th{font-size:11px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.04em;padding:6px 10px;text-align:left;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.acct-table td{padding:8px 10px;border-bottom:0.5px solid var(--color-border-tertiary);font-size:13px}
+.acct-table tr:last-child td{border-bottom:none}
+.acct-table .debit{color:#065F46;font-weight:500;text-align:right}
+.acct-table .credit{color:#B91C1C;font-weight:500;text-align:right}
+.acct-table .total-row td{font-weight:500;background:var(--color-background-secondary);font-size:12px}
+.balance-ok{color:#065F46;font-size:12px;font-weight:500}
+
+.sticky-bar{position:sticky;bottom:0;background:var(--color-background-primary);border-top:0.5px solid var(--color-border-tertiary);padding:12px 28px;display:flex;align-items:center;justify-content:space-between;margin:0 -28px}
+.sticky-summary{font-size:13px;color:var(--color-text-secondary)}
+.sticky-summary b{color:var(--color-text-primary)}
+
+.warn-box{background:#FFFBEB;border:0.5px solid #FCD34D;border-radius:var(--border-radius-md);padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:12px}
+</style>
+
+<h2 class="sr-only">Facturation membres — nouvelle écriture VT multi-membres</h2>
+
+<div class="app">
+  <div class="topbar">
+    <span class="topbar-brand">Club ERP</span>
+    <div class="topbar-right">
+      <span>FR ▾</span><span style="color:var(--color-border-secondary)">|</span>
+      <span class="fy-badge">Open</span><span>FY2026 ▾</span>
+      <span style="color:var(--color-border-secondary)">|</span>
+      <div class="avatar">PS</div>
+      <span style="color:var(--color-text-primary);font-size:13px">Patrick SAFORCADA</span>
+    </div>
+  </div>
+  <div class="body">
+    <nav class="sidebar">
+      <div class="nav-item sub">Dashboard</div>
+      <div class="nav-item sub">Club</div>
+      <div class="nav-item sub">Planning</div>
+      <div class="nav-group">Banque</div>
+      <div class="nav-item sub">Aperçu</div>
+      <div class="nav-item sub active">Opérations</div>
+      <div class="nav-item sub">Journal</div>
+      <div class="nav-item sub">Tarification</div>
+      <div class="nav-item sub">Plan comptable</div>
+      <div class="nav-item sub">Paramètres</div>
+      <div class="nav-group">Admin</div>
+    </nav>
+
+    <main class="content">
+      <div class="breadcrumb">← Opérations quotidiennes &nbsp;/&nbsp; Ventes membres</div>
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Nouvelle facturation membres</div>
+          <div class="page-sub">Écriture VT multi-membres — repas, cartes, cotisations, services</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge b-draft">Brouillon</span>
+          <button class="btn-sm">Réinitialiser</button>
+        </div>
+      </div>
+
+      <!-- Stepper -->
+      <div class="step-bar" id="stepper">
+        <div class="step done" data-step="1">
+          <div class="step-num">✓</div>
+          <div class="step-label">Article & tarif</div>
+        </div>
+        <div class="step active" data-step="2">
+          <div class="step-num">2</div>
+          <div class="step-label">Membres & montants</div>
+        </div>
+        <div class="step" data-step="3">
+          <div class="step-num">3</div>
+          <div class="step-label">En-tête écriture</div>
+        </div>
+        <div class="step" data-step="4">
+          <div class="step-num">4</div>
+          <div class="step-label">Aperçu & validation</div>
+        </div>
+      </div>
+
+      <!-- STEP 1 - Article & tarif (collapsed/done) -->
+      <div id="step1-done" class="card" style="margin-bottom:14px">
+        <div class="card-head">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="card-title">Article & tarif sélectionnés</span>
+            <span class="badge b-ok">VT2026-A · Repas AG</span>
+            <span class="badge b-info">Compte 7067 · 15,00 €/pers.</span>
+          </div>
+          <button class="btn-ghost" onclick="showStep(1)">Modifier</button>
+        </div>
+      </div>
+
+      <!-- STEP 1 - expanded (hidden by default here, shown on Modifier) -->
+      <div id="step1-form" class="card" style="display:none;margin-bottom:14px">
+        <div class="card-head"><span class="card-title">1 — Article & tarif</span></div>
+        <div class="card-body">
+          <div class="form-row cols-2">
+            <div>
+              <label>Version tarifaire</label>
+              <select><option>VT2026-A — Tarifs AG & événements 2026</option><option>VT2026-B — Tarifs vols 2026</option></select>
+            </div>
+            <div>
+              <label>Article</label>
+              <select><option>Repas AG — 15,00 € · 7067</option><option>Carte de membre — 10,00 € · 7561</option><option>Cotisation annuelle — 180,00 € · 7061</option></select>
+            </div>
+          </div>
+          <div>
+            <label style="margin-bottom:6px">Sélection rapide</label>
+            <div class="article-chips">
+              <span class="chip selected">Repas AG · 15 €</span>
+              <span class="chip">Carte de membre · 10 €</span>
+              <span class="chip">Cotisation annuelle · 180 €</span>
+              <span class="chip">Cours théorie · 25 €</span>
+              <span class="chip">Forfait week-end · 45 €</span>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end">
+            <button class="btn-primary" onclick="showStep(2)">Confirmer l'article →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2 - Membres & montants (active) -->
+      <div id="step2-form" class="card" style="margin-bottom:14px">
+        <div class="card-head">
+          <span class="card-title">2 — Membres à facturer</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--color-text-secondary)" id="member-count">4 membres · 60,00 €</span>
+            <button class="btn-ghost" id="btn-add-member" onclick="addMember()">+ Ajouter membre</button>
+            <button class="btn-ghost" onclick="sendPrompt('Comment importer une liste de membres depuis une sélection ou un groupe pour la facturation en lot ?')">Import liste ↗</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table class="member-table" id="member-table">
+            <thead>
+              <tr>
+                <th style="width:36%">Membre</th>
+                <th style="width:20%">Article / Prestation</th>
+                <th style="width:10%">Qté</th>
+                <th style="width:13%">P.U.</th>
+                <th style="width:12%">Total</th>
+                <th style="width:9%">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="member-tbody">
+              <tr>
+                <td><div class="member-select"><div class="member-avatar">ML</div><select style="flex:1"><option>Lefèvre Marc — M-0142</option></select></div></td>
+                <td><select style="font-size:12px"><option>Repas AG</option></select></td>
+                <td><input type="number" value="1" min="1" style="width:56px" onchange="recalc()"></td>
+                <td><input type="text" value="15,00 €" style="width:80px;background:var(--color-background-secondary);color:var(--color-text-secondary)" readonly></td>
+                <td style="font-weight:500" class="total-cell">15,00 €</td>
+                <td><button class="btn-danger" onclick="delRow(this)">✕</button></td>
+              </tr>
+              <tr>
+                <td><div class="member-select"><div class="member-avatar">RE</div><select style="flex:1"><option>Rousseau Élodie — M-0087</option></select></div></td>
+                <td><select style="font-size:12px"><option>Repas AG</option></select></td>
+                <td><input type="number" value="1" min="1" style="width:56px" onchange="recalc()"></td>
+                <td><input type="text" value="15,00 €" style="width:80px;background:var(--color-background-secondary);color:var(--color-text-secondary)" readonly></td>
+                <td style="font-weight:500" class="total-cell">15,00 €</td>
+                <td><button class="btn-danger" onclick="delRow(this)">✕</button></td>
+              </tr>
+              <tr>
+                <td><div class="member-select"><div class="member-avatar">DM</div><select style="flex:1"><option>Dupont Michel — M-0034</option></select><span class="discount-tag">−25%</span></div></td>
+                <td><select style="font-size:12px"><option>Repas AG</option></select></td>
+                <td><input type="number" value="2" min="1" style="width:56px" onchange="recalc()"></td>
+                <td><input type="text" value="11,25 €" style="width:80px;background:#D1FAE5;color:#065F46" readonly></td>
+                <td style="font-weight:500;color:#065F46" class="total-cell">22,50 €</td>
+                <td><button class="btn-danger" onclick="delRow(this)">✕</button></td>
+              </tr>
+              <tr>
+                <td><div class="member-select"><div class="member-avatar">GP</div><select style="flex:1"><option>Garcia Pablo — M-0201</option></select></div></td>
+                <td><select style="font-size:12px"><option>Repas AG</option><option selected>Carte de membre</option></select></td>
+                <td><input type="number" value="1" min="1" style="width:56px" onchange="recalc()"></td>
+                <td><input type="text" value="10,00 €" style="width:80px;background:var(--color-background-secondary);color:var(--color-text-secondary)" readonly></td>
+                <td style="font-weight:500" class="total-cell">10,00 €</td>
+                <td><button class="btn-danger" onclick="delRow(this)">✕</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding:10px 16px;border-top:0.5px solid var(--color-border-tertiary);display:flex;justify-content:space-between;align-items:center;background:var(--color-background-secondary)">
+            <span style="font-size:12px;color:var(--color-text-secondary)">Dupont Michel bénéficie du tarif jeune (−25%) · calculé automatiquement depuis la date de naissance</span>
+            <span style="font-size:13px;font-weight:500">Total : <span id="grand-total">62,50 €</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3 - En-tête (collapsed/next) -->
+      <div id="step3-form" class="card" style="margin-bottom:14px">
+        <div class="card-head">
+          <span class="card-title">3 — En-tête de l'écriture</span>
+          <span style="font-size:12px;color:var(--color-text-secondary)">Renseigner après validation des membres</span>
+        </div>
+        <div class="card-body">
+          <div class="form-row cols-4">
+            <div><label>Exercice fiscal</label><select><option>FY2026</option></select></div>
+            <div><label>Journal</label><select><option selected>VT — Journal des ventes</option><option>OD — Opérations diverses</option></select></div>
+            <div><label>Date écriture</label><input type="date" value="2026-05-06"></div>
+            <div><label>Référence</label><input type="text" placeholder="VT-2026-0xx"></div>
+          </div>
+          <div class="form-row cols-2" style="margin-bottom:0">
+            <div><label>Libellé</label><input type="text" value="Repas AG 2026 — lot membres" placeholder="Libellé de l'écriture"></div>
+            <div><label>Modèle (optionnel)</label><select><option value="">— Aucun modèle —</option><option>Repas AG annuel</option><option>Vente cartes de membre</option></select></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4 - Aperçu écritures (collapsed/next) -->
+      <div id="step4-form" class="card" style="margin-bottom:80px">
+        <div class="card-head">
+          <span class="card-title">4 — Aperçu des lignes comptables</span>
+          <span class="badge b-ok" id="balance-badge">Équilibré ✓</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table class="acct-table">
+            <thead>
+              <tr>
+                <th style="width:12%">Compte</th>
+                <th style="width:28%">Libellé ligne</th>
+                <th style="width:18%">Tiers (membre)</th>
+                <th style="width:14%">Débit</th>
+                <th style="width:14%">Crédit</th>
+                <th style="width:14%">Analytique</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span style="font-family:var(--font-mono);font-size:12px">411</span></td>
+                <td>Repas AG — Lefèvre Marc</td>
+                <td style="color:var(--color-text-secondary);font-size:12px">M-0142</td>
+                <td class="debit">15,00 €</td><td>—</td><td>—</td>
+              </tr>
+              <tr>
+                <td><span style="font-family:var(--font-mono);font-size:12px">411</span></td>
+                <td>Repas AG — Rousseau Élodie</td>
+                <td style="color:var(--color-text-secondary);font-size:12px">M-0087</td>
+                <td class="debit">15,00 €</td><td>—</td><td>—</td>
+              </tr>
+              <tr>
+                <td><span style="font-family:var(--font-mono);font-size:12px">411</span></td>
+                <td>Repas AG — Dupont Michel (×2, −25%)</td>
+                <td style="color:var(--color-text-secondary);font-size:12px">M-0034</td>
+                <td class="debit">22,50 €</td><td>—</td><td>—</td>
+              </tr>
+              <tr>
+                <td><span style="font-family:var(--font-mono);font-size:12px">411</span></td>
+                <td>Carte membre — Garcia Pablo</td>
+                <td style="color:var(--color-text-secondary);font-size:12px">M-0201</td>
+                <td class="debit">10,00 €</td><td>—</td><td>—</td>
+              </tr>
+              <tr>
+                <td><span style="font-family:var(--font-mono);font-size:12px">7067</span></td>
+                <td>Produit repas — AG 2026</td>
+                <td>—</td>
+                <td>—</td><td class="credit">52,50 €</td><td>—</td>
+              </tr>
+              <tr>
+                <td><span style="font-family:var(--font-mono);font-size:12px">7561</span></td>
+                <td>Produit cartes de membre</td>
+                <td>—</td>
+                <td>—</td><td class="credit">10,00 €</td><td>—</td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="3" style="text-align:right;font-size:12px">Totaux</td>
+                <td class="debit">62,50 €</td>
+                <td class="credit">62,50 €</td>
+                <td><span class="balance-ok">✓ Équilibré</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding:10px 16px;border-top:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);font-size:12px;color:var(--color-text-secondary)">
+            Comptes 411 résolus depuis la configuration journal VT · Dimensions membre (member_uuid, snapshot) appliquées automatiquement
+          </div>
+        </div>
+      </div>
+
+      <!-- Sticky bar -->
+      <div class="sticky-bar">
+        <div class="sticky-summary">
+          <b>4 membres</b> · <b id="bar-total">62,50 €</b> · Journal VT · FY2026
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sm">Enregistrer brouillon</button>
+          <button class="btn-primary" onclick="sendPrompt('Valider et comptabiliser l\'écriture VT multi-membres — que se passe-t-il ensuite ?')">Comptabiliser l'écriture ↗</button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+function showStep(n) {
+  if (n === 1) {
+    document.getElementById('step1-done').style.display = 'none';
+    document.getElementById('step1-form').style.display = '';
+  }
+  if (n === 2) {
+    document.getElementById('step1-done').style.display = '';
+    document.getElementById('step1-form').style.display = 'none';
+  }
+}
+
+function delRow(btn) {
+  btn.closest('tr').remove();
+  recalc();
+}
+
+function addMember() {
+  const tbody = document.getElementById('member-tbody');
+  const initials = ['BF','ND','CL'];
+  const names = ['Bonnet François — M-0312','Nguyen David — M-0298','Callot Lucie — M-0177'];
+  const idx = tbody.querySelectorAll('tr').length % 3;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><div class="member-select"><div class="member-avatar">${initials[idx]}</div><select style="flex:1"><option>${names[idx]}</option></select></div></td>
+    <td><select style="font-size:12px"><option>Repas AG</option><option>Carte de membre</option></select></td>
+    <td><input type="number" value="1" min="1" style="width:56px" onchange="recalc()"></td>
+    <td><input type="text" value="15,00 €" style="width:80px;background:var(--color-background-secondary);color:var(--color-text-secondary)" readonly></td>
+    <td style="font-weight:500" class="total-cell">15,00 €</td>
+    <td><button class="btn-danger" onclick="delRow(this)">✕</button></td>`;
+  tbody.appendChild(tr);
+  recalc();
+}
+
+function recalc() {
+  const rows = document.querySelectorAll('#member-tbody tr');
+  let total = 0;
+  rows.forEach(row => {
+    const qty = parseInt(row.querySelector('input[type=number]')?.value || 1);
+    const puText = row.querySelector('input[type=text]')?.value || '15,00';
+    const pu = parseFloat(puText.replace(/[^\d,]/g,'').replace(',','.')) || 15;
+    const line = qty * pu;
+    total += line;
+    const tc = row.querySelector('.total-cell');
+    if (tc) tc.textContent = line.toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+  });
+  const fmt = total.toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+  const el = document.getElementById('grand-total');
+  if (el) el.textContent = fmt;
+  const bar = document.getElementById('bar-total');
+  if (bar) bar.textContent = fmt;
+  const mc = document.getElementById('member-count');
+  if (mc) mc.textContent = rows.length + ' membres · ' + fmt;
+}
+</script>
