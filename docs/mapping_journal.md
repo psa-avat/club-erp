@@ -35,12 +35,7 @@ Used for the initial balance of the fiscal year.
 *   **Assets (Dr):** `212` (Agencements), `215` (Installations), `2185` (Aéronefs), `272` (Titres), `322` (Stocks), `512` (Banque), `530` (Caisse).
 *   **Liabilities/Equity (Cr):** `102` (Fonds associatif), `110` (Report à nouveau), `120` (Résultat), `131` (Subventions équipement), `151` (Provisions), `164` (Emprunts), `401` (Fournisseurs).
 
-## 7. AC - Auto-Cost (Provisions Maintenance)
-Used for real-time or batch maintenance cost accruals based on flight metrics.
-*   **Debit side (Expense):** `681` (Dotations aux amortissements).
-*   **Credit side (Balance Sheet):** `281` (Amortissements immob. corporelles), `288` (Amortissements autres immob.).
-
-## 8. FL - Flights (Vols)
+## 7. FL - Flights (Vols)
 Specialized sales journal dedicated to automated flight billing.
 *   **Debit side:** `411` (Membres - Créances).
 *   **Credit side (Revenue):** `7062` (Activité vol - Heures cellule), `7063` (Produit des lancements).
@@ -57,5 +52,4 @@ Specialized sales journal dedicated to automated flight billing.
 | **CS** | Cash | Cash | 530 / 531 | 4xx / 7xx |
 | **OD** | Misc Ops | General | 64x / 1xx / 4xx | 4xx / 1xx |
 | **AN** | Opening | Opening | 2xx / 3xx / 5xx | 1xx / 4xx |
-| **AC** | Auto-Cost | Auto-Cost | 681 | 281 / 288 |
 | **FL** | Flights | Flight | 411 | 7062 / 7063 |

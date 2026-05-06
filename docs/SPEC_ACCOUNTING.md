@@ -50,7 +50,6 @@ Minimum journal codes:
 - CS (cash)
 - OD (misc operations)
 - AN (opening/carry-forward)
-- AC (auto-cost, for cost provision real-time entries)
 - FL (flights)
 
 Journal type enum values:
@@ -60,8 +59,7 @@ Journal type enum values:
 - 4 = Cash
 - 5 = General
 - 6 = Opening
-- 7 = Auto-Cost
-- 8 = Flight
+- 7 = Flight
 
 
 ### 3.4 Pricing Version
@@ -351,6 +349,7 @@ When a flight is recorded with asset metrics (e.g., engine hours, launches):
    - Calculate cost accrual: `metric_value × cost_per_unit`
    - If `accrual_method` = Real-time:
      - Generate Draft accounting entry (journal AC or configurable)
+     - Generate Draft accounting entry (journal OD or configurable)
      - Debit GL account from rule
      - Credit GL account from rule
      - Link to flight record (source_document_ref = flight_uuid)
