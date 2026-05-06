@@ -128,7 +128,7 @@ export const fr = {
       registrationStateRegistered: 'Inscrit pour l\'année',
       registrationStateUnregistered: 'Non inscrit pour l\'année',
       roleFlags: 'Drapeaux de rôle',
-      activeOnly: 'Membres actifs seulement',
+      activeOnly: 'Statut opérationnel actif seulement',
       apply: 'Appliquer',
       clear: 'Effacer',
       yearRequiredForState: "Sélectionnez une année pour filtrer par état d'inscription.",
@@ -137,7 +137,7 @@ export const fr = {
       title: 'Annuaire des membres',
       description: 'Parcourez les fiches existantes et ouvrez-en une pour modifier les détails.',
       showAllMembers: 'Afficher tous les membres',
-      showActiveOnly: 'Afficher seulement les actifs',
+      showActiveOnly: 'Afficher uniquement les membres actifs',
       paginationSummary: '{{start}}-{{end}} sur {{total}} (page {{page}}/{{pages}})',
       committees: 'Commissions',
       canFly: 'Peut voler',
@@ -292,6 +292,7 @@ export const fr = {
       externalPilot: 'Pilote externe',
       volunteer: 'Bénévole',
       externalOrganization: 'Organisation externe',
+      clientSupplier: 'Client / fournisseur',
     },
     statuses: {
       active: 'Actif',
@@ -387,6 +388,13 @@ export const fr = {
       },
       committees: {
         helper: 'Les membres doivent contribuer à au moins une commission de fonctionnement.',
+      },
+      currentYear: {
+        title: 'Statut année {{year}}',
+        statusLabel: 'État actuel : {{status}}',
+        cancelAction: 'Annuler l inscription année courante',
+        reactivateAction: 'Réactiver l inscription année courante',
+        updating: 'Mise à jour…',
       },
       actions: {
         validate: "Valider & activer l'inscription",

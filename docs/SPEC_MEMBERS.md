@@ -19,10 +19,11 @@ This module does not create rows in the existing `users` table. Member access is
 
 The following decisions are confirmed and drive the design:
 
-1. Full member, temporary member, non-flying member, short-period member, external pilot, and volunteer are all member categories that must be stored.
+1. Full member, temporary member, non-flying member, short-period member, external pilot, volunteer, external organization, and client or supplier are all supported categories that must be stored.
 2. Instructor, employee, executive, and board are role flags, not the primary member type.
 3. Committee membership is enforced after registration completion, not at draft creation time.
 4. Member authentication is specific to members and separate from ERP staff authentication. `account_id` is also used as the ledger identity.
+5. Member category, operational status, and current-year registration status are distinct concerns and must not be merged in filters or forms.
 
 ## Goals
 
@@ -50,10 +51,11 @@ Each member has:
 - a UUID primary key
 - a unique business identifier `account_id`
 - a member category
+- an operational status
+- a current-year registration summary field maintained from registration records
 - zero or more operational role flags
 - contact and identity fields
-- lifecycle state
-- profile/onboarding completion state
+- lifecycle compatibility fields
 
 ### 2. Member Role Flags
 
@@ -99,7 +101,7 @@ There is at most one member sheet per member per year.
 
 Registration is a distinct dated validity period, not a single field on `members`.
 
-It is separate from `registration_status`, which tracks the overall member profile/onboarding lifecycle (draft → completed) and must not be used to decide whether the member is registered for the active year.
+It is separate from `registration_status` on `members`. In V2, `registration_status` is treated as a compatibility summary for the selected or current year and is recomputed from `member_registrations`. Admin reversals must happen by updating the underlying registration row, not by editing the summary field directly.
 
 A registration record:
 
@@ -156,6 +158,8 @@ All enumerations are stored as `SMALLINT`, consistent with project rules.
 - `4` = Short Period Member
 - `5` = External Pilot
 - `6` = Volunteer
+- `7` = External Organization
+- `8` = Client / Supplier
 
 ### Gender
 
@@ -445,15 +449,16 @@ Behavior:
 
 ## Registration Rules
 
-### Member Lifecycle Registration (`registration_status`)
+### Current-Year Registration Summary (`registration_status`)
 
-Registration completion is tracked with `registration_status` on the `members` table.
+`registration_status` on `members` is a compatibility summary derived from registration rows for the relevant year.
 
 Rules:
 
 - draft members can exist without committee assignment
-- a member cannot be marked `Completed` unless at least one committee membership exists for the relevant registration year
+- a member cannot have a year marked `Completed` unless at least one committee membership exists for the relevant registration year
 - yearly committee membership should be renewed explicitly, not inferred forever from previous years
+- admin reversal is done by changing the year registration row status; the member summary field follows that mutation
 
 ### Annual Re-Registration Workflow
 
@@ -466,7 +471,6 @@ This workflow is distinct from the initial member lifecycle and may be triggered
 The following must be true before a yearly registration is accepted:
 
 - member `status` is `Active`
-- member `registration_status` is `Completed`
 - no active `member_registrations` period already covers the exact same `(member_uuid, start_date, end_date)`
 - at least one committee membership exists for the target year
 - at least one active `price_list` row exists for the target year (matching the member's category or universal)
@@ -477,7 +481,7 @@ The following must be true before a yearly registration is accepted:
 2. **Create `member_registrations` row** — records `start_date`, `end_date`, `registered_for_year`, `registration_type`, `registered_by`, and `registered_at`.
 3. **Create `accounting_writings` rows** — one row per resolved price list entry, snapshotting `label`, `amount`, and `account_id`.
 4. **Create or confirm `member_sheets` row** — if `can_fly = true` and no sheet exists for `(member_uuid, year)`, create it with default values.
-5. **Update compatibility fields** — set `members.last_registration_year` to the latest target year and keep `members.is_active = true`.
+5. **Update compatibility fields** — set `members.last_registration_year` to the latest target year, keep `members.is_active = true`, and recompute the summary `members.registration_status` from the target year registration rows.
 
 All five steps execute inside a single database transaction. If any step fails, the entire workflow rolls back.
 
@@ -954,7 +958,7 @@ This section defines the V2 frontend redesign requirements. It supersedes the v1
 ### Members Directory (`/members`)
 
 #### Page header
-- Title: "Members Directory", subtitle: "Manage club personnel, certifications, and operational status."
+- Title: "Members Directory", subtitle: "Manage member categories, operational status, and current-year registration state."
 - Actions (top-right): `Export CSV` button, `Add New Member` primary button.
 
 #### KPI strip
@@ -963,8 +967,8 @@ Four tiles derived client-side from the loaded list query result. No separate ba
 | Tile | Derivation | Highlight color |
 |---|---|---|
 | Total Members | `members.length` | neutral |
-| Pending Renewals | `members` where `last_registration_year < selectedYear && is_active` | orange |
-| Active Instructors | `members` where `is_instructor && is_active` | neutral |
+| Pending Renewals | `members` where `last_registration_year < selectedYear && status === 1` | orange |
+| Active Instructors | `members` where `is_instructor && status === 1` | neutral |
 | Guest / Temp Passes | `members` where `member_category === 2` | neutral |
 
 KPI values are recalculated whenever the query result changes.
@@ -972,9 +976,10 @@ KPI values are recalculated whenever the query result changes.
 #### Filter bar
 - Full-width text search input (searches name, account_id, email) — maps to `search` filter param.
 - Quick filter: Category (select) — maps to `member_category`.
+- Quick filter: Operational status (select) — maps to `status`.
 - Quick filter: Role (select for instructor / employee / executive / board) — maps to role flag params.
 - Quick filter: Can Fly (toggle) — maps to `can_fly`.
-- Advanced filter icon — opens a side drawer exposing: `registration_status`, `is_active`, all four role flags, `committee_uuid`, `year`.
+- Advanced filter icon — opens a side drawer exposing: `registration_status`, all four role flags, `committee_uuid`, `year`, and any secondary operational filters.
 - Rule: `registration_status` filter only shown when `year` is also set; inline guidance shown otherwise.
 - Backend errors from filter queries must surface inline below the filter bar.
 
@@ -984,7 +989,7 @@ A density table (`<table>` element, not a card list). Columns:
 
 | Column | Source | Notes |
 |---|---|---|
-| NAME & ID | `first_name`, `last_name`, `account_id` | Initials avatar (no photo), account_id in monospace sub-label. ⚠ warning triangle if `last_registration_year < selectedYear && is_active`. Optional left-border stripe for members with renewal issues. |
+| NAME & ID | `first_name`, `last_name`, `account_id` | Initials avatar (no photo), account_id in monospace sub-label. ⚠ warning triangle if `last_registration_year < selectedYear && status === 1`. Optional left-border stripe for members with renewal issues. |
 | CATEGORY | `member_category` | Plain text label from `memberCategoryLabel()`. |
 | ROLE FLAGS | `is_instructor`, `is_employee`, `is_executive`, `is_board_member` | Colored compact tags. Show "NO ROLES" in muted text when all flags are false. |
 | OPERATIONAL STATUS | `status` | Badge: Active (green), Suspended (red), Resigned (muted), Anonymized (muted). |
@@ -1004,8 +1009,8 @@ Responsive: ROLE FLAGS and COMMISSION columns collapse on mobile.
 #### Acceptance criteria
 - Table renders all columns with correct data for each member in the query result.
 - KPI tiles update when filters change.
-- ⚠ indicator appears for every member where `last_registration_year < selectedYear && is_active`.
-- Clicking pencil opens the member edit drawer; `is_active` field is read-only in the drawer.
+- ⚠ indicator appears for every member where `last_registration_year < selectedYear && status === 1`.
+- Clicking pencil opens the member edit drawer; `is_active` is visible only as a read-only lifecycle field and is never sent from the form.
 - Kebab menu "Finalize Registration" opens the Registration Panel.
 - After successful registration, the row's REGISTRATION and COMMISSION badges update without full page reload.
 
@@ -1108,8 +1113,8 @@ Standalone routed page. Accessible from the shell sidebar as COMMISSIONS.
 
 Rules:
 - Member edit drawer: render `is_active` as a locked status badge, not a checkbox.
-- `membersShared.tsx`: the `CheckboxField` for `is_active` must be replaced or wrapped with a read-only display primitive.
-- `buildMemberPayload` must not include `is_active` in the PATCH payload when called from the edit drawer.
+- Routed forms and legacy migration surfaces must not expose editable `is_active` controls.
+- `membersShared.tsx` and any legacy members forms must not include `is_active` in create or update payloads.
 - `is_active` transitions happen only as a side effect of `complete-registration` (which sets `is_active = true`), not via direct field edits.
 
 Acceptance criterion: no UI path in V2 allows sending `is_active: false` or `is_active: true` directly from a form.

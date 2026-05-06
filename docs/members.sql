@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS members (
   CONSTRAINT chk_members_genre
     CHECK (genre BETWEEN 0 AND 3),
   CONSTRAINT chk_members_category
-    CHECK (member_category BETWEEN 1 AND 6),
+    CHECK (member_category BETWEEN 1 AND 8),
   CONSTRAINT chk_members_status
     CHECK (status BETWEEN 1 AND 4),
   CONSTRAINT chk_members_registration_status
@@ -274,7 +274,7 @@ EXECUTE FUNCTION set_updated_at();
 -- =========================
 
 COMMENT ON TABLE members IS 'Club members with identity, category, operational flags, and lifecycle state.';
-COMMENT ON COLUMN members.member_category IS '1=Full Member, 2=Temporary Member, 3=Non-Flying Member, 4=Short Period Member, 5=External Pilot, 6=Volunteer.';
+COMMENT ON COLUMN members.member_category IS '1=Full Member, 2=Temporary Member, 3=Non-Flying Member, 4=Short Period Member, 5=External Pilot, 6=Volunteer, 7=External Organization, 8=Client/Supplier.';
 COMMENT ON COLUMN members.status IS '1=Active, 2=Suspended, 3=Resigned, 4=Anonymized.';
 COMMENT ON COLUMN members.registration_status IS '1=Draft, 2=In Progress, 3=Completed, 4=Archived.';
 COMMENT ON COLUMN members.account_id IS 'Stable member and ledger identifier, formatted as ME<YEAR>-<SEQUENCE>.';
@@ -283,5 +283,5 @@ COMMENT ON TABLE committee_members IS 'Yearly committee membership assignments f
 COMMENT ON TABLE member_sheets IS 'Yearly flying member summary and expense access controls.';
 COMMENT ON COLUMN member_sheets.fare_type IS '1=Standard, 2=Student, 3=Discovery, 4=Pack, 5=Other.';
 COMMENT ON TABLE member_registrations IS 'Dated member registration periods. A member is registered for a year when an active period overlaps that calendar year.';
-COMMENT ON COLUMN member_registrations.registration_type IS 'Snapshot of member category at registration time: 1=Full, 2=Temporary, 3=Non-Flying, 4=Short Period, 5=External Pilot, 6=Volunteer.';
+COMMENT ON COLUMN member_registrations.registration_type IS 'Snapshot of member category at registration time: 1=Full, 2=Temporary, 3=Non-Flying, 4=Short Period, 5=External Pilot, 6=Volunteer, 7=External Organization, 8=Client/Supplier.';
 COMMENT ON COLUMN member_registrations.status IS '1=Active, 2=Cancelled, 3=Superseded.';

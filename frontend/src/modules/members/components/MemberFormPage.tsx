@@ -180,6 +180,7 @@ export function MemberFormPage() {
                   { value: '5', label: t('categories.externalPilot') },
                   { value: '6', label: t('categories.volunteer') },
                   { value: '7', label: t('categories.externalOrganization') },
+                  { value: '8', label: t('categories.clientSupplier') },
                 ]}
                 value={memberForm.member_category}
                 onChange={(value) => setMemberForm({ ...memberForm, member_category: value })}
@@ -216,6 +217,18 @@ export function MemberFormPage() {
                 label={t('form.legacyAccountId')}
                 value={memberForm.legacy_account_id}
                 onChange={(value) => setMemberForm({ ...memberForm, legacy_account_id: value })}
+              />
+              <SelectField
+                id="member-status"
+                label={t('form.status')}
+                options={[
+                  { value: '1', label: t('statuses.active') },
+                  { value: '2', label: t('statuses.suspended') },
+                  { value: '3', label: t('statuses.resigned') },
+                  { value: '4', label: t('statuses.anonymized') },
+                ]}
+                value={memberForm.status}
+                onChange={(value) => setMemberForm({ ...memberForm, status: value })}
               />
             </CardContent>
           </Card>

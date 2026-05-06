@@ -14,6 +14,7 @@ import type {
   MemberSheet,
   MemberSummary,
   RegistrationCompletionPayload,
+  UpdateMemberRegistrationPayload,
   ReplaceCommitteeMembersPayload,
   UpdateCommitteePayload,
   UpdateMemberPayload,
@@ -27,6 +28,7 @@ export const membersQueryKeys = {
   count: (filters: Omit<MemberFilters, 'limit' | 'offset'>) => ['members', 'count', filters] as const,
   options: (params: { is_active?: boolean; search?: string; limit?: number }) => ['members', 'options', params] as const,
   detail: (memberUuid: string) => ['members', 'detail', memberUuid] as const,
+  registrations: (memberUuid: string) => ['members', 'registrations', memberUuid] as const,
   committees: ['members', 'committees'] as const,
   committeeMembers: (committeeUuid: string, year: number) => ['members', 'committee-members', committeeUuid, year] as const,
   sheets: (memberUuid: string) => ['members', 'sheets', memberUuid] as const,
@@ -141,6 +143,34 @@ export function useCompleteRegistrationMutation() {
     onSuccess: async (_, variables) => {
       await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
       await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+    },
+  })
+}
+
+export function useUpdateMemberRegistrationMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      memberUuid,
+      registrationUuid,
+      payload,
+    }: {
+      memberUuid: string
+      registrationUuid: string
+      payload: UpdateMemberRegistrationPayload
+    }) => {
+      const { data } = await apiClient.patch<MemberRegistration>(
+        `/api/v1/members/${memberUuid}/registrations/${registrationUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.root })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.detail(variables.memberUuid) })
+      await queryClient.invalidateQueries({ queryKey: membersQueryKeys.registrations(variables.memberUuid) })
     },
   })
 }

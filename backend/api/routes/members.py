@@ -70,7 +70,7 @@ members_guard = Depends(require_capability(CAP_MANAGE_USERS))
 async def list_members_endpoint(
     search: Optional[str] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=4),
-    member_category: Optional[int] = Query(default=None, ge=1, le=7),
+    member_category: Optional[int] = Query(default=None, ge=1, le=8),
     registration_status: Optional[int] = Query(default=None, ge=1, le=4),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),
@@ -108,7 +108,7 @@ async def list_members_endpoint(
 async def count_members_endpoint(
     search: Optional[str] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=4),
-    member_category: Optional[int] = Query(default=None, ge=1, le=7),
+    member_category: Optional[int] = Query(default=None, ge=1, le=8),
     registration_status: Optional[int] = Query(default=None, ge=1, le=4),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),
@@ -306,7 +306,7 @@ async def update_member_registration_endpoint(
     member_uuid: UUID,
     registration_uuid: UUID,
     payload: MemberRegistrationUpdateRequest,
-    _: User = members_guard,
+    current_user: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
     registration = await update_member_registration(
@@ -314,6 +314,7 @@ async def update_member_registration_endpoint(
         member_uuid=member_uuid,
         registration_uuid=registration_uuid,
         payload=payload,
+        updated_by_user_id=current_user.id,
     )
     return MemberRegistrationResponse.model_validate(registration)
 

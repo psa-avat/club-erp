@@ -28,7 +28,8 @@ from fastapi import HTTPException
 
 from schemas.members import RegistrationCompletionRequest
 from schemas.members import MemberRegistrationCreateRequest
-from services.members import complete_member_registration, create_member_registration
+from schemas.members import MemberRegistrationUpdateRequest
+from services.members import complete_member_registration, create_member_registration, update_member_registration
 
 
 class _FakeDb:
@@ -53,6 +54,14 @@ class _FakeDb:
 
     async def refresh(self, *_args, **_kwargs):
         return None
+
+
+class _FakeExecuteResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
 
 
 class MemberRegistrationTests(IsolatedAsyncioTestCase):
@@ -178,3 +187,74 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "Member is already registered for this period")
         self.assertFalse(db.committed)
+
+    async def test_update_registration_cancel_archives_member_year_status(self):
+        registration = SimpleNamespace(
+            uuid=uuid4(),
+            member_uuid=uuid4(),
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            registered_for_year=2026,
+            status=1,
+        )
+        member = SimpleNamespace(
+            uuid=registration.member_uuid,
+            registration_status=3,
+            is_active=True,
+            updated_by=None,
+        )
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_FakeExecuteResult(registration)),
+            scalar=AsyncMock(side_effect=[None, uuid4()]),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+
+        with patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)):
+            updated = await update_member_registration(
+                db=db,
+                member_uuid=registration.member_uuid,
+                registration_uuid=registration.uuid,
+                payload=MemberRegistrationUpdateRequest(status=2),
+                updated_by_user_id=42,
+            )
+
+        self.assertEqual(updated.status, 2)
+        self.assertEqual(member.registration_status, 4)
+        self.assertEqual(member.updated_by, 42)
+
+    async def test_update_registration_reactivate_marks_member_completed_for_year(self):
+        registration = SimpleNamespace(
+            uuid=uuid4(),
+            member_uuid=uuid4(),
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            registered_for_year=2026,
+            status=2,
+        )
+        member = SimpleNamespace(
+            uuid=registration.member_uuid,
+            registration_status=4,
+            is_active=False,
+            updated_by=None,
+        )
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=_FakeExecuteResult(registration)),
+            scalar=AsyncMock(side_effect=[uuid4()]),
+            commit=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+
+        with patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)):
+            updated = await update_member_registration(
+                db=db,
+                member_uuid=registration.member_uuid,
+                registration_uuid=registration.uuid,
+                payload=MemberRegistrationUpdateRequest(status=1),
+                updated_by_user_id=42,
+            )
+
+        self.assertEqual(updated.status, 1)
+        self.assertEqual(member.registration_status, 3)
+        self.assertTrue(member.is_active)
+        self.assertEqual(member.updated_by, 42)

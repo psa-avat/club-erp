@@ -296,7 +296,7 @@ class Member(Base):
     __tablename__ = "members"
     __table_args__ = (
         CheckConstraint("genre BETWEEN 0 AND 3", name="chk_members_genre"),
-        CheckConstraint("member_category BETWEEN 1 AND 7", name="chk_members_category"),
+        CheckConstraint("member_category BETWEEN 1 AND 8", name="chk_members_category"),
         CheckConstraint("status BETWEEN 1 AND 4", name="chk_members_status"),
         CheckConstraint("registration_status BETWEEN 1 AND 4", name="chk_members_registration_status"),
         CheckConstraint("first_subscription_year IS NULL OR first_subscription_year BETWEEN 1950 AND 9999", name="chk_members_first_subscription_year"),
@@ -472,7 +472,7 @@ class MemberRegistration(Base):
     __table_args__ = (
         UniqueConstraint("member_uuid", "start_date", "end_date", name="uq_member_registrations_period"),
         CheckConstraint("registered_for_year BETWEEN 2000 AND 9999", name="chk_member_registrations_year"),
-        CheckConstraint("registration_type BETWEEN 1 AND 7", name="chk_member_registrations_type"),
+        CheckConstraint("registration_type BETWEEN 1 AND 8", name="chk_member_registrations_type"),
         CheckConstraint("status BETWEEN 1 AND 3", name="chk_member_registrations_status"),
         CheckConstraint("end_date >= start_date", name="chk_member_registrations_date_range"),
     )

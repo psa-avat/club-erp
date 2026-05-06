@@ -173,6 +173,15 @@ export type RegistrationCompletionPayload = {
   notes?: string
 }
 
+export type UpdateMemberRegistrationPayload = {
+  start_date?: string
+  end_date?: string
+  registered_for_year?: number
+  registration_type?: number
+  status?: number
+  notes?: string
+}
+
 export type CreateCommitteePayload = {
   code: string
   description: string

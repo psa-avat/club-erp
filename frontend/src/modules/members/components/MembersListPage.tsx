@@ -162,9 +162,14 @@ export function MembersListPage() {
             <Button
               type="button"
               variant="ghost"
-              onClick={() => setFilters({ ...filters, is_active: filters.is_active === true ? undefined : true })}
+              onClick={() =>
+                setFilters({
+                  ...filters,
+                  status: filters.status === 1 ? undefined : 1,
+                })
+              }
             >
-              {filters.is_active === true ? t('list.showAllMembers') : t('list.showActiveOnly')}
+              {filters.status === 1 ? t('list.showAllMembers') : t('list.showActiveOnly')}
             </Button>
           </div>
         </CardHeader>
@@ -190,6 +195,7 @@ export function MembersListPage() {
               { value: '5', label: t('categories.externalPilot') },
               { value: '6', label: t('categories.volunteer') },
               { value: '7', label: t('categories.externalOrganization') },
+              { value: '8', label: t('categories.clientSupplier') },
             ]}
             value={filters.member_category ? String(filters.member_category) : ''}
             onChange={(value) =>

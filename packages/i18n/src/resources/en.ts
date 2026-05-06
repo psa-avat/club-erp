@@ -128,7 +128,7 @@ export const en = {
       registrationStateRegistered: 'Registered for year',
       registrationStateUnregistered: 'Not registered for year',
       roleFlags: 'Role flags',
-      activeOnly: 'Active members only',
+      activeOnly: 'Operationally active only',
       apply: 'Apply',
       clear: 'Clear',
       yearRequiredForState: 'Select a year to filter by registration state.',
@@ -137,7 +137,7 @@ export const en = {
       title: 'Member directory',
       description: 'Browse existing records and open one to edit details.',
       showAllMembers: 'Show all members',
-      showActiveOnly: 'Show active only',
+      showActiveOnly: 'Show active members only',
       paginationSummary: '{{start}}-{{end}} of {{total}} (page {{page}}/{{pages}})',
       committees: 'Committees',
       canFly: 'Can fly',
@@ -292,6 +292,7 @@ export const en = {
       externalPilot: 'External pilot',
       volunteer: 'Volunteer',
       externalOrganization: 'External organization',
+      clientSupplier: 'Client / supplier',
     },
     statuses: {
       active: 'Active',
@@ -387,6 +388,13 @@ export const en = {
       },
       committees: {
         helper: 'Members must contribute to at least one operating committee.',
+      },
+      currentYear: {
+        title: 'Current year status {{year}}',
+        statusLabel: 'Current state: {{status}}',
+        cancelAction: 'Cancel current year registration',
+        reactivateAction: 'Reactivate current year registration',
+        updating: 'Updating…',
       },
       actions: {
         validate: 'Validate & activate registration',

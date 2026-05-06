@@ -778,13 +778,48 @@ async def create_member_registration(
     return registration
 
 
+async def _sync_member_registration_summary_for_year(
+    db: AsyncSession,
+    *,
+    member: Member,
+    year: int,
+    updated_by_user_id: Optional[int] = None,
+) -> None:
+    active_for_year = await db.scalar(
+        select(MemberRegistration.uuid).where(
+            MemberRegistration.member_uuid == member.uuid,
+            MemberRegistration.registered_for_year == year,
+            MemberRegistration.status == ACTIVE_REGISTRATION_STATUS,
+        )
+    )
+    if active_for_year is not None:
+        member.registration_status = 3
+        member.is_active = True
+        member.updated_by = updated_by_user_id
+        return
+
+    any_for_year = await db.scalar(
+        select(MemberRegistration.uuid).where(
+            MemberRegistration.member_uuid == member.uuid,
+            MemberRegistration.registered_for_year == year,
+        )
+    )
+    if any_for_year is not None:
+        member.registration_status = 4
+        member.updated_by = updated_by_user_id
+
+
 async def update_member_registration(
     db: AsyncSession,
     member_uuid: UUID,
     registration_uuid: UUID,
     payload: MemberRegistrationUpdateRequest,
+    *,
+    updated_by_user_id: Optional[int] = None,
 ) -> MemberRegistration:
     """Update a dated registration period."""
+
+    member = await get_member_or_404(db, member_uuid)
 
     result = await db.execute(
         select(MemberRegistration).where(
@@ -796,6 +831,7 @@ async def update_member_registration(
     if registration is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member registration not found")
 
+    original_registered_for_year = registration.registered_for_year
     updates = payload.model_dump(exclude_unset=True)
     start_date = updates.get("start_date", registration.start_date)
     end_date = updates.get("end_date", registration.end_date)
@@ -803,6 +839,18 @@ async def update_member_registration(
 
     for field_name, value in updates.items():
         setattr(registration, field_name, value)
+
+    affected_years = {
+        original_registered_for_year,
+        updates.get("registered_for_year", original_registered_for_year),
+    }
+    for affected_year in affected_years:
+        await _sync_member_registration_summary_for_year(
+            db,
+            member=member,
+            year=affected_year,
+            updated_by_user_id=updated_by_user_id,
+        )
 
     await db.commit()
     await db.refresh(registration)

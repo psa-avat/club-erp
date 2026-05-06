@@ -180,7 +180,6 @@ export function buildMemberCreatePayload(form: MemberFormState): CreateMemberPay
     ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
     ...(form.legacy_account_id.trim() ? { legacy_account_id: form.legacy_account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
-    is_active: form.is_active,
     status: Number(form.status),
     registration_status: Number(form.registration_status),
     is_instructor: form.is_instructor,
@@ -207,6 +206,7 @@ export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPay
     ...(form.ffvp_id ? { ffvp_id: Number(form.ffvp_id) } : {}),
     ...(form.legacy_account_id.trim() ? { legacy_account_id: form.legacy_account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
+    status: Number(form.status),
     is_instructor: form.is_instructor,
     is_employee: form.is_employee,
     is_executive: form.is_executive,
@@ -255,6 +255,7 @@ export function memberCategoryLabel(category: number) {
     5: 'External pilot',
     6: 'Volunteer',
     7: 'External organization',
+    8: 'Client / Supplier',
   }
   return map[category] ?? `#${category}`
 }
@@ -269,6 +270,23 @@ export function toErrorMessage(error: unknown): string {
     if (Array.isArray(detail) && detail.length > 0) {
       const first = detail[0] as { msg?: string }
       if (typeof first?.msg === 'string' && first.msg.length > 0) return first.msg
+    }
+
+    if (typeof detail === 'object' && detail !== null) {
+      if ('message' in detail && typeof (detail as { message?: unknown }).message === 'string') {
+        return (detail as { message: string }).message
+      }
+
+      if ('error' in detail && typeof (detail as { error?: unknown }).error === 'string') {
+        return (detail as { error: string }).error
+      }
+
+      if ('errors' in detail && Array.isArray((detail as { errors?: unknown }).errors)) {
+        const firstError = (detail as { errors: Array<{ message?: string }> }).errors[0]
+        if (typeof firstError?.message === 'string' && firstError.message.length > 0) {
+          return firstError.message
+        }
+      }
     }
 
     if (typeof response?.data?.message === 'string' && response.data.message.length > 0) {

@@ -160,8 +160,13 @@ export function MemberFilterDrawer({ open, onClose, filters, onApply }: Props) {
             <div className="space-y-2">
               <CheckboxField
                 label={t('filters.activeOnly')}
-                checked={draft.is_active === true}
-                onChange={(checked) => setDraft({ ...draft, is_active: checked ? true : undefined })}
+                checked={draft.status === 1}
+                onChange={(checked) =>
+                  setDraft({
+                    ...draft,
+                    status: checked ? 1 : undefined,
+                  })
+                }
               />
               <CheckboxField
                 label={t('flags.instructor')}

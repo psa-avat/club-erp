@@ -30,6 +30,7 @@ import { Label } from '../../../components/ui/label'
 import {
   useCommitteesQuery,
   useCompleteRegistrationMutation,
+  useUpdateMemberRegistrationMutation,
 } from '../api'
 import type { MemberDetail } from '../types'
 import {
@@ -84,6 +85,22 @@ function unitLabel(unit: number): string {
   return map[unit] ?? `#${unit}`
 }
 
+function isAlreadyRegisteredError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return false
+  }
+
+  const response = (error as { response?: { data?: { detail?: unknown } } }).response
+  const detail = response?.data?.detail
+  if (typeof detail !== 'string') return false
+
+  const normalized = detail.toLowerCase()
+  return (
+    normalized.includes('already registered for year') ||
+    normalized.includes('already registered for this period')
+  )
+}
+
 type ChecklistState = 'valid' | 'pending'
 
 function ChecklistChip({ state, t }: { state: ChecklistState; t: (key: string) => string }) {
@@ -129,6 +146,7 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
   const committeesQuery = useCommitteesQuery(true)
 
   const completeRegistrationMutation = useCompleteRegistrationMutation()
+  const updateRegistrationMutation = useUpdateMemberRegistrationMutation()
   const createAccountingEntryMutation = useCreateAccountingEntryMutation()
 
   useEffect(() => {
@@ -168,11 +186,17 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     journalsQuery.error ??
     committeesQuery.error ??
     completeRegistrationMutation.error ??
+    updateRegistrationMutation.error ??
     createAccountingEntryMutation.error
 
   const invoiceReference = member
     ? `REG-${year}-${member.account_id}-${effectiveDate.replaceAll('-', '')}`
     : `REG-${year}`
+
+  const currentYearRegistration = useMemo(() => {
+    if (!member) return null
+    return member.registrations.find((registration) => registration.registered_for_year === year) ?? null
+  }, [member, year])
 
   const checklistProfileState: ChecklistState =
     member && member.first_name.trim() !== '' && member.last_name.trim() !== '' && (member.email ?? '').trim() !== ''
@@ -209,18 +233,25 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     setLocalError(null)
 
     // 1. Complete registration and atomically attach selected committee memberships.
-    await completeRegistrationMutation.mutateAsync({
-      memberUuid: member.uuid,
-      payload: {
-        year,
-        start_date: `${year}-01-01`,
-        end_date: `${year}-12-31`,
-        registration_type: member.member_category,
-        committee_uuids: selectedCommitteeUuids,
-        notes: notes.trim() || undefined,
-        status: 1,
-      },
-    })
+    // If the member is already registered for this year, continue to accounting entry creation.
+    try {
+      await completeRegistrationMutation.mutateAsync({
+        memberUuid: member.uuid,
+        payload: {
+          year,
+          start_date: `${year}-01-01`,
+          end_date: `${year}-12-31`,
+          registration_type: member.member_category,
+          committee_uuids: selectedCommitteeUuids,
+          notes: notes.trim() || undefined,
+          status: 1,
+        },
+      })
+    } catch (error) {
+      if (!isAlreadyRegisteredError(error)) {
+        throw error
+      }
+    }
 
     // 2. Create a draft journal entry from selected fares.
     if (fiscalYear) {
@@ -274,6 +305,20 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
     onCompleted(member.uuid)
   }
 
+  async function handleToggleCurrentYearRegistration() {
+    if (!member || !currentYearRegistration) return
+
+    setLocalError(null)
+
+    await updateRegistrationMutation.mutateAsync({
+      memberUuid: member.uuid,
+      registrationUuid: currentYearRegistration.uuid,
+      payload: {
+        status: currentYearRegistration.status === 1 ? 2 : 1,
+      },
+    })
+  }
+
   return (
     <Dialog
       open={open}
@@ -319,6 +364,40 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
                   </div>
                 </div>
               </section>
+
+              {currentYearRegistration ? (
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 rounded-shape-md border border-outline-variant bg-surface-container p-3">
+                    <div>
+                      <p className="text-sm font-semibold text-on-surface">
+                        {t('registrationPanel.currentYear.title', { year })}
+                      </p>
+                      <p className="text-xs text-on-surface-variant">
+                        {t('registrationPanel.currentYear.statusLabel', {
+                          status:
+                            currentYearRegistration.status === 1
+                              ? t('registrationPeriod.active')
+                              : currentYearRegistration.status === 2
+                                ? t('registrationPeriod.cancelled')
+                                : t('registrationPeriod.superseded'),
+                        })}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={currentYearRegistration.status === 1 ? 'secondary' : 'default'}
+                      disabled={updateRegistrationMutation.isPending}
+                      onClick={handleToggleCurrentYearRegistration}
+                    >
+                      {updateRegistrationMutation.isPending
+                        ? t('registrationPanel.currentYear.updating')
+                        : currentYearRegistration.status === 1
+                          ? t('registrationPanel.currentYear.cancelAction')
+                          : t('registrationPanel.currentYear.reactivateAction')}
+                    </Button>
+                  </div>
+                </section>
+              ) : null}
 
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">

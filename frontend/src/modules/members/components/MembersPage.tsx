@@ -53,7 +53,6 @@ type MemberFormState = {
   account_id: string
   legacy_account_id: string
   photo_url: string
-  is_active: boolean
   status: string
   registration_status: string
   is_instructor: boolean
@@ -130,7 +129,6 @@ function createEmptyMemberForm(): MemberFormState {
     account_id: '',
     legacy_account_id: '',
     photo_url: '',
-    is_active: true,
     status: '1',
     registration_status: '1',
     is_instructor: false,
@@ -190,7 +188,6 @@ function mapMemberToForm(member: MemberDetail): MemberFormState {
     account_id: member.account_id,
     legacy_account_id: member.legacy_account_id ?? '',
     photo_url: member.photo_url ?? '',
-    is_active: member.is_active,
     status: String(member.status),
     registration_status: String(member.registration_status),
     is_instructor: member.is_instructor,
@@ -218,7 +215,6 @@ function buildMemberPayload(form: MemberFormState): CreateMemberPayload {
     ...(form.account_id.trim() ? { account_id: form.account_id.trim() } : {}),
     ...(form.legacy_account_id.trim() ? { legacy_account_id: form.legacy_account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
-    is_active: form.is_active,
     status: Number(form.status),
     registration_status: Number(form.registration_status),
     is_instructor: form.is_instructor,
@@ -269,9 +265,21 @@ function memberCategoryLabel(category: number) {
     5: 'External pilot',
     6: 'Volunteer',
     7: 'External organization',
+    8: 'Client / Supplier',
   }
 
   return map[category] ?? `#${category}`
+}
+
+function memberStatusLabel(status: number, t: (key: string) => string) {
+  const map: Record<number, string> = {
+    1: t('statuses.active'),
+    2: t('statuses.suspended'),
+    3: t('statuses.resigned'),
+    4: t('statuses.anonymized'),
+  }
+
+  return map[status] ?? `#${status}`
 }
 
 export function MembersPage() {
@@ -600,6 +608,7 @@ export function MembersPage() {
                   { value: '5', label: t('categories.externalPilot') },
                   { value: '6', label: t('categories.volunteer') },
                   { value: '7', label: t('categories.externalOrganization') },
+                  { value: '8', label: t('categories.clientSupplier') },
                 ]}
                 value={filters.member_category ? String(filters.member_category) : ''}
                 onChange={(value) =>
@@ -689,7 +698,7 @@ export function MembersPage() {
                         <span>
                           {t('list.committees')}: {member.committee_count}
                         </span>
-                        <span>{member.is_active ? t('statuses.active') : t('states.inactive')}</span>
+                        <span>{memberStatusLabel(member.status, t)}</span>
                       </div>
                     </button>
                   ))}
@@ -738,6 +747,7 @@ export function MembersPage() {
                       { value: '5', label: t('categories.externalPilot') },
                       { value: '6', label: t('categories.volunteer') },
                       { value: '7', label: t('categories.externalOrganization') },
+                      { value: '8', label: t('categories.clientSupplier') },
                     ]}
                     value={memberForm.member_category}
                     onChange={(value) => setMemberForm({ ...memberForm, member_category: value })}
@@ -789,7 +799,7 @@ export function MembersPage() {
                     />
                   </div>
                   <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2 md:grid-cols-3">
-                    <CheckboxField label={t('form.active')} checked={memberForm.is_active} disabled onChange={() => {}} />
+                    <StatusField label={t('form.active')} value={selectedMember?.is_active ?? true ? t('statuses.active') : t('states.inactive')} />
                     <CheckboxField label={t('form.canFly')} checked={memberForm.can_fly} onChange={(checked) => setMemberForm({ ...memberForm, can_fly: checked })} />
                     <CheckboxField label={t('form.externalAuth')} checked={memberForm.external_auth_enabled} onChange={(checked) => setMemberForm({ ...memberForm, external_auth_enabled: checked })} />
                     <CheckboxField label={t('flags.instructor')} checked={memberForm.is_instructor} onChange={(checked) => setMemberForm({ ...memberForm, is_instructor: checked })} />
@@ -1061,6 +1071,7 @@ export function MembersPage() {
                 { value: '5', label: t('categories.externalPilot') },
                 { value: '6', label: t('categories.volunteer') },
                 { value: '7', label: t('categories.externalOrganization') },
+                { value: '8', label: t('categories.clientSupplier') },
               ]}
               value={registrationForm.registration_type}
               onChange={(value) => {
@@ -1236,6 +1247,17 @@ function CheckboxField({
       <input disabled={disabled} checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
+  )
+}
+
+function StatusField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex h-10 items-center rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700">
+        {value}
+      </div>
+    </div>
   )
 }
 
