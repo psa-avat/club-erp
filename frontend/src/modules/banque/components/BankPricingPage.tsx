@@ -145,19 +145,13 @@ function itemToForm(item: PricingItem): ItemFormState {
 function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
   return {
     name: form.name.trim(),
-    unit: form.unit,
+    unit: 6,
     base_price: form.base_price.trim(),
-    pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
+    pack_price: null,
     age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
     gl_account_credit_uuid: form.gl_account_credit_uuid || null,
-    flight_type_uuid: form.flight_type_uuid || null,
-    tiers: form.tiers
-      .filter((t) => t.from_qty !== '' && t.price !== '')
-      .map((t) => ({
-        from_qty: t.from_qty,
-        price: t.price,
-        pack_price: t.pack_price && t.pack_price.trim() !== '' ? t.pack_price.trim() : undefined,
-      })),
+    flight_type_uuid: null,
+    tiers: [],
   }
 }
 
@@ -167,7 +161,6 @@ function PricingItemForm({
   initial,
   flightTypes,
   revenueAccounts,
-  usePack,
   onSave,
   onCancel,
   saving,
@@ -175,7 +168,6 @@ function PricingItemForm({
   initial: ItemFormState
   flightTypes: Array<{ uuid: string; name: string }>
   revenueAccounts: Array<{ uuid: string; code: string; name: string }>
-  usePack: boolean
   onSave: (f: ItemFormState) => void
   onCancel: () => void
   saving: boolean
@@ -185,37 +177,20 @@ function PricingItemForm({
   function set<K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
-  function addTier() {
-    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '', pack_price: '' }] }))
-  }
-  function updateTier(index: number, field: keyof TierPayload, value: string) {
-    setForm((prev) => ({
-      ...prev,
-      tiers: prev.tiers.map((row, i) => i === index ? { ...row, [field]: value } : row),
-    }))
-  }
-  function removeTier(index: number) {
-    setForm((prev) => ({ ...prev, tiers: prev.tiers.filter((_, i) => i !== index) }))
-  }
   const valid = form.name.trim() !== '' && form.base_price !== ''
   return (
     <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+      <p className="text-xs text-on-surface-variant">{t('pricing.genericItemHelp')}</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
           <Label className="text-xs">{t('pricing.itemName')} *</Label>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.itemUnit')}</Label>
-          <select
-            value={form.unit}
-            onChange={(e) => set('unit', Number(e.target.value))}
-            className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
-          >
-            {Object.entries(UNIT_LABELS).map(([k, label]) => (
-              <option key={k} value={Number(k)}>{t(`pricing.unit${label}`)}</option>
-            ))}
-          </select>
+          <Label className="text-xs">{t('pricing.itemMode')}</Label>
+          <div className="flex h-8 items-center rounded-shape-sm border border-outline-variant bg-white px-2 text-sm text-on-surface">
+            {t('pricing.genericItemMode')}
+          </div>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.basePrice')} *</Label>
@@ -228,19 +203,6 @@ function PricingItemForm({
           />
           <p className="text-[11px] text-on-surface-variant">{t('pricing.basePriceHelp')}</p>
         </div>
-        {usePack && (
-          <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.packPrice')}</Label>
-            <Input
-              type="number" min="0" step="0.01"
-              value={form.pack_price}
-              onChange={(e) => set('pack_price', e.target.value)}
-              placeholder="0.00"
-              className="h-8 text-sm font-mono"
-            />
-            <p className="text-[11px] text-on-surface-variant">{t('pricing.packPriceHelp')}</p>
-          </div>
-        )}
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
           <Input
@@ -266,72 +228,6 @@ function PricingItemForm({
           </select>
           <p className="text-[11px] text-on-surface-variant">{t('pricing.glAccountCreditHelp')}</p>
         </div>
-        {flightTypes.length > 0 && (
-          <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.flightType')}</Label>
-            <select
-              value={form.flight_type_uuid}
-              onChange={(e) => set('flight_type_uuid', e.target.value)}
-              className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
-            >
-              <option value="">{t('pricing.noFlightType')}</option>
-              {flightTypes.map((ft) => (
-                <option key={ft.uuid} value={ft.uuid}>{ft.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-      <div className="space-y-2">
-        <Label className="text-xs">{t('pricing.tiers')}</Label>
-        <p className="text-[11px] text-on-surface-variant">{t('pricing.tiersHelp')}</p>
-        {form.tiers.length === 0 && <p className="text-xs text-on-surface-variant">{t('pricing.noTiers')}</p>}
-        {form.tiers.length > 0 && (
-          <div className="space-y-1">
-            <div className={`grid gap-2 text-xs font-medium text-on-surface-variant ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
-              <span>{t('pricing.tierFrom')}</span>
-              <span>{t('pricing.tierPrice')}</span>
-              {usePack && <span>{t('pricing.tierPackPrice')}</span>}
-              <span />
-            </div>
-            {form.tiers.map((tier, i) => (
-              <div key={i} className={`items-center gap-2 grid ${usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
-                <Input
-                  type="number"
-                  min={getFromQtyStep(form.unit)}
-                  step={getFromQtyStep(form.unit)}
-                  value={tier.from_qty}
-                  onChange={(e) => updateTier(i, 'from_qty', e.target.value)}
-                  placeholder={getFromQtyPlaceholder(form.unit)}
-                  className="h-7 text-sm font-mono"
-                />
-                <Input
-                  type="number" min="0" step="0.01"
-                  value={tier.price}
-                  onChange={(e) => updateTier(i, 'price', e.target.value)}
-                  placeholder="0.00"
-                  className="h-7 text-sm font-mono"
-                />
-                {usePack && (
-                  <Input
-                    type="number" min="0" step="0.01"
-                    value={tier.pack_price ?? ''}
-                    onChange={(e) => updateTier(i, 'pack_price', e.target.value)}
-                    placeholder="0.00"
-                    className="h-7 text-sm font-mono"
-                  />
-                )}
-                <button type="button" className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error" onClick={() => removeTier(i)}>
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <Button size="sm" variant="ghost" type="button" onClick={addTier}>
-          <Plus className="mr-1 h-3 w-3" />
-          {t('pricing.addTier')}
-        </Button>
       </div>
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
@@ -428,7 +324,6 @@ function PricingItemsPanel({
           initial={EMPTY_ITEM}
           flightTypes={flightTypes}
           revenueAccounts={revenueAccounts}
-          usePack={version.use_pack}
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
           saving={createMutation.isPending}
@@ -450,7 +345,6 @@ function PricingItemsPanel({
                 initial={itemToForm(item)}
                 flightTypes={flightTypes}
                 revenueAccounts={revenueAccounts}
-                usePack={version.use_pack}
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
                 saving={updateMutation.isPending}
@@ -463,11 +357,10 @@ function PricingItemsPanel({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
                   <p className="mt-0.5 truncate text-xs text-on-surface-variant">
-                    {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}
+                    {t('pricing.genericItemMode')}
                     {' · '}{formatPrice(item.base_price)} €
-                    {item.pack_price && <> · Pack: {formatPrice(item.pack_price)} €</>}
-                    {item.tiers.length > 0 && (
-                      <> · {item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}€`).join(' · ')}</>
+                    {item.age_discount_percent !== '0' && item.age_discount_percent !== '0.00' && (
+                      <> · {t('pricing.ageDiscountSummary', { percent: formatPrice(item.age_discount_percent) })}</>
                     )}
                   </p>
                 </div>

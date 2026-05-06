@@ -70,6 +70,13 @@ Journal type enum values:
 - `asset_type_uuid` (FK → AssetType, nullable): if NULL → global/membership pricing; if set → asset-specific pricing
 - Timestamps & `created_by`
 
+Scope selection rule:
+- Pricing scope is currently selected by navigation context, not by a dedicated version-type field.
+- Generic/global pricing versions are created from the accounting pricing workflow and do not prompt the operator for an asset type.
+- Asset-specific pricing versions are created from the asset pricing workflow and inherit their scope from the current asset or asset-type context.
+- `asset_type_uuid` remains the single source of truth for version scope.
+- A dedicated `pricing_version.type` field is intentionally deferred until the product needs more than the current binary split between generic/global pricing and asset/activity pricing.
+
 Pricing lifecycle governance:
 - `Draft` is the only fully editable state.
 - `Active` is operational and must be treated as immutable for pricing content (items, tiers, prices, GL mapping).
@@ -120,6 +127,14 @@ Correction policy after activation:
 - `flight_type_uuid` (FK → FlightType global catalog, nullable)
 - `include_insurance`, `include_fuel` (booleans)
 - Timestamps
+
+Editing modes:
+- Generic/global pricing items are edited from the accounting pricing workflow.
+- The generic editor must expose only the fields needed for simple member-facing charges: `name`, `base_price`, `age_discount_percent`, and `gl_account_credit_uuid`.
+- In the generic editor, activity-specific fields such as `unit`, `pack_price`, `tiers`, and `flight_type_uuid` are hidden and defaulted by the application.
+- Asset/activity pricing items are edited from the asset pricing workflow.
+- The asset/activity editor continues to expose the full machine-pricing model: usage unit, pack behavior, progressive tiers, and optional flight-type scoping.
+- Mixing generic and activity-oriented editing patterns on the same create screen is discouraged; a unified overview may exist, but creation should route to the appropriate context-specific editor.
 
 Precision rules:
 - prices (`base_price`, `pack_price`, tier `price`) use 2 decimal places
@@ -562,6 +577,7 @@ API and contracts:
 Frontend:
 - [x] Build settings screens per module section.
 - [x] Build pricing management screen for fiscal year with version timeline.
+- [ ] Split pricing editing UX into context-specific flows: generic pricing from accounting and activity pricing from assets.
 - [ ] Integrate registration workflow to select applicable price items and preview accounting outcome.
 
 Permissions and security:

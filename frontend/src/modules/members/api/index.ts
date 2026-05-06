@@ -11,6 +11,7 @@ import type {
   MemberDetail,
   MemberFilters,
   MemberOption,
+  MemberRegistration,
   MemberSheet,
   MemberSummary,
   RegistrationCompletionPayload,

@@ -146,7 +146,7 @@ export type CreateMemberPayload = {
   account_id?: string
   legacy_account_id?: string
   photo_url?: string
-  is_active: boolean
+  is_active?: boolean
   status: number
   registration_status: number
   is_instructor: boolean
