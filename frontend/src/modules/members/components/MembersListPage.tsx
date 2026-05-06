@@ -17,9 +17,10 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
@@ -30,6 +31,7 @@ import { Label } from '../../../components/ui/label'
 import { PageHeader } from '../../../components/ui/page-header'
 import {
   useImportMembersMutation,
+  useMembersCountQuery,
   useMemberQuery,
   useMembersQuery,
 } from '../api'
@@ -53,13 +55,39 @@ export function MembersListPage() {
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [registrationPanelOpen, setRegistrationPanelOpen] = useState(false)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
+  const [page, setPage] = useState(0)
 
-  const membersQuery = useMembersQuery(filters)
+  const PAGE_SIZE = 50
+
+  const countFilters = useMemo(() => {
+    const { limit, offset, ...rest } = filters
+    return rest
+  }, [filters])
+
+  const pagedFilters = useMemo(
+    () => ({ ...countFilters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+    [countFilters, page],
+  )
+
+  const membersQuery = useMembersQuery(pagedFilters)
+  const membersCountQuery = useMembersCountQuery(countFilters)
   const memberDetailQuery = useMemberQuery(selectedMemberId)
   const importMembersMutation = useImportMembersMutation()
 
   const members = membersQuery.data ?? []
+  const totalMembers = membersCountQuery.data ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalMembers / PAGE_SIZE))
   const selectedMember = memberDetailQuery.data ?? null
+
+  useEffect(() => {
+    setPage(0)
+  }, [countFilters])
+
+  useEffect(() => {
+    if (page > totalPages - 1) {
+      setPage(Math.max(0, totalPages - 1))
+    }
+  }, [page, totalPages])
 
   function handleNewMember() {
     setRegistrationPanelOpen(false)
@@ -89,6 +117,7 @@ export function MembersListPage() {
 
   const combinedError =
     membersQuery.error ??
+    membersCountQuery.error ??
     memberDetailQuery.error
 
   return (
@@ -129,6 +158,13 @@ export function MembersListPage() {
               onClick={() => setFilterDrawerOpen(true)}
             >
               {t('filters.advancedButton')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setFilters({ ...filters, is_active: filters.is_active === true ? undefined : true })}
+            >
+              {filters.is_active === true ? t('list.showAllMembers') : t('list.showActiveOnly')}
             </Button>
           </div>
         </CardHeader>
@@ -201,6 +237,40 @@ export function MembersListPage() {
         onFinalizeRegistration={handleFinalizeRegistration}
         onOpenPilotSheet={handleOpenPilotSheet}
       />
+
+      {totalMembers > PAGE_SIZE ? (
+        <div className="flex items-center justify-between rounded-shape-md border border-outline-variant bg-surface px-4 py-3">
+          <p className="text-sm text-on-surface-variant">
+            {t('list.paginationSummary', {
+              start: page * PAGE_SIZE + 1,
+              end: Math.min((page + 1) * PAGE_SIZE, totalMembers),
+              total: totalMembers,
+              page: page + 1,
+              pages: totalPages,
+            })}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={page === 0}
+              onClick={() => setPage((value) => Math.max(0, value - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── Directory legend ─────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-on-surface-variant">

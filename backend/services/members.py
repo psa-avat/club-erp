@@ -30,6 +30,7 @@ from schemas.members import (
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
+    MemberOptionResponse,
     MemberRegistrationCreateRequest,
     MemberRegistrationResponse,
     MemberRegistrationUpdateRequest,
@@ -45,6 +46,62 @@ logger = logging.getLogger(__name__)
 ACTIVE_REGISTRATION_STATUS = 1
 ANONYMIZED_MEMBER_STATUS = 4
 DEFAULT_ANONYMIZE_AFTER_YEARS = 5
+
+
+def _apply_member_filters(
+    query: Select,
+    filters: MemberListFilters,
+) -> Select:
+    if filters.search:
+        term = f"%{filters.search.strip()}%"
+        query = query.where(
+            or_(
+                Member.first_name.ilike(term),
+                Member.last_name.ilike(term),
+                Member.account_id.ilike(term),
+                Member.legacy_account_id.ilike(term),
+                Member.email.ilike(term),
+            )
+        )
+
+    if filters.status is not None:
+        query = query.where(Member.status == filters.status)
+    if filters.member_category is not None:
+        query = query.where(Member.member_category == filters.member_category)
+    if filters.registration_status is not None:
+        query = query.where(Member.registration_status == filters.registration_status)
+    if filters.can_fly is not None:
+        query = query.where(Member.can_fly == filters.can_fly)
+    if filters.is_instructor is not None:
+        query = query.where(Member.is_instructor == filters.is_instructor)
+    if filters.is_employee is not None:
+        query = query.where(Member.is_employee == filters.is_employee)
+    if filters.is_executive is not None:
+        query = query.where(Member.is_executive == filters.is_executive)
+    if filters.is_board_member is not None:
+        query = query.where(Member.is_board_member == filters.is_board_member)
+    if filters.is_active is not None:
+        query = query.where(Member.is_active == filters.is_active)
+    if filters.registration_state is not None:
+        if filters.year is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A year is required when filtering by registration state",
+            )
+        registration_exists = exists().where(
+            MemberRegistration.member_uuid == Member.uuid,
+            _registration_overlaps_year_predicate(filters.year),
+        )
+        query = query.where(registration_exists if filters.registration_state == "registered" else ~registration_exists)
+    if filters.committee_uuid is not None:
+        year = filters.year
+        query = query.join(CommitteeMember, CommitteeMember.member_uuid == Member.uuid).where(
+            CommitteeMember.committee_uuid == filters.committee_uuid
+        )
+        if year is not None:
+            query = query.where(CommitteeMember.membership_year == year)
+
+    return query
 
 
 def _hash_token(raw_token: str) -> str:
@@ -338,64 +395,72 @@ async def list_members(
     db: AsyncSession,
     *,
     filters: Optional[MemberListFilters] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
 ) -> list[MemberSummaryResponse]:
     """List members with optional filters."""
 
     filters = filters or MemberListFilters()
     query: Select[tuple[Member]] = select(Member).order_by(Member.last_name.asc(), Member.first_name.asc())
+    query = _apply_member_filters(query, filters)
+    if limit is not None:
+        query = query.limit(limit)
+    if offset > 0:
+        query = query.offset(offset)
 
-    if filters.search:
-        term = f"%{filters.search.strip()}%"
+    result = await db.execute(query)
+    members = result.scalars().unique().all()
+    return [await _serialize_member_summary(db, member, year=filters.year) for member in members]
+
+
+async def count_members(
+    db: AsyncSession,
+    *,
+    filters: Optional[MemberListFilters] = None,
+) -> int:
+    """Count members matching optional filters."""
+
+    filters = filters or MemberListFilters()
+    query: Select[tuple[int]] = select(func.count()).select_from(Member)
+    query = _apply_member_filters(query, filters)
+    result = await db.scalar(query)
+    return int(result or 0)
+
+
+async def list_member_options(
+    db: AsyncSession,
+    *,
+    is_active: Optional[bool] = None,
+    search: Optional[str] = None,
+    limit: int = 1000,
+) -> list[MemberOptionResponse]:
+    """List lightweight member options for selectors."""
+
+    query: Select[tuple[Member]] = select(Member).order_by(Member.last_name.asc(), Member.first_name.asc())
+    if is_active is not None:
+        query = query.where(Member.is_active == is_active)
+    if search:
+        term = f"%{search.strip()}%"
         query = query.where(
             or_(
                 Member.first_name.ilike(term),
                 Member.last_name.ilike(term),
                 Member.account_id.ilike(term),
-                Member.legacy_account_id.ilike(term),
-                Member.email.ilike(term),
             )
         )
 
-    if filters.status is not None:
-        query = query.where(Member.status == filters.status)
-    if filters.member_category is not None:
-        query = query.where(Member.member_category == filters.member_category)
-    if filters.registration_status is not None:
-        query = query.where(Member.registration_status == filters.registration_status)
-    if filters.can_fly is not None:
-        query = query.where(Member.can_fly == filters.can_fly)
-    if filters.is_instructor is not None:
-        query = query.where(Member.is_instructor == filters.is_instructor)
-    if filters.is_employee is not None:
-        query = query.where(Member.is_employee == filters.is_employee)
-    if filters.is_executive is not None:
-        query = query.where(Member.is_executive == filters.is_executive)
-    if filters.is_board_member is not None:
-        query = query.where(Member.is_board_member == filters.is_board_member)
-    if filters.is_active is not None:
-        query = query.where(Member.is_active == filters.is_active)
-    if filters.registration_state is not None:
-        if filters.year is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A year is required when filtering by registration state",
-            )
-        registration_exists = exists().where(
-            MemberRegistration.member_uuid == Member.uuid,
-            _registration_overlaps_year_predicate(filters.year),
+    result = await db.execute(query.limit(limit))
+    members = result.scalars().all()
+    return [
+        MemberOptionResponse(
+            uuid=member.uuid,
+            account_id=member.account_id,
+            first_name=member.first_name,
+            last_name=member.last_name,
+            is_active=member.is_active,
         )
-        query = query.where(registration_exists if filters.registration_state == "registered" else ~registration_exists)
-    if filters.committee_uuid is not None:
-        year = filters.year
-        query = query.join(CommitteeMember, CommitteeMember.member_uuid == Member.uuid).where(
-            CommitteeMember.committee_uuid == filters.committee_uuid
-        )
-        if year is not None:
-            query = query.where(CommitteeMember.membership_year == year)
-
-    result = await db.execute(query)
-    members = result.scalars().unique().all()
-    return [await _serialize_member_summary(db, member, year=filters.year) for member in members]
+        for member in members
+    ]
 
 
 async def update_member(

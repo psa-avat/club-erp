@@ -26,6 +26,7 @@ from schemas.members import (
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
+    MemberOptionResponse,
     MemberRegistrationCreateRequest,
     MemberRegistrationResponse,
     MemberRegistrationUpdateRequest,
@@ -36,6 +37,7 @@ from schemas.members import (
     RegistrationCompletionRequest,
 )
 from services.members import (
+        count_members,
     anonymize_inactive_members,
     complete_member_registration,
     create_committee,
@@ -49,6 +51,7 @@ from services.members import (
     import_members_from_csv,
     list_committees,
     list_member_registrations,
+    list_member_options,
     list_member_sheets,
     list_members,
     replace_committee_members,
@@ -65,6 +68,44 @@ members_guard = Depends(require_capability(CAP_MANAGE_USERS))
 
 @router.get("", response_model=list[MemberSummaryResponse])
 async def list_members_endpoint(
+    search: Optional[str] = Query(default=None),
+    status: Optional[int] = Query(default=None, ge=1, le=4),
+    member_category: Optional[int] = Query(default=None, ge=1, le=7),
+    registration_status: Optional[int] = Query(default=None, ge=1, le=4),
+    committee_uuid: Optional[UUID] = Query(default=None),
+    can_fly: Optional[bool] = Query(default=None),
+    is_instructor: Optional[bool] = Query(default=None),
+    is_employee: Optional[bool] = Query(default=None),
+    is_executive: Optional[bool] = Query(default=None),
+    is_board_member: Optional[bool] = Query(default=None),
+    is_active: Optional[bool] = Query(default=None),
+    year: Optional[int] = Query(default=None, ge=2000, le=9999),
+    registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
+    limit: Optional[int] = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    filters = MemberListFilters(
+        search=search,
+        status=status,
+        member_category=member_category,
+        registration_status=registration_status,
+        committee_uuid=committee_uuid,
+        can_fly=can_fly,
+        is_instructor=is_instructor,
+        is_employee=is_employee,
+        is_executive=is_executive,
+        is_board_member=is_board_member,
+        is_active=is_active,
+        year=year,
+        registration_state=registration_state,
+    )
+    return await list_members(db=db, filters=filters, limit=limit, offset=offset)
+
+
+@router.get("/count")
+async def count_members_endpoint(
     search: Optional[str] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=4),
     member_category: Optional[int] = Query(default=None, ge=1, le=7),
@@ -96,7 +137,19 @@ async def list_members_endpoint(
         year=year,
         registration_state=registration_state,
     )
-    return await list_members(db=db, filters=filters)
+    total = await count_members(db=db, filters=filters)
+    return {"total": total}
+
+
+@router.get("/options", response_model=list[MemberOptionResponse])
+async def list_member_options_endpoint(
+    is_active: Optional[bool] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=5000),
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_member_options(db=db, is_active=is_active, search=search, limit=limit)
 
 
 @router.post("/anonymize-inactive", response_model=AnonymizationResultResponse)

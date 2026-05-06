@@ -31,7 +31,7 @@ import {
   useCommitteeMembersQuery,
   useCommitteesQuery,
   useCreateCommitteeMutation,
-  useMembersQuery,
+  useMemberOptionsQuery,
   useReplaceCommitteeMembersMutation,
   useUpdateCommitteeMutation,
 } from '../api'
@@ -65,7 +65,7 @@ function RosterPanel({ open, onClose, committee, year }: RosterPanelProps) {
   const [roster, setRoster] = useState<string[]>([])
 
   const committeeMembersQuery = useCommitteeMembersQuery(committee?.uuid ?? null, year)
-  const membersQuery = useMembersQuery({})
+  const membersQuery = useMemberOptionsQuery()
   const replaceRosterMutation = useReplaceCommitteeMembersMutation()
 
   const members = membersQuery.data ?? []
@@ -392,7 +392,7 @@ export function CommitteesManagementPage() {
   const [editingCommittee, setEditingCommittee] = useState<Committee | null | undefined>(undefined)
 
   const committeesQuery = useCommitteesQuery()
-  const membersQuery = useMembersQuery({})
+  const membersQuery = useMemberOptionsQuery()
 
   const committees = committeesQuery.data ?? []
   const members = membersQuery.data ?? []

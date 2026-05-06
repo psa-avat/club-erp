@@ -10,6 +10,7 @@ import type {
   ImportResult,
   MemberDetail,
   MemberFilters,
+  MemberOption,
   MemberSheet,
   MemberSummary,
   RegistrationCompletionPayload,
@@ -23,6 +24,8 @@ export const membersQueryKeys = {
   root: ['members'] as const,
   lists: ['members', 'list'] as const,
   list: (filters: MemberFilters) => ['members', 'list', filters] as const,
+  count: (filters: Omit<MemberFilters, 'limit' | 'offset'>) => ['members', 'count', filters] as const,
+  options: (params: { is_active?: boolean; search?: string; limit?: number }) => ['members', 'options', params] as const,
   detail: (memberUuid: string) => ['members', 'detail', memberUuid] as const,
   committees: ['members', 'committees'] as const,
   committeeMembers: (committeeUuid: string, year: number) => ['members', 'committee-members', committeeUuid, year] as const,
@@ -42,6 +45,34 @@ export function useMembersQuery(filters: MemberFilters) {
       const { data } = await apiClient.get<MemberSummary[]>('/api/v1/members', {
         ...getAuthRequestConfig(),
         params: compactParams(filters),
+      })
+      return data
+    },
+  })
+}
+
+export function useMembersCountQuery(filters: Omit<MemberFilters, 'limit' | 'offset'>) {
+  return useQuery({
+    queryKey: membersQueryKeys.count(filters),
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ total: number }>('/api/v1/members/count', {
+        ...getAuthRequestConfig(),
+        params: compactParams(filters),
+      })
+      return data.total
+    },
+  })
+}
+
+export function useMemberOptionsQuery(params: { is_active?: boolean; search?: string; limit?: number } = {}) {
+  return useQuery({
+    queryKey: membersQueryKeys.options(params),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberOption[]>('/api/v1/members/options', {
+        ...getAuthRequestConfig(),
+        params: compactParams({ limit: 5000, ...params }),
       })
       return data
     },

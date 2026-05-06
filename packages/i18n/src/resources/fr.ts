@@ -136,6 +136,9 @@ export const fr = {
     list: {
       title: 'Annuaire des membres',
       description: 'Parcourez les fiches existantes et ouvrez-en une pour modifier les détails.',
+      showAllMembers: 'Afficher tous les membres',
+      showActiveOnly: 'Afficher seulement les actifs',
+      paginationSummary: '{{start}}-{{end}} sur {{total}} (page {{page}}/{{pages}})',
       committees: 'Commissions',
       canFly: 'Peut voler',
       registered: 'Inscrit',

@@ -18,6 +18,14 @@ export type MemberSummary = {
   is_registered_for_year: boolean
 }
 
+export type MemberOption = {
+  uuid: string
+  account_id: string
+  first_name: string
+  last_name: string
+  is_active: boolean
+}
+
 export type CommitteeMembership = {
   committee_uuid: string
   member_uuid: string
@@ -121,6 +129,8 @@ export type MemberFilters = {
   is_active?: boolean
   year?: number
   registration_state?: 'registered' | 'unregistered'
+  limit?: number
+  offset?: number
 }
 
 export type CreateMemberPayload = {

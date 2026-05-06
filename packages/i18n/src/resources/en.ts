@@ -136,6 +136,9 @@ export const en = {
     list: {
       title: 'Member directory',
       description: 'Browse existing records and open one to edit details.',
+      showAllMembers: 'Show all members',
+      showActiveOnly: 'Show active only',
+      paginationSummary: '{{start}}-{{end}} of {{total}} (page {{page}}/{{pages}})',
       committees: 'Committees',
       canFly: 'Can fly',
       registered: 'Registered',

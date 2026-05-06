@@ -258,6 +258,16 @@ class MemberSummaryResponse(BaseModel):
     is_registered_for_year: bool = False
 
 
+class MemberOptionResponse(BaseModel):
+    """Lightweight member option for selectors and cached lookups."""
+
+    uuid: UUID
+    account_id: str
+    first_name: str
+    last_name: str
+    is_active: bool
+
+
 class MemberDetailResponse(BaseModel):
     """Serialized member detail."""
 

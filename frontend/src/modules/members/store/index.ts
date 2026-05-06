@@ -18,6 +18,7 @@ export const useMembersStore = create<MembersStore>((set) => ({
   selectedYear: currentYear,
   filters: {
     year: currentYear,
+    is_active: true,
   },
   setSelectedMemberId: (selectedMemberId) => set({ selectedMemberId }),
   setSelectedYear: (selectedYear) =>
