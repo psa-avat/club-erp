@@ -72,7 +72,6 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             member_category=1,
             registration_status=1,
             status=2,
-            is_active=False,
             last_registration_year=None,
             updated_by=None,
         )
@@ -101,7 +100,6 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             member_category=1,
             registration_status=1,
             status=2,
-            is_active=False,
             last_registration_year=None,
             updated_by=None,
         )
@@ -133,7 +131,6 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             member_category=1,
             registration_status=1,
             status=2,
-            is_active=False,
             last_registration_year=None,
             updated_by=None,
         )
@@ -165,7 +162,6 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             can_fly=False,
             registration_status=1,
             status=2,
-            is_active=False,
             last_registration_date=None,
             updated_by=None,
         )
@@ -200,7 +196,6 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
         member = SimpleNamespace(
             uuid=registration.member_uuid,
             registration_status=3,
-            is_active=True,
             updated_by=None,
         )
         db = SimpleNamespace(
@@ -235,7 +230,6 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
         member = SimpleNamespace(
             uuid=registration.member_uuid,
             registration_status=4,
-            is_active=False,
             updated_by=None,
         )
         db = SimpleNamespace(
@@ -256,5 +250,4 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(updated.status, 1)
         self.assertEqual(member.registration_status, 3)
-        self.assertTrue(member.is_active)
         self.assertEqual(member.updated_by, 42)

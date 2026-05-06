@@ -50,12 +50,13 @@ function KpiTile({ label, value, subLabel, highlight = false }: KpiTileProps) {
  */
 export function MemberKpiStrip({ members, selectedYear }: Props) {
   const total = members.length
+  const isOperationallyActive = (status: number) => status === 1
 
   // Pending Renewals: active members whose registration_status is not yet Completed (3)
   // Proxy for last_registration_year < selectedYear until the list endpoint exposes that field.
-  const pendingRenewals = members.filter((m) => m.is_active && m.registration_status !== 3).length
+  const pendingRenewals = members.filter((m) => isOperationallyActive(m.status) && m.registration_status !== 3).length
 
-  const activeInstructors = members.filter((m) => m.is_instructor && m.is_active).length
+  const activeInstructors = members.filter((m) => m.is_instructor && isOperationallyActive(m.status)).length
 
   // Guest / Temp Passes: Temporary Member category (2)
   const guestTempPasses = members.filter((m) => m.member_category === 2).length

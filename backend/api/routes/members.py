@@ -78,7 +78,6 @@ async def list_members_endpoint(
     is_employee: Optional[bool] = Query(default=None),
     is_executive: Optional[bool] = Query(default=None),
     is_board_member: Optional[bool] = Query(default=None),
-    is_active: Optional[bool] = Query(default=None),
     year: Optional[int] = Query(default=None, ge=2000, le=9999),
     registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
     limit: Optional[int] = Query(default=None, ge=1, le=500),
@@ -97,7 +96,6 @@ async def list_members_endpoint(
         is_employee=is_employee,
         is_executive=is_executive,
         is_board_member=is_board_member,
-        is_active=is_active,
         year=year,
         registration_state=registration_state,
     )
@@ -116,7 +114,6 @@ async def count_members_endpoint(
     is_employee: Optional[bool] = Query(default=None),
     is_executive: Optional[bool] = Query(default=None),
     is_board_member: Optional[bool] = Query(default=None),
-    is_active: Optional[bool] = Query(default=None),
     year: Optional[int] = Query(default=None, ge=2000, le=9999),
     registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
     _: User = members_guard,
@@ -133,7 +130,6 @@ async def count_members_endpoint(
         is_employee=is_employee,
         is_executive=is_executive,
         is_board_member=is_board_member,
-        is_active=is_active,
         year=year,
         registration_state=registration_state,
     )
@@ -143,13 +139,12 @@ async def count_members_endpoint(
 
 @router.get("/options", response_model=list[MemberOptionResponse])
 async def list_member_options_endpoint(
-    is_active: Optional[bool] = Query(default=None),
     search: Optional[str] = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_member_options(db=db, is_active=is_active, search=search, limit=limit)
+    return await list_member_options(db=db, search=search, limit=limit)
 
 
 @router.post("/anonymize-inactive", response_model=AnonymizationResultResponse)

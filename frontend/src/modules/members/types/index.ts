@@ -5,7 +5,6 @@ export type MemberSummary = {
   last_name: string
   email: string | null
   member_category: number
-  is_active: boolean
   status: number
   registration_status: number
   can_fly: boolean
@@ -23,7 +22,6 @@ export type MemberOption = {
   account_id: string
   first_name: string
   last_name: string
-  is_active: boolean
 }
 
 export type CommitteeMembership = {
@@ -76,7 +74,6 @@ export type MemberDetail = {
   account_id: string
   legacy_account_id: string | null
   photo_url: string | null
-  is_active: boolean
   status: number
   registration_status: number
   is_instructor: boolean
@@ -126,7 +123,6 @@ export type MemberFilters = {
   is_employee?: boolean
   is_executive?: boolean
   is_board_member?: boolean
-  is_active?: boolean
   year?: number
   registration_state?: 'registered' | 'unregistered'
   limit?: number
@@ -146,7 +142,6 @@ export type CreateMemberPayload = {
   account_id?: string
   legacy_account_id?: string
   photo_url?: string
-  is_active?: boolean
   status: number
   registration_status: number
   is_instructor: boolean

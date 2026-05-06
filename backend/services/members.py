@@ -80,8 +80,6 @@ def _apply_member_filters(
         query = query.where(Member.is_executive == filters.is_executive)
     if filters.is_board_member is not None:
         query = query.where(Member.is_board_member == filters.is_board_member)
-    if filters.is_active is not None:
-        query = query.where(Member.is_active == filters.is_active)
     if filters.registration_state is not None:
         if filters.year is None:
             raise HTTPException(
@@ -276,7 +274,6 @@ async def _serialize_member_summary(
         last_name=member.last_name,
         email=member.email,
         member_category=member.member_category,
-        is_active=member.is_active,
         status=member.status,
         registration_status=member.registration_status,
         can_fly=member.can_fly,
@@ -323,7 +320,6 @@ async def serialize_member_detail(db: AsyncSession, member: Member) -> MemberDet
         account_id=member.account_id,
         legacy_account_id=member.legacy_account_id,
         photo_url=member.photo_url,
-        is_active=member.is_active,
         status=member.status,
         registration_status=member.registration_status,
         is_instructor=member.is_instructor,
@@ -430,15 +426,12 @@ async def count_members(
 async def list_member_options(
     db: AsyncSession,
     *,
-    is_active: Optional[bool] = None,
     search: Optional[str] = None,
     limit: int = 1000,
 ) -> list[MemberOptionResponse]:
     """List lightweight member options for selectors."""
 
     query: Select[tuple[Member]] = select(Member).order_by(Member.last_name.asc(), Member.first_name.asc())
-    if is_active is not None:
-        query = query.where(Member.is_active == is_active)
     if search:
         term = f"%{search.strip()}%"
         query = query.where(
@@ -457,7 +450,6 @@ async def list_member_options(
             account_id=member.account_id,
             first_name=member.first_name,
             last_name=member.last_name,
-            is_active=member.is_active,
         )
         for member in members
     ]
@@ -737,7 +729,6 @@ async def create_member_registration(
     if member.can_fly and payload.status == ACTIVE_REGISTRATION_STATUS:
         member.registration_status = 3
         member.status = 1
-        member.is_active = True
         member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
 
@@ -759,7 +750,6 @@ async def create_member_registration(
     elif payload.status == ACTIVE_REGISTRATION_STATUS:
         member.registration_status = 3
         member.status = 1
-        member.is_active = True
         member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
 
@@ -794,7 +784,6 @@ async def _sync_member_registration_summary_for_year(
     )
     if active_for_year is not None:
         member.registration_status = 3
-        member.is_active = True
         member.updated_by = updated_by_user_id
         return
 
@@ -1008,7 +997,6 @@ async def anonymize_inactive_members(
         member.ffvp_id = None
         member.notes = None
         member.status = ANONYMIZED_MEMBER_STATUS
-        member.is_active = True
         member.external_auth_enabled = False
 
     await db.commit()
@@ -1272,8 +1260,6 @@ async def import_members_from_csv(
                     update_fields["status"] = member_status
                 if raw_reg_status:
                     update_fields["registration_status"] = reg_status
-                if row.get("is_active"):
-                    update_fields["is_active"] = _parse_bool_cell(row["is_active"], default=True)
                 if row.get("can_fly"):
                     update_fields["can_fly"] = _parse_bool_cell(row["can_fly"], default=False)
                 if row.get("is_instructor"):
@@ -1312,7 +1298,6 @@ async def import_members_from_csv(
                     first_subscription_year=first_subscription_year,
                     ffvp_id=ffvp_id,
                     account_id=account_id,
-                    is_active=_parse_bool_cell(row.get("is_active", "true"), default=True),
                     status=member_status,
                     registration_status=reg_status,
                     can_fly=_parse_bool_cell(row.get("can_fly", "false")),

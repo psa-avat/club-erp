@@ -217,7 +217,6 @@ Required columns:
 - `ffvp_id BIGINT NULL`
 - `account_id VARCHAR(32) NOT NULL UNIQUE`
 - `photo_url TEXT NULL`
-- `is_active BOOLEAN NOT NULL DEFAULT TRUE`
 - `status SMALLINT NOT NULL DEFAULT 1`
 - `registration_status SMALLINT NOT NULL DEFAULT 1`
 - `is_instructor BOOLEAN NOT NULL DEFAULT FALSE`
@@ -481,7 +480,7 @@ The following must be true before a yearly registration is accepted:
 2. **Create `member_registrations` row** — records `start_date`, `end_date`, `registered_for_year`, `registration_type`, `registered_by`, and `registered_at`.
 3. **Create `accounting_writings` rows** — one row per resolved price list entry, snapshotting `label`, `amount`, and `account_id`.
 4. **Create or confirm `member_sheets` row** — if `can_fly = true` and no sheet exists for `(member_uuid, year)`, create it with default values.
-5. **Update compatibility fields** — set `members.last_registration_year` to the latest target year, keep `members.is_active = true`, and recompute the summary `members.registration_status` from the target year registration rows.
+5. **Update compatibility fields** — set `members.last_registration_year` to the latest target year and recompute the summary `members.registration_status` from the target year registration rows.
 
 All five steps execute inside a single database transaction. If any step fails, the entire workflow rolls back.
 
@@ -1010,7 +1009,7 @@ Responsive: ROLE FLAGS and COMMISSION columns collapse on mobile.
 - Table renders all columns with correct data for each member in the query result.
 - KPI tiles update when filters change.
 - ⚠ indicator appears for every member where `last_registration_year < selectedYear && status === 1`.
-- Clicking pencil opens the member edit drawer; `is_active` is visible only as a read-only lifecycle field and is never sent from the form.
+- Clicking pencil opens the member edit drawer; lifecycle state is derived from `status` and is never sent as a separate boolean field.
 - Kebab menu "Finalize Registration" opens the Registration Panel.
 - After successful registration, the row's REGISTRATION and COMMISSION badges update without full page reload.
 
@@ -1093,7 +1092,7 @@ Standalone routed page. Accessible from the shell sidebar as COMMISSIONS.
 #### Committee Roster Drawer (`CommitteeRosterDrawer`)
 - Triggered from card "Manage Roster" or table row action.
 - Header: committee name + current year.
-- Multi-select member list (checkbox per member, filtered to `is_active` members).
+- Multi-select member list (checkbox per member, filtered to members with `status = 1`).
 - Pre-selects current roster from `useCommitteeMembersQuery(committeeUuid, selectedYear)`.
 - Save calls `useReplaceCommitteeMembersMutation`.
 
@@ -1107,17 +1106,16 @@ Standalone routed page. Accessible from the shell sidebar as COMMISSIONS.
 
 ---
 
-### `is_active` Governance
+### Lifecycle Governance
 
-`is_active` must be read-only in all member-facing UI in V2.
+Member lifecycle state is controlled by `status` and `registration_status` only.
 
 Rules:
-- Member edit drawer: render `is_active` as a locked status badge, not a checkbox.
-- Routed forms and legacy migration surfaces must not expose editable `is_active` controls.
-- `membersShared.tsx` and any legacy members forms must not include `is_active` in create or update payloads.
-- `is_active` transitions happen only as a side effect of `complete-registration` (which sets `is_active = true`), not via direct field edits.
+- Member edit drawer must not expose a separate active/inactive boolean.
+- Routed forms and legacy migration surfaces must not include `is_active` in create or update payloads.
+- Registration flows update lifecycle state via status fields, not through a dedicated boolean toggle.
 
-Acceptance criterion: no UI path in V2 allows sending `is_active: false` or `is_active: true` directly from a form.
+Acceptance criterion: no UI path in V2 allows sending `is_active` for members.
 
 ---
 

@@ -316,7 +316,6 @@ class Member(Base):
     ffvp_id = Column(BigInteger, nullable=True, unique=True, index=True)
     account_id = Column(String(32), nullable=False, unique=True, index=True)
     photo_url = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
     status = Column(SmallInteger, nullable=False, default=1, index=True)
     registration_status = Column(SmallInteger, nullable=False, default=1, index=True)
     is_instructor = Column(Boolean, default=False, nullable=False)

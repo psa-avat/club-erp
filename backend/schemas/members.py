@@ -30,7 +30,6 @@ class MemberBase(MemberRoleFlags):
     first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     photo_url: Optional[str] = None
-    is_active: bool = True
     status: int = Field(default=1, ge=1, le=4)
     registration_status: int = Field(default=1, ge=1, le=4)
     can_fly: bool = False
@@ -61,7 +60,6 @@ class MemberUpdateRequest(BaseModel):
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
     photo_url: Optional[str] = None
-    is_active: Optional[bool] = None
     status: Optional[int] = Field(default=None, ge=1, le=4)
     registration_status: Optional[int] = Field(default=None, ge=1, le=4)
     is_instructor: Optional[bool] = None
@@ -89,7 +87,6 @@ class MemberListFilters(BaseModel):
     is_employee: Optional[bool] = None
     is_executive: Optional[bool] = None
     is_board_member: Optional[bool] = None
-    is_active: Optional[bool] = None
     year: Optional[int] = Field(default=None, ge=2000, le=9999)
     registration_state: Optional[str] = Field(default=None, pattern="^(registered|unregistered)$")
 
@@ -245,7 +242,6 @@ class MemberSummaryResponse(BaseModel):
     last_name: str
     email: Optional[EmailStr] = None
     member_category: int
-    is_active: bool
     status: int
     registration_status: int
     can_fly: bool
@@ -265,7 +261,6 @@ class MemberOptionResponse(BaseModel):
     account_id: str
     first_name: str
     last_name: str
-    is_active: bool
 
 
 class MemberDetailResponse(BaseModel):
@@ -284,7 +279,6 @@ class MemberDetailResponse(BaseModel):
     account_id: str
     legacy_account_id: Optional[str] = None
     photo_url: Optional[str] = None
-    is_active: bool
     status: int
     registration_status: int
     is_instructor: bool

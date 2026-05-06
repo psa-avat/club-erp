@@ -66,7 +66,6 @@ CREATE TABLE IF NOT EXISTS members (
   ffvp_id BIGINT,
   account_id VARCHAR(32) NOT NULL DEFAULT generate_member_account_id(),
   photo_url TEXT,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
   status SMALLINT NOT NULL DEFAULT 1,
   registration_status SMALLINT NOT NULL DEFAULT 1,
   is_instructor BOOLEAN NOT NULL DEFAULT FALSE,

@@ -799,7 +799,7 @@ export function MembersPage() {
                     />
                   </div>
                   <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2 md:grid-cols-3">
-                    <StatusField label={t('form.active')} value={selectedMember?.is_active ?? true ? t('statuses.active') : t('states.inactive')} />
+                    <StatusField label={t('form.active')} value={(selectedMember?.status ?? 1) === 1 ? t('statuses.active') : t('states.inactive')} />
                     <CheckboxField label={t('form.canFly')} checked={memberForm.can_fly} onChange={(checked) => setMemberForm({ ...memberForm, can_fly: checked })} />
                     <CheckboxField label={t('form.externalAuth')} checked={memberForm.external_auth_enabled} onChange={(checked) => setMemberForm({ ...memberForm, external_auth_enabled: checked })} />
                     <CheckboxField label={t('flags.instructor')} checked={memberForm.is_instructor} onChange={(checked) => setMemberForm({ ...memberForm, is_instructor: checked })} />

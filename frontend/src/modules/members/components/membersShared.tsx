@@ -47,7 +47,6 @@ export type MemberFormState = {
   account_id: string
   legacy_account_id: string
   photo_url: string
-  is_active: boolean
   status: string
   registration_status: string
   is_instructor: boolean
@@ -98,7 +97,6 @@ export function createEmptyMemberForm(): MemberFormState {
     account_id: '',
     legacy_account_id: '',
     photo_url: '',
-    is_active: true,
     status: '1',
     registration_status: '1',
     is_instructor: false,
@@ -152,7 +150,6 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
     account_id: member.account_id,
     legacy_account_id: member.legacy_account_id ?? '',
     photo_url: member.photo_url ?? '',
-    is_active: member.is_active,
     status: String(member.status),
     registration_status: String(member.registration_status),
     is_instructor: member.is_instructor,

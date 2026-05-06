@@ -41,7 +41,6 @@ class MembersCsvImportTests(IsolatedAsyncioTestCase):
         existing = SimpleNamespace(
             uuid=uuid4(),
             account_id="ME2026-0001",
-            is_active=True,
             status=1,
             registration_status=1,
             can_fly=False,
