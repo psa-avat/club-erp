@@ -66,7 +66,7 @@ export function JournalTemplatesScreen() {
   const journals = journalsQuery.data ?? []
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
   const models = modelsQuery.data ?? []
-  const members = membersQuery.data?.filter((m) => m.is_active) ?? []
+  const members = membersQuery.data?.filter((m) => m.status === 1) ?? []
 
   const [modelForm, setModelForm] = useState<ModelFormState>(() => emptyModelForm())
   const [selectedModelUuid, setSelectedModelUuid] = useState<string | null>(null)
