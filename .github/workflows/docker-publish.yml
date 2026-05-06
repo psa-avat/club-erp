@@ -4,8 +4,7 @@
 #  Triggers:
 #    - Manual run from Actions tab (workflow_dispatch)
 #      with options to choose backend/frontend and push or build-only
-#    - Push to main → builds images tagged :latest
-#    - Push of a semver tag (v1.2.3) → additionally tags with the version
+#    - Push of a semver tag (v1.2.3) → builds release images and tags with the version
 #
 #  Required GitHub secrets:
 #    GHCR_TOKEN   – Personal Access Token with read/write:packages scope
@@ -33,11 +32,8 @@ on:
         default: true
         type: boolean
   push:
-    branches: [main]
     tags:
       - "v*.*.*"
-  pull_request:
-    branches: [main]   # builds but does NOT push on PRs
 
 env:
   REGISTRY: ghcr.io

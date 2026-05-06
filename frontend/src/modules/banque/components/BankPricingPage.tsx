@@ -77,26 +77,9 @@ function versionStatusLabel(status: number, t: (k: string) => string): { label: 
 
 // ── Pricing item helpers ──────────────────────────────────────────────────────
 
-const UNIT_LABELS: Record<number, string> = {
-  1: 'FlightTime',
-  2: 'EngineTimeMin',
-  3: 'EngineTime1_100h',
-  4: 'FlightDuration',
-  5: 'PerFlight',
-  6: 'Fixed',
-}
-
 function formatPrice(value: string | null | undefined): string {
   if (!value) return '—'
   try { return new Decimal(value).toFixed(2) } catch { return value ?? '—' }
-}
-
-function getFromQtyStep(unit: number): string {
-  return unit === 1 ? '0.1' : '1'
-}
-
-function getFromQtyPlaceholder(unit: number): string {
-  return unit === 1 ? '0.0' : '0'
 }
 
 function todayIsoDate(): string {
@@ -159,14 +142,12 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
 
 function PricingItemForm({
   initial,
-  flightTypes,
   revenueAccounts,
   onSave,
   onCancel,
   saving,
 }: {
   initial: ItemFormState
-  flightTypes: Array<{ uuid: string; name: string }>
   revenueAccounts: Array<{ uuid: string; code: string; name: string }>
   onSave: (f: ItemFormState) => void
   onCancel: () => void
@@ -322,7 +303,6 @@ function PricingItemsPanel({
       {showForm && (
         <PricingItemForm
           initial={EMPTY_ITEM}
-          flightTypes={flightTypes}
           revenueAccounts={revenueAccounts}
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
@@ -343,7 +323,6 @@ function PricingItemsPanel({
               <PricingItemForm
                 key={item.uuid}
                 initial={itemToForm(item)}
-                flightTypes={flightTypes}
                 revenueAccounts={revenueAccounts}
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
