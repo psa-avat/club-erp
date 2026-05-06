@@ -486,6 +486,8 @@ export const fr = {
         statusDraft: 'Brouillon',
         statusActive: 'Actif',
         statusArchived: 'Archivé',
+        genericScope: 'Tarif générique',
+        assetScope: 'Tarif machine',
         locked: 'Verrouillé',
         openEnd: "fin d'exercice",
         save: 'Enregistrer',

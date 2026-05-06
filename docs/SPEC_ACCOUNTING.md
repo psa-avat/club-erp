@@ -51,6 +51,7 @@ Minimum journal codes:
 - OD (misc operations)
 - AN (opening/carry-forward)
 - AC (auto-cost, for cost provision real-time entries)
+- FL (flights)
 
 Journal type enum values:
 - 1 = Sale
@@ -60,6 +61,8 @@ Journal type enum values:
 - 5 = General
 - 6 = Opening
 - 7 = Auto-Cost
+- 8 = Flight
+
 
 ### 3.4 Pricing Version
 - `uuid` (PK)

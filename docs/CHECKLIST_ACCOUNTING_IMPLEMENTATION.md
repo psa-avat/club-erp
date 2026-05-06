@@ -226,7 +226,7 @@ This checklist translates the UX/UI implementation plan into actionable tasks or
   - [ ] Header section:
     - [ ] FY badge (read-only pill)
     - [ ] Transaction Date picker (validate FY range)
-    - [ ] Journal dropdown (auto-populate from context or selection)
+    - [ ] Journal dropdown (VT, HA, BQ, CS, OD, AN, AC, FL)
     - [ ] Reference field (text input, optional)
     - [ ] Description field (textarea, 200 char limit)
   - [ ] Lines section (repeating):

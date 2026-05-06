@@ -486,6 +486,8 @@ export const en = {
         statusDraft: 'Draft',
         statusActive: 'Active',
         statusArchived: 'Archived',
+        genericScope: 'Generic pricing',
+        assetScope: 'Asset pricing',
         locked: 'Locked',
         openEnd: 'end of year',
         save: 'Save',

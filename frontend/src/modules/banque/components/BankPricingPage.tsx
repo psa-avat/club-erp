@@ -44,6 +44,7 @@ import {
 } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
+  useFlightTypesQuery,
   usePricingItemsQuery,
   useCreatePricingItemMutation,
   useUpdatePricingItemMutation,
@@ -60,6 +61,15 @@ const VERSION_STATUS_ARCHIVED = 3
 const FY_STATE_OPEN = 1
 const FY_STATE_CLOSED = 2
 
+const UNIT_LABELS: Record<number, string> = {
+  1: 'FlightTime',
+  2: 'EngineTimeMin',
+  3: 'EngineTime1_100h',
+  4: 'FlightDuration',
+  5: 'PerFlight',
+  6: 'Fixed',
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fyStateLabel(state: number, t: (k: string) => string): { label: string; className: string } {
@@ -72,6 +82,20 @@ function versionStatusLabel(status: number, t: (k: string) => string): { label: 
   if (status === VERSION_STATUS_DRAFT) return { label: t('pricing.version.statusDraft'), className: 'bg-warning-container text-on-warning-container' }
   if (status === VERSION_STATUS_ACTIVE) return { label: t('pricing.version.statusActive'), className: 'bg-success-container text-on-success-container' }
   return { label: t('pricing.version.statusArchived'), className: 'bg-surface-container text-on-surface-variant' }
+}
+
+function versionScopeLabel(version: PricingVersion, t: (k: string) => string): { label: string; className: string } {
+  if (version.asset_type_uuid !== null) {
+    return {
+      label: t('pricing.version.assetScope'),
+      className: 'bg-primary-container text-on-primary-container',
+    }
+  }
+
+  return {
+    label: t('pricing.version.genericScope'),
+    className: 'bg-surface-container-high text-on-surface-variant',
+  }
 }
 
 // ── Pricing item helpers ──────────────────────────────────────────────────────
@@ -89,6 +113,14 @@ function addDaysIsoDate(value: string, days: number): string {
   const date = new Date(`${value}T00:00:00`)
   date.setDate(date.getDate() + days)
   return date.toISOString().slice(0, 10)
+}
+
+function getFromQtyStep(unit: number): string {
+  return unit === 1 ? '0.1' : '1'
+}
+
+function getFromQtyPlaceholder(unit: number): string {
+  return unit === 1 ? '0.0' : '0'
 }
 
 type ItemFormState = {
@@ -124,7 +156,32 @@ function itemToForm(item: PricingItem): ItemFormState {
   }
 }
 
-function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
+function buildItemPayload(
+  form: ItemFormState,
+  options: { isAssetScoped: boolean; usePack: boolean },
+): CreatePricingItemPayload {
+  if (options.isAssetScoped) {
+    return {
+      name: form.name.trim(),
+      unit: form.unit,
+      base_price: form.base_price.trim(),
+      pack_price: options.usePack && form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
+      age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
+      gl_account_credit_uuid: form.gl_account_credit_uuid || null,
+      flight_type_uuid: form.flight_type_uuid || null,
+      tiers: form.tiers
+        .filter((tier) => tier.from_qty !== '' && tier.price !== '')
+        .map((tier) => ({
+          from_qty: tier.from_qty,
+          price: tier.price,
+          pack_price:
+            options.usePack && tier.pack_price && tier.pack_price.trim() !== ''
+              ? tier.pack_price.trim()
+              : undefined,
+        })),
+    }
+  }
+
   return {
     name: form.name.trim(),
     unit: 6,
@@ -141,13 +198,19 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
 
 function PricingItemForm({
   initial,
+  flightTypes,
   revenueAccounts,
+  isAssetScoped,
+  usePack,
   onSave,
   onCancel,
   saving,
 }: {
   initial: ItemFormState
+  flightTypes: Array<{ uuid: string; name: string }>
   revenueAccounts: Array<{ uuid: string; code: string; name: string }>
+  isAssetScoped: boolean
+  usePack: boolean
   onSave: (f: ItemFormState) => void
   onCancel: () => void
   saving: boolean
@@ -157,21 +220,57 @@ function PricingItemForm({
   function set<K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
+
+  function addTier() {
+    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '', pack_price: '' }] }))
+  }
+
+  function updateTier(index: number, field: keyof TierPayload, value: string) {
+    setForm((prev) => {
+      const tiers = prev.tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier))
+      return { ...prev, tiers }
+    })
+  }
+
+  function removeTier(index: number) {
+    setForm((prev) => ({ ...prev, tiers: prev.tiers.filter((_, i) => i !== index) }))
+  }
+
   const valid = form.name.trim() !== '' && form.base_price !== ''
+
   return (
     <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-      <p className="text-xs text-on-surface-variant">{t('pricing.genericItemHelp')}</p>
+      <p className="text-xs text-on-surface-variant">
+        {isAssetScoped ? t('pricing.tiersHelp') : t('pricing.genericItemHelp')}
+      </p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
           <Label className="text-xs">{t('pricing.itemName')} *</Label>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.itemMode')}</Label>
-          <div className="flex h-8 items-center rounded-shape-sm border border-outline-variant bg-white px-2 text-sm text-on-surface">
-            {t('pricing.genericItemMode')}
+        {isAssetScoped ? (
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.itemUnit')}</Label>
+            <select
+              value={form.unit}
+              onChange={(e) => set('unit', Number(e.target.value))}
+              className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
+            >
+              {Object.entries(UNIT_LABELS).map(([unit, label]) => (
+                <option key={unit} value={Number(unit)}>
+                  {t(`pricing.unit${label}`)}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.itemMode')}</Label>
+            <div className="flex h-8 items-center rounded-shape-sm border border-outline-variant bg-white px-2 text-sm text-on-surface">
+              {t('pricing.genericItemMode')}
+            </div>
+          </div>
+        )}
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.basePrice')} *</Label>
           <Input
@@ -183,6 +282,21 @@ function PricingItemForm({
           />
           <p className="text-[11px] text-on-surface-variant">{t('pricing.basePriceHelp')}</p>
         </div>
+        {isAssetScoped && usePack && (
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.packPrice')}</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.pack_price}
+              onChange={(e) => set('pack_price', e.target.value)}
+              placeholder="0.00"
+              className="h-8 text-sm font-mono"
+            />
+            <p className="text-[11px] text-on-surface-variant">{t('pricing.packPriceHelp')}</p>
+          </div>
+        )}
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
           <Input
@@ -208,7 +322,98 @@ function PricingItemForm({
           </select>
           <p className="text-[11px] text-on-surface-variant">{t('pricing.glAccountCreditHelp')}</p>
         </div>
+        {isAssetScoped && (
+          <div className="space-y-1">
+            <Label className="text-xs">{t('pricing.flightType')}</Label>
+            <select
+              value={form.flight_type_uuid}
+              onChange={(e) => set('flight_type_uuid', e.target.value)}
+              className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
+            >
+              <option value="">{t('pricing.noFlightType')}</option>
+              {flightTypes.map((flightType) => (
+                <option key={flightType.uuid} value={flightType.uuid}>
+                  {flightType.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+
+      {isAssetScoped && (
+        <div className="space-y-2">
+          <Label className="text-xs">{t('pricing.tiers')}</Label>
+          <p className="text-[11px] text-on-surface-variant">{t('pricing.tiersHelp')}</p>
+          {form.tiers.length === 0 && (
+            <p className="text-xs text-on-surface-variant">{t('pricing.noTiers')}</p>
+          )}
+          {form.tiers.length > 0 && (
+            <div className="space-y-1">
+              <div
+                className={`grid gap-2 text-xs font-medium text-on-surface-variant ${
+                  usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'
+                }`}
+              >
+                <span>{t('pricing.tierFrom')}</span>
+                <span>{t('pricing.tierPrice')}</span>
+                {usePack && <span>{t('pricing.tierPackPrice')}</span>}
+                <span />
+              </div>
+              {form.tiers.map((tier, index) => (
+                <div
+                  key={index}
+                  className={`grid items-center gap-2 ${
+                    usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'
+                  }`}
+                >
+                  <Input
+                    type="number"
+                    min={getFromQtyStep(form.unit)}
+                    step={getFromQtyStep(form.unit)}
+                    value={tier.from_qty}
+                    onChange={(e) => updateTier(index, 'from_qty', e.target.value)}
+                    placeholder={getFromQtyPlaceholder(form.unit)}
+                    className="h-7 text-sm font-mono"
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tier.price}
+                    onChange={(e) => updateTier(index, 'price', e.target.value)}
+                    placeholder="0.00"
+                    className="h-7 text-sm font-mono"
+                  />
+                  {usePack && (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={tier.pack_price ?? ''}
+                      onChange={(e) => updateTier(index, 'pack_price', e.target.value)}
+                      placeholder="0.00"
+                      className="h-7 text-sm font-mono"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                    onClick={() => removeTier(index)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button size="sm" variant="ghost" type="button" onClick={addTier}>
+            <Plus className="mr-1 h-3 w-3" />
+            {t('pricing.addTier')}
+          </Button>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
@@ -235,6 +440,8 @@ function PricingItemsPanel({
   const { t } = useTranslation('assets')
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
+  const flightTypesQuery = useFlightTypesQuery()
+  const flightTypes = flightTypesQuery.data ?? []
 
   const accountsQuery = useAccountsQuery()
   const revenueAccounts = (accountsQuery.data ?? []).filter((a) => a.type === 5 && a.is_posting_allowed)
@@ -246,6 +453,7 @@ function PricingItemsPanel({
   const [showForm, setShowForm] = useState(false)
   const [editingItem, setEditingItem] = useState<PricingItem | null>(null)
   const [itemError, setItemError] = useState<string | null>(null)
+  const isAssetScoped = version.asset_type_uuid !== null
 
   function extractItemError(e: unknown): string {
     if (e instanceof AxiosError && e.response?.data?.detail) return String(e.response.data.detail)
@@ -254,7 +462,7 @@ function PricingItemsPanel({
 
   async function handleCreate(form: ItemFormState) {
     try {
-      await createMutation.mutateAsync(buildItemPayload(form))
+      await createMutation.mutateAsync(buildItemPayload(form, { isAssetScoped, usePack: version.use_pack }))
       setShowForm(false)
       setItemError(null)
     } catch (e) { setItemError(extractItemError(e)) }
@@ -263,7 +471,10 @@ function PricingItemsPanel({
   async function handleUpdate(form: ItemFormState) {
     if (!editingItem) return
     try {
-      await updateMutation.mutateAsync({ uuid: editingItem.uuid, ...buildItemPayload(form) })
+      await updateMutation.mutateAsync({
+        uuid: editingItem.uuid,
+        ...buildItemPayload(form, { isAssetScoped, usePack: version.use_pack }),
+      })
       setEditingItem(null)
       setItemError(null)
     } catch (e) { setItemError(extractItemError(e)) }
@@ -299,7 +510,10 @@ function PricingItemsPanel({
       {showForm && (
         <PricingItemForm
           initial={EMPTY_ITEM}
+          flightTypes={flightTypes}
           revenueAccounts={revenueAccounts}
+          isAssetScoped={isAssetScoped}
+          usePack={version.use_pack}
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
           saving={createMutation.isPending}
@@ -319,7 +533,10 @@ function PricingItemsPanel({
               <PricingItemForm
                 key={item.uuid}
                 initial={itemToForm(item)}
+                flightTypes={flightTypes}
                 revenueAccounts={revenueAccounts}
+                isAssetScoped={isAssetScoped}
+                usePack={version.use_pack}
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
                 saving={updateMutation.isPending}
@@ -332,10 +549,22 @@ function PricingItemsPanel({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
                   <p className="mt-0.5 truncate text-xs text-on-surface-variant">
-                    {t('pricing.genericItemMode')}
-                    {' · '}{formatPrice(item.base_price)} €
-                    {item.age_discount_percent !== '0' && item.age_discount_percent !== '0.00' && (
-                      <> · {t('pricing.ageDiscountSummary', { percent: formatPrice(item.age_discount_percent) })}</>
+                    {isAssetScoped ? (
+                      <>
+                        {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
+                        {formatPrice(item.base_price)}
+                        {version.use_pack && item.pack_price && ` · Pack: ${formatPrice(item.pack_price)}`}
+                        {item.tiers.length > 0 &&
+                          ` · ${item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}`).join(' · ')}`}
+                      </>
+                    ) : (
+                      <>
+                        {t('pricing.genericItemMode')}
+                        {' · '}{formatPrice(item.base_price)} €
+                        {item.age_discount_percent !== '0' && item.age_discount_percent !== '0.00' && (
+                          <> · {t('pricing.ageDiscountSummary', { percent: formatPrice(item.age_discount_percent) })}</>
+                        )}
+                      </>
                     )}
                   </p>
                 </div>
@@ -674,6 +903,7 @@ function VersionTimeline({
       <div className="space-y-2">
         {versions.map((v) => {
           const isExpanded = expandedUuid === v.uuid
+          const scope = versionScopeLabel(v, t)
           return (
             <div
               key={v.uuid}
@@ -697,6 +927,9 @@ function VersionTimeline({
                     {v.from_date} → {v.to_date ?? t('pricing.version.openEnd')}
                   </p>
                 </div>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${scope.className}`}>
+                  {scope.label}
+                </span>
                 <VersionBadge status={v.status} t={t} />
                 {v.is_locked && (
                   <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">

@@ -570,6 +570,7 @@ export function useCreateFiscalYearMutation() {
 export type PricingVersion = {
   uuid: string
   fiscal_year_uuid: string
+  asset_type_uuid: string | null
   name: string
   from_date: string
   to_date: string | null
