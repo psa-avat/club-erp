@@ -48,7 +48,6 @@ import {
   useCreatePricingItemMutation,
   useUpdatePricingItemMutation,
   useDeletePricingItemMutation,
-  useFlightTypesQuery,
 } from '../../assets/api'
 import type { PricingItem, TierPayload, CreatePricingItemPayload } from '../../assets/types'
 
@@ -236,9 +235,6 @@ function PricingItemsPanel({
   const { t } = useTranslation('assets')
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
-
-  const flightTypesQuery = useFlightTypesQuery()
-  const flightTypes = flightTypesQuery.data ?? []
 
   const accountsQuery = useAccountsQuery()
   const revenueAccounts = (accountsQuery.data ?? []).filter((a) => a.type === 5 && a.is_posting_allowed)
