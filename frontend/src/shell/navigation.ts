@@ -25,6 +25,7 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
       { to: '/banque', labelKey: 'nav.banqueOverview' },
+      { to: '/banque/operations', labelKey: 'nav.banqueOps' },
       { to: '/banque/journal', labelKey: 'nav.banqueJournal' },
       { to: '/banque/pricing', labelKey: 'nav.banquePricing' },
       { to: '/banque/pcg', labelKey: 'nav.banquePcg' },

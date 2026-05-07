@@ -14,6 +14,9 @@ import {
   BankPricingVersionEditPage,
   BanquePcgPage,
   FinancialReportsPage,
+  BanqueDailyOpsPage,
+  MemberBulkBillingPage,
+  SupplierInvoicePage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage } from './modules/members'
@@ -44,6 +47,9 @@ function App() {
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/banque" element={<BanquePage />} />
           <Route path="/banque/dashboard" element={<BanqueDashboardPage />} />
+          <Route path="/banque/operations" element={<BanqueDailyOpsPage />} />
+          <Route path="/banque/factures-fournisseurs/new" element={<SupplierInvoicePage />} />
+          <Route path="/banque/facturation-membres" element={<MemberBulkBillingPage />} />
           <Route path="/banque/accounts" element={<BanqueCoaPage />} />
           <Route path="/banque/journal" element={<BanqueJournalEntriesPage />} />
           <Route path="/banque/journal/entries" element={<BanqueJournalEntriesPage />} />

@@ -33,7 +33,54 @@ import type { AccountingEntry, AccountingEntryLinePayload, AccountingEntryModel,
 
 export const ENTRY_STATE_DRAFT = 1
 export const ENTRY_STATE_POSTED = 2
+export const ENTRY_STATE_CANCELLED = 3
 export const RECURRENCE_OPTIONS = [1, 2, 3, 4] as const
+
+// ---------------------------------------------------------------------------
+// Operational status vocabulary (cross-module daily ops)
+// Used by Fournisseurs, Ventes, Vols, Paiements, Salaires screens
+// ---------------------------------------------------------------------------
+
+export const OPS_STATUS = {
+  DRAFT:       'draft',       // Brouillon
+  PENDING:     'pending',     // À valider
+  VALIDATED:   'validated',   // Validé
+  OVERDUE:     'overdue',     // Échu
+  PAID:        'paid',        // Payé
+  PARTIAL:     'partial',     // Partiel
+  REIMBURSED:  'reimbursed',  // Remboursé
+  MATCHED:     'matched',     // Lettré
+  ARCHIVED:    'archived',    // Archivé
+  BLOCKED:     'blocked',     // Bloqué
+} as const
+
+export type OpsStatus = typeof OPS_STATUS[keyof typeof OPS_STATUS]
+
+export function opsStatusBadgeClass(status: OpsStatus): string {
+  switch (status) {
+    case 'validated':
+    case 'paid':
+    case 'matched':
+      return 'bg-success-container text-on-success-container'
+    case 'overdue':
+    case 'blocked':
+      return 'bg-error-container text-on-error-container'
+    case 'pending':
+    case 'draft':
+      return 'bg-warning-container text-on-warning-container'
+    case 'partial':
+    case 'reimbursed':
+      return 'bg-surface-variant text-on-surface-variant'
+    case 'archived':
+      return 'bg-surface-container text-on-surface-variant'
+    default:
+      return 'bg-surface-variant text-on-surface-variant'
+  }
+}
+
+export function opsStatusLabel(status: OpsStatus, t: (key: string) => string): string {
+  return t(`ops.statuses.${status}`)
+}
 
 // ---------------------------------------------------------------------------
 // Local form state shapes

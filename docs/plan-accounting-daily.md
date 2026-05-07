@@ -83,6 +83,26 @@ Concevoir une expérience comptable orientée opérations journalières (fournis
 - **Harmoniser les points d'entrée pour la création d'écritures** : Le tableau de bord offrira des actions rapides contextuelles (ex: "Nouvelle facture fournisseur", "Facturer membre"), tandis que l'écran des écritures de journal conservera un bouton "Nouvelle écriture" pour un accès direct et générique.
 - Dépendance: Phases 1 et 12.
 
+15. Phase 14 — Refonte densité du grand livre (Journal / Ledger) ⬅ NOUVEAU
+- **Remplacer les cartes d'écriture par des lignes tabulaires compactes** : L'affichage actuel utilise un composant "card" par écriture (~3 lignes de hauteur visuelles); le remplacer par un `<tr>` de hauteur fixe 36px avec colonnes: `☐ | Date | Journal | Libellé | Référence | Débit | Crédit | État | Actions`.
+- **Supprimer la redondance du libellé "Brouillon non posté"** : Dans la liste du journal, le badge d'état (Brouillon / Validé / Annulé) suffit. Le texte "Brouillon non posté" répété en titre de chaque carte est redondant et consomme de l'espace vertical sans valeur. Le libellé métier (ex: "_ report à nouveau") devient la ligne principale de la ligne tabulaire.
+- **Colonnes cibles de la vue liste** :
+  - Col 1 (32px): case à cocher sélection multiple.
+  - Col 2 (88px): date au format `JJ/MM/AAAA`, alignée à gauche.
+  - Col 3 (52px): code journal (VT, HA, BQ, OD…), badge compact monospace.
+  - Col 4 (flex): libellé de l'écriture, tronqué avec tooltip sur survol.
+  - Col 5 (100px): référence (numéro de séquence ou manuel), grisée si vide.
+  - Col 6 (80px): total débit, aligné à droite, formaté `0 000,00`.
+  - Col 7 (80px): total crédit, aligné à droite.
+  - Col 8 (72px): badge état minimal — `Brouillon` (ambre), `Validé` (vert), `Annulé` (rouge). Pas de texte long.
+  - Col 9 (72px): icônes d'action contextuelles — ✏ (éditer, si brouillon) · ✕ (supprimer, si brouillon) · ↩ (extourner, si validé). Visibles au survol de ligne seulement.
+- **Densité cible** : afficher 20–25 écritures à la fois sans scroll sur un écran 1080p standard (comparer: actuellement ~6 cartes visibles).
+- **Tri par colonne** : clic en-tête de colonne pour trier asc/desc. Tri par défaut: date desc.
+- **Regroupement optionnel** : ajouter une option "Grouper par journal" qui insère des séparateurs de groupe sans changer le rendu ligne.
+- **Sélection multiple** : cochage de cases + barre d'actions flottante en bas ("Comptabiliser la sélection (N)" / "Supprimer les brouillons (N)") — reprend le pattern `StickyActionBar` existant.
+- **Ligne expandable** : clic sur une ligne ouvre un panneau accordéon sous la ligne (non une modale) affichant les lignes comptables détaillées (comptes débit/crédit, montants, dimensions membre). Clic sur ✏ ouvre le workspace complet.
+- Dépendance: Phases 0 et 13. Impacte `JournalEntriesScreen.tsx` et `journalShared.tsx`.
+
 **Relevant files**
 - /home/erpadmin/club-erp/docs/SPEC_ACCOUNTING.md — règles métier comptables, états et contraintes de cycle.
 - /home/erpadmin/club-erp/docs/PLAN_ACCOUNTING_UXUI_IMPLEMENTATION.md — base d’implémentation UX déjà cadrée pour la comptabilité.
@@ -103,8 +123,7 @@ Concevoir une expérience comptable orientée opérations journalières (fournis
 3. Vérification cohérence: contrôler l’uniformité des statuts, badges, actions et messages d’erreur entre tous les flux.
 4. Vérification précision: tester calculs monétaires et affichages montants via Decimal.js, y compris cas limites (arrondis, partiels, négatifs contrôlés).
 5. Vérification échéances: simuler rappels J-7/J-3/J+1 et files “en retard” sur fournisseurs, membres, et obligations salaires.
-6. Vérification accessibilité/mobile: valider navigation clavier, focus visible, contraste, et usage smartphone sur écrans denses.
-
+6. Vérification accessibilité/mobile: valider navigation clavier, focus visible, contraste, et usage smartphone sur écrans denses.7. Vérification densité grand livre (Phase 14): mesurer le nombre d'écritures visibles sans scroll sur 1080p — objectif ≥ 20 lignes. Vérifier l'absence de texte "Brouillon non posté" répété dans la liste. Tester la sélection multiple et la barre d'actions sticky. Vérifier que l'accordéon de détail affiche bien les lignes comptables sans ouvrir une modale.
 **Decisions**
 - Décision utilisateur: viser une vision complète et non un MVP strict.
 - Décision utilisateur: UX priorisée pour tous les profils (trésorier, staff, membres) avec parcours adaptés.
@@ -115,4 +134,5 @@ Concevoir une expérience comptable orientée opérations journalières (fournis
 **Further Considerations**
 1. Priorisation d’implémentation recommandée: commencer par fournisseurs + encaissements, car ce sont les zones à plus fort risque de retards et erreurs de trésorerie.
 2. Pour la facturation des vols, prévoir tôt un écran “exceptions” dédié afin d’éviter la complexité cachée dans le flux nominal.
-3. Si la charge projet est contrainte, réduire la Vague A au strict trio: triage dashboard, facture fournisseur, rapprochement simple.
+3. Si la charge projet est contrainte, réduire la Vague A au strict trio: triage dashboard, facture fournisseur, rapprochement simple.4. Phase 14 (refonte grand livre) est une modification à impact réduit côté backend (aucun endpoint nouveau) mais à fort impact UX positif immédiat — la traiter tôt dans Vague A comme amélioration parallèle de `JournalEntriesScreen.tsx`.
+5. L'accordéon de détail de ligne (Phase 14) réutilise les données déjà chargées dans la query TanStack (lignes incluses dans la réponse); pas de requête supplémentaire si le backend retourne les lignes avec l'écriture dans la liste.
