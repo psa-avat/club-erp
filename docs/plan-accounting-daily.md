@@ -63,10 +63,25 @@ Concevoir une expérience comptable orientée opérations journalières (fournis
 - Renforcer les états vides/erreurs/réseau et les confirmations d’actions irréversibles.
 - Dépendance: transversal, en parallèle de toutes les phases.
 
-11. Phase 10 — Livraison incrémentale et gouvernance
+11. Phase 10 — Tunnel de Correction & Extourne (Senior UX)
+- Concevoir un parcours "One-click Reversal" depuis n'importe quelle écriture validée/postée.
+- L'interface doit générer automatiquement l'écriture inverse, lier les deux par UUID, et forcer la saisie d'un "Motif d'extourne".
+- Ajouter un indicateur visuel "Annulé par l'écriture #XXX" sur l'original.
+
+12. Phase 11 — Sécurité & Verrouillage de Période
+- Ajouter un "Soft Lock" mensuel : permettre au comptable de verrouiller le mois de Mai pour empêcher le staff de créer des brouillons sur une période en cours de clôture.
+- Intégrer le sélecteur de Fiscal Year global dans le bandeau supérieur pour filtrer instantanément tout le dashboard "Opérations".
+
+13. Phase 12 — Livraison incrémentale et gouvernance
 - Livrer en vagues: Vague A (Dashboard + Fournisseurs + Encaissements), Vague B (Ventes membres + Vols), Vague C (Remboursements + Salaires + deadlines avancées).
 - Prévoir tests utilisateurs courts par profil (trésorier, staff, membre) à chaque vague et ajustements UX.
 - Dépendance: planification globale.
+
+14. Phase 13 — Optimisation des Flux Opérationnels et Vues Détaillées
+- **Clarifier le rôle du Tableau de Bord Opérations (`BanqueDashboardPage.tsx` / `daily_accounting_club_erp_integrated.html`)** : En faire le hub principal pour les tâches comptables quotidiennes et les actions en masse, notamment la revue et la comptabilisation groupée des brouillons.
+- **Affiner l'écran des Écritures de Journal (`JournalEntriesScreen.tsx`)** : Le transformer en un outil d'audit et de recherche détaillé. Les actions en masse (comme la comptabilisation groupée) y seront moins proéminentes, voire déplacées vers le tableau de bord, afin de se concentrer sur la recherche avancée, la consultation individuelle et la gestion fine des écritures (suppression de brouillons, visualisation des détails).
+- **Harmoniser les points d'entrée pour la création d'écritures** : Le tableau de bord offrira des actions rapides contextuelles (ex: "Nouvelle facture fournisseur", "Facturer membre"), tandis que l'écran des écritures de journal conservera un bouton "Nouvelle écriture" pour un accès direct et générique.
+- Dépendance: Phases 1 et 12.
 
 **Relevant files**
 - /home/erpadmin/club-erp/docs/SPEC_ACCOUNTING.md — règles métier comptables, états et contraintes de cycle.

@@ -92,6 +92,7 @@ input:focus,select:focus{outline:none;border-color:#1a1a2e}
 .sticky-bar{position:sticky;bottom:0;background:var(--color-background-primary);border-top:0.5px solid var(--color-border-tertiary);padding:12px 28px;display:flex;align-items:center;justify-content:space-between;margin:0 -28px}
 .sticky-summary{font-size:13px;color:var(--color-text-secondary)}
 .sticky-summary b{color:var(--color-text-primary)}
+.balance-indicator{padding:4px 12px;border-radius:4px;font-weight:600;font-size:12px}
 
 .warn-box{background:#FFFBEB;border:0.5px solid #FCD34D;border-radius:var(--border-radius-md);padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:12px}
 </style>
@@ -356,7 +357,9 @@ input:focus,select:focus{outline:none;border-color:#1a1a2e}
       <!-- Sticky bar -->
       <div class="sticky-bar">
         <div class="sticky-summary">
-          <b>4 membres</b> · <b id="bar-total">62,50 €</b> · Journal VT · FY2026
+          <b><span id="member-count-bar">4</span> membres</b> · 
+          <b id="bar-total">62,50 €</b> · 
+          <span id="balance-status-bar" class="balance-indicator" style="background:#D1FAE5;color:#065F46">Équilibré ✓</span>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn-sm">Enregistrer brouillon</button>
