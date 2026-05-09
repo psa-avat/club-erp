@@ -870,5 +870,11 @@ This checklist translates the UX/UI implementation plan into actionable tasks or
 ✓ **Auditability**: All transactions logged, immutability enforced  
 
 ---
+Milestone 6.1: Arbitrage Workspace
 
+[ ] Implement "Arbitrage Queue" with filters by amount threshold (to separate small/large amounts).
+
+[ ] Add bulk actions: "Apply to account credit" vs. "Generate refund batch".
+
+[ ] Add "Refund Policy" settings to define the automatic threshold for small vs. large amounts.
 **End of Checklist**

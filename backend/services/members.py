@@ -224,6 +224,8 @@ def _apply_member_filters(
 
     if filters.status is not None:
         query = query.where(Member.status == filters.status)
+    if filters.member_categories:
+        query = query.where(Member.member_category.in_(filters.member_categories))
     if filters.member_category is not None:
         query = query.where(Member.member_category == filters.member_category)
     if filters.registration_status is not None:
@@ -1234,6 +1236,7 @@ _MEMBER_CATEGORY_MAP: dict[str, int] = {
     "5": 5, "external_pilot": 5, "pilote_externe": 5,
     "6": 6, "volunteer": 6, "benevole": 6,
     "7": 7, "external_organization": 7, "organisation_externe": 7, "club": 7, "ce": 7,
+    "8": 8, "business": 8, "client_supplier": 8, "client_fournisseur": 8,
 }
 
 _GENRE_MAP: dict[str, int] = {
@@ -1318,7 +1321,7 @@ async def import_members_from_csv(
             skipped += 1
             continue
         if raw_category not in _MEMBER_CATEGORY_MAP:
-            errors.append(ImportRowError(row=row_index, field="member_category", message=f"Unknown value {raw_category!r}. Expected 1-6 or label."))
+            errors.append(ImportRowError(row=row_index, field="member_category", message=f"Unknown value {raw_category!r}. Expected 1-8 or label."))
             skipped += 1
             continue
 

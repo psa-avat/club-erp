@@ -8,6 +8,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import HTTPException, status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -71,6 +72,7 @@ async def list_members_endpoint(
     search: Optional[str] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=4),
     member_category: Optional[int] = Query(default=None, ge=1, le=8),
+    member_categories: Optional[str] = Query(default=None),
     registration_status: Optional[int] = Query(default=None, ge=1, le=4),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),
@@ -85,10 +87,26 @@ async def list_members_endpoint(
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
+    parsed_member_categories: Optional[list[int]] = None
+    if member_categories and member_categories.strip():
+        try:
+            parsed_member_categories = [int(raw.strip()) for raw in member_categories.split(',') if raw.strip()]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="member_categories must be a comma-separated list of integers",
+            ) from exc
+        if any(category < 1 or category > 8 for category in parsed_member_categories):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="member_categories values must be between 1 and 8",
+            )
+
     filters = MemberListFilters(
         search=search,
         status=status,
         member_category=member_category,
+        member_categories=parsed_member_categories,
         registration_status=registration_status,
         committee_uuid=committee_uuid,
         can_fly=can_fly,
@@ -107,6 +125,7 @@ async def count_members_endpoint(
     search: Optional[str] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=4),
     member_category: Optional[int] = Query(default=None, ge=1, le=8),
+    member_categories: Optional[str] = Query(default=None),
     registration_status: Optional[int] = Query(default=None, ge=1, le=4),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),
@@ -119,10 +138,26 @@ async def count_members_endpoint(
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
+    parsed_member_categories: Optional[list[int]] = None
+    if member_categories and member_categories.strip():
+        try:
+            parsed_member_categories = [int(raw.strip()) for raw in member_categories.split(',') if raw.strip()]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="member_categories must be a comma-separated list of integers",
+            ) from exc
+        if any(category < 1 or category > 8 for category in parsed_member_categories):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="member_categories values must be between 1 and 8",
+            )
+
     filters = MemberListFilters(
         search=search,
         status=status,
         member_category=member_category,
+        member_categories=parsed_member_categories,
         registration_status=registration_status,
         committee_uuid=committee_uuid,
         can_fly=can_fly,

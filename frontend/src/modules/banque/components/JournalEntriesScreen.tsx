@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Pencil, Undo2, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Banner } from '../../../components/ui/banner'
@@ -28,18 +28,38 @@ import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { StickyActionBar } from '../../../components/ui/sticky-action-bar'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
+  useAccountsQuery,
   useAccountingEntriesQuery,
   useAccountingEntriesCountQuery,
   useBulkPostAccountingEntriesMutation,
   useDeleteAccountingEntryMutation,
   useFiscalYearsQuery,
   useJournalsQuery,
+  useReverseAccountingEntryMutation,
 } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
+
+type SortKey = 'entry_date' | 'journal' | 'description' | 'reference' | 'amount' | 'state'
+type SortDirection = 'asc' | 'desc'
+
+function formatDateFr(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-')
+  if (!year || !month || !day) return isoDate
+  return `${day}/${month}/${year}`
+}
+
+function formatAmountFr(amount: string): string {
+  const [intPartRaw, decimalRaw = '00'] = amount.split('.')
+  const intPart = intPartRaw.replace('-', '')
+  const withGrouping = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  const sign = intPartRaw.startsWith('-') ? '-' : ''
+  return `${sign}${withGrouping},${decimalRaw.padEnd(2, '0').slice(0, 2)}`
+}
 
 export function JournalEntriesScreen() {
   const { t } = useTranslation('banque')
@@ -50,8 +70,9 @@ export function JournalEntriesScreen() {
 
   const fiscalYearsQuery = useFiscalYearsQuery(canView)
   const journalsQuery = useJournalsQuery(canView)
+  const accountsQuery = useAccountsQuery(canView)
 
-  const PAGE_SIZE = 50
+  const PAGE_SIZE = 25
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const [filters, setFilters] = useState({ journal_uuid: '', state: 0, search: '' })
@@ -60,11 +81,17 @@ export function JournalEntriesScreen() {
   const debouncedSearch = useDebounce(filters.search, 350)
   const [importOpen, setImportOpen] = useState(false)
   const [confirmBulkPostOpen, setConfirmBulkPostOpen] = useState(false)
+  const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [expandedEntryUuid, setExpandedEntryUuid] = useState<string | null>(null)
+  const [groupByJournal, setGroupByJournal] = useState(false)
+  const [sortKey, setSortKey] = useState<SortKey>('entry_date')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
+  const accounts = accountsQuery.data ?? []
 
   const baseFilters = useMemo(
     () => ({
@@ -88,24 +115,90 @@ export function JournalEntriesScreen() {
   const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE))
   const bulkPostMutation = useBulkPostAccountingEntriesMutation()
   const deleteEntryMutation = useDeleteAccountingEntryMutation()
+  const reverseEntryMutation = useReverseAccountingEntryMutation()
+
+  const journalByUuid = useMemo(
+    () => new Map(journals.map((j) => [j.uuid, j])),
+    [journals],
+  )
+
+  const accountLabelByUuid = useMemo(
+    () => new Map(accounts.map((a) => [a.uuid, `${a.code} — ${a.name}`])),
+    [accounts],
+  )
+
+  const entriesView = useMemo(
+    () => entries.map((entry) => {
+      const summary = totals(
+        entry.lines.map((line) => {
+          const debit = decimalOrZero(line.debit)
+          const credit = decimalOrZero(line.credit)
+          const amount = debit.greaterThan(0) ? debit : credit.negated()
+          return {
+            account_uuid: line.account_uuid,
+            amount: amount.toFixed(2),
+            description: line.description ?? '',
+            member_uuid: line.member_uuid ?? '',
+          }
+        }),
+      )
+      return {
+        entry,
+        journalCode: journalByUuid.get(entry.journal_uuid)?.code ?? '—',
+        amount: summary.debit,
+      }
+    }),
+    [entries, journalByUuid],
+  )
+
+  const sortedEntriesView = useMemo(() => {
+    const items = [...entriesView]
+    const multiplier = sortDirection === 'asc' ? 1 : -1
+
+    const compareCore = (a: typeof items[number], b: typeof items[number]) => {
+      if (sortKey === 'entry_date') return a.entry.entry_date.localeCompare(b.entry.entry_date) * multiplier
+      if (sortKey === 'journal') return a.journalCode.localeCompare(b.journalCode) * multiplier
+      if (sortKey === 'description') return a.entry.description.localeCompare(b.entry.description) * multiplier
+      if (sortKey === 'reference') return (a.entry.reference ?? '').localeCompare(b.entry.reference ?? '') * multiplier
+      if (sortKey === 'amount') return decimalOrZero(a.amount).comparedTo(decimalOrZero(b.amount)) * multiplier
+      return (a.entry.state - b.entry.state) * multiplier
+    }
+
+    if (groupByJournal) {
+      items.sort((a, b) => {
+        const groupCmp = a.journalCode.localeCompare(b.journalCode)
+        if (groupCmp !== 0) return groupCmp
+        return compareCore(a, b)
+      })
+      return items
+    }
+
+    items.sort(compareCore)
+    return items
+  }, [entriesView, groupByJournal, sortDirection, sortKey])
 
   const draftEntries = useMemo(
-    () => entries.filter((entry) => entry.state === 1),
-    [entries],
+    () => sortedEntriesView.map((row) => row.entry).filter((entry) => entry.state === 1),
+    [sortedEntriesView],
   )
   const allVisibleDraftsSelected =
     draftEntries.length > 0 && draftEntries.every((entry) => selectedEntryUuids.includes(entry.uuid))
 
   useEffect(() => {
-    setSelectedEntryUuids((prev) =>
-      prev.filter((uuid) => entries.some((entry) => entry.uuid === uuid && entry.state === 1)),
-    )
+    setSelectedEntryUuids((prev) => {
+      const allowedDrafts = new Set(entries.filter((entry) => entry.state === 1).map((entry) => entry.uuid))
+      return prev.filter((uuid) => allowedDrafts.has(uuid))
+    })
   }, [entries])
 
   // Reset to page 0 when filters change
   useEffect(() => {
     setPage(0)
   }, [baseFilters])
+
+  useEffect(() => {
+    setExpandedEntryUuid((prev) => (prev && entries.some((entry) => entry.uuid === prev) ? prev : null))
+  }, [entries])
 
   useEffect(() => {
     if (!successMessage) return
@@ -133,6 +226,15 @@ export function JournalEntriesScreen() {
     setSelectedEntryUuids(draftEntries.map((entry) => entry.uuid))
   }
 
+  function toggleSort(column: SortKey) {
+    if (sortKey === column) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(column)
+    setSortDirection(column === 'entry_date' ? 'desc' : 'asc')
+  }
+
   async function handleBulkPost() {
     if (!activeFiscalYearUuid || selectedEntryUuids.length === 0) return
     setLocalError(null)
@@ -143,6 +245,43 @@ export function JournalEntriesScreen() {
       })
       setSelectedEntryUuids([])
       setSuccessMessage(t('journal.entries.bulk.posted', { count: postedEntries.length }))
+    } catch (error) {
+      setLocalError(toErrorMessage(error, t('journal.errors.generic')))
+    }
+  }
+
+  async function handleBulkDeleteDrafts() {
+    if (selectedEntryUuids.length === 0) return
+    setLocalError(null)
+    try {
+      const selectedDrafts = entries.filter((entry) =>
+        selectedEntryUuids.includes(entry.uuid) && entry.state === 1,
+      )
+      for (const draft of selectedDrafts) {
+        await deleteEntryMutation.mutateAsync({
+          entryUuid: draft.uuid,
+          fiscalYearUuid: draft.fiscal_year_uuid,
+        })
+      }
+      setSelectedEntryUuids([])
+      setSuccessMessage(t('journal.entries.bulk.deleted', { count: selectedDrafts.length }))
+    } catch (error) {
+      setLocalError(toErrorMessage(error, t('journal.errors.generic')))
+    }
+  }
+
+  async function handleReverse(entryUuid: string) {
+    if (!activeFiscalYearUuid) return
+    const reversalReason = window.prompt(t('journal.entries.reversal.reasonPlaceholder'))
+    if (!reversalReason || reversalReason.trim() === '') return
+    setLocalError(null)
+    try {
+      await reverseEntryMutation.mutateAsync({
+        entryUuid,
+        fiscal_year_uuid: activeFiscalYearUuid,
+        reversal_reason: reversalReason.trim(),
+      })
+      setSuccessMessage(t('journal.entries.reversed'))
     } catch (error) {
       setLocalError(toErrorMessage(error, t('journal.errors.generic')))
     }
@@ -275,79 +414,220 @@ export function JournalEntriesScreen() {
           ) : entries.length === 0 ? (
             <p className="text-sm text-slate-500">{t('journal.entries.empty')}</p>
           ) : (
-            entries.map((entry) => {
-              const summary = totals(
-                entry.lines.map((line) => {
-                  const debit = decimalOrZero(line.debit)
-                  const credit = decimalOrZero(line.credit)
-                  const amount = debit.greaterThan(0) ? debit : credit.negated()
-                  return {
-                    account_uuid: line.account_uuid,
-                    amount: amount.toFixed(2),
-                    description: line.description ?? '',
-                    member_uuid: line.member_uuid ?? '',
-                  }
-                }),
-              )
-              const isDraftEntry = entry.state === 1
-              const entryRef = entry.sequence_number ?? entry.description
-              return (
-                <div key={entry.uuid} className="flex items-stretch gap-3">
-                  {canPost && isDraftEntry ? (
-                    <label className="flex shrink-0 items-start pt-4" aria-label={t('journal.entries.bulk.selectOne', { ref: entryRef })}>
+            <div className="overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200">
+              <table className="min-w-[680px] w-full table-fixed border-collapse text-left text-[11px]">
+                <colgroup>
+                  <col className="w-8" />
+                  <col className="w-[88px]" />
+                  <col className="w-[52px]" />
+                  <col />
+                  <col className="w-[100px]" />
+                  <col className="w-[104px]" />
+                  <col className="w-[72px]" />
+                  <col className="w-[72px]" />
+                </colgroup>
+                <thead>
+                  <tr className="h-9 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                    <th className="sticky left-0 z-20 w-8 bg-slate-50 px-2">
                       <input
                         type="checkbox"
-                        checked={selectedEntryUuids.includes(entry.uuid)}
-                        onChange={() => toggleEntrySelection(entry.uuid)}
+                        checked={allVisibleDraftsSelected}
+                        onChange={toggleSelectAllDrafts}
+                        aria-label={t('journal.entries.bulk.selectAllDrafts')}
                         className="h-4 w-4 rounded border-slate-300"
                       />
-                    </label>
-                  ) : (
-                    <div className="w-4 shrink-0" aria-hidden="true" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/banque/journal/entry/${entry.uuid}`)}
-                    className="w-full rounded-lg border border-slate-200 bg-white p-4 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{entry.sequence_number ?? t('journal.entries.draftSequence')}</p>
-                        <p className="text-sm text-slate-700">{entry.description}</p>
-                        <p className="text-xs text-slate-500">{entry.entry_date} · {entry.reference ?? t('journal.entries.noReference')}</p>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${entryStateBadgeClass(entry.state)}`}>
-                        {entryStateLabel(entry.state, t)}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                      <span>{entry.lines.length} {t('journal.entries.linesCount')}</span>
-                      <span className="font-mono">D {summary.debit} / C {summary.credit}</span>
-                    </div>
-                  </button>
-                  {canPost && isDraftEntry && (
-                    <button
-                      type="button"
-                      title={t('journal.entries.deleteEntry')}
-                      disabled={deleteEntryMutation.isPending}
-                      className="flex shrink-0 items-center self-stretch rounded-lg border border-red-200 bg-white px-2 text-red-400 transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
-                      onClick={() => {
-                        if (window.confirm(t('journal.entries.confirmDelete'))) {
-                          deleteEntryMutation.mutate({
-                            entryUuid: entry.uuid,
-                            fiscalYearUuid: entry.fiscal_year_uuid,
-                          })
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )
-            })
+                    </th>
+                    <th className="sticky left-8 z-20 bg-slate-50 px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('entry_date')}>
+                        {t('journal.entries.col.date')}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${sortKey === 'entry_date' && sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                      </button>
+                    </th>
+                    <th className="px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('journal')}>
+                        {t('journal.entries.col.journal')}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${sortKey === 'journal' && sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                      </button>
+                    </th>
+                    <th className="px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('description')}>
+                        {t('journal.entries.col.description')}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${sortKey === 'description' && sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                      </button>
+                    </th>
+                    <th className="px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('reference')}>
+                        {t('journal.entries.col.reference')}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${sortKey === 'reference' && sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                      </button>
+                    </th>
+                    <th className="px-2 text-right">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('amount')}>
+                        {t('journal.entries.col.amount')}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${sortKey === 'amount' && sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                      </button>
+                    </th>
+                    <th className="px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('state')}>
+                        {t('journal.entries.col.state')}
+                        <ChevronDown className={`h-3 w-3 transition-transform ${sortKey === 'state' && sortDirection === 'asc' ? 'rotate-180' : ''}`} />
+                      </button>
+                    </th>
+                    <th className="sticky right-0 z-20 bg-slate-50 px-2 text-right">{t('journal.entries.col.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedEntriesView.map((row, index) => {
+                    const { entry, journalCode, amount } = row
+                    const isDraftEntry = entry.state === 1
+                    const showGroupHeader = groupByJournal && (index === 0 || sortedEntriesView[index - 1].journalCode !== journalCode)
+                    return (
+                      <>
+                        {showGroupHeader && (
+                          <tr className="h-8 border-b border-slate-200 bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <td colSpan={8} className="px-3">{t('journal.entries.groupJournalLabel', { journal: journalCode })}</td>
+                          </tr>
+                        )}
+
+                        <tr
+                          key={entry.uuid}
+                          className="group h-9 border-b border-slate-100 text-[11px] text-slate-700 hover:bg-slate-50"
+                          onClick={() => setExpandedEntryUuid((prev) => (prev === entry.uuid ? null : entry.uuid))}
+                        >
+                          <td className="sticky left-0 z-10 bg-white px-2 group-hover:bg-slate-50" onClick={(event) => event.stopPropagation()}>
+                            {isDraftEntry ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedEntryUuids.includes(entry.uuid)}
+                                onChange={() => toggleEntrySelection(entry.uuid)}
+                                aria-label={t('journal.entries.bulk.selectOne', { ref: entry.sequence_number ?? entry.description })}
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+                            ) : null}
+                          </td>
+                          <td className="sticky left-8 z-10 bg-white px-2 tabular-nums group-hover:bg-slate-50">{formatDateFr(entry.entry_date)}</td>
+                          <td className="px-2">
+                            <span className="inline-flex min-w-8 justify-center rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                              {journalCode}
+                            </span>
+                          </td>
+                          <td className="max-w-0 px-2">
+                            <p className="truncate" title={entry.description}>{entry.description}</p>
+                          </td>
+                          <td className="px-2 text-slate-500">
+                            <p className="truncate" title={entry.reference ?? ''}>{entry.reference ?? '—'}</p>
+                          </td>
+                          <td className="px-2 text-right font-mono tabular-nums">{formatAmountFr(amount)}</td>
+                          <td className="px-2">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${entryStateBadgeClass(entry.state)}`}>
+                              {entryStateLabel(entry.state, t)}
+                            </span>
+                          </td>
+                          <td className="sticky right-0 z-10 bg-white px-2 text-right group-hover:bg-slate-50" onClick={(event) => event.stopPropagation()}>
+                            <div className="inline-flex items-center justify-end gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                              {isDraftEntry && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                                    aria-label={t('journal.entries.editDraft')}
+                                    title={t('journal.entries.editDraft')}
+                                    onClick={() => navigate(`/banque/journal/entry/${entry.uuid}`)}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1.5 text-red-500 hover:bg-red-50 hover:text-red-700"
+                                    aria-label={t('journal.entries.deleteEntry')}
+                                    title={t('journal.entries.deleteEntry')}
+                                    onClick={() => {
+                                      if (window.confirm(t('journal.entries.confirmDelete'))) {
+                                        deleteEntryMutation.mutate({
+                                          entryUuid: entry.uuid,
+                                          fiscalYearUuid: entry.fiscal_year_uuid,
+                                        })
+                                      }
+                                    }}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              {entry.state === 2 && (
+                                <button
+                                  type="button"
+                                  className="rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                                  aria-label={t('journal.entries.reverseAction')}
+                                  title={t('journal.entries.reverseAction')}
+                                  onClick={() => void handleReverse(entry.uuid)}
+                                >
+                                  <Undo2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {expandedEntryUuid === entry.uuid && (
+                          <tr className="border-b border-slate-200 bg-slate-50">
+                            <td colSpan={8} className="p-3">
+                              <div className="space-y-2">
+                                <p className="text-xs font-semibold text-slate-700">{t('journal.entries.lineDetailsTitle')}</p>
+                                <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+                                  <table className="min-w-[640px] w-full text-xs">
+                                    <thead>
+                                      <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                                        <th className="px-2 py-1 text-left">{t('journal.forms.account')}</th>
+                                        <th className="px-2 py-1 text-right">{t('journal.forms.debit')}</th>
+                                        <th className="px-2 py-1 text-right">{t('journal.forms.credit')}</th>
+                                        <th className="px-2 py-1 text-left">{t('journal.forms.lineDescription')}</th>
+                                        <th className="px-2 py-1 text-left">{t('journal.forms.tiers')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {entry.lines.map((line) => (
+                                        <tr key={line.uuid} className="border-b border-slate-100 last:border-0">
+                                          <td className="px-2 py-1 text-slate-700">
+                                            <span className="font-mono text-[11px]">
+                                              {accountLabelByUuid.get(line.account_uuid) ?? line.account_uuid}
+                                            </span>
+                                          </td>
+                                          <td className="px-2 py-1 text-right font-mono tabular-nums">{formatAmountFr(line.debit)}</td>
+                                          <td className="px-2 py-1 text-right font-mono tabular-nums">{formatAmountFr(line.credit)}</td>
+                                          <td className="px-2 py-1 text-slate-600">{line.description ?? '—'}</td>
+                                          <td className="break-all px-2 py-1 text-slate-600">{line.member_uuid ?? '—'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
+
+        {entries.length > 0 && (
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={groupByJournal}
+                onChange={(event) => setGroupByJournal(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              {t('journal.entries.groupByJournal')}
+            </label>
+          </div>
+        )}
 
         {/* Pagination */}
         {totalEntries > PAGE_SIZE && (
@@ -380,6 +660,33 @@ export function JournalEntriesScreen() {
       </div>
     </JournalPageShell>
 
+    {canPost && selectedEntryUuids.length > 0 && (
+      <StickyActionBar>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={deleteEntryMutation.isPending}
+          onClick={() => setConfirmBulkDeleteOpen(true)}
+        >
+          {deleteEntryMutation.isPending
+            ? t('journal.entries.bulk.deletingSelected')
+            : t('journal.entries.bulk.deleteSelected', { count: selectedEntryUuids.length })}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={bulkPostMutation.isPending}
+          onClick={() => setConfirmBulkPostOpen(true)}
+        >
+          {bulkPostMutation.isPending
+            ? t('journal.entries.bulk.postingSelected')
+            : t('journal.entries.bulk.postSelected', { count: selectedEntryUuids.length })}
+        </Button>
+      </StickyActionBar>
+    )}
+
     <AccountingImportDialog
       open={importOpen}
       onClose={() => setImportOpen(false)}
@@ -398,6 +705,19 @@ export function JournalEntriesScreen() {
       onConfirm={() => {
         setConfirmBulkPostOpen(false)
         void handleBulkPost()
+      }}
+    />
+
+    <ConfirmDialog
+      open={confirmBulkDeleteOpen}
+      title={t('journal.entries.bulk.confirmDeleteTitle')}
+      body={t('journal.entries.bulk.confirmDeleteBody', { count: selectedEntryUuids.length })}
+      confirmLabel={t('journal.entries.bulk.confirmDeleteAction', { count: selectedEntryUuids.length })}
+      cancelLabel={t('journal.entries.bulk.cancelAction')}
+      onCancel={() => setConfirmBulkDeleteOpen(false)}
+      onConfirm={() => {
+        setConfirmBulkDeleteOpen(false)
+        void handleBulkDeleteDrafts()
       }}
     />
   </>

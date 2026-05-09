@@ -69,7 +69,7 @@ export function ClubPageShell({
           aria-label={t('nav.club')}
         >
           <NavLink
-            to="/club/members"
+            to="/club/members/core"
             className={({ isActive }) => clubNavLinkClass(isActive)}
             aria-current={undefined}
           >

@@ -25,6 +25,7 @@ import { Dialog } from '../../../components/ui/dialog'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
+import { useMemberOptionsQuery } from '../../members/api'
 import {
   useAccountsQuery,
   useCreateAccountingEntryMutation,
@@ -67,11 +68,13 @@ export function SupplierInvoiceDialog({
 }: SupplierInvoiceDialogProps) {
   const { t } = useTranslation('banque')
 
+  const membersQuery = useMemberOptionsQuery({ limit: 500 })
   const accountsQuery = useAccountsQuery(open)
   const createMutation = useCreateAccountingEntryMutation()
   const postMutation = usePostAccountingEntryMutation()
 
   // Form state
+  const [supplierMemberUuid, setSupplierMemberUuid] = useState('')
   const [supplierName, setSupplierName] = useState('')
   const [invoiceRef, setInvoiceRef] = useState('')
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -83,6 +86,7 @@ export function SupplierInvoiceDialog({
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
+      setSupplierMemberUuid('')
       setSupplierName('')
       setInvoiceRef('')
       setEntryDate(new Date().toISOString().slice(0, 10))
@@ -93,7 +97,13 @@ export function SupplierInvoiceDialog({
     }
   }, [open])
 
+  const members = membersQuery.data ?? []
   const accounts = accountsQuery.data ?? []
+
+  const memberOptions = members.map((m) => ({
+    value: m.uuid,
+    label: `${m.last_name} ${m.first_name} (${m.account_id})`,
+  }))
 
   const expenseOptions = accountOptions(accounts, ['6', '2'])
   const supplierOptions = accountOptions(accounts, ['40', '44'])
@@ -108,6 +118,15 @@ export function SupplierInvoiceDialog({
     amount.gt(0) &&
     expenseAccountUuid.length > 0 &&
     supplierAccountUuid.length > 0
+
+  function handleSupplierMemberChange(value: string) {
+    setSupplierMemberUuid(value)
+    if (!value || supplierName.trim().length > 0) return
+    const member = members.find((m) => m.uuid === value)
+    if (member) {
+      setSupplierName(`${member.last_name} ${member.first_name}`.trim())
+    }
+  }
 
   const isBusy = createMutation.isPending || postMutation.isPending
 
@@ -124,7 +143,13 @@ export function SupplierInvoiceDialog({
         reference: invoiceRef.trim() || null,
         lines: [
           { account_uuid: expenseAccountUuid, debit: amtStr, credit: '0.0000', description: supplierName.trim() },
-          { account_uuid: supplierAccountUuid, debit: '0.0000', credit: amtStr, description: supplierName.trim() },
+          {
+            account_uuid: supplierAccountUuid,
+            debit: '0.0000',
+            credit: amtStr,
+            description: supplierName.trim(),
+            member_uuid: supplierMemberUuid.trim() === '' ? null : supplierMemberUuid,
+          },
         ],
       })
       if (andPost) {
@@ -156,6 +181,19 @@ export function SupplierInvoiceDialog({
 
         {/* Header fields */}
         <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2 space-y-1">
+            <label className="block text-xs font-medium text-slate-600">
+              {t('ops.suppliers.fields.supplierMember')}
+            </label>
+            <SearchableSelect
+              options={memberOptions}
+              value={supplierMemberUuid}
+              onChange={handleSupplierMemberChange}
+              placeholder={t('ops.suppliers.fields.supplierMemberPlaceholder')}
+              clearable
+            />
+          </div>
+
           <div className="col-span-2 space-y-1">
             <label className="block text-xs font-medium text-slate-600" htmlFor="si-supplier">
               {t('ops.suppliers.fields.supplier')} *

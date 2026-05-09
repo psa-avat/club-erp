@@ -207,6 +207,16 @@ Rules:
 7. Business cancellation is represented through reversal entries.
 8. Fiscal-year reopen is privileged and auditable.
 
+Section 4.2: Member Expense Arbitrage Rule
+
+Pivot Account: The 411 (Member) account acts as the pivot for these liabilities.
+
+Reconciliation (Lettrage):
+
+If Credit is chosen: The liability is later reconciled against a Sales (VT) entry for flights or membership fees.
+
+If Refund is chosen: A Bank (BQ) entry is created (Debit 411 / Credit 512) and matched against the original Purchase (HA) entry.
+
 ## 5. Partitioning and Integrity
 
 accounting_entries and accounting_lines are partitioned by LIST(fiscal_year_uuid).

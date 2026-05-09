@@ -80,6 +80,7 @@ class MemberListFilters(BaseModel):
     search: Optional[str] = None
     status: Optional[int] = Field(default=None, ge=1, le=4)
     member_category: Optional[int] = Field(default=None, ge=1, le=8)
+    member_categories: Optional[list[int]] = None
     registration_status: Optional[int] = Field(default=None, ge=1, le=4)
     committee_uuid: Optional[UUID] = None
     can_fly: Optional[bool] = None

@@ -99,6 +99,7 @@ type Props = {
   isLoading: boolean
   selectedMemberId: string | null
   selectedYear: number
+  allowRegistrationWorkflow: boolean
   onEditMember: (uuid: string) => void
   onFinalizeRegistration: (uuid: string) => void
   onOpenPilotSheet: (uuid: string) => void
@@ -111,6 +112,7 @@ export function MemberDirectoryTable({
   isLoading,
   selectedMemberId,
   selectedYear,
+  allowRegistrationWorkflow,
   onEditMember,
   onFinalizeRegistration,
   onOpenPilotSheet,
@@ -237,14 +239,16 @@ export function MemberDirectoryTable({
             >
               <Pencil className="h-4 w-4" />
             </button>
-            <KebabMenu
-              items={[
-                {
-                  label: "Finaliser l'inscription",
-                  onClick: () => onFinalizeRegistration(row.uuid),
-                },
-              ]}
-            />
+            {allowRegistrationWorkflow ? (
+              <KebabMenu
+                items={[
+                  {
+                    label: "Finaliser l'inscription",
+                    onClick: () => onFinalizeRegistration(row.uuid),
+                  },
+                ]}
+              />
+            ) : null}
           </div>
         )}
       />

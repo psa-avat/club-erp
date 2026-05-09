@@ -136,6 +136,66 @@ export function useActiveFiscalYearQuery(enabled = true) {
   })
 }
 
+export function useCreateFiscalYearMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: FiscalYearCreatePayload) => {
+      const { data } = await apiClient.post<FiscalYear>(
+        '/api/v1/accounting/fiscal-years',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.fiscalYears() })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'fiscal-years', 'active'] as const })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function useCloseFiscalYearMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (fiscalYearUuid: string) => {
+      const { data } = await apiClient.patch<FiscalYear>(
+        `/api/v1/accounting/fiscal-years/${fiscalYearUuid}/close`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.fiscalYears() })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'fiscal-years', 'active'] as const })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function useReopenFiscalYearMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (fiscalYearUuid: string) => {
+      const { data } = await apiClient.patch<FiscalYear>(
+        `/api/v1/accounting/fiscal-years/${fiscalYearUuid}/reopen`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.fiscalYears() })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'fiscal-years', 'active'] as const })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
 // ── Chart of Accounts ────────────────────────────────────────────────────────
 
 export type AccountOption = {

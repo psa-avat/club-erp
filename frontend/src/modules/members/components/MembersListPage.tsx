@@ -18,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -46,11 +46,61 @@ import { MemberFilterDrawer } from './MemberFilterDrawer'
 import { MemberKpiStrip } from './MemberKpiStrip'
 import { RegistrationPanel } from './RegistrationPanel'
 
+type MembersScreen = 'core' | 'external' | 'business'
+
+const MEMBERS_SCREEN_SET = new Set<MembersScreen>(['core', 'external', 'business'])
+
+const SCREEN_META: Record<MembersScreen, { title: string; description: string }> = {
+  core: {
+    title: 'Core members',
+    description: 'Main, temporary and operational club members with annual registration workflow.',
+  },
+  external: {
+    title: 'External',
+    description: 'External pilots and partner organizations.',
+  },
+  business: {
+    title: 'Business contacts',
+    description: 'Client and supplier records managed from the same table.',
+  },
+}
+
+const SCREEN_CATEGORY_MAP: Record<MembersScreen, number[]> = {
+  core: [1, 2, 3, 4, 6],
+  external: [5, 7],
+  business: [8],
+}
+
+const SCREEN_CATEGORY_LABEL_KEYS: Record<number, string> = {
+  1: 'categories.full',
+  2: 'categories.temporary',
+  3: 'categories.nonFlying',
+  4: 'categories.shortPeriod',
+  5: 'categories.externalPilot',
+  6: 'categories.volunteer',
+  7: 'categories.externalOrganization',
+  8: 'categories.clientSupplier',
+}
+
+function screenTabClass(isActive: boolean) {
+  return [
+    'rounded-shape-sm border px-3 py-1.5 text-xs font-medium transition-colors',
+    isActive
+      ? 'border-primary bg-primary text-on-primary'
+      : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container',
+  ].join(' ')
+}
+
 export function MembersListPage() {
   const { t } = useTranslation('members')
   const { t: tCommon } = useTranslation('common')
   const navigate = useNavigate()
+  const { screen } = useParams<{ screen: string }>()
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
+
+  const activeScreen: MembersScreen = MEMBERS_SCREEN_SET.has((screen ?? 'core') as MembersScreen)
+    ? (screen as MembersScreen)
+    : 'core'
 
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [registrationPanelOpen, setRegistrationPanelOpen] = useState(false)
@@ -59,10 +109,29 @@ export function MembersListPage() {
 
   const PAGE_SIZE = 50
 
+  const screenCategories = SCREEN_CATEGORY_MAP[activeScreen]
+  const allowRegistrationWorkflow = activeScreen !== 'business'
+  const screenCategoryLabels = useMemo(
+    () => screenCategories.map((category) => t(SCREEN_CATEGORY_LABEL_KEYS[category])),
+    [screenCategories, t],
+  )
+
+  const scopedFilters = useMemo(
+    () => ({
+      ...filters,
+      member_categories: screenCategories,
+      member_category:
+        filters.member_category !== undefined && screenCategories.includes(filters.member_category)
+          ? filters.member_category
+          : undefined,
+    }),
+    [filters, screenCategories],
+  )
+
   const countFilters = useMemo(() => {
-    const { limit, offset, ...rest } = filters
+    const { limit, offset, ...rest } = scopedFilters
     return rest
-  }, [filters])
+  }, [scopedFilters])
 
   const pagedFilters = useMemo(
     () => ({ ...countFilters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
@@ -78,6 +147,18 @@ export function MembersListPage() {
   const totalMembers = membersCountQuery.data ?? 0
   const totalPages = Math.max(1, Math.ceil(totalMembers / PAGE_SIZE))
   const selectedMember = memberDetailQuery.data ?? null
+
+  useEffect(() => {
+    if (!screen || !MEMBERS_SCREEN_SET.has(screen as MembersScreen)) {
+      navigate('/club/members/core', { replace: true })
+    }
+  }, [screen, navigate])
+
+  useEffect(() => {
+    if (filters.member_category !== undefined && !screenCategories.includes(filters.member_category)) {
+      setFilters({ ...filters, member_category: undefined })
+    }
+  }, [filters, screenCategories, setFilters])
 
   useEffect(() => {
     setPage(0)
@@ -96,6 +177,10 @@ export function MembersListPage() {
   }
 
   function handleOpenRegistrationPanel(memberUuid?: string) {
+    if (!allowRegistrationWorkflow) {
+      return
+    }
+
     if (memberUuid) {
       setSelectedMemberId(memberUuid)
     }
@@ -125,7 +210,7 @@ export function MembersListPage() {
       {/* ── Page header ──────────────────────────────────────────────── */}
       <PageHeader
         title={t('list.title')}
-        supportingText="Gérez les membres du club, leurs certifications et leur statut opérationnel."
+        supportingText={`${SCREEN_META[activeScreen].title}: ${SCREEN_META[activeScreen].description}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => setShowImportDialog(true)}>
@@ -138,8 +223,32 @@ export function MembersListPage() {
         }
       />
 
+      <Card>
+        <CardContent className="flex flex-col gap-3 py-4">
+          <div className="flex flex-wrap gap-2">
+            <NavLink to="/club/members/core" className={({ isActive }) => screenTabClass(isActive)}>
+              Core
+            </NavLink>
+            <NavLink to="/club/members/external" className={({ isActive }) => screenTabClass(isActive)}>
+              External
+            </NavLink>
+            <NavLink to="/club/members/business" className={({ isActive }) => screenTabClass(isActive)}>
+              Business
+            </NavLink>
+          </div>
+          <p className="text-xs text-on-surface-variant">
+            <span className="font-medium text-on-surface">{SCREEN_META[activeScreen].title}:</span>{' '}
+            {SCREEN_META[activeScreen].description}
+          </p>
+          <p className="text-xs text-on-surface-variant">
+            <span className="font-medium text-on-surface">Included categories:</span>{' '}
+            {screenCategoryLabels.join(', ')}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* ── KPI strip ────────────────────────────────────────────────── */}
-      <MemberKpiStrip members={members} selectedYear={selectedYear} />
+      <MemberKpiStrip members={members} selectedYear={selectedYear} screen={activeScreen} />
 
       {/* ── Error banner ─────────────────────────────────────────────── */}
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
@@ -188,14 +297,10 @@ export function MembersListPage() {
             label={t('filters.category')}
             options={[
               { value: '', label: t('filters.all') },
-              { value: '1', label: t('categories.full') },
-              { value: '2', label: t('categories.temporary') },
-              { value: '3', label: t('categories.nonFlying') },
-              { value: '4', label: t('categories.shortPeriod') },
-              { value: '5', label: t('categories.externalPilot') },
-              { value: '6', label: t('categories.volunteer') },
-              { value: '7', label: t('categories.externalOrganization') },
-              { value: '8', label: t('categories.clientSupplier') },
+              ...screenCategories.map((category) => ({
+                value: String(category),
+                label: t(SCREEN_CATEGORY_LABEL_KEYS[category]),
+              })),
             ]}
             value={filters.member_category ? String(filters.member_category) : ''}
             onChange={(value) =>
@@ -239,6 +344,7 @@ export function MembersListPage() {
         isLoading={membersQuery.isLoading}
         selectedMemberId={selectedMemberId}
         selectedYear={selectedYear}
+        allowRegistrationWorkflow={allowRegistrationWorkflow}
         onEditMember={handleEditMember}
         onFinalizeRegistration={handleFinalizeRegistration}
         onOpenPilotSheet={handleOpenPilotSheet}
@@ -296,6 +402,7 @@ export function MembersListPage() {
         onClose={() => setRegistrationPanelOpen(false)}
         member={selectedMember}
         year={selectedYear}
+        allowWorkflow={allowRegistrationWorkflow}
         onCompleted={(memberUuid) => {
           setSelectedMemberId(memberUuid)
           setRegistrationPanelOpen(false)
@@ -306,6 +413,8 @@ export function MembersListPage() {
         open={filterDrawerOpen}
         onClose={() => setFilterDrawerOpen(false)}
         filters={filters}
+        screenTitle={SCREEN_META[activeScreen].title}
+        screenCategoryLabels={screenCategoryLabels}
         onApply={(newFilters) => setFilters(newFilters)}
       />
 

@@ -27,6 +27,7 @@ import { Input } from '../../../components/ui/input'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
+import { useMemberOptionsQuery } from '../../members/api'
 import {
   useAccountsQuery,
   useCreateAccountingEntryMutation,
@@ -49,6 +50,7 @@ export function SupplierInvoicePage() {
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
   const fiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
+  const membersQuery = useMemberOptionsQuery({ limit: 500 })
   const journalsQuery = useJournalsQuery()
   const accountsQuery = useAccountsQuery()
   const createMutation = useCreateAccountingEntryMutation()
@@ -59,6 +61,7 @@ export function SupplierInvoicePage() {
     [journalsQuery.data],
   )
 
+  const [supplierMemberUuid, setSupplierMemberUuid] = useState('')
   const [supplierName, setSupplierName] = useState('')
   const [invoiceRef, setInvoiceRef] = useState('')
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -67,7 +70,12 @@ export function SupplierInvoicePage() {
   const [supplierAccountUuid, setSupplierAccountUuid] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  const members = membersQuery.data ?? []
   const accounts = accountsQuery.data ?? []
+  const memberOptions = members.map((m) => ({
+    value: m.uuid,
+    label: `${m.last_name} ${m.first_name} (${m.account_id})`,
+  }))
   const expenseOptions = accountOptions(accounts, ['6', '2'])
   const supplierOptions = accountOptions(accounts, ['40', '44'])
 
@@ -97,6 +105,15 @@ export function SupplierInvoicePage() {
     expenseAccountUuid.length > 0 &&
     supplierAccountUuid.length > 0
 
+  function handleSupplierMemberChange(value: string) {
+    setSupplierMemberUuid(value)
+    if (!value || supplierName.trim().length > 0) return
+    const member = members.find((m) => m.uuid === value)
+    if (member) {
+      setSupplierName(`${member.last_name} ${member.first_name}`.trim())
+    }
+  }
+
   const isBusy = createMutation.isPending || postMutation.isPending
 
   async function handleSave(andPost: boolean) {
@@ -114,7 +131,13 @@ export function SupplierInvoicePage() {
         reference: invoiceRef.trim() || null,
         lines: [
           { account_uuid: expenseAccountUuid, debit: amt, credit: '0.0000', description: supplierName.trim() },
-          { account_uuid: supplierAccountUuid, debit: '0.0000', credit: amt, description: supplierName.trim() },
+          {
+            account_uuid: supplierAccountUuid,
+            debit: '0.0000',
+            credit: amt,
+            description: supplierName.trim(),
+            member_uuid: supplierMemberUuid.trim() === '' ? null : supplierMemberUuid,
+          },
         ],
       })
 
@@ -176,6 +199,19 @@ export function SupplierInvoicePage() {
           )}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-1 md:col-span-2">
+              <label className="block text-xs font-medium text-slate-600">
+                {t('ops.suppliers.fields.supplierMember')}
+              </label>
+              <SearchableSelect
+                options={memberOptions}
+                value={supplierMemberUuid}
+                onChange={handleSupplierMemberChange}
+                placeholder={t('ops.suppliers.fields.supplierMemberPlaceholder')}
+                clearable
+              />
+            </div>
+
             <div className="space-y-1 md:col-span-2">
               <label className="block text-xs font-medium text-slate-600" htmlFor="sp-supplier">
                 {t('ops.suppliers.fields.supplier')} *

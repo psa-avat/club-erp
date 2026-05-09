@@ -76,6 +76,12 @@ export function BanquePage() {
           >
             <span className="font-semibold">{t('pcg.title')}</span>
           </Link>
+          <Link
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 transition-colors hover:bg-slate-100"
+            to="/banque/fiscal-years"
+          >
+            <span className="font-semibold">{t('fiscalYears.title')}</span>
+          </Link>
         </div>
       </div>
 

@@ -28,6 +28,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/banque/operations', labelKey: 'nav.banqueOps' },
       { to: '/banque/journal', labelKey: 'nav.banqueJournal' },
       { to: '/banque/pricing', labelKey: 'nav.banquePricing' },
+      { to: '/banque/fiscal-years', labelKey: 'nav.banqueFiscalYears' },
       { to: '/banque/pcg', labelKey: 'nav.banquePcg' },
       { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings' },
     ],

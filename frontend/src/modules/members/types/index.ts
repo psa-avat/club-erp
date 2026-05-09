@@ -116,6 +116,7 @@ export type MemberFilters = {
   search?: string
   status?: number
   member_category?: number
+  member_categories?: number[]
   registration_status?: number
   committee_uuid?: string
   can_fly?: boolean

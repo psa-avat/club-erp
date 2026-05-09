@@ -24,6 +24,7 @@ import Decimal from 'decimal.js'
 
 import { Button } from '../../../components/ui/button'
 import { useCapability } from '../../../auth/hooks/useCapability'
+import { useMemberOptionsQuery } from '../../members/api'
 import {
   useAccountingEntriesQuery,
   useJournalsQuery,
@@ -88,10 +89,11 @@ interface ApRowProps {
   onPost: (entry: AccountingEntry) => void
   isPosting: boolean
   canPost: boolean
+  supplierMemberLabel?: string
   t: (key: string) => string
 }
 
-function ApRow({ entry, status, onSettle, onPost, isPosting, canPost, t }: ApRowProps) {
+function ApRow({ entry, status, onSettle, onPost, isPosting, canPost, supplierMemberLabel, t }: ApRowProps) {
   const amount = entryTotalAmount(entry)
   const age = daysOld(entry.entry_date)
 
@@ -99,7 +101,14 @@ function ApRow({ entry, status, onSettle, onPost, isPosting, canPost, t }: ApRow
     <tr className="group border-b border-slate-100 last:border-0 hover:bg-slate-50">
       {/* Supplier / description */}
       <td className="py-2.5 pl-4 pr-2 text-sm font-medium text-slate-800">
-        {entry.description}
+        <div className="space-y-0.5">
+          <div>{entry.description}</div>
+          {supplierMemberLabel ? (
+            <div className="text-xs font-normal text-slate-500">
+              {supplierMemberLabel}
+            </div>
+          ) : null}
+        </div>
       </td>
 
       {/* Reference */}
@@ -173,6 +182,7 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
   const navigate = useNavigate()
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
 
+  const membersQuery = useMemberOptionsQuery({ limit: 500 })
   const journalsQuery = useJournalsQuery()
   const postMutation = usePostAccountingEntryMutation()
 
@@ -201,6 +211,19 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
   )
 
   const entries = entriesQuery.data ?? []
+  const members = membersQuery.data ?? []
+  const memberLabelByUuid = useMemo(
+    () => new Map(members.map((m) => [m.uuid, `${m.last_name} ${m.first_name} (${m.account_id})`])),
+    [members],
+  )
+
+  function supplierMemberLabelFromEntry(entry: AccountingEntry): string | undefined {
+    const supplierLine = entry.lines.find((line) =>
+      line.member_uuid && new Decimal(line.credit).greaterThan(0),
+    )
+    if (!supplierLine?.member_uuid) return undefined
+    return memberLabelByUuid.get(supplierLine.member_uuid)
+  }
 
   // Separate into overdue/pending/draft for summary KPIs
   const { overdueCount, pendingTotal, draftCount } = useMemo(() => {
@@ -309,6 +332,7 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
                   key={entry.uuid}
                   entry={entry}
                   status={deriveApStatus(entry)}
+                  supplierMemberLabel={supplierMemberLabelFromEntry(entry)}
                   onSettle={setSettleEntry}
                   onPost={handlePost}
                   isPosting={postMutation.isPending}

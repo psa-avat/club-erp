@@ -31,10 +31,19 @@ type Props = {
   open: boolean
   onClose: () => void
   filters: MemberFilters
+  screenTitle: string
+  screenCategoryLabels: string[]
   onApply: (filters: MemberFilters) => void
 }
 
-export function MemberFilterDrawer({ open, onClose, filters, onApply }: Props) {
+export function MemberFilterDrawer({
+  open,
+  onClose,
+  filters,
+  screenTitle,
+  screenCategoryLabels,
+  onApply,
+}: Props) {
   const { t } = useTranslation('members')
 
   const [draft, setDraft] = useState<MemberFilters>(() => ({ ...filters }))
@@ -82,6 +91,15 @@ export function MemberFilterDrawer({ open, onClose, filters, onApply }: Props) {
 
         {/* Body */}
         <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          <section className="rounded-shape-sm border border-outline-variant bg-surface-container px-3 py-2">
+            <p className="text-xs font-medium text-on-surface">
+              Scope: {screenTitle}
+            </p>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Categories: {screenCategoryLabels.join(', ')}
+            </p>
+          </section>
+
           {/* Registration section */}
           <section className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">

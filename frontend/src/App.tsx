@@ -13,6 +13,7 @@ import {
   BankPricingPage,
   BankPricingVersionEditPage,
   BanquePcgPage,
+  BanqueFiscalYearsPage,
   FinancialReportsPage,
   BanqueDailyOpsPage,
   MemberBulkBillingPage,
@@ -37,8 +38,9 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/club" element={<Navigate replace to="/club/members" />} />
-          <Route path="/club/members" element={<MembersListPage />} />
+          <Route path="/club" element={<Navigate replace to="/club/members/core" />} />
+          <Route path="/club/members" element={<Navigate replace to="/club/members/core" />} />
+          <Route path="/club/members/:screen" element={<MembersListPage />} />
           <Route path="/club/members/new" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/edit" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/pilot-sheet" element={<MemberPilotSheetPage />} />
@@ -59,6 +61,7 @@ function App() {
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
+          <Route path="/banque/fiscal-years" element={<BanqueFiscalYearsPage />} />
           <Route path="/banque/pcg" element={<BanquePcgPage />} />
           <Route path="/banque/reports" element={<FinancialReportsPage />} />
           <Route path="/admin" element={<AdminPage />} />

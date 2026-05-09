@@ -46,6 +46,7 @@ type Props = {
   onClose: () => void
   member: MemberDetail | null
   year: number
+  allowWorkflow: boolean
   onCompleted: (memberUuid: string) => void
 }
 
@@ -114,7 +115,7 @@ function ChecklistChip({ state, t }: { state: ChecklistState; t: (key: string) =
   )
 }
 
-export function RegistrationPanel({ open, onClose, member, year, onCompleted }: Props) {
+export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, onCompleted }: Props) {
   const { t } = useTranslation('members')
 
   const [effectiveDate, setEffectiveDate] = useState(todayIso())
@@ -205,6 +206,11 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
   }
 
   async function handleValidate() {
+    if (!allowWorkflow) {
+      setLocalError('Registration workflow is disabled for this screen.')
+      return
+    }
+
     if (!member) {
       setLocalError(t('sheet.selectMember'))
       return
@@ -493,10 +499,12 @@ export function RegistrationPanel({ open, onClose, member, year, onCompleted }: 
               </Button>
               <Button
                 type="button"
-                disabled={!canValidate || completeRegistrationMutation.isPending}
+                disabled={!allowWorkflow || !canValidate || completeRegistrationMutation.isPending}
                 onClick={handleValidate}
               >
-                {completeRegistrationMutation.isPending
+                {!allowWorkflow
+                  ? 'Disabled for this screen'
+                  : completeRegistrationMutation.isPending
                   ? t('registrationPanel.actions.validating')
                   : t('registrationPanel.actions.validate')}
               </Button>

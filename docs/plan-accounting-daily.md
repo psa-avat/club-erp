@@ -45,6 +45,26 @@ Concevoir une expérience comptable orientée opérations journalières (fournis
 - Ajouter suivi du cycle (Demandé, Vérifié, Validé, Exécuté).
 - Dépendance: phases 0, 1 et 5.
 
+Phase 6 — Remboursements (Updated)
+
+Step 1: Input (Saisie)
+
+Assistant for recording member-paid invoices.
+
+Ledger Logic: Debit the expense category (e.g., 6061 Food); Credit the Member Account (411) to acknowledge the debt immediately.
+
+Step 2: Arbitrage (Decision)
+
+A "Treasurer's Arbitrage Queue" allows reviewing pending member credits.
+
+Small Amounts: Default action is "Provisioning" (leave as credit on the 411 account to offset future flights).
+
+Large Amounts: Default action is "Bank Refund" (generate a BQ journal entry to pay the member back).
+
+UI Features: Added "Credit Available" badges on member profiles to show funds currently provisioned for future use.
+
+
+
 8. Phase 7 — Salaires & Charges
 - Concevoir un écran “OD salaires” guidé par modèle mensuel (net, charges patronales/salariales, organismes), avec check-list de conformité.
 - Prévoir rappel d’échéances sociales/fiscales in-app avec vues par organisme.

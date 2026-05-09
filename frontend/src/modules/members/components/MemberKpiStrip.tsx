@@ -20,12 +20,22 @@
 
 import type { MemberSummary } from '../types'
 
+type MembersScreen = 'core' | 'external' | 'business'
+
 type Props = {
   members: MemberSummary[]
   selectedYear: number
+  screen: MembersScreen
 }
 
 type KpiTileProps = {
+  label: string
+  value: number
+  subLabel?: string
+  highlight?: boolean
+}
+
+type KpiItem = {
   label: string
   value: number
   subLabel?: string
@@ -44,34 +54,91 @@ function KpiTile({ label, value, subLabel, highlight = false }: KpiTileProps) {
   )
 }
 
+function isOperationallyActive(member: MemberSummary): boolean {
+  return member.status === 1
+}
+
+function countMembers(members: MemberSummary[], predicate: (member: MemberSummary) => boolean): number {
+  return members.filter(predicate).length
+}
+
+function getKpisForScreen(members: MemberSummary[], screen: MembersScreen): KpiItem[] {
+  const total = members.length
+
+  if (screen === 'core') {
+    return [
+      { label: 'Total membres', value: total },
+      {
+        label: 'Membres actifs',
+        value: countMembers(members, (member) => isOperationallyActive(member)),
+      },
+      {
+        label: 'Membres pouvant voler',
+        value: countMembers(members, (member) => member.can_fly && isOperationallyActive(member)),
+      },
+      {
+        label: 'Instructeurs actifs',
+        value: countMembers(members, (member) => member.is_instructor && isOperationallyActive(member)),
+      },
+      {
+        label: 'Bénévoles actifs',
+        value: countMembers(members, (member) => member.member_category === 6 && isOperationallyActive(member)),
+      },
+    ]
+  }
+
+  if (screen === 'external') {
+    return [
+      { label: 'Total externes', value: total },
+      {
+        label: 'Pilotes externes',
+        value: countMembers(members, (member) => member.member_category === 5),
+      },
+      {
+        label: 'Organisations partenaires',
+        value: countMembers(members, (member) => member.member_category === 7),
+      },
+      {
+        label: 'Externe actifs',
+        value: countMembers(members, (member) => isOperationallyActive(member)),
+      },
+    ]
+  }
+
+  return [
+    { label: 'Contacts business', value: total },
+    {
+      label: 'Actifs',
+      value: countMembers(members, (member) => isOperationallyActive(member)),
+    },
+    {
+      label: 'Inactifs',
+      value: countMembers(members, (member) => !isOperationallyActive(member)),
+    },
+    {
+      label: 'Avec email',
+      value: countMembers(members, (member) => Boolean(member.email?.trim())),
+    },
+  ]
+}
+
 /**
- * Displays four KPI tiles derived client-side from the current member list query result.
+ * Displays screen-specific KPI tiles derived client-side from the current member list query result.
  * Values are recomputed whenever the members array changes.
  */
-export function MemberKpiStrip({ members, selectedYear }: Props) {
-  const total = members.length
-  const isOperationallyActive = (status: number) => status === 1
-
-  // Pending Renewals: active members whose registration_status is not yet Completed (3)
-  // Proxy for last_registration_year < selectedYear until the list endpoint exposes that field.
-  const pendingRenewals = members.filter((m) => isOperationallyActive(m.status) && m.registration_status !== 3).length
-
-  const activeInstructors = members.filter((m) => m.is_instructor && isOperationallyActive(m.status)).length
-
-  // Guest / Temp Passes: Temporary Member category (2)
-  const guestTempPasses = members.filter((m) => m.member_category === 2).length
+export function MemberKpiStrip({ members, selectedYear: _selectedYear, screen }: Props) {
+  const kpis = getKpisForScreen(members, screen)
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <KpiTile label="Total membres" value={total} />
-      <KpiTile
-        label="Renouvellements en attente"
-        value={pendingRenewals}
-        subLabel={`Avant fin ${selectedYear}`}
-        highlight={pendingRenewals > 0}
-      />
-      <KpiTile label="Instructeurs actifs" value={activeInstructors} />
-      <KpiTile label="Membres temporaires" value={guestTempPasses} />
+    <div
+      className={[
+        'grid grid-cols-2 gap-3',
+        screen === 'core' ? 'md:grid-cols-5' : 'md:grid-cols-4',
+      ].join(' ')}
+    >
+      {kpis.map((kpi) => (
+        <KpiTile key={kpi.label} label={kpi.label} value={kpi.value} subLabel={kpi.subLabel} highlight={kpi.highlight} />
+      ))}
     </div>
   )
 }

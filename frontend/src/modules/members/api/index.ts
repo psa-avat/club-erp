@@ -36,9 +36,15 @@ export const membersQueryKeys = {
 }
 
 function compactParams(filters: MemberFilters | Record<string, unknown>) {
-  return Object.fromEntries(
+  const compacted = Object.fromEntries(
     Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== ''),
   )
+
+  if ('member_categories' in compacted && Array.isArray(compacted.member_categories)) {
+    compacted.member_categories = compacted.member_categories.join(',')
+  }
+
+  return compacted
 }
 
 export function useMembersQuery(filters: MemberFilters) {
