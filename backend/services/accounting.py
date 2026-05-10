@@ -1446,7 +1446,16 @@ async def list_accounting_entries(
     )
 
     result = await db.scalars(stmt)
-    return result.unique().all()
+    entries = result.unique().all()
+    
+    # Populate member_first_name and member_last_name from loaded member relationship
+    for entry in entries:
+        for line in entry.lines:
+            if hasattr(line, 'member') and line.member:
+                line.member_first_name = line.member.first_name
+                line.member_last_name = line.member.last_name
+    
+    return entries
 
 async def count_accounting_entries(
     db: AsyncSession,
