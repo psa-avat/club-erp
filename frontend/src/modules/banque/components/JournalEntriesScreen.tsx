@@ -46,6 +46,31 @@ import { AccountingImportDialog } from './AccountingImportDialog'
 
 type SortKey = 'entry_date' | 'journal' | 'description' | 'reference' | 'amount' | 'state'
 type SortDirection = 'asc' | 'desc'
+type JournalFilters = {
+  journal_uuid: string
+  state: number
+  search: string
+  member: string
+  account_code: string
+  description: string
+  entry_date_from: string
+  entry_date_to: string
+  amount_min: string
+  amount_max: string
+}
+
+const DEFAULT_FILTERS: JournalFilters = {
+  journal_uuid: '',
+  state: 0,
+  search: '',
+  member: '',
+  account_code: '',
+  description: '',
+  entry_date_from: '',
+  entry_date_to: '',
+  amount_min: '',
+  amount_max: '',
+}
 
 function formatDateFr(isoDate: string): string {
   const [year, month, day] = isoDate.split('-')
@@ -59,6 +84,13 @@ function formatAmountFr(amount: string): string {
   const withGrouping = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
   const sign = intPartRaw.startsWith('-') ? '-' : ''
   return `${sign}${withGrouping},${decimalRaw.padEnd(2, '0').slice(0, 2)}`
+}
+
+function normalizeAmountFilter(value: string): string | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const normalized = trimmed.replace(',', '.')
+  return /^\d+(\.\d{1,4})?$/.test(normalized) ? normalized : undefined
 }
 
 export function JournalEntriesScreen() {
@@ -75,7 +107,7 @@ export function JournalEntriesScreen() {
   const PAGE_SIZE = 25
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
-  const [filters, setFilters] = useState({ journal_uuid: '', state: 0, search: '' })
+  const [filters, setFilters] = useState<JournalFilters>(DEFAULT_FILTERS)
   const [page, setPage] = useState(0)
   const [selectedEntryUuids, setSelectedEntryUuids] = useState<string[]>([])
   const debouncedSearch = useDebounce(filters.search, 350)
@@ -99,8 +131,27 @@ export function JournalEntriesScreen() {
       journal_uuid: filters.journal_uuid || undefined,
       state: filters.state || undefined,
       search: debouncedSearch.trim() || undefined,
+      member: filters.member.trim() || undefined,
+      account_code: filters.account_code.trim() || undefined,
+      description: filters.description.trim() || undefined,
+      entry_date_from: filters.entry_date_from || undefined,
+      entry_date_to: filters.entry_date_to || undefined,
+      amount_min: normalizeAmountFilter(filters.amount_min),
+      amount_max: normalizeAmountFilter(filters.amount_max),
     }),
-    [activeFiscalYearUuid, filters.journal_uuid, filters.state, debouncedSearch],
+    [
+      activeFiscalYearUuid,
+      filters.journal_uuid,
+      filters.state,
+      debouncedSearch,
+      filters.member,
+      filters.account_code,
+      filters.description,
+      filters.entry_date_from,
+      filters.entry_date_to,
+      filters.amount_min,
+      filters.amount_max,
+    ],
   )
 
   const entryFilters = useMemo(
@@ -310,12 +361,12 @@ export function JournalEntriesScreen() {
             type="button"
             size="sm"
             variant="ghost"
-            onClick={() => setFilters({ journal_uuid: '', state: 0, search: '' })}
+            onClick={() => setFilters(DEFAULT_FILTERS)}
           >
             {t('journal.entries.resetFilters')}
           </Button>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
           <div className="space-y-1">
             <Label>{t('journal.entries.journal')}</Label>
             <select
@@ -345,6 +396,68 @@ export function JournalEntriesScreen() {
           <div className="space-y-1">
             <Label>{t('journal.entries.search')}</Label>
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.member')}</Label>
+            <Input
+              value={filters.member}
+              onChange={(event) => setFilters((prev) => ({ ...prev, member: event.target.value }))}
+              placeholder={t('journal.entries.memberPlaceholder')}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.accountNumber')}</Label>
+            <Input
+              value={filters.account_code}
+              onChange={(event) => setFilters((prev) => ({ ...prev, account_code: event.target.value }))}
+              placeholder={t('journal.entries.accountNumberPlaceholder')}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.libelle')}</Label>
+            <Input
+              value={filters.description}
+              onChange={(event) => setFilters((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder={t('journal.entries.libellePlaceholder')}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.dateFrom')}</Label>
+            <Input
+              type="date"
+              value={filters.entry_date_from}
+              onChange={(event) => setFilters((prev) => ({ ...prev, entry_date_from: event.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.dateTo')}</Label>
+            <Input
+              type="date"
+              value={filters.entry_date_to}
+              onChange={(event) => setFilters((prev) => ({ ...prev, entry_date_to: event.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.amountMin')}</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={filters.amount_min}
+              onChange={(event) => setFilters((prev) => ({ ...prev, amount_min: event.target.value }))}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('journal.entries.amountMax')}</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={filters.amount_max}
+              onChange={(event) => setFilters((prev) => ({ ...prev, amount_max: event.target.value }))}
+              placeholder="99999.99"
+            />
           </div>
         </div>
       </div>
@@ -596,7 +709,11 @@ export function JournalEntriesScreen() {
                                           <td className="px-2 py-1 text-right font-mono tabular-nums">{formatAmountFr(line.debit)}</td>
                                           <td className="px-2 py-1 text-right font-mono tabular-nums">{formatAmountFr(line.credit)}</td>
                                           <td className="px-2 py-1 text-slate-600">{line.description ?? '—'}</td>
-                                          <td className="break-all px-2 py-1 text-slate-600">{line.member_uuid ?? '—'}</td>
+                                          <td className="px-2 py-1 text-slate-600">
+                                            {line.member_first_name && line.member_last_name
+                                              ? `${line.member_last_name} ${line.member_first_name}`
+                                              : '—'}
+                                          </td>
                                         </tr>
                                       ))}
                                     </tbody>

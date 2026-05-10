@@ -130,6 +130,8 @@ class AccountingLineResponse(AccountingLineBase):
     fiscal_year_uuid: UUID
     member_uuid: Optional[UUID] = None
     member_account_id_snapshot: Optional[str] = None
+    member_first_name: Optional[str] = None
+    member_last_name: Optional[str] = None
     analytical_asset_uuid: Optional[UUID] = None
     tax_code: Optional[str] = None
     tax_rate: Optional[Decimal] = None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import secrets
 from datetime import date
 from decimal import Decimal
@@ -26,7 +27,6 @@ from models import (
     Committee,
     CommitteeMember,
     Member,
-    MemberAccountCounter,
     MemberRegistration,
     MemberSheet,
     PricingItem,
@@ -63,6 +63,8 @@ logger = logging.getLogger(__name__)
 ACTIVE_REGISTRATION_STATUS = 1
 ANONYMIZED_MEMBER_STATUS = 4
 DEFAULT_ANONYMIZE_AFTER_YEARS = 5
+
+_MEMBER_ACCOUNT_SUFFIX_RE = re.compile(r"(\d{4})$")
 
 
 async def _create_registration_accounting_entry(
@@ -318,22 +320,44 @@ def _registration_overlaps_year_predicate(year: int):
     )
 
 
-async def generate_member_account_id(db: AsyncSession, *, year: Optional[int] = None) -> str:
+def _member_account_prefix(member_category: int, *, year: Optional[int] = None) -> str:
+    """Return the account-id prefix for the given member category."""
+
+    if member_category in {5, 7}:
+        return "EXT-"
+    if member_category == 8:
+        return "FO-"
+
+    target_year = year or date.today().year
+    return f"ME{int(target_year):04d}-"
+
+
+async def _next_member_account_number(db: AsyncSession, prefix: str) -> int:
+    """Return the next available sequence number for a given prefix."""
+
+    result = await db.execute(select(Member.account_id).where(Member.account_id.like(f"{prefix}%")))
+    next_value = 1
+    for account_id in result.scalars().all():
+        if not account_id or not account_id.startswith(prefix):
+            continue
+        match = _MEMBER_ACCOUNT_SUFFIX_RE.search(account_id)
+        if match is None:
+            continue
+        next_value = max(next_value, int(match.group(1)) + 1)
+    return next_value
+
+
+async def generate_member_account_id(
+    db: AsyncSession,
+    *,
+    member_category: int,
+    year: Optional[int] = None,
+) -> str:
     """Allocate the next unique member account id."""
 
-    target_year = year or await db.scalar(select(func.extract("year", func.current_date())))
-    target_year = int(target_year)
-
-    counter = await db.get(MemberAccountCounter, target_year)
-    if counter is None:
-        counter = MemberAccountCounter(year=target_year, next_value=2)
-        allocated_value = 1
-        db.add(counter)
-    else:
-        allocated_value = counter.next_value
-        counter.next_value += 1
-
-    return f"ME{target_year}-{allocated_value:04d}"
+    prefix = _member_account_prefix(member_category, year=year)
+    allocated_value = await _next_member_account_number(db, prefix)
+    return f"{prefix}{allocated_value:04d}"
 
 
 async def _ensure_unique_member_fields(
@@ -521,7 +545,7 @@ async def create_member(
 ) -> Member:
     """Create a member after applying business rules."""
 
-    account_id = payload.account_id or await generate_member_account_id(db)
+    account_id = payload.account_id or await generate_member_account_id(db, member_category=payload.member_category)
     _validate_role_flags(
         is_employee=payload.is_employee,
         is_executive=payload.is_executive,

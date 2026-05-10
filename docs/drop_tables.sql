@@ -33,6 +33,8 @@ DROP TABLE IF EXISTS accounting_accounts CASCADE;
 DROP TABLE IF EXISTS accounting_fiscal_years CASCADE;
 
 -- Optional: if these helper functions already exist from members schema
+DROP FUNCTION IF EXISTS set_member_account_id() CASCADE;
+DROP FUNCTION IF EXISTS generate_member_account_id(SMALLINT) CASCADE;
 DROP FUNCTION IF EXISTS generate_member_account_id() CASCADE;
 DROP FUNCTION IF EXISTS set_updated_at() CASCADE;
 

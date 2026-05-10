@@ -44,7 +44,7 @@
   {
     "code": "139",
     "name": "Subventions d'investissement inscrites au compte de résultat",
-    "type": 5,
+    "type": 2,
     "is_posting_allowed": true,
     "is_reconcilable": false
   },
@@ -343,6 +343,13 @@
     "is_reconcilable": false
   },
   {
+    "code": "603",
+    "name": "Variations des stocks (Approvisionnements)",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {  
     "code": "605",
     "name": "Achats de matériel, équipements et travaux",
     "type": 4,
@@ -356,9 +363,23 @@
     "is_posting_allowed": true,
     "is_reconcilable": false
   },
+ {
+    "code": "607",
+    "name": "Achats de marchandises (Boutique, Bar...)",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
   {
     "code": "6063",
     "name": "Carburants",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "613",
+    "name": "Locations (Hangars, locaux, matériel)",
     "type": 4,
     "is_posting_allowed": true,
     "is_reconcilable": false
@@ -455,6 +476,20 @@
     "is_reconcilable": false
   },
   {
+    "code": "671",
+    "name": "Charges exceptionnelles sur opérations de gestion",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "672",
+    "name": "Charges sur exercices antérieurs (Régularisations)",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
     "code": "681",
     "name": "Dotations aux amortissements",
     "type": 4,
@@ -464,6 +499,13 @@
   {
     "code": "689",
     "name": "Engagements à réaliser sur fonds dédiés",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "699",
+    "name": "Reports sur ressources non utilisées des exercices antérieurs",
     "type": 4,
     "is_posting_allowed": true,
     "is_reconcilable": false
@@ -546,6 +588,20 @@
     "is_reconcilable": false
   },
   {
+    "code": "742",
+    "name": "Aides et subventions d'exploitation (Collectivités)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "750",
+    "name": "Produits divers / Redevances",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
     "code": "756",
     "name": "Cotisations",
     "type": 5,
@@ -559,9 +615,30 @@
     "is_posting_allowed": true,
     "is_reconcilable": false
   },
+    {
+    "code": "758",
+    "name": "Produits divers de gestion courante",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "761",
+    "name": "Produits financiers / Produits de participations",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
   {
     "code": "771",
     "name": "Produits exceptionnels sur opérations de gestion (Dons)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "772",
+    "name": "Produits sur exercices antérieurs (Régularisations)",
     "type": 5,
     "is_posting_allowed": true,
     "is_reconcilable": false

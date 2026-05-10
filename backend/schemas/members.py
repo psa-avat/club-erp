@@ -42,7 +42,10 @@ class MemberBase(MemberRoleFlags):
 class MemberCreateRequest(MemberBase):
     """Payload for member creation."""
 
-    account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
+    account_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^(?:ME\d{4}-\d{4}|EXT-\d{4}|FO-\d{4})$",
+    )
     legacy_account_id: Optional[str] = Field(default=None, max_length=32)
 
 
@@ -58,7 +61,10 @@ class MemberUpdateRequest(BaseModel):
     member_category: Optional[int] = Field(default=None, ge=1, le=8)
     first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
-    account_id: Optional[str] = Field(default=None, min_length=11, max_length=32)
+    account_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^(?:ME\d{4}-\d{4}|EXT-\d{4}|FO-\d{4})$",
+    )
     photo_url: Optional[str] = None
     status: Optional[int] = Field(default=None, ge=1, le=4)
     registration_status: Optional[int] = Field(default=None, ge=1, le=4)

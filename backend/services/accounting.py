@@ -1406,6 +1406,13 @@ async def list_accounting_entries(
     state: int | None = None,
     search: str | None = None,
     member_uuid: UUID | None = None,
+    member: str | None = None,
+    account_code: str | None = None,
+    description: str | None = None,
+    entry_date_from: date | None = None,
+    entry_date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[AccountingEntry]:
@@ -1415,41 +1422,31 @@ async def list_accounting_entries(
         .options(
             joinedload(AccountingEntry.fiscal_year),
             joinedload(AccountingEntry.journal),
-            joinedload(AccountingEntry.lines),
+            joinedload(AccountingEntry.lines).joinedload(AccountingLine.member),
         )
         .order_by(AccountingEntry.entry_date.desc(), AccountingEntry.created_at.desc())
         .limit(limit)
         .offset(offset)
     )
 
-    if fiscal_year_uuid is not None:
-        stmt = stmt.where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
-    if journal_uuid is not None:
-        stmt = stmt.where(AccountingEntry.journal_uuid == journal_uuid)
-    if state is not None:
-        stmt = stmt.where(AccountingEntry.state == state)
-    if member_uuid is not None:
-        stmt = stmt.where(
-            exists(
-                select(AccountingLine.uuid)
-                .where(
-                    AccountingLine.entry_uuid == AccountingEntry.uuid,
-                    AccountingLine.member_uuid == member_uuid,
-                )
-                .correlate(AccountingEntry)
-            )
-        )
-    if search:
-        term = f"%{search.strip()}%"
-        stmt = stmt.where(
-            AccountingEntry.description.ilike(term)
-            | AccountingEntry.reference.ilike(term)
-            | AccountingEntry.sequence_number.ilike(term)
-        )
+    stmt = _apply_accounting_entry_filters(
+        stmt,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+        state=state,
+        search=search,
+        member_uuid=member_uuid,
+        member=member,
+        account_code=account_code,
+        description=description,
+        entry_date_from=entry_date_from,
+        entry_date_to=entry_date_to,
+        amount_min=amount_min,
+        amount_max=amount_max,
+    )
 
     result = await db.scalars(stmt)
     return result.unique().all()
-
 
 async def count_accounting_entries(
     db: AsyncSession,
@@ -1459,9 +1456,51 @@ async def count_accounting_entries(
     state: int | None = None,
     search: str | None = None,
     member_uuid: UUID | None = None,
+    member: str | None = None,
+    account_code: str | None = None,
+    description: str | None = None,
+    entry_date_from: date | None = None,
+    entry_date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
 ) -> int:
     """Return the total count of accounting entries matching the given filters."""
     stmt = select(func.count()).select_from(AccountingEntry)
+    stmt = _apply_accounting_entry_filters(
+        stmt,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=journal_uuid,
+        state=state,
+        search=search,
+        member_uuid=member_uuid,
+        member=member,
+        account_code=account_code,
+        description=description,
+        entry_date_from=entry_date_from,
+        entry_date_to=entry_date_to,
+        amount_min=amount_min,
+        amount_max=amount_max,
+    )
+    result = await db.scalar(stmt)
+    return result or 0
+
+
+def _apply_accounting_entry_filters(
+    stmt,
+    *,
+    fiscal_year_uuid: UUID | None = None,
+    journal_uuid: UUID | None = None,
+    state: int | None = None,
+    search: str | None = None,
+    member_uuid: UUID | None = None,
+    member: str | None = None,
+    account_code: str | None = None,
+    description: str | None = None,
+    entry_date_from: date | None = None,
+    entry_date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
+):
     if fiscal_year_uuid is not None:
         stmt = stmt.where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
     if journal_uuid is not None:
@@ -1479,15 +1518,87 @@ async def count_accounting_entries(
                 .correlate(AccountingEntry)
             )
         )
+
+    if member:
+        term = f"%{member.strip()}%"
+        if term != "%%":
+            stmt = stmt.where(
+                exists(
+                    select(AccountingLine.uuid)
+                    .select_from(AccountingLine)
+                    .outerjoin(Member, Member.uuid == AccountingLine.member_uuid)
+                    .where(
+                        AccountingLine.entry_uuid == AccountingEntry.uuid,
+                        (
+                            AccountingLine.member_account_id_snapshot.ilike(term)
+                            | Member.account_id.ilike(term)
+                            | Member.first_name.ilike(term)
+                            | Member.last_name.ilike(term)
+                        ),
+                    )
+                    .correlate(AccountingEntry)
+                )
+            )
+
+    if account_code:
+        code_term = f"%{account_code.strip()}%"
+        if code_term != "%%":
+            stmt = stmt.where(
+                exists(
+                    select(AccountingLine.uuid)
+                    .select_from(AccountingLine)
+                    .join(AccountingAccount, AccountingAccount.uuid == AccountingLine.account_uuid)
+                    .where(
+                        AccountingLine.entry_uuid == AccountingEntry.uuid,
+                        AccountingAccount.code.ilike(code_term),
+                    )
+                    .correlate(AccountingEntry)
+                )
+            )
+
+    if description:
+        description_term = f"%{description.strip()}%"
+        if description_term != "%%":
+            stmt = stmt.where(
+                AccountingEntry.description.ilike(description_term)
+                | exists(
+                    select(AccountingLine.uuid)
+                    .where(
+                        AccountingLine.entry_uuid == AccountingEntry.uuid,
+                        AccountingLine.description.ilike(description_term),
+                    )
+                    .correlate(AccountingEntry)
+                )
+            )
+
+    if entry_date_from is not None:
+        stmt = stmt.where(AccountingEntry.entry_date >= entry_date_from)
+    if entry_date_to is not None:
+        stmt = stmt.where(AccountingEntry.entry_date <= entry_date_to)
+
+    if amount_min is not None or amount_max is not None:
+        # Amount displayed in the journal list uses the total debit side per entry.
+        amount_expr = (
+            select(func.coalesce(func.sum(AccountingLine.debit), Decimal("0.0000")))
+            .where(AccountingLine.entry_uuid == AccountingEntry.uuid)
+            .correlate(AccountingEntry)
+            .scalar_subquery()
+        )
+        if amount_min is not None:
+            stmt = stmt.where(amount_expr >= amount_min)
+        if amount_max is not None:
+            stmt = stmt.where(amount_expr <= amount_max)
+
     if search:
         term = f"%{search.strip()}%"
-        stmt = stmt.where(
-            AccountingEntry.description.ilike(term)
-            | AccountingEntry.reference.ilike(term)
-            | AccountingEntry.sequence_number.ilike(term)
-        )
-    result = await db.scalar(stmt)
-    return result or 0
+        if term != "%%":
+            stmt = stmt.where(
+                AccountingEntry.description.ilike(term)
+                | AccountingEntry.reference.ilike(term)
+                | AccountingEntry.sequence_number.ilike(term)
+            )
+
+    return stmt
 
 
 async def list_accounting_entry_templates(
@@ -2101,6 +2212,7 @@ async def list_journals(db: AsyncSession, skip: int = 0, limit: int = 100) -> li
 
 _IMPORT_SOURCE_SYSTEM = "legacy-accounting-csv"
 _MEMBER_ACCOUNT_PREFIX = "411"
+_IMPORT_ENTRY_REFERENCE_PATTERN = re.compile(r"N[°ºo]\s*([A-Za-z0-9-]+)", re.IGNORECASE)
 
 
 def _parse_accounting_import_date(raw: str) -> date:
@@ -2115,8 +2227,18 @@ def _parse_accounting_import_date(raw: str) -> date:
 
 def _make_entry_key(rows: list[dict]) -> str:
     """Deterministic SHA-256 key from the raw CSV rows of one balanced group."""
+    # Include entry number when present to avoid hash collisions between entries
+    # that share identical amounts/labels (e.g. two members with the same balance).
+    def _entry_num(r: dict) -> str:
+        for col in ("num_ecriture", "entry_number", "entry_num"):
+            for k, v in r.items():
+                if k.strip().lower() == col and v:
+                    return v.strip()
+        return ""
+
     payload = "\n".join(
         "|".join([
+            _entry_num(r),
             r.get("date", ""),
             r.get("journal", ""),
             r.get("label", ""),
@@ -2140,25 +2262,85 @@ def _parse_csv_rows(content: bytes) -> list[dict]:
     return rows
 
 
-def _group_into_entries(rows: list[dict]) -> list[list[dict]]:
-    """Group consecutive CSV rows into balanced entry groups.
+def _extract_accounting_import_reference(label: str | None) -> str | None:
+    """Extract the trailing legacy entry reference (e.g. ``N°175``) from a CSV label."""
+    if not label:
+        return None
+    matches = _IMPORT_ENTRY_REFERENCE_PATTERN.findall(label)
+    if not matches:
+        return None
+    return matches[-1].upper()
 
-    Rows are accumulated until debit total == credit total (and both > 0),
-    at which point the group is closed. When the CSV provides a journal code,
-    a journal change also closes the current group so entries cannot span
-    multiple journals. A remainder that never balances is returned as a single
-    unbalanced tail group.
+
+def _group_into_entries(rows: list[dict]) -> list[list[dict]]:
+    """Group CSV rows into logical legacy accounting entries.
+
+    Legacy exports often encode an entry reference in labels (for example
+    ``N°175``) and some lines of the same entry may be separated in the file.
+    When such a reference exists, rows are grouped by ``(date, journal, ref)``
+    regardless of adjacency. Rows without a detectable reference fall back to a
+    balance-based grouping, but that fallback is constrained to a single date
+    and journal so one incomplete entry cannot absorb later days.
     """
-    groups: list[list[dict]] = []
-    current: list[dict] = []
+
+    # 1. If a column like 'num_ecriture' or 'entry_number' is present, group by it first
+    entry_num_col = None
+    for candidate in ("num_ecriture", "entry_number", "entry_num"):
+        if any(candidate in k.lower() for k in rows[0].keys()):
+            # Find the actual column name (case-insensitive)
+            for k in rows[0].keys():
+                if candidate in k.lower():
+                    entry_num_col = k
+                    break
+            if entry_num_col:
+                break
+
+    if entry_num_col:
+        # Group all rows by entry number value
+        entry_groups: dict[str, list[tuple[int, dict]]] = {}
+        for idx, row in enumerate(rows):
+            entry_num = (row.get(entry_num_col, "") or "").strip()
+            if not entry_num:
+                # fallback: use row index as unique key
+                entry_num = f"ROW_{idx}"
+            entry_groups.setdefault(entry_num, []).append((idx, row))
+
+        ordered_groups = [(group[0][0], [row for _, row in group]) for group in entry_groups.values()]
+        ordered_groups.sort(key=lambda item: item[0])
+        return [group for _, group in ordered_groups]
+
+    # 2. Otherwise, use legacy reference in label (old behavior)
+    referenced_groups: dict[tuple[str, str, str], list[tuple[int, dict]]] = {}
+    fallback_rows: list[tuple[int, dict]] = []
+
+    for idx, row in enumerate(rows):
+        row_date = (row.get("date", "") or "").strip()
+        row_journal = (row.get("journal", "") or "").strip()
+        row_reference = _extract_accounting_import_reference(row.get("label"))
+
+        if row_reference:
+            key = (row_date, row_journal, row_reference)
+            referenced_groups.setdefault(key, []).append((idx, row))
+            continue
+
+        fallback_rows.append((idx, row))
+
+    ordered_groups: list[tuple[int, list[dict]]] = []
+
+    for indexed_rows in referenced_groups.values():
+        ordered_groups.append((indexed_rows[0][0], [row for _, row in indexed_rows]))
+
+    current: list[tuple[int, dict]] = []
     debit_acc = Decimal("0")
     credit_acc = Decimal("0")
     current_journal = ""
+    current_date = ""
 
-    for row in rows:
+    for idx, row in fallback_rows:
         row_journal = (row.get("journal", "") or "").strip()
-        if current and row_journal != current_journal:
-            groups.append(current)
+        row_date = (row.get("date", "") or "").strip()
+        if current and (row_journal != current_journal or row_date != current_date):
+            ordered_groups.append((current[0][0], [group_row for _, group_row in current]))
             current = []
             debit_acc = Decimal("0")
             credit_acc = Decimal("0")
@@ -2168,21 +2350,26 @@ def _group_into_entries(rows: list[dict]) -> list[list[dict]]:
             c = Decimal(row.get("credit", "0") or "0")
         except Exception:
             d, c = Decimal("0"), Decimal("0")
-        current.append(row)
+
+        current.append((idx, row))
         current_journal = row_journal
+        current_date = row_date
         debit_acc += d
         credit_acc += c
+
         if debit_acc > 0 and debit_acc == credit_acc:
-            groups.append(current)
+            ordered_groups.append((current[0][0], [group_row for _, group_row in current]))
             current = []
             debit_acc = Decimal("0")
             credit_acc = Decimal("0")
             current_journal = ""
+            current_date = ""
 
     if current:
-        groups.append(current)
+        ordered_groups.append((current[0][0], [group_row for _, group_row in current]))
 
-    return groups
+    ordered_groups.sort(key=lambda item: item[0])
+    return [group for _, group in ordered_groups]
 
 
 def _resolve_group_journal_code(group: list[dict], fallback_journal_code: str | None) -> tuple[str | None, list[str]]:

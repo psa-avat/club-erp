@@ -50,6 +50,7 @@ Each member has:
 
 - a UUID primary key
 - a unique business identifier `account_id`
+- account ids use category-specific prefixes: `ME<YEAR>-<NNNN>` for club members, `EXT-<NNNN>` for external pilots and external organizations, and `FO-<NNNN>` for clients/suppliers
 - a member category
 - an operational status
 - a current-year registration summary field maintained from registration records
@@ -249,7 +250,7 @@ Reference:
 
 Notes:
 
-- `account_id` format: `ME<YEAR>-<NNNN>`
+- `account_id` formats: `ME<YEAR>-<NNNN>`, `EXT-<NNNN>`, `FO-<NNNN>`
 - value is auto-generated on creation but may be manually adjusted by authorized admin logic
 - `can_fly` is derived from category in some cases, but stored explicitly for clarity and reporting
 

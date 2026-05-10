@@ -203,7 +203,11 @@ function MemberKpiStrip({
   memberSheets: MemberSheet[]
 }) {
   const { t } = useTranslation('members')
-  const entriesQuery = useAccountingEntriesQuery({ member_uuid: memberUuid, limit: 500 }, true)
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const entriesQuery = useAccountingEntriesQuery(
+    { fiscal_year_uuid: activeFiscalYearUuid ?? undefined, member_uuid: memberUuid, limit: 1000 },
+    Boolean(activeFiscalYearUuid),
+  )
   const entries: AccountingEntry[] = entriesQuery.data ?? []
 
   const balance = useMemo(() => {
@@ -244,9 +248,11 @@ function MemberKpiStrip({
       <KpiCard
         label={t('pilotSheet.kpi.balance')}
         value={
-          entriesQuery.isLoading
-            ? '…'
-            : `${memberBalance.greaterThan(0) ? '+' : ''}${formatEuro(memberBalance)} €`
+          !activeFiscalYearUuid
+            ? '—'
+            : entriesQuery.isLoading
+              ? '…'
+              : `${memberBalance.greaterThan(0) ? '+' : ''}${formatEuro(memberBalance)} €`
         }
         valueClass={balanceColorClass}
         sub={memberAccountId}
@@ -402,14 +408,19 @@ function AccountTab({
                   // Compute debit/credit for this member on this entry
                   let lineDebit = new Decimal(0)
                   let lineCredit = new Decimal(0)
+                  let memberLineDescription: string | null = null
                   for (const line of entry.lines) {
                     if (line.member_uuid === memberUuid) {
                       lineDebit = lineDebit.plus(decimalOrZero(line.debit))
                       lineCredit = lineCredit.plus(decimalOrZero(line.credit))
+                      if (!memberLineDescription && line.description) {
+                        memberLineDescription = line.description
+                      }
                     }
                   }
                   const hasDebit = lineDebit.greaterThan(0)
                   const hasCredit = lineCredit.greaterThan(0)
+                  const displayDescription = memberLineDescription ?? entry.description
                   return (
                     <tr
                       key={entry.uuid}
@@ -427,9 +438,9 @@ function AccountTab({
                         <Link
                           to={`/banque/journal/entry/${entry.uuid}?fiscal_year_uuid=${entry.fiscal_year_uuid}`}
                           className="truncate text-primary underline-offset-2 hover:underline"
-                          title={entry.description}
+                          title={displayDescription}
                         >
-                          {entry.description}
+                          {displayDescription}
                         </Link>
                         <span
                           className={`ml-2 inline-flex items-center rounded-shape-full px-1.5 py-px text-[10px] font-medium ${entryStateBadgeClass(entry.state)}`}

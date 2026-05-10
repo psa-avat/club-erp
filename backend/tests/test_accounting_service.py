@@ -393,6 +393,42 @@ class TestAccountingImportHelpers(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(len(groups[0]), 3)
 
+    def test_group_uses_reference_across_non_contiguous_rows(self):
+        from services.accounting import _group_into_entries
+
+        rows = [
+            {"date": "25/04/2025", "journal": "AC", "label": "OVH DU 4/4 N°175", "debit": "30.05", "credit": "0.00"},
+            {"date": "25/04/2025", "journal": "AC", "label": "OVH DU 4/4 N°175", "debit": "0.00", "credit": "124.95"},
+            {"date": "25/04/2025", "journal": "AC", "label": "Batteries 12V 8Ah x6 N°117", "debit": "239.94", "credit": "0.00"},
+            {"date": "25/04/2025", "journal": "AC", "label": "AMAZON N°117", "debit": "0.00", "credit": "239.94"},
+            {"date": "25/04/2025", "journal": "AC", "label": "OVH Abont du 1/4/25 au 31/3/26 N°175", "debit": "94.90", "credit": "0.00"},
+        ]
+
+        groups = _group_into_entries(rows)
+
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups[0]), 3)
+        self.assertEqual([row["label"] for row in groups[0]], [
+            "OVH DU 4/4 N°175",
+            "OVH DU 4/4 N°175",
+            "OVH Abont du 1/4/25 au 31/3/26 N°175",
+        ])
+        self.assertEqual(len(groups[1]), 2)
+
+    def test_group_without_reference_splits_on_date_change(self):
+        from services.accounting import _group_into_entries
+
+        rows = [
+            {"date": "25/04/2025", "journal": "AC", "label": "No ref debit", "debit": "30.05", "credit": "0.00"},
+            {"date": "26/04/2025", "journal": "AC", "label": "No ref credit", "debit": "0.00", "credit": "30.05"},
+        ]
+
+        groups = _group_into_entries(rows)
+
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(groups[0][0]["date"], "25/04/2025")
+        self.assertEqual(groups[1][0]["date"], "26/04/2025")
+
     def test_entry_key_is_deterministic(self):
         from services.accounting import _make_entry_key
         rows = [

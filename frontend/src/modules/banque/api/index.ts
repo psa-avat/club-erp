@@ -227,6 +227,8 @@ export type AccountingEntryLine = AccountingEntryLinePayload & {
   uuid: string
   entry_uuid: string
   fiscal_year_uuid: string
+  member_first_name?: string | null
+  member_last_name?: string | null
 }
 
 export type AccountingEntry = {
@@ -255,6 +257,13 @@ export type AccountingEntriesFilters = {
   state?: number
   search?: string
   member_uuid?: string
+  member?: string
+  account_code?: string
+  description?: string
+  entry_date_from?: string
+  entry_date_to?: string
+  amount_min?: string
+  amount_max?: string
   limit?: number
   offset?: number
 }
@@ -622,23 +631,6 @@ export function useDeleteAccountingEntryMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
-    },
-  })
-}
-
-export function useCreateFiscalYearMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: FiscalYearCreatePayload) => {
-      const { data } = await apiClient.post<FiscalYear>(
-        '/api/v1/accounting/fiscal-years',
-        payload,
-        getAuthRequestConfig(),
-      )
-      return data
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.fiscalYears() })
     },
   })
 }

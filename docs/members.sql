@@ -12,29 +12,60 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- HELPERS
 -- =========================
 
--- Keeps a yearly counter for generated member account identifiers.
+-- Keeps counters for generated member account identifiers.
 CREATE TABLE IF NOT EXISTS member_account_counters (
-  year SMALLINT PRIMARY KEY,
+  counter_key VARCHAR(16) PRIMARY KEY,
+  account_prefix VARCHAR(8) NOT NULL,
+  account_year SMALLINT,
   next_value INTEGER NOT NULL CHECK (next_value >= 1)
 );
 
--- Generates account ids like ME2026-0001.
-CREATE OR REPLACE FUNCTION generate_member_account_id()
+-- Generates account ids like ME2026-0001, EXT-0001, or FO-0001.
+CREATE OR REPLACE FUNCTION generate_member_account_id(member_category SMALLINT)
 RETURNS VARCHAR(32)
 LANGUAGE plpgsql
 AS $$
 DECLARE
   current_year SMALLINT := EXTRACT(YEAR FROM CURRENT_DATE)::SMALLINT;
+  counter_key VARCHAR(16);
+  account_prefix VARCHAR(8);
+  counter_year SMALLINT;
   allocated_value INTEGER;
 BEGIN
-  INSERT INTO member_account_counters (year, next_value)
-  VALUES (current_year, 2)
-  ON CONFLICT (year)
+  IF member_category IN (5, 7) THEN
+    account_prefix := 'EXT-';
+    counter_year := NULL;
+    counter_key := 'EXT';
+  ELSIF member_category = 8 THEN
+    account_prefix := 'FO-';
+    counter_year := NULL;
+    counter_key := 'FO';
+  ELSE
+    account_prefix := format('ME%s-', current_year);
+    counter_year := current_year;
+    counter_key := format('ME-%s', current_year);
+  END IF;
+
+  INSERT INTO member_account_counters (counter_key, account_prefix, account_year, next_value)
+  VALUES (counter_key, account_prefix, counter_year, 2)
+  ON CONFLICT (counter_key)
   DO UPDATE
   SET next_value = member_account_counters.next_value + 1
   RETURNING next_value - 1 INTO allocated_value;
 
-  RETURN format('ME%s-%s', current_year, lpad(allocated_value::TEXT, 4, '0'));
+  RETURN format('%s%s', account_prefix, lpad(allocated_value::TEXT, 4, '0'));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_member_account_id()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.account_id IS NULL OR btrim(NEW.account_id) = '' THEN
+    NEW.account_id := generate_member_account_id(NEW.member_category);
+  END IF;
+  RETURN NEW;
 END;
 $$;
 
@@ -64,7 +95,7 @@ CREATE TABLE IF NOT EXISTS members (
   member_category SMALLINT NOT NULL,
   seniority SMALLINT,
   ffvp_id BIGINT,
-  account_id VARCHAR(32) NOT NULL DEFAULT generate_member_account_id(),
+  account_id VARCHAR(32) NOT NULL,
   photo_url TEXT,
   status SMALLINT NOT NULL DEFAULT 1,
   registration_status SMALLINT NOT NULL DEFAULT 1,
@@ -97,7 +128,7 @@ CREATE TABLE IF NOT EXISTS members (
   CONSTRAINT chk_members_role_employee_board
     CHECK (NOT (is_employee AND is_board_member)),
   CONSTRAINT chk_members_account_id_format
-    CHECK (account_id ~ '^ME[0-9]{4}-[0-9]{4,}$')
+    CHECK (account_id ~ '^(ME[0-9]{4}-[0-9]{4}|EXT-[0-9]{4}|FO-[0-9]{4})$')
 );
 
 CREATE TABLE IF NOT EXISTS committees (
@@ -251,6 +282,12 @@ ON member_registrations(status);
 -- =========================
 
 DROP TRIGGER IF EXISTS trg_members_set_updated_at ON members;
+DROP TRIGGER IF EXISTS trg_members_set_account_id ON members;
+CREATE TRIGGER trg_members_set_account_id
+BEFORE INSERT ON members
+FOR EACH ROW
+EXECUTE FUNCTION set_member_account_id();
+
 CREATE TRIGGER trg_members_set_updated_at
 BEFORE UPDATE ON members
 FOR EACH ROW
@@ -276,7 +313,7 @@ COMMENT ON TABLE members IS 'Club members with identity, category, operational f
 COMMENT ON COLUMN members.member_category IS '1=Full Member, 2=Temporary Member, 3=Non-Flying Member, 4=Short Period Member, 5=External Pilot, 6=Volunteer, 7=External Organization, 8=Client/Supplier.';
 COMMENT ON COLUMN members.status IS '1=Active, 2=Suspended, 3=Resigned, 4=Anonymized.';
 COMMENT ON COLUMN members.registration_status IS '1=Draft, 2=In Progress, 3=Completed, 4=Archived.';
-COMMENT ON COLUMN members.account_id IS 'Stable member and ledger identifier, formatted as ME<YEAR>-<SEQUENCE>.';
+COMMENT ON COLUMN members.account_id IS 'Stable member and ledger identifier, formatted as ME<YEAR>-<SEQUENCE>, EXT-<SEQUENCE>, or FO-<SEQUENCE>.';
 COMMENT ON TABLE committees IS 'Committees with optional manager and optional budget.';
 COMMENT ON TABLE committee_members IS 'Yearly committee membership assignments for members.';
 COMMENT ON TABLE member_sheets IS 'Yearly flying member summary and expense access controls.';

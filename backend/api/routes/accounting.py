@@ -18,6 +18,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
 import logging
+from datetime import date
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, status, UploadFile
@@ -705,6 +707,13 @@ async def count_entries_endpoint(
     state: int | None = None,
     search: str | None = None,
     member_uuid: UUID | None = None,
+    member: str | None = None,
+    account_code: str | None = None,
+    description: str | None = None,
+    entry_date_from: date | None = None,
+    entry_date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
@@ -716,6 +725,13 @@ async def count_entries_endpoint(
         state=state,
         search=search,
         member_uuid=member_uuid,
+        member=member,
+        account_code=account_code,
+        description=description,
+        entry_date_from=entry_date_from,
+        entry_date_to=entry_date_to,
+        amount_min=amount_min,
+        amount_max=amount_max,
     )
     return {"total": total}
 
@@ -727,6 +743,13 @@ async def list_entries_endpoint(
     state: int | None = None,
     search: str | None = None,
     member_uuid: UUID | None = None,
+    member: str | None = None,
+    account_code: str | None = None,
+    description: str | None = None,
+    entry_date_from: date | None = None,
+    entry_date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
@@ -740,6 +763,13 @@ async def list_entries_endpoint(
         state=state,
         search=search,
         member_uuid=member_uuid,
+        member=member,
+        account_code=account_code,
+        description=description,
+        entry_date_from=entry_date_from,
+        entry_date_to=entry_date_to,
+        amount_min=amount_min,
+        amount_max=amount_max,
         limit=limit,
         offset=offset,
     )

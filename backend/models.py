@@ -794,6 +794,7 @@ class AccountingLine(Base):
 
     entry = relationship("AccountingEntry", back_populates="lines")
     account = relationship("AccountingAccount", back_populates="entries_lines")
+    member = relationship("Member", foreign_keys=[member_uuid], primaryjoin="AccountingLine.member_uuid == Member.uuid")
 
     def __repr__(self):
         return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"

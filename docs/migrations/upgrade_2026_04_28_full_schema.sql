@@ -47,9 +47,59 @@ CREATE INDEX IF NOT EXISTS ix_system_settings_module_name ON system_settings(mod
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS member_account_counters (
-    year SMALLINT PRIMARY KEY,
+    counter_key VARCHAR(16) PRIMARY KEY,
+    account_prefix VARCHAR(8) NOT NULL,
+    account_year SMALLINT NULL,
     next_value INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE OR REPLACE FUNCTION generate_member_account_id(member_category SMALLINT)
+RETURNS VARCHAR(32)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    current_year SMALLINT := EXTRACT(YEAR FROM CURRENT_DATE)::SMALLINT;
+    counter_key VARCHAR(16);
+    account_prefix VARCHAR(8);
+    account_year SMALLINT;
+    allocated_value INTEGER;
+BEGIN
+    IF member_category IN (5, 7) THEN
+        account_prefix := 'EXT-';
+        account_year := NULL;
+        counter_key := 'EXT';
+    ELSIF member_category = 8 THEN
+        account_prefix := 'FO-';
+        account_year := NULL;
+        counter_key := 'FO';
+    ELSE
+        account_prefix := format('ME%s-', current_year);
+        account_year := current_year;
+        counter_key := format('ME-%s', current_year);
+    END IF;
+
+    INSERT INTO member_account_counters (counter_key, account_prefix, account_year, next_value)
+    VALUES (counter_key, account_prefix, account_year, 2)
+    ON CONFLICT (counter_key)
+    DO UPDATE
+    SET next_value = member_account_counters.next_value + 1
+    RETURNING next_value - 1 INTO allocated_value;
+
+    RETURN format('%s%s', account_prefix, lpad(allocated_value::TEXT, 4, '0'));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_member_account_id()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.account_id IS NULL OR btrim(NEW.account_id) = '' THEN
+        NEW.account_id := generate_member_account_id(NEW.member_category);
+    END IF;
+    RETURN NEW;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS members (
     uuid UUID PRIMARY KEY,
@@ -86,7 +136,8 @@ CREATE TABLE IF NOT EXISTS members (
     CONSTRAINT chk_members_seniority CHECK (seniority IS NULL OR seniority >= 0),
     CONSTRAINT chk_members_last_registration_year CHECK (last_registration_year IS NULL OR last_registration_year BETWEEN 2000 AND 9999),
     CONSTRAINT chk_members_role_employee_executive CHECK (NOT (is_employee AND is_executive)),
-    CONSTRAINT chk_members_role_employee_board CHECK (NOT (is_employee AND is_board_member))
+    CONSTRAINT chk_members_role_employee_board CHECK (NOT (is_employee AND is_board_member)),
+    CONSTRAINT chk_members_account_id_format CHECK (account_id ~ '^(ME[0-9]{4}-[0-9]{4}|EXT-[0-9]{4}|FO-[0-9]{4})$')
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_members_email_not_null ON members(email) WHERE email IS NOT NULL;
@@ -97,6 +148,18 @@ CREATE INDEX IF NOT EXISTS idx_members_status ON members(status);
 CREATE INDEX IF NOT EXISTS idx_members_registration_status ON members(registration_status);
 CREATE INDEX IF NOT EXISTS idx_members_can_fly ON members(can_fly);
 CREATE INDEX IF NOT EXISTS idx_members_last_registration_year ON members(last_registration_year);
+
+DROP TRIGGER IF EXISTS trg_members_set_account_id ON members;
+CREATE TRIGGER trg_members_set_account_id
+BEFORE INSERT ON members
+FOR EACH ROW
+EXECUTE FUNCTION set_member_account_id();
+
+DROP TRIGGER IF EXISTS trg_members_set_updated_at ON members;
+CREATE TRIGGER trg_members_set_updated_at
+BEFORE UPDATE ON members
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS committees (
     uuid UUID PRIMARY KEY,
