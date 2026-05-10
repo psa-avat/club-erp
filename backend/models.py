@@ -777,7 +777,7 @@ class AccountingLine(Base):
     entry_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)
     account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
     # Member dimension
-    member_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)  # references members.uuid
+    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid"), nullable=True, index=True)
     member_account_id_snapshot = Column(String(32), nullable=True)
     # Analytical dimension
     analytical_asset_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
@@ -794,7 +794,7 @@ class AccountingLine(Base):
 
     entry = relationship("AccountingEntry", back_populates="lines")
     account = relationship("AccountingAccount", back_populates="entries_lines")
-    member = relationship("Member", foreign_keys="[AccountingLine.member_uuid]", remote_side="[Member.uuid]")
+    member = relationship("Member")
 
     def __repr__(self):
         return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"
