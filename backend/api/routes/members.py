@@ -175,11 +175,32 @@ async def count_members_endpoint(
 @router.get("/options", response_model=list[MemberOptionResponse])
 async def list_member_options_endpoint(
     search: Optional[str] = Query(default=None),
+    member_categories: Optional[str] = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_member_options(db=db, search=search, limit=limit)
+    parsed_member_categories: Optional[list[int]] = None
+    if member_categories and member_categories.strip():
+        try:
+            parsed_member_categories = [int(raw.strip()) for raw in member_categories.split(',') if raw.strip()]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="member_categories must be a comma-separated list of integers",
+            ) from exc
+        if any(category < 1 or category > 8 for category in parsed_member_categories):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="member_categories values must be between 1 and 8",
+            )
+
+    return await list_member_options(
+        db=db,
+        search=search,
+        member_categories=parsed_member_categories,
+        limit=limit,
+    )
 
 
 @router.post("/anonymize-inactive", response_model=AnonymizationResultResponse)

@@ -182,7 +182,7 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
   const navigate = useNavigate()
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
 
-  const membersQuery = useMemberOptionsQuery({ limit: 500 })
+  const membersQuery = useMemberOptionsQuery({ limit: 500, member_categories: [7, 8] })
   const journalsQuery = useJournalsQuery()
   const postMutation = usePostAccountingEntryMutation()
 

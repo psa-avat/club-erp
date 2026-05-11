@@ -68,13 +68,14 @@ export function SupplierInvoiceDialog({
 }: SupplierInvoiceDialogProps) {
   const { t } = useTranslation('banque')
 
-  const membersQuery = useMemberOptionsQuery({ limit: 500 })
+  const membersQuery = useMemberOptionsQuery({ limit: 500, member_categories: [7, 8] })
   const accountsQuery = useAccountsQuery(open)
   const createMutation = useCreateAccountingEntryMutation()
   const postMutation = usePostAccountingEntryMutation()
 
   // Form state
   const [supplierMemberUuid, setSupplierMemberUuid] = useState('')
+  const [includeCategory7, setIncludeCategory7] = useState(false)
   const [supplierName, setSupplierName] = useState('')
   const [invoiceRef, setInvoiceRef] = useState('')
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -87,6 +88,7 @@ export function SupplierInvoiceDialog({
   useEffect(() => {
     if (open) {
       setSupplierMemberUuid('')
+      setIncludeCategory7(false)
       setSupplierName('')
       setInvoiceRef('')
       setEntryDate(new Date().toISOString().slice(0, 10))
@@ -100,7 +102,11 @@ export function SupplierInvoiceDialog({
   const members = membersQuery.data ?? []
   const accounts = accountsQuery.data ?? []
 
-  const memberOptions = members.map((m) => ({
+  const visibleMembers = members.filter((m) =>
+    m.account_id.startsWith('FO-') || (includeCategory7 && m.account_id.startsWith('EXT-')),
+  )
+
+  const memberOptions = visibleMembers.map((m) => ({
     value: m.uuid,
     label: `${m.last_name} ${m.first_name} (${m.account_id})`,
   }))
@@ -119,10 +125,16 @@ export function SupplierInvoiceDialog({
     expenseAccountUuid.length > 0 &&
     supplierAccountUuid.length > 0
 
+  useEffect(() => {
+    if (!supplierMemberUuid) return
+    if (visibleMembers.some((member) => member.uuid === supplierMemberUuid)) return
+    setSupplierMemberUuid('')
+  }, [supplierMemberUuid, visibleMembers])
+
   function handleSupplierMemberChange(value: string) {
     setSupplierMemberUuid(value)
     if (!value || supplierName.trim().length > 0) return
-    const member = members.find((m) => m.uuid === value)
+    const member = visibleMembers.find((m) => m.uuid === value)
     if (member) {
       setSupplierName(`${member.last_name} ${member.first_name}`.trim())
     }
@@ -184,6 +196,15 @@ export function SupplierInvoiceDialog({
           <div className="col-span-2 space-y-1">
             <label className="block text-xs font-medium text-slate-600">
               {t('ops.suppliers.fields.supplierMember')}
+            </label>
+            <label className="mb-2 inline-flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={includeCategory7}
+                onChange={(event) => setIncludeCategory7(event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              <span>{t('ops.suppliers.fields.includeCategory7')}</span>
             </label>
             <SearchableSelect
               options={memberOptions}

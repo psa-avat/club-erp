@@ -27,7 +27,7 @@ export const membersQueryKeys = {
   lists: ['members', 'list'] as const,
   list: (filters: MemberFilters) => ['members', 'list', filters] as const,
   count: (filters: Omit<MemberFilters, 'limit' | 'offset'>) => ['members', 'count', filters] as const,
-  options: (params: { search?: string; limit?: number }) => ['members', 'options', params] as const,
+  options: (params: { search?: string; limit?: number; member_categories?: number[] }) => ['members', 'options', params] as const,
   detail: (memberUuid: string) => ['members', 'detail', memberUuid] as const,
   registrations: (memberUuid: string) => ['members', 'registrations', memberUuid] as const,
   committees: ['members', 'committees'] as const,
@@ -73,7 +73,7 @@ export function useMembersCountQuery(filters: Omit<MemberFilters, 'limit' | 'off
   })
 }
 
-export function useMemberOptionsQuery(params: { search?: string; limit?: number } = {}) {
+export function useMemberOptionsQuery(params: { search?: string; limit?: number; member_categories?: number[] } = {}) {
   return useQuery({
     queryKey: membersQueryKeys.options(params),
     staleTime: 30 * 60 * 1000,

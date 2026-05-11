@@ -50,7 +50,7 @@ export function SupplierInvoicePage() {
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
   const fiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
-  const membersQuery = useMemberOptionsQuery({ limit: 500 })
+  const membersQuery = useMemberOptionsQuery({ limit: 500, member_categories: [7, 8] })
   const journalsQuery = useJournalsQuery()
   const accountsQuery = useAccountsQuery()
   const createMutation = useCreateAccountingEntryMutation()
@@ -62,6 +62,7 @@ export function SupplierInvoicePage() {
   )
 
   const [supplierMemberUuid, setSupplierMemberUuid] = useState('')
+  const [includeCategory7, setIncludeCategory7] = useState(false)
   const [supplierName, setSupplierName] = useState('')
   const [invoiceRef, setInvoiceRef] = useState('')
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -72,7 +73,10 @@ export function SupplierInvoicePage() {
 
   const members = membersQuery.data ?? []
   const accounts = accountsQuery.data ?? []
-  const memberOptions = members.map((m) => ({
+  const visibleMembers = members.filter((m) =>
+    m.account_id.startsWith('FO-') || (includeCategory7 && m.account_id.startsWith('EXT-')),
+  )
+  const memberOptions = visibleMembers.map((m) => ({
     value: m.uuid,
     label: `${m.last_name} ${m.first_name} (${m.account_id})`,
   }))
@@ -95,6 +99,12 @@ export function SupplierInvoicePage() {
     }
   }, [supplierAccountUuid, supplierOptions])
 
+  useEffect(() => {
+    if (!supplierMemberUuid) return
+    if (visibleMembers.some((member) => member.uuid === supplierMemberUuid)) return
+    setSupplierMemberUuid('')
+  }, [supplierMemberUuid, visibleMembers])
+
   const isValid =
     canPost &&
     Boolean(fiscalYearUuid) &&
@@ -108,7 +118,7 @@ export function SupplierInvoicePage() {
   function handleSupplierMemberChange(value: string) {
     setSupplierMemberUuid(value)
     if (!value || supplierName.trim().length > 0) return
-    const member = members.find((m) => m.uuid === value)
+    const member = visibleMembers.find((m) => m.uuid === value)
     if (member) {
       setSupplierName(`${member.last_name} ${member.first_name}`.trim())
     }
@@ -202,6 +212,15 @@ export function SupplierInvoicePage() {
             <div className="space-y-1 md:col-span-2">
               <label className="block text-xs font-medium text-slate-600">
                 {t('ops.suppliers.fields.supplierMember')}
+              </label>
+              <label className="mb-2 inline-flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={includeCategory7}
+                  onChange={(event) => setIncludeCategory7(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                <span>{t('ops.suppliers.fields.includeCategory7')}</span>
               </label>
               <SearchableSelect
                 options={memberOptions}

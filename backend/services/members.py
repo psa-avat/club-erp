@@ -611,6 +611,7 @@ async def list_member_options(
     db: AsyncSession,
     *,
     search: Optional[str] = None,
+    member_categories: Optional[list[int]] = None,
     limit: int = 1000,
 ) -> list[MemberOptionResponse]:
     """List lightweight member options for selectors."""
@@ -625,6 +626,8 @@ async def list_member_options(
                 Member.account_id.ilike(term),
             )
         )
+    if member_categories:
+        query = query.where(Member.member_category.in_(member_categories))
 
     result = await db.execute(query.limit(limit))
     members = result.scalars().all()

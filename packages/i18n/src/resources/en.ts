@@ -494,6 +494,7 @@ export const en = {
           supplierPlaceholder: 'E.g. TOTAL Lubricants',
           supplierMember:      'Supplier member (reference)',
           supplierMemberPlaceholder: 'Search a member…',
+          includeCategory7:    'Include external members (cat. 7)',
           ref:                 'Invoice number',
           date:                'Invoice date',
           paymentDate:         'Payment date',

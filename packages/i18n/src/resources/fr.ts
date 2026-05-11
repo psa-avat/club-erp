@@ -494,6 +494,7 @@ export const fr = {
           supplierPlaceholder: 'Ex. : TOTAL Lubrifiants',
           supplierMember:      'Membre fournisseur (référence)',
           supplierMemberPlaceholder: 'Rechercher un membre…',
+          includeCategory7:    'Inclure les externes (cat. 7)',
           ref:                 'N° facture',
           date:                'Date facture',
           paymentDate:         'Date règlement',
