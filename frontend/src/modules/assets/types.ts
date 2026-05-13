@@ -62,7 +62,11 @@ export type AssetSummary = {
   code: string
   name: string
   asset_type_uuid: string
-  asset_type_name: string
+  asset_type?: AssetType | null
+  asset_type_name?: string
+  current_price_version?: string | null
+  current_price_version_name?: string | null
+  pricing_version?: string | null
   /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold */
   status: number
   /** 1=Club, 2=Private */

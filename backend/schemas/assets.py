@@ -194,6 +194,9 @@ class AssetResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    asset_type: Optional[AssetTypeResponse] = None
+    current_price_version: Optional[UUID] = None
+    current_price_version_name: Optional[str] = None
 
     class Config:
         from_attributes = True

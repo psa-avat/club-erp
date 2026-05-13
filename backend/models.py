@@ -566,7 +566,7 @@ class PricingVersion(Base):
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     fiscal_year = relationship("AccountingFiscalYear")
-    asset_type = relationship("AssetType")
+    asset_type = relationship("AssetType", back_populates="pricing_versions")
     created_by_user = relationship("User")
     items = relationship("PricingItem", back_populates="pricing_version", cascade="all, delete-orphan")
 
@@ -889,6 +889,7 @@ class AssetType(Base):
     )
 
     assets = relationship("Asset", back_populates="asset_type")
+    pricing_versions = relationship("PricingVersion", back_populates="asset_type")
     def __repr__(self):
         return f"<AssetType code={self.code} name={self.name}>"
 

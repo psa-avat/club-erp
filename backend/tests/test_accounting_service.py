@@ -28,22 +28,14 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from app.main import app
+from app.database import get_db
+from app.models import Asset, AssetType, PricingVersion
+from app.schemas.assets import AssetResponse
+from sqlalchemy.orm import Session
 
-from schemas.accounting import AccountingEntryUpdateRequest, AccountingLineCreateRequest
-from services.accounting import (
-    PCG_ASSOCIATION_SEED,
-    _normal_balance_for_account_type,
-    create_accounting_entry,
-    create_reversal_entry,
-    ensure_fiscal_year_partitions,
-    get_active_fiscal_year,
-    post_accounting_entry,
-    post_accounting_entries_batch,
-    seed_association_pcg_accounts,
-    update_accounting_entry,
-    validate_entry_balance,
-    validate_entry_date_in_fy,
-)
+client = TestClient(app)
 
 
 class _FakeResult:

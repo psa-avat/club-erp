@@ -28,6 +28,7 @@ import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
+import { useAccountsQuery } from '../../banque/api'
 import { useMemberOptionsQuery } from '../../members/api'
 import type { MemberOption } from '../../members/types'
 import {
@@ -152,6 +153,7 @@ export function AssetFormPage() {
 
   const typesQuery = useAssetTypesQuery(canManage)
   const assetQuery = useAssetQuery(isEdit ? (uuid ?? null) : null)
+  const accountsQuery = useAccountsQuery(canManage)
   const [ownerSearch, setOwnerSearch] = useState('')
   const memberOptionsQuery = useMemberOptionsQuery({ search: ownerSearch, limit: 50 })
 
@@ -239,6 +241,9 @@ export function AssetFormPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending
   const isPrivate = form.ownership === OWNERSHIP_PRIVATE
+  const acquisitionAccounts = (accountsQuery.data ?? [])
+    .filter((account) => account.code.startsWith('2') && account.is_posting_allowed)
+    .sort((a, b) => a.code.localeCompare(b.code))
   const memberOptions = memberOptionsQuery.data ?? []
   const selectedOwnerMap = new Map<string, MemberOption>()
   for (const owner of assetQuery.data?.owner_members ?? []) {
@@ -485,13 +490,19 @@ export function AssetFormPage() {
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <div className="space-y-1">
               <Label htmlFor="acqAccount" className="text-xs">{t('form.acquisitionAccountUuid')}</Label>
-              <Input
+              <select
                 id="acqAccount"
                 value={form.acquisition_account_uuid}
                 onChange={(e) => set('acquisition_account_uuid', e.target.value)}
-                placeholder={t('form.accountPlaceholder')}
-                className="h-8 text-sm font-mono"
-              />
+                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="">{t('form.accountPlaceholder')}</option>
+                {acquisitionAccounts.map((account) => (
+                  <option key={account.uuid} value={account.uuid}>
+                    {account.code} - {account.name}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-slate-500">{t('form.accountHint')}</p>
             </div>
             <div className="space-y-1">

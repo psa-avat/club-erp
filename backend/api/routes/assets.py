@@ -337,3 +337,40 @@ async def import_assets_endpoint(
     """
     content = await file.read()
     return await import_assets_from_csv(db=db, content=content, user_id=current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# Assets with Asset Type and Current Pricing Version
+# ---------------------------------------------------------------------------
+
+@router.get("/assets", response_model=list[AssetResponse])
+def get_assets(db: AsyncSession = Depends(get_db)):
+    today = date.today()
+    assets = db.query(Asset).all()
+    asset_responses = []
+
+    for asset in assets:
+        asset_type = db.query(AssetType).filter(AssetType.uuid == asset.asset_type_uuid).first()
+        pricing_version = (
+            db.query(PricingVersion)
+            .filter(
+                PricingVersion.asset_type_uuid == asset.asset_type_uuid,
+                PricingVersion.from_date <= today,
+                (PricingVersion.to_date == None) | (PricingVersion.to_date >= today),
+                PricingVersion.status == 2  # Active
+            )
+            .first()
+        )
+
+        asset_responses.append(
+            AssetResponse(
+                uuid=asset.uuid,
+                code=asset.code,
+                name=asset.name,
+                status=asset.status,
+                asset_type=asset_type.name if asset_type else None,
+                pricing_version=pricing_version.name if pricing_version else None
+            )
+        )
+
+    return asset_responses

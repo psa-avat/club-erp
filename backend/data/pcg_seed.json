@@ -546,6 +546,13 @@
     "is_reconcilable": false
   },
   {
+    "code": "7064",
+    "name": "Produit des moteurs (TMG et Avions)",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
     "code": "707",
     "name": "Ventes de marchandises (Boutique, Cartes SIA)",
     "type": 5,

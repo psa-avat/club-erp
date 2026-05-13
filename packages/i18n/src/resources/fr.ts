@@ -1211,6 +1211,7 @@ export const fr = {
     list: {
       title: 'Aéronefs et équipements',
       description: 'Parcourez les aéronefs et équipements du club.',
+      currentPricingVersion: 'Version tarifaire',
     },
     filters: {
       search: 'Recherche',

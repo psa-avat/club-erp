@@ -161,10 +161,13 @@ export function useAssetsQuery(filters: AssetFilters, enabled = true) {
     queryKey: assetsQueryKeys.list(filters),
     enabled,
     queryFn: async () => {
-      const { data } = await apiClient.get<AssetSummary[]>('/api/v1/assets', {
-        ...getAuthRequestConfig(),
-        params: compactParams(filters as Record<string, unknown>),
-      })
+      const { data } = await apiClient.get<AssetSummary[]>(
+        '/api/v1/assets',
+        {
+          params: compactParams(filters),
+          ...getAuthRequestConfig(),
+        },
+      )
       return data
     },
   })

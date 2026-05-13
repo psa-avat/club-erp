@@ -1210,6 +1210,7 @@ export const en = {
     list: {
       title: 'Aircraft & Assets',
       description: 'Browse club aircraft and equipment.',
+      currentPricingVersion: 'Price version',
     },
     filters: {
       search: 'Search',

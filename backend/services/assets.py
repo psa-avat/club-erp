@@ -35,6 +35,7 @@ from schemas.assets import (
     AssetResponse,
     AssetStatusTransitionRequest,
     AssetUpdateRequest,
+    AssetTypeResponse,
     AssetTypeCreateRequest,
     AssetTypeUpdateRequest,
     FlightTypeCreateRequest,
@@ -50,7 +51,8 @@ logger = logging.getLogger(__name__)
 
 def _asset_query():
     return select(Asset).options(
-        selectinload(Asset.private_owner_links).selectinload(AssetPrivateOwner.member)
+        selectinload(Asset.private_owner_links).selectinload(AssetPrivateOwner.member),
+        selectinload(Asset.asset_type).selectinload(AssetType.pricing_versions),
     )
 
 
@@ -108,6 +110,35 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
     ]
     owner_member_uuids = [owner.uuid for owner in owner_members]
 
+    asset_type = AssetTypeResponse(
+        uuid=asset.asset_type.uuid,
+        code=asset.asset_type.code,
+        name=asset.asset_type.name,
+        category=asset.asset_type.category,
+        pricing_strategy=asset.asset_type.pricing_strategy,
+        is_active=asset.asset_type.is_active,
+        updated_at=asset.asset_type.updated_at,
+    )
+
+    current_price_version = None
+    current_price_version_name = None
+    if asset.asset_type.pricing_versions:
+        today = date.today()
+        active_price_versions = [
+            price_version
+            for price_version in asset.asset_type.pricing_versions
+            if price_version.status == 2
+            and price_version.from_date <= today
+            and (price_version.to_date is None or price_version.to_date >= today)
+        ]
+        selected_price_version = (
+            max(active_price_versions, key=lambda pv: pv.from_date)
+            if active_price_versions
+            else max(asset.asset_type.pricing_versions, key=lambda pv: pv.created_at)
+        )
+        current_price_version = selected_price_version.uuid
+        current_price_version_name = selected_price_version.name
+
     return AssetResponse(
         uuid=asset.uuid,
         asset_type_uuid=asset.asset_type_uuid,
@@ -134,6 +165,9 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         is_active=asset.is_active,
         created_at=asset.created_at,
         updated_at=asset.updated_at,
+        asset_type=asset_type,
+        current_price_version=current_price_version,
+        current_price_version_name=current_price_version_name,
     )
 
 
