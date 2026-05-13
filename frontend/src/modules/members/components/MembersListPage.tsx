@@ -45,23 +45,22 @@ import { MemberDirectoryTable } from './MemberDirectoryTable'
 import { MemberFilterDrawer } from './MemberFilterDrawer'
 import { MemberKpiStrip } from './MemberKpiStrip'
 import { RegistrationPanel } from './RegistrationPanel'
-
-type MembersScreen = 'core' | 'external' | 'business'
+import type { MembersScreen } from '../types'
 
 const MEMBERS_SCREEN_SET = new Set<MembersScreen>(['core', 'external', 'business'])
 
-const SCREEN_META: Record<MembersScreen, { title: string; description: string }> = {
+const SCREEN_META: Record<MembersScreen, { titleKey: string; descriptionKey: string }> = {
   core: {
-    title: 'Core members',
-    description: 'Main, temporary and operational club members with annual registration workflow.',
+    titleKey: 'list.screenMeta.core.title',
+    descriptionKey: 'list.screenMeta.core.description',
   },
   external: {
-    title: 'External',
-    description: 'External pilots and partner organizations.',
+    titleKey: 'list.screenMeta.external.title',
+    descriptionKey: 'list.screenMeta.external.description',
   },
   business: {
-    title: 'Business contacts',
-    description: 'Client and supplier records managed from the same table.',
+    titleKey: 'list.screenMeta.business.title',
+    descriptionKey: 'list.screenMeta.business.description',
   },
 }
 
@@ -115,6 +114,7 @@ export function MembersListPage() {
     () => screenCategories.map((category) => t(SCREEN_CATEGORY_LABEL_KEYS[category])),
     [screenCategories, t],
   )
+  const activeScreenMeta = SCREEN_META[activeScreen]
 
   const scopedFilters = useMemo(
     () => ({
@@ -210,7 +210,7 @@ export function MembersListPage() {
       {/* ── Page header ──────────────────────────────────────────────── */}
       <PageHeader
         title={t('list.title')}
-        supportingText={`${SCREEN_META[activeScreen].title}: ${SCREEN_META[activeScreen].description}`}
+        supportingText={`${t(activeScreenMeta.titleKey)}: ${t(activeScreenMeta.descriptionKey)}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => setShowImportDialog(true)}>
@@ -227,21 +227,21 @@ export function MembersListPage() {
         <CardContent className="flex flex-col gap-3 py-4">
           <div className="flex flex-wrap gap-2">
             <NavLink to="/club/members/core" className={({ isActive }) => screenTabClass(isActive)}>
-              Core
+              {t('list.screenTabs.core')}
             </NavLink>
             <NavLink to="/club/members/external" className={({ isActive }) => screenTabClass(isActive)}>
-              External
+              {t('list.screenTabs.external')}
             </NavLink>
             <NavLink to="/club/members/business" className={({ isActive }) => screenTabClass(isActive)}>
-              Business
+              {t('list.screenTabs.business')}
             </NavLink>
           </div>
           <p className="text-xs text-on-surface-variant">
-            <span className="font-medium text-on-surface">{SCREEN_META[activeScreen].title}:</span>{' '}
-            {SCREEN_META[activeScreen].description}
+            <span className="font-medium text-on-surface">{t(activeScreenMeta.titleKey)}:</span>{' '}
+            {t(activeScreenMeta.descriptionKey)}
           </p>
           <p className="text-xs text-on-surface-variant">
-            <span className="font-medium text-on-surface">Included categories:</span>{' '}
+            <span className="font-medium text-on-surface">{t('list.includedCategories')}:</span>{' '}
             {screenCategoryLabels.join(', ')}
           </p>
         </CardContent>
@@ -413,7 +413,7 @@ export function MembersListPage() {
         open={filterDrawerOpen}
         onClose={() => setFilterDrawerOpen(false)}
         filters={filters}
-        screenTitle={SCREEN_META[activeScreen].title}
+        screenTitle={t(activeScreenMeta.titleKey)}
         screenCategoryLabels={screenCategoryLabels}
         onApply={(newFilters) => setFilters(newFilters)}
       />

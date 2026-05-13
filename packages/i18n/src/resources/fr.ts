@@ -138,12 +138,53 @@ export const fr = {
     list: {
       title: 'Annuaire des membres',
       description: 'Parcourez les fiches existantes et ouvrez-en une pour modifier les détails.',
+      includedCategories: 'Catégories incluses',
       showAllMembers: 'Afficher tous les membres',
       showActiveOnly: 'Afficher uniquement les membres actifs',
       paginationSummary: '{{start}}-{{end}} sur {{total}} (page {{page}}/{{pages}})',
       committees: 'Commissions',
       canFly: 'Peut voler',
       registered: 'Inscrit',
+      screenTabs: {
+        core: 'Membres',
+        external: 'Externes',
+        business: 'Fournisseurs',
+      },
+      screenMeta: {
+        core: {
+          title: 'Membres',
+          description: 'Membres principaux, temporaires et opérationnels du club avec workflow annuel d\'inscription.',
+        },
+        external: {
+          title: 'Externe',
+          description: 'Pilotes externes et organisations partenaires.',
+        },
+        business: {
+          title: 'Contacts business',
+          description: 'Enregistrements clients et fournisseurs gérés dans la même table.',
+        },
+      },
+    },
+    kpiStrip: {
+      core: {
+        totalMembers: 'Total membres',
+        activeMembers: 'Membres actifs',
+        membersCanFly: 'Membres pouvant voler',
+        activeInstructors: 'Instructeurs actifs',
+        activeVolunteers: 'Bénévoles actifs',
+      },
+      external: {
+        totalExternal: 'Total externes',
+        externalPilots: 'Pilotes externes',
+        partnerOrganizations: 'Organisations partenaires',
+        activeExternal: 'Externes actifs',
+      },
+      business: {
+        businessContacts: 'Contacts business',
+        active: 'Actifs',
+        inactive: 'Inactifs',
+        withEmail: 'Avec email',
+      },
     },
     form: {
       createTitle: 'Créer un membre',

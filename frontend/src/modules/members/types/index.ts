@@ -1,3 +1,5 @@
+export type MembersScreen = 'core' | 'external' | 'business'
+
 export type MemberSummary = {
   uuid: string
   account_id: string

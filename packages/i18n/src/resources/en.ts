@@ -138,12 +138,53 @@ export const en = {
     list: {
       title: 'Member directory',
       description: 'Browse existing records and open one to edit details.',
+      includedCategories: 'Included categories',
       showAllMembers: 'Show all members',
       showActiveOnly: 'Show active members only',
       paginationSummary: '{{start}}-{{end}} of {{total}} (page {{page}}/{{pages}})',
       committees: 'Committees',
       canFly: 'Can fly',
       registered: 'Registered',
+      screenTabs: {
+        core: 'Core',
+        external: 'External',
+        business: 'Business',
+      },
+      screenMeta: {
+        core: {
+          title: 'Core members',
+          description: 'Main, temporary and operational club members with annual registration workflow.',
+        },
+        external: {
+          title: 'External',
+          description: 'External pilots and partner organizations.',
+        },
+        business: {
+          title: 'Business contacts',
+          description: 'Client and supplier records managed from the same table.',
+        },
+      },
+    },
+    kpiStrip: {
+      core: {
+        totalMembers: 'Total members',
+        activeMembers: 'Active members',
+        membersCanFly: 'Members allowed to fly',
+        activeInstructors: 'Active instructors',
+        activeVolunteers: 'Active volunteers',
+      },
+      external: {
+        totalExternal: 'Total external',
+        externalPilots: 'External pilots',
+        partnerOrganizations: 'Partner organizations',
+        activeExternal: 'Active external',
+      },
+      business: {
+        businessContacts: 'Business contacts',
+        active: 'Active',
+        inactive: 'Inactive',
+        withEmail: 'With email',
+      },
     },
     form: {
       createTitle: 'Create member',

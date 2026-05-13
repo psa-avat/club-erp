@@ -18,9 +18,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { MemberSummary } from '../types'
+import { useTranslation } from 'react-i18next'
 
-type MembersScreen = 'core' | 'external' | 'business'
+import type { MemberSummary, MembersScreen } from '../types'
 
 type Props = {
   members: MemberSummary[]
@@ -62,26 +62,30 @@ function countMembers(members: MemberSummary[], predicate: (member: MemberSummar
   return members.filter(predicate).length
 }
 
-function getKpisForScreen(members: MemberSummary[], screen: MembersScreen): KpiItem[] {
+function getKpisForScreen(
+  members: MemberSummary[],
+  screen: MembersScreen,
+  t: (key: string) => string,
+): KpiItem[] {
   const total = members.length
 
   if (screen === 'core') {
     return [
-      { label: 'Total membres', value: total },
+      { label: t('kpiStrip.core.totalMembers'), value: total },
       {
-        label: 'Membres actifs',
+        label: t('kpiStrip.core.activeMembers'),
         value: countMembers(members, (member) => isOperationallyActive(member)),
       },
       {
-        label: 'Membres pouvant voler',
+        label: t('kpiStrip.core.membersCanFly'),
         value: countMembers(members, (member) => member.can_fly && isOperationallyActive(member)),
       },
       {
-        label: 'Instructeurs actifs',
+        label: t('kpiStrip.core.activeInstructors'),
         value: countMembers(members, (member) => member.is_instructor && isOperationallyActive(member)),
       },
       {
-        label: 'Bénévoles actifs',
+        label: t('kpiStrip.core.activeVolunteers'),
         value: countMembers(members, (member) => member.member_category === 6 && isOperationallyActive(member)),
       },
     ]
@@ -89,34 +93,34 @@ function getKpisForScreen(members: MemberSummary[], screen: MembersScreen): KpiI
 
   if (screen === 'external') {
     return [
-      { label: 'Total externes', value: total },
+      { label: t('kpiStrip.external.totalExternal'), value: total },
       {
-        label: 'Pilotes externes',
+        label: t('kpiStrip.external.externalPilots'),
         value: countMembers(members, (member) => member.member_category === 5),
       },
       {
-        label: 'Organisations partenaires',
+        label: t('kpiStrip.external.partnerOrganizations'),
         value: countMembers(members, (member) => member.member_category === 7),
       },
       {
-        label: 'Externe actifs',
+        label: t('kpiStrip.external.activeExternal'),
         value: countMembers(members, (member) => isOperationallyActive(member)),
       },
     ]
   }
 
   return [
-    { label: 'Contacts business', value: total },
+    { label: t('kpiStrip.business.businessContacts'), value: total },
     {
-      label: 'Actifs',
+      label: t('kpiStrip.business.active'),
       value: countMembers(members, (member) => isOperationallyActive(member)),
     },
     {
-      label: 'Inactifs',
+      label: t('kpiStrip.business.inactive'),
       value: countMembers(members, (member) => !isOperationallyActive(member)),
     },
     {
-      label: 'Avec email',
+      label: t('kpiStrip.business.withEmail'),
       value: countMembers(members, (member) => Boolean(member.email?.trim())),
     },
   ]
@@ -127,7 +131,8 @@ function getKpisForScreen(members: MemberSummary[], screen: MembersScreen): KpiI
  * Values are recomputed whenever the members array changes.
  */
 export function MemberKpiStrip({ members, selectedYear: _selectedYear, screen }: Props) {
-  const kpis = getKpisForScreen(members, screen)
+  const { t } = useTranslation('members')
+  const kpis = getKpisForScreen(members, screen, t)
 
   return (
     <div
