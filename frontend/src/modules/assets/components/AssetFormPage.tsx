@@ -28,6 +28,8 @@ import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
+import { useMemberOptionsQuery } from '../../members/api'
+import type { MemberOption } from '../../members/types'
 import {
   useAssetQuery,
   useAssetTypesQuery,
@@ -72,7 +74,7 @@ type FormState = {
   model: string
   year_of_manufacture: string
   ownership: number
-  owner_member_uuid: string
+  owner_member_uuids: string[]
   acquisition_account_uuid: string
   purchase_date: string
   purchase_price: string
@@ -91,7 +93,7 @@ const EMPTY_FORM: FormState = {
   model: '',
   year_of_manufacture: '',
   ownership: OWNERSHIP_CLUB,
-  owner_member_uuid: '',
+  owner_member_uuids: [],
   acquisition_account_uuid: '',
   purchase_date: '',
   purchase_price: '',
@@ -150,6 +152,8 @@ export function AssetFormPage() {
 
   const typesQuery = useAssetTypesQuery(canManage)
   const assetQuery = useAssetQuery(isEdit ? (uuid ?? null) : null)
+  const [ownerSearch, setOwnerSearch] = useState('')
+  const memberOptionsQuery = useMemberOptionsQuery({ search: ownerSearch, limit: 50 })
 
   const createMutation = useCreateAssetMutation()
   const updateMutation = useUpdateAssetMutation(uuid ?? '')
@@ -172,7 +176,7 @@ export function AssetFormPage() {
       model: asset.model ?? '',
       year_of_manufacture: asset.year_of_manufacture ? String(asset.year_of_manufacture) : '',
       ownership: asset.ownership,
-      owner_member_uuid: asset.owner_member_uuid ?? '',
+      owner_member_uuids: asset.owner_member_uuids ?? [],
       acquisition_account_uuid: asset.acquisition_account_uuid ?? '',
       purchase_date: asset.purchase_date ?? '',
       purchase_price: asset.purchase_price ?? '',
@@ -199,8 +203,8 @@ export function AssetFormPage() {
       model: form.model.trim() || null,
       year_of_manufacture: form.year_of_manufacture ? Number(form.year_of_manufacture) : null,
       ownership: form.ownership,
-      owner_member_uuid:
-        form.ownership === OWNERSHIP_PRIVATE ? form.owner_member_uuid.trim() || null : null,
+      owner_member_uuids:
+        form.ownership === OWNERSHIP_PRIVATE ? form.owner_member_uuids : [],
       acquisition_account_uuid: form.acquisition_account_uuid.trim() || null,
       purchase_date: form.purchase_date || null,
       purchase_price: form.purchase_price.trim() || null,
@@ -216,6 +220,10 @@ export function AssetFormPage() {
     e.preventDefault()
     setError(null)
     setSaved(false)
+    if (isPrivate && form.owner_member_uuids.length === 0) {
+      setError(t('form.ownerRequired'))
+      return
+    }
     try {
       if (isEdit && uuid) {
         await updateMutation.mutateAsync(buildPayload())
@@ -231,6 +239,28 @@ export function AssetFormPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending
   const isPrivate = form.ownership === OWNERSHIP_PRIVATE
+  const memberOptions = memberOptionsQuery.data ?? []
+  const selectedOwnerMap = new Map<string, MemberOption>()
+  for (const owner of assetQuery.data?.owner_members ?? []) {
+    selectedOwnerMap.set(owner.uuid, owner)
+  }
+  for (const member of memberOptions) {
+    selectedOwnerMap.set(member.uuid, member)
+  }
+  const selectedOwners = form.owner_member_uuids
+    .map((memberUuid) => selectedOwnerMap.get(memberUuid))
+    .filter((member): member is MemberOption => Boolean(member))
+
+  function addOwner(memberUuid: string) {
+    set('owner_member_uuids', form.owner_member_uuids.includes(memberUuid)
+      ? form.owner_member_uuids
+      : [...form.owner_member_uuids, memberUuid])
+    setOwnerSearch('')
+  }
+
+  function removeOwner(memberUuid: string) {
+    set('owner_member_uuids', form.owner_member_uuids.filter((uuid) => uuid !== memberUuid))
+  }
 
   if (!canManage) {
     return (
@@ -389,19 +419,61 @@ export function AssetFormPage() {
 
             {isPrivate && (
               <div className="space-y-1">
-                <Label htmlFor="owner" className="text-xs">
-                  {t('form.ownerMemberUuid')}
+                <Label htmlFor="owner-search" className="text-xs">
+                  {t('form.ownerMembers')}
                   <span className="ml-0.5 text-red-500">*</span>
                 </Label>
                 <Input
-                  id="owner"
-                  value={form.owner_member_uuid}
-                  onChange={(e) => set('owner_member_uuid', e.target.value)}
-                  placeholder={t('form.ownerPlaceholder')}
-                  className="h-8 text-sm font-mono"
-                  required={isPrivate}
+                  id="owner-search"
+                  value={ownerSearch}
+                  onChange={(e) => setOwnerSearch(e.target.value)}
+                  placeholder={t('form.ownerSearchPlaceholder')}
+                  className="h-8 text-sm"
                 />
                 <p className="text-xs text-slate-500">{t('form.ownerHint')}</p>
+                {selectedOwners.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {selectedOwners.map((owner) => (
+                      <span
+                        key={owner.uuid}
+                        className="inline-flex items-center gap-2 rounded-full bg-surface-container px-2.5 py-1 text-xs text-on-surface"
+                      >
+                        <span>{owner.first_name} {owner.last_name} · {owner.account_id}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeOwner(owner.uuid)}
+                          className="text-on-surface-variant hover:text-on-surface"
+                          aria-label={t('form.removeOwner')}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="max-h-48 overflow-y-auto rounded-md border border-slate-200">
+                  {memberOptionsQuery.isLoading ? (
+                    <p className="px-3 py-2 text-xs text-slate-500">{t('states.loading')}</p>
+                  ) : memberOptions.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-slate-500">{t('form.noOwnerResults')}</p>
+                  ) : (
+                    memberOptions.map((member) => {
+                      const isSelected = form.owner_member_uuids.includes(member.uuid)
+                      return (
+                        <button
+                          key={member.uuid}
+                          type="button"
+                          onClick={() => addOwner(member.uuid)}
+                          disabled={isSelected}
+                          className="flex w-full items-center justify-between border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-400"
+                        >
+                          <span>{member.first_name} {member.last_name}</span>
+                          <span className="text-xs text-slate-500">{member.account_id}</span>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>

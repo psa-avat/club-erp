@@ -344,6 +344,7 @@ class Member(Base):
     updated_by_user = relationship("User", back_populates="updated_members")
     managed_committees = relationship("Committee", back_populates="manager_member")
     committee_memberships = relationship("CommitteeMember", back_populates="member", cascade="all, delete-orphan")
+    private_asset_owner_links = relationship("AssetPrivateOwner", back_populates="member", cascade="all, delete-orphan")
     member_sheets = relationship("MemberSheet", back_populates="member", cascade="all, delete-orphan")
     registrations = relationship("MemberRegistration", back_populates="member", cascade="all, delete-orphan")
 
@@ -921,12 +922,8 @@ class Asset(Base):
 
     __tablename__ = "assets"
     __table_args__ = (
-        CheckConstraint("status IN (1, 2, 3, 4)", name="chk_asset_status"),
+        CheckConstraint("status IN (1, 2, 3, 4, 5)", name="chk_asset_status"),
         CheckConstraint("ownership IN (1, 2)", name="chk_asset_ownership"),
-        CheckConstraint(
-            "ownership <> 2 OR owner_member_uuid IS NOT NULL",
-            name="chk_asset_private_owner_required",
-        ),
         CheckConstraint(
             "purchase_price IS NULL OR purchase_price >= 0",
             name="chk_assets_price_positive",
@@ -948,8 +945,7 @@ class Asset(Base):
     year_of_manufacture = Column(SmallInteger, nullable=True)
     # 1=Club, 2=Private
     ownership = Column(SmallInteger, nullable=False, default=1)
-    owner_member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True)
-    # 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed
+    # 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold
     status = Column(SmallInteger, nullable=False, default=1, index=True)
     # Accounting integration (immobilisation)
     acquisition_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True)
@@ -977,13 +973,38 @@ class Asset(Base):
     updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     asset_type = relationship("AssetType", back_populates="assets")
-    owner_member = relationship("Member")
     acquisition_account = relationship("AccountingAccount")
     updated_by_user = relationship("User")
     status_history = relationship("AssetStatusHistory", back_populates="asset", cascade="all, delete-orphan")
+    private_owner_links = relationship("AssetPrivateOwner", back_populates="asset", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Asset code={self.code} registration={self.registration} status={self.status}>"
+
+
+class AssetPrivateOwner(Base):
+    """Current private ownership links between an asset and one or more members."""
+
+    __tablename__ = "asset_private_owners"
+    __table_args__ = (
+        PrimaryKeyConstraint("asset_uuid", "member_uuid", name="pk_asset_private_owners"),
+    )
+
+    asset_uuid = Column(UUID(as_uuid=True), ForeignKey("assets.uuid", ondelete="CASCADE"), nullable=False)
+    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    assigned_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    asset = relationship("Asset", back_populates="private_owner_links")
+    member = relationship("Member", back_populates="private_asset_owner_links")
+    assigned_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<AssetPrivateOwner asset_uuid={self.asset_uuid} member_uuid={self.member_uuid}>"
 
 
 class AssetStatusHistory(Base):
@@ -991,12 +1012,12 @@ class AssetStatusHistory(Base):
 
     __tablename__ = "asset_status_history"
     __table_args__ = (
-        CheckConstraint("status IN (1, 2, 3, 4)", name="chk_asset_sh_status"),
+        CheckConstraint("status IN (1, 2, 3, 4, 5)", name="chk_asset_sh_status"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     asset_uuid = Column(UUID(as_uuid=True), ForeignKey("assets.uuid", ondelete="CASCADE"), nullable=False, index=True)
-    # 1=Operational, 2=UnderMaintenance, 3=OutOfService, 4=Disposed
+    # 1=Operational, 2=UnderMaintenance, 3=OutOfService, 4=Disposed, 5=Sold
     status = Column(SmallInteger, nullable=False)
     reason = Column(String(255), nullable=True)
     changed_at = Column(

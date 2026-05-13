@@ -164,7 +164,7 @@ async def update_flight_type_endpoint(
 @router.get("", response_model=list[AssetResponse])
 async def list_assets_endpoint(
     asset_type_uuid: Optional[UUID] = Query(default=None),
-    status: Optional[int] = Query(default=None, ge=1, le=4),
+    status: Optional[int] = Query(default=None, ge=1, le=5),
     ownership: Optional[int] = Query(default=None, ge=1, le=2),
     active_only: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),

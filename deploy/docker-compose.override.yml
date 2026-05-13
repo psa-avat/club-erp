@@ -56,6 +56,48 @@ services:
       - "dozzle.group=erp_club"
       - "dozzle.name=PostgreSQL"
 
+# ── Permissions init (dev only) ────────────────────────────────────────────
+  rustfs-perms:
+    image: alpine
+    user: root
+    volumes:
+      - rustfsdata_dev:/fix_path
+    command: chown -R 10001:10001 /fix_path
+
+  # ── RustFS – stockage objet S3-compatible (dev only) ───────────────────────
+  erp-rustfs:
+    image: rustfs/rustfs:latest
+    container_name: erp-rustfs-dev
+    restart: unless-stopped
+    networks:
+      - web_network
+    depends_on:
+      rustfs-perms:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-ChangeMe123!}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOG_DIRECTORY: /logs
+      TZ: Europe/Paris
+    volumes:
+      - rustfsdata_dev:/data
+      - rustfslogs_dev:/logs
+    ports:
+      - "127.0.0.1:9000:9000"   # API S3
+      - "192.168.0.120:9001:9001"   # Console web
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9000/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "dozzle.group=erp_club"
+      - "dozzle.name=RustFS"
+
+
   # ── Backend: build from source in dev ──────────────────────────────────────
   erp-backend:
     build:
@@ -112,3 +154,11 @@ volumes:
   pgdata_dev:
     external: true
     name : pgdata_dev
+
+  rustfsdata_dev:
+    external: true
+    name: rustfsdata_dev
+    
+  rustfslogs_dev:
+    external: true
+    name: rustfslogs_dev

@@ -45,6 +45,7 @@ const STATUS_LABELS: Record<number, string> = {
   2: 'maintenance',
   3: 'outOfService',
   4: 'disposed',
+  5: 'sold',
 }
 
 const STATUS_COLORS: Record<number, string> = {
@@ -52,13 +53,15 @@ const STATUS_COLORS: Record<number, string> = {
   2: 'bg-warning-container text-on-warning-container',
   3: 'bg-error-container text-on-error-container',
   4: 'bg-surface-container text-on-surface-variant',
+  5: 'bg-secondary-container text-on-secondary-container',
 }
 
 const NEXT_STATUSES: Record<number, number[]> = {
-  1: [2, 3, 4],
-  2: [1, 3, 4],
-  3: [1, 2, 4],
+  1: [2, 3, 4, 5],
+  2: [1, 3, 4, 5],
+  3: [1, 4, 5],
   4: [],
+  5: [],
 }
 
 // �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
@@ -293,6 +296,9 @@ export function AssetDetailPage() {
   const assetTypeName =
     (assetTypesQuery.data ?? []).find((type) => type.uuid === asset.asset_type_uuid)?.name ??
     asset.asset_type_uuid
+  const ownerNames = asset.owner_members.length > 0
+    ? asset.owner_members.map((owner) => `${owner.first_name} ${owner.last_name} (${owner.account_id})`).join(', ')
+    : '—'
 
   return (
     <section className="space-y-4">
@@ -357,6 +363,9 @@ export function AssetDetailPage() {
                     : t('ownership.private')
                 }
               />
+              {asset.ownership === 2 && (
+                <InfoRow label={t('form.ownerMembers')} value={ownerNames} />
+              )}
             </div>
           </CardContent>
         </Card>

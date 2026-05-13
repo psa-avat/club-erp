@@ -34,10 +34,11 @@ This document defines the target specification for the Assets module of the ERP 
 ### 3.3 Asset (Master)
 - `uuid`, `asset_type_uuid` (FK)
 - `code` (unique, e.g., F-CGVX), `name`, `serial_number`
-- `ownership` (1=Club, 2=Private), `owner_member_uuid` (FK, if private)
+- `ownership` (1=Club, 2=Private)
+- current owners for private assets stored in `AssetPrivateOwner(asset_uuid, member_uuid)`; supports one or many co-owners
 - `purchase_date`, `purchase_price` (NUMERIC(10,4))
 - `acquisition_account_uuid` (FK → AccountingAccount, if trackable)
-- `status` (1=Operational, 2=Under Maintenance, 3=Out of Service, 4=Disposed)
+- `status` (1=Operational, 2=Under Maintenance, 3=Out of Service, 4=Disposed, 5=Sold)
 - `depreciation_start_date`, `depreciation_years`, `residual_value`
 - `is_active`
 - Timestamps & `updated_by`
@@ -311,7 +312,7 @@ Real-time accruals are linked via flight_uuid in accounting entry.
 | Depreciation method change mid-year | Financial restatement | Lock after posting; new methods on new assets only |
 | Pricing overlap | Ambiguous charges | DB constraints + UI timeline visualization |
 | Stock cost method transition | Inventory valuation jump | Per-item method choice; revalue on transition |
-| Private asset tracking gap | Revenue leak | Require owner_member_uuid; audit by owner |
+| Private asset tracking gap | Revenue leak | Require at least one current private owner; audit by owner set |
 | Flight-type inconsistency | Pricing lookup failures | Seed at install; require selection in UI |
 | Cost provision rules forgotten | Incomplete maintenance reserves | Rule audit checklist at fiscal year close |
 | Real-time cost creep | Over-accrual if rules change mid-month | Batch methods preferred for stable environments; real-time for predictable metrics |

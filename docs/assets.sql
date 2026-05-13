@@ -61,12 +61,11 @@ CREATE TABLE IF NOT EXISTS assets (
     model                      VARCHAR(100)   NULL,
     year_of_manufacture        SMALLINT       NULL,
     ownership                  SMALLINT       NOT NULL,   -- 1=Club,2=Private
-    owner_member_uuid          UUID           NULL,       -- members.uuid (application-level FK)
     purchase_date              DATE           NULL,
     purchase_price             NUMERIC(10,4)  NULL,
     acquisition_account_uuid   UUID           NULL REFERENCES accounting_accounts(uuid),
     accounting_account_code_snapshot VARCHAR(32) NULL,
-    status                     SMALLINT       NOT NULL DEFAULT 1, -- 1=Operational,2=Maintenance,3=OutOfService,4=Disposed
+    status                     SMALLINT       NOT NULL DEFAULT 1, -- 1=Operational,2=Maintenance,3=OutOfService,4=Disposed,5=Sold
     depreciation_start_date    DATE           NULL,
     depreciation_years         SMALLINT       NULL,
     residual_value             NUMERIC(10,4)  NULL,
@@ -78,8 +77,7 @@ CREATE TABLE IF NOT EXISTS assets (
     created_by                 INTEGER        NULL,
     updated_by                 INTEGER        NULL,
     CONSTRAINT chk_assets_ownership CHECK (ownership IN (1,2)),
-    CONSTRAINT chk_assets_status CHECK (status IN (1,2,3,4)),
-    CONSTRAINT chk_assets_private_owner CHECK ((ownership = 2 AND owner_member_uuid IS NOT NULL) OR ownership = 1),
+    CONSTRAINT chk_assets_status CHECK (status IN (1,2,3,4,5)),
     CONSTRAINT chk_assets_prices_positive CHECK (purchase_price IS NULL OR purchase_price >= 0),
     CONSTRAINT chk_assets_residual_positive CHECK (residual_value IS NULL OR residual_value >= 0),
     CONSTRAINT chk_assets_residual_le_purchase CHECK (
@@ -90,7 +88,20 @@ CREATE TABLE IF NOT EXISTS assets (
 
 CREATE INDEX IF NOT EXISTS ix_assets_asset_type ON assets(asset_type_uuid);
 CREATE INDEX IF NOT EXISTS ix_assets_status ON assets(status);
-CREATE INDEX IF NOT EXISTS ix_assets_owner_member ON assets(owner_member_uuid) WHERE owner_member_uuid IS NOT NULL;
+
+-----------------------------------------------------------
+-- Asset Private Owners (current ownership links)
+-----------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS asset_private_owners (
+    asset_uuid      UUID         NOT NULL REFERENCES assets(uuid) ON DELETE CASCADE,
+    member_uuid     UUID         NOT NULL REFERENCES members(uuid) ON DELETE CASCADE,
+    assigned_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    assigned_by     INTEGER      NULL REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT pk_asset_private_owners PRIMARY KEY (asset_uuid, member_uuid)
+);
+
+CREATE INDEX IF NOT EXISTS ix_asset_private_owners_member_uuid ON asset_private_owners(member_uuid);
 
 -----------------------------------------------------------
 -- Asset Account Snapshot

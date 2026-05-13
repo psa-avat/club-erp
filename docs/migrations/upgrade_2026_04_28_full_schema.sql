@@ -401,7 +401,6 @@ CREATE TABLE IF NOT EXISTS assets (
     model VARCHAR(100) NULL,
     year_of_manufacture SMALLINT NULL,
     ownership SMALLINT NOT NULL DEFAULT 1,
-    owner_member_uuid UUID NULL REFERENCES members(uuid) ON DELETE SET NULL,
     status SMALLINT NOT NULL DEFAULT 1,
     acquisition_account_uuid UUID NULL REFERENCES accounting_accounts(uuid) ON DELETE SET NULL,
     accounting_account_code_snapshot VARCHAR(32) NULL,
@@ -417,17 +416,26 @@ CREATE TABLE IF NOT EXISTS assets (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
 
-    CONSTRAINT chk_asset_status CHECK (status IN (1, 2, 3, 4)),
+    CONSTRAINT chk_asset_status CHECK (status IN (1, 2, 3, 4, 5)),
     CONSTRAINT chk_asset_ownership CHECK (ownership IN (1, 2)),
-    CONSTRAINT chk_asset_private_owner_required CHECK (ownership <> 2 OR owner_member_uuid IS NOT NULL),
     CONSTRAINT chk_assets_price_positive CHECK (purchase_price IS NULL OR purchase_price >= 0),
     CONSTRAINT chk_assets_residual_positive CHECK (residual_value IS NULL OR residual_value >= 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_assets_asset_type_uuid ON assets(asset_type_uuid);
-CREATE INDEX IF NOT EXISTS idx_assets_owner_member_uuid ON assets(owner_member_uuid);
 CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);
 CREATE INDEX IF NOT EXISTS idx_assets_acquisition_account_uuid ON assets(acquisition_account_uuid);
+
+CREATE TABLE IF NOT EXISTS asset_private_owners (
+    asset_uuid UUID NOT NULL REFERENCES assets(uuid) ON DELETE CASCADE,
+    member_uuid UUID NOT NULL REFERENCES members(uuid) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    assigned_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+
+    CONSTRAINT pk_asset_private_owners PRIMARY KEY (asset_uuid, member_uuid)
+);
+
+CREATE INDEX IF NOT EXISTS ix_asset_private_owners_member_uuid ON asset_private_owners(member_uuid);
 
 CREATE TABLE IF NOT EXISTS asset_status_history (
     uuid UUID PRIMARY KEY,
@@ -437,7 +445,7 @@ CREATE TABLE IF NOT EXISTS asset_status_history (
     changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     changed_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
 
-    CONSTRAINT chk_asset_sh_status CHECK (status IN (1, 2, 3, 4))
+    CONSTRAINT chk_asset_sh_status CHECK (status IN (1, 2, 3, 4, 5))
 );
 
 CREATE INDEX IF NOT EXISTS idx_asset_status_history_asset_uuid ON asset_status_history(asset_uuid);

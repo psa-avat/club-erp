@@ -26,10 +26,13 @@ from datetime import date
 from fastapi import HTTPException, status
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from models import Asset, AssetStatusHistory, AssetType, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
+from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetType, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
 from schemas.assets import (
     AssetCreateRequest,
+    AssetOwnerResponse,
+    AssetResponse,
     AssetStatusTransitionRequest,
     AssetUpdateRequest,
     AssetTypeCreateRequest,
@@ -44,21 +47,138 @@ from schemas.assets import (
 
 logger = logging.getLogger(__name__)
 
+
+def _asset_query():
+    return select(Asset).options(
+        selectinload(Asset.private_owner_links).selectinload(AssetPrivateOwner.member)
+    )
+
+
+def _normalize_owner_member_uuids(owner_member_uuids: list[UUID] | None) -> list[UUID]:
+    ordered: list[UUID] = []
+    for member_uuid in owner_member_uuids or []:
+        if member_uuid not in ordered:
+            ordered.append(member_uuid)
+    return ordered
+
+
+async def _assert_owner_members_exist(db: AsyncSession, member_uuids: list[UUID]) -> None:
+    if not member_uuids:
+        return
+    rows = await db.execute(select(Member.uuid).where(Member.uuid.in_(member_uuids)))
+    found = set(rows.scalars().all())
+    missing = [member_uuid for member_uuid in member_uuids if member_uuid not in found]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Owner members not found: {', '.join(str(member_uuid) for member_uuid in missing)}",
+        )
+
+
+async def _resolve_owner_account_ids(db: AsyncSession, owner_account_ids: list[str]) -> list[UUID]:
+    if not owner_account_ids:
+        return []
+    rows = await db.execute(
+        select(Member.uuid, Member.account_id).where(Member.account_id.in_(owner_account_ids))
+    )
+    pairs = rows.all()
+    uuid_by_account_id = {account_id: member_uuid for member_uuid, account_id in pairs}
+    missing = [account_id for account_id in owner_account_ids if account_id not in uuid_by_account_id]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Owner member account ids not found: {', '.join(missing)}",
+        )
+    return [uuid_by_account_id[account_id] for account_id in owner_account_ids]
+
+
+def _serialize_asset(asset: Asset) -> AssetResponse:
+    owner_members = [
+        AssetOwnerResponse(
+            uuid=link.member.uuid,
+            account_id=link.member.account_id,
+            first_name=link.member.first_name,
+            last_name=link.member.last_name,
+        )
+        for link in sorted(
+            asset.private_owner_links,
+            key=lambda link: (link.member.last_name.lower(), link.member.first_name.lower()),
+        )
+        if link.member is not None
+    ]
+    owner_member_uuids = [owner.uuid for owner in owner_members]
+
+    return AssetResponse(
+        uuid=asset.uuid,
+        asset_type_uuid=asset.asset_type_uuid,
+        code=asset.code,
+        name=asset.name,
+        registration=asset.registration,
+        serial_number=asset.serial_number,
+        manufacturer=asset.manufacturer,
+        model=asset.model,
+        year_of_manufacture=asset.year_of_manufacture,
+        ownership=asset.ownership,
+        owner_member_uuids=owner_member_uuids,
+        owner_members=owner_members,
+        status=asset.status,
+        acquisition_account_uuid=asset.acquisition_account_uuid,
+        accounting_account_code_snapshot=asset.accounting_account_code_snapshot,
+        purchase_date=asset.purchase_date,
+        purchase_price=asset.purchase_price,
+        depreciation_start_date=asset.depreciation_start_date,
+        depreciation_years=asset.depreciation_years,
+        residual_value=asset.residual_value,
+        useful_life_years=asset.useful_life_years,
+        notes=asset.notes,
+        is_active=asset.is_active,
+        created_at=asset.created_at,
+        updated_at=asset.updated_at,
+    )
+
+
+async def _sync_asset_private_owners(
+    db: AsyncSession,
+    asset: Asset,
+    owner_member_uuids: list[UUID],
+    *,
+    user_id: int,
+) -> None:
+    await db.execute(
+        AssetPrivateOwner.__table__.delete().where(AssetPrivateOwner.asset_uuid == asset.uuid)
+    )
+    for member_uuid in owner_member_uuids:
+        db.add(
+            AssetPrivateOwner(
+                asset_uuid=asset.uuid,
+                member_uuid=member_uuid,
+                assigned_by=user_id,
+            )
+        )
+
 # ---------------------------------------------------------------------------
 # Allowed status transitions:
-# 1=Operational → 2=UnderMaintenance, 3=OutOfService, 4=Disposed
-# 2=UnderMaintenance → 1=Operational, 3=OutOfService, 4=Disposed
-# 3=OutOfService → 1=Operational, 4=Disposed
+# 1=Operational → 2=UnderMaintenance, 3=OutOfService, 4=Disposed, 5=Sold
+# 2=UnderMaintenance → 1=Operational, 3=OutOfService, 4=Disposed, 5=Sold
+# 3=OutOfService → 1=Operational, 4=Disposed, 5=Sold
 # 4=Disposed → (terminal – no transition allowed)
+# 5=Sold → (terminal – no transition allowed)
 # ---------------------------------------------------------------------------
 _ALLOWED_TRANSITIONS: dict[int, set[int]] = {
-    1: {2, 3, 4},
-    2: {1, 3, 4},
-    3: {1, 4},
+    1: {2, 3, 4, 5},
+    2: {1, 3, 4, 5},
+    3: {1, 4, 5},
     4: set(),
+    5: set(),
 }
 
-ASSET_STATUS_LABELS = {1: "Operational", 2: "UnderMaintenance", 3: "OutOfService", 4: "Disposed"}
+ASSET_STATUS_LABELS = {
+    1: "Operational",
+    2: "UnderMaintenance",
+    3: "OutOfService",
+    4: "Disposed",
+    5: "Sold",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +305,8 @@ async def list_assets(
     status: int | None = None,
     ownership: int | None = None,
     active_only: bool = False,
-) -> list[Asset]:
-    stmt = select(Asset).order_by(Asset.code)
+) -> list[AssetResponse]:
+    stmt = _asset_query().order_by(Asset.code)
     if asset_type_uuid is not None:
         stmt = stmt.where(Asset.asset_type_uuid == asset_type_uuid)
     if status is not None:
@@ -196,18 +316,23 @@ async def list_assets(
     if active_only:
         stmt = stmt.where(Asset.is_active.is_(True))
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    return [_serialize_asset(asset) for asset in result.scalars().all()]
 
 
-async def get_asset(db: AsyncSession, asset_uuid: UUID) -> Asset:
-    result = await db.execute(select(Asset).where(Asset.uuid == asset_uuid))
+async def _get_asset_model(db: AsyncSession, asset_uuid: UUID) -> Asset:
+    result = await db.execute(_asset_query().where(Asset.uuid == asset_uuid))
     obj = result.scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Asset not found.")
     return obj
 
 
-async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: int) -> Asset:
+async def get_asset(db: AsyncSession, asset_uuid: UUID) -> AssetResponse:
+    obj = await _get_asset_model(db, asset_uuid)
+    return _serialize_asset(obj)
+
+
+async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: int) -> AssetResponse:
     # Validate asset type exists
     await get_asset_type(db, request.asset_type_uuid)
 
@@ -225,16 +350,16 @@ async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: i
                 detail=f"Registration {request.registration!r} already used by another asset.",
             )
 
-    # Validate owner member if private
-    if request.ownership == 2 and request.owner_member_uuid:
-        await _assert_owner_member_exists(db, request.owner_member_uuid)
+    owner_member_uuids = _normalize_owner_member_uuids(request.owner_member_uuids)
+    if request.ownership == 2:
+        await _assert_owner_members_exist(db, owner_member_uuids)
 
     # Resolve accounting account snapshot
     account_snapshot: str | None = None
     if request.acquisition_account_uuid:
         account_snapshot = await _assert_accounting_account_exists(db, request.acquisition_account_uuid)
 
-    payload = request.model_dump()
+    payload = request.model_dump(exclude={"owner_member_uuids"})
     obj = Asset(
         **payload,
         accounting_account_code_snapshot=account_snapshot,
@@ -253,15 +378,17 @@ async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: i
         changed_by=user_id,
     )
     db.add(history)
+    if request.ownership == 2 and owner_member_uuids:
+        await _sync_asset_private_owners(db, obj, owner_member_uuids, user_id=user_id)
 
     await db.commit()
-    await db.refresh(obj)
+    obj = await _get_asset_model(db, obj.uuid)
     logger.info("Created asset code=%s uuid=%s user=%s", obj.code, obj.uuid, user_id)
-    return obj
+    return _serialize_asset(obj)
 
 
-async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateRequest, user_id: int) -> Asset:
-    obj = await get_asset(db, asset_uuid)
+async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateRequest, user_id: int) -> AssetResponse:
+    obj = await _get_asset_model(db, asset_uuid)
 
     data = request.model_dump(exclude_none=True)
 
@@ -271,14 +398,16 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
 
     # Validate owner member if ownership being set to private
     new_ownership = data.get("ownership", obj.ownership)
-    new_owner = data.get("owner_member_uuid", obj.owner_member_uuid)
-    if new_ownership == 2 and new_owner is None:
+    owner_member_uuids = _normalize_owner_member_uuids(data.get("owner_member_uuids"))
+    if not owner_member_uuids and new_ownership == 2:
+        owner_member_uuids = [link.member_uuid for link in obj.private_owner_links]
+    if new_ownership == 2 and not owner_member_uuids:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="owner_member_uuid is required for private assets.",
+            detail="At least one owner member is required for private assets.",
         )
-    if "owner_member_uuid" in data and data["owner_member_uuid"] is not None:
-        await _assert_owner_member_exists(db, data["owner_member_uuid"])
+    if new_ownership == 2:
+        await _assert_owner_members_exist(db, owner_member_uuids)
 
     # Resolve accounting account snapshot if being updated
     if "acquisition_account_uuid" in data and data["acquisition_account_uuid"] is not None:
@@ -297,13 +426,19 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
                 detail=f"Registration {data['registration']!r} already used by another asset.",
             )
 
+    data.pop("owner_member_uuids", None)
     data["updated_by"] = user_id
     for field, value in data.items():
         setattr(obj, field, value)
 
+    if new_ownership == 2:
+        await _sync_asset_private_owners(db, obj, owner_member_uuids, user_id=user_id)
+    else:
+        await _sync_asset_private_owners(db, obj, [], user_id=user_id)
+
     await db.commit()
-    await db.refresh(obj)
-    return obj
+    obj = await _get_asset_model(db, asset_uuid)
+    return _serialize_asset(obj)
 
 
 async def transition_asset_status(
@@ -312,7 +447,7 @@ async def transition_asset_status(
     request: AssetStatusTransitionRequest,
     user_id: int,
 ) -> Asset:
-    obj = await get_asset(db, asset_uuid)
+    obj = await _get_asset_model(db, asset_uuid)
 
     allowed = _ALLOWED_TRANSITIONS.get(obj.status, set())
     if request.status not in allowed:
@@ -334,14 +469,14 @@ async def transition_asset_status(
     )
     db.add(history)
     await db.commit()
-    await db.refresh(obj)
+    obj = await _get_asset_model(db, asset_uuid)
     logger.info("Asset %s status → %s by user %s", asset_uuid, request.status, user_id)
-    return obj
+    return _serialize_asset(obj)
 
 
 async def list_asset_status_history(db: AsyncSession, asset_uuid: UUID) -> list[AssetStatusHistory]:
     # Verify asset exists
-    await get_asset(db, asset_uuid)
+    await _get_asset_model(db, asset_uuid)
     result = await db.execute(
         select(AssetStatusHistory)
         .where(AssetStatusHistory.asset_uuid == asset_uuid)
@@ -567,6 +702,7 @@ _ASSET_STATUS_MAP: dict[str, int] = {
     "2": 2, "maintenance": 2,
     "3": 3, "out_of_service": 3, "hors_service": 3,
     "4": 4, "disposed": 4, "réformé": 4, "reforme": 4,
+    "5": 5, "sold": 5, "vendu": 5,
 }
 
 
@@ -636,6 +772,30 @@ async def import_assets_from_csv(
         asset_status = _ASSET_STATUS_MAP.get(raw_status_val, 1)
         if asset_status is None:
             errors.append(ImportRowError(row=row_index, field="status", message=f"Unknown status {raw_status_val!r}"))
+            skipped += 1
+            continue
+
+        raw_owner_account_ids = row.get("owner_account_ids", "") or row.get("owner_member_ids", "")
+        owner_account_ids = [
+            chunk.strip()
+            for chunk in raw_owner_account_ids.replace("|", ",").replace(";", ",").split(",")
+            if chunk.strip()
+        ]
+        if ownership == 2 and not owner_account_ids:
+            errors.append(
+                ImportRowError(
+                    row=row_index,
+                    field="owner_account_ids",
+                    message="Required for private assets. Use one or more member account ids separated by commas.",
+                )
+            )
+            skipped += 1
+            continue
+
+        try:
+            owner_member_uuids = await _resolve_owner_account_ids(db, owner_account_ids)
+        except HTTPException as exc:
+            errors.append(ImportRowError(row=row_index, field="owner_account_ids", message=str(exc.detail)))
             skipped += 1
             continue
 
@@ -736,6 +896,7 @@ async def import_assets_from_csv(
             model=row.get("model", "") or None,
             year_of_manufacture=year_of_manufacture,
             ownership=ownership,
+            owner_member_uuids=owner_member_uuids,
             purchase_date=purchase_date,
             purchase_price=purchase_price,
             depreciation_start_date=depreciation_start_date,

@@ -63,10 +63,12 @@ export type AssetSummary = {
   name: string
   asset_type_uuid: string
   asset_type_name: string
-  /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed */
+  /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold */
   status: number
   /** 1=Club, 2=Private */
   ownership: number
+  owner_member_uuids?: string[]
+  owner_members?: AssetOwner[]
   is_active: boolean
 }
 
@@ -77,6 +79,13 @@ export type AssetStatusHistoryEntry = {
   reason: string | null
   changed_at: string
   changed_by: number | null
+}
+
+export type AssetOwner = {
+  uuid: string
+  account_id: string
+  first_name: string
+  last_name: string
 }
 
 export type AssetDetail = {
@@ -91,8 +100,9 @@ export type AssetDetail = {
   year_of_manufacture: number | null
   /** 1=Club, 2=Private */
   ownership: number
-  owner_member_uuid: string | null
-  /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed */
+  owner_member_uuids: string[]
+  owner_members: AssetOwner[]
+  /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold */
   status: number
   acquisition_account_uuid: string | null
   accounting_account_code_snapshot: string | null
@@ -137,7 +147,7 @@ export type CreateAssetPayload = {
   model?: string | null
   year_of_manufacture?: number | null
   ownership: number
-  owner_member_uuid?: string | null
+  owner_member_uuids?: string[]
   acquisition_account_uuid?: string | null
   purchase_date?: string | null
   purchase_price?: string | null

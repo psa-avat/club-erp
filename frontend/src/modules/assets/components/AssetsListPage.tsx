@@ -44,6 +44,7 @@ const ASSET_STATUS_OPERATIONAL = 1
 const ASSET_STATUS_MAINTENANCE = 2
 const ASSET_STATUS_OUT_OF_SERVICE = 3
 const ASSET_STATUS_DISPOSED = 4
+const ASSET_STATUS_SOLD = 5
 
 const ASSET_OWNERSHIP_CLUB = 1
 const ASSET_OWNERSHIP_PRIVATE = 2
@@ -63,6 +64,8 @@ function statusLabel(
       return { label: t('status.outOfService'), className: 'bg-error-container text-on-error-container' }
     case ASSET_STATUS_DISPOSED:
       return { label: t('status.disposed'), className: 'bg-surface-container text-on-surface-variant' }
+    case ASSET_STATUS_SOLD:
+      return { label: t('status.sold'), className: 'bg-secondary-container text-on-secondary-container' }
     default:
       return { label: String(status), className: 'bg-surface-container text-on-surface-variant' }
   }
@@ -99,7 +102,7 @@ function StatusActions({
   onTransition: (uuid: string, status: number) => void
   t: (k: string) => string
 }) {
-  if (asset.status === ASSET_STATUS_DISPOSED) return null
+  if (asset.status === ASSET_STATUS_DISPOSED || asset.status === ASSET_STATUS_SOLD) return null
 
   return (
     <div className="flex shrink-0 gap-1">
@@ -138,6 +141,14 @@ function StatusActions({
         title={t('actions.setDisposed')}
         onClick={() => onTransition(asset.uuid, ASSET_STATUS_DISPOSED)}
         className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        title={t('actions.setSold')}
+        onClick={() => onTransition(asset.uuid, ASSET_STATUS_SOLD)}
+        className="rounded p-1 text-on-surface-variant hover:bg-secondary-container hover:text-secondary"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -276,6 +287,7 @@ export function AssetsListPage() {
               <option value={ASSET_STATUS_MAINTENANCE}>{t('status.maintenance')}</option>
               <option value={ASSET_STATUS_OUT_OF_SERVICE}>{t('status.outOfService')}</option>
               <option value={ASSET_STATUS_DISPOSED}>{t('status.disposed')}</option>
+              <option value={ASSET_STATUS_SOLD}>{t('status.sold')}</option>
             </select>
           </div>
 
@@ -353,6 +365,9 @@ export function AssetsListPage() {
                   <p className="truncate text-xs text-on-surface-variant">
                     {asset.code} · {asset.asset_type_name} ·{' '}
                     {ownershipLabel(asset.ownership, t)}
+                    {asset.ownership === ASSET_OWNERSHIP_PRIVATE && (asset.owner_members?.length ?? 0) > 0
+                      ? ` · ${asset.owner_members?.map((owner) => owner.account_id).join(', ')}`
+                      : ''}
                   </p>
                 </div>
 

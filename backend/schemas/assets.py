@@ -103,7 +103,7 @@ class AssetCreateRequest(BaseModel):
     year_of_manufacture: Optional[int] = Field(default=None, ge=1900, le=2100)
     # 1=Club, 2=Private
     ownership: int = Field(ge=1, le=2, default=1)
-    owner_member_uuid: Optional[UUID] = None
+    owner_member_uuids: list[UUID] = Field(default_factory=list)
     acquisition_account_uuid: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_price: Optional[Decimal] = Field(default=None, ge=0)
@@ -115,8 +115,8 @@ class AssetCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_private_owner(self) -> "AssetCreateRequest":
-        if self.ownership == 2 and self.owner_member_uuid is None:
-            raise ValueError("owner_member_uuid is required for private assets (ownership=2)")
+        if self.ownership == 2 and not self.owner_member_uuids:
+            raise ValueError("At least one owner member is required for private assets (ownership=2)")
         return self
 
 
@@ -129,7 +129,7 @@ class AssetUpdateRequest(BaseModel):
     model: Optional[str] = Field(default=None, max_length=100)
     year_of_manufacture: Optional[int] = Field(default=None, ge=1900, le=2100)
     ownership: Optional[int] = Field(default=None, ge=1, le=2)
-    owner_member_uuid: Optional[UUID] = None
+    owner_member_uuids: Optional[list[UUID]] = None
     acquisition_account_uuid: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_price: Optional[Decimal] = Field(default=None, ge=0)
@@ -142,8 +142,8 @@ class AssetUpdateRequest(BaseModel):
 
 
 class AssetStatusTransitionRequest(BaseModel):
-    # 1=Operational, 2=UnderMaintenance, 3=OutOfService, 4=Disposed
-    status: int = Field(ge=1, le=4)
+    # 1=Operational, 2=UnderMaintenance, 3=OutOfService, 4=Disposed, 5=Sold
+    status: int = Field(ge=1, le=5)
     reason: Optional[str] = Field(default=None, max_length=255)
 
 
@@ -153,6 +153,16 @@ class AssetStatusHistoryResponse(BaseModel):
     reason: Optional[str]
     changed_at: datetime
     changed_by: Optional[int]
+
+    class Config:
+        from_attributes = True
+
+
+class AssetOwnerResponse(BaseModel):
+    uuid: UUID
+    account_id: str
+    first_name: str
+    last_name: str
 
     class Config:
         from_attributes = True
@@ -169,7 +179,8 @@ class AssetResponse(BaseModel):
     model: Optional[str]
     year_of_manufacture: Optional[int]
     ownership: int
-    owner_member_uuid: Optional[UUID]
+    owner_member_uuids: list[UUID] = Field(default_factory=list)
+    owner_members: list[AssetOwnerResponse] = Field(default_factory=list)
     status: int
     acquisition_account_uuid: Optional[UUID]
     accounting_account_code_snapshot: Optional[str]
