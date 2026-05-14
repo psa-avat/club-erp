@@ -23,11 +23,13 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import type { AuthUser } from '../types'
 
 interface AuthState {
+  hasHydrated: boolean
   authState: 'logged_out' | 'pre_auth' | 'full_auth'
   token: string | null
   preAuthToken: string | null
   expiresAt: string | null
   user: AuthUser | null
+  setHasHydrated: (value: boolean) => void
   setPreAuthSession: (session: { preAuthToken: string; expiresAt: string }) => void
   setSession: (session: { token: string; expiresAt: string; user?: AuthUser | null }) => void
   setUser: (user: AuthUser) => void
@@ -37,11 +39,15 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
+      hasHydrated: false,
       authState: 'logged_out',
       token: null,
       preAuthToken: null,
       expiresAt: null,
       user: null,
+      setHasHydrated: (value) => {
+        set({ hasHydrated: value })
+      },
       setPreAuthSession: ({ preAuthToken, expiresAt }) => {
         set({ authState: 'pre_auth', preAuthToken, expiresAt, token: null, user: null })
       },
@@ -58,6 +64,29 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'club-erp-auth',
       storage: createJSONStorage(() => sessionStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<AuthState> | undefined
+        if (!persisted) {
+          return currentState
+        }
+
+        const currentHasSession = Boolean(currentState.token || currentState.preAuthToken)
+        const persistedHasSession = Boolean(persisted.token || persisted.preAuthToken)
+
+        // Avoid race where late hydration restores an older logged-out snapshot
+        // and drops a session that was just set during login.
+        if (currentHasSession && !persistedHasSession) {
+          return currentState
+        }
+
+        return {
+          ...currentState,
+          ...persisted,
+        }
+      },
       partialize: (state) => ({
         authState: state.authState,
         token: state.token,
