@@ -32,7 +32,9 @@ i18n.use(initReactI18next).init({
       members: fr.members,
       club: fr.club,
       planning: fr.planning,
+      helloasso: fr.helloasso,
       planche: fr.planche,
+      storage: fr.storage,
       banque: fr.banque,
       admin: fr.admin,
       assets: fr.assets,
@@ -43,7 +45,9 @@ i18n.use(initReactI18next).init({
       members: en.members,
       club: en.club,
       planning: en.planning,
+      helloasso: en.helloasso,
       planche: en.planche,
+      storage: en.storage,
       banque: en.banque,
       admin: en.admin,
       assets: en.assets,
@@ -55,7 +59,7 @@ i18n.use(initReactI18next).init({
     escapeValue: false,
   },
   defaultNS: 'common',
-  ns: ['common', 'dashboard', 'members', 'club', 'planning', 'planche', 'banque', 'admin', 'assets'],
+  ns: ['common', 'dashboard', 'members', 'club', 'planning', 'helloasso', 'planche', 'storage', 'banque', 'admin', 'assets'],
 })
 
 void i18n.on('languageChanged', (newLanguage) => {

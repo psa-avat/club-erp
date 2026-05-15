@@ -45,8 +45,12 @@ export const en = {
       clubCommissionsManagement: 'Committee management',
       clubSheets: 'Flight sheets',
       planning: 'Planning',
+      helloasso: 'HelloAsso',
+      helloassoIntegration: 'Setup',
       planche: 'Planche',
       plancheIntegration: 'Integration',
+      storage: 'Storage',
+      storageSettings: 'Settings',
       banque: 'Accounting',
       banqueOverview: 'Overview',
       banqueOps: 'Operations',
@@ -466,6 +470,76 @@ export const en = {
     home: {
       title: 'Planning Module',
       description: 'Digital flight board, daily assignments and activity tracking will be managed here.',
+    },
+  },
+  helloasso: {
+    hero: {
+      kicker: 'HelloAsso integration',
+      title: 'Configure HelloAsso access before synchronization flows',
+      description: 'Store HelloAsso OAuth2 credentials, save the setup, then run a connection test to verify organization access.',
+    },
+    form: {
+      title: 'Connection settings',
+      description: 'The connection test validates OAuth2 token retrieval and organization lookup for the configured account.',
+    },
+    fields: {
+      clientId: 'Client ID',
+      clientSecret: 'Client Secret',
+      environment: 'Environment',
+      environments: {
+        test: 'Test',
+        production: 'Production',
+      },
+    },
+    actions: {
+      save: 'Save settings',
+      saving: 'Saving...',
+      testConnection: 'Test connection',
+      testingConnection: 'Testing connection...',
+    },
+    state: {
+      loading: 'Loading settings...',
+    },
+    status: {
+      connected: 'Connection ready',
+      connectedWithOrg: 'Connection ready - organization: {{slug}}',
+      disconnected: 'Connection failed',
+      unknown: 'Not tested yet',
+    },
+  },
+  storage: {
+    hero: {
+      kicker: 'S3 Object Storage',
+      title: 'Configure storage before saving documents',
+      description: 'Enter the coordinates of your S3-compatible server (RustFS, MinIO, AWS…), save the settings, then run a connection test to verify bucket access.',
+    },
+    form: {
+      title: 'Storage settings',
+      description: 'Member documents and invoices will be stored in the configured bucket. Leave secret fields empty to keep the existing values.',
+    },
+    fields: {
+      endpoint: 'Endpoint URL',
+      bucketName: 'Bucket name',
+      accessKey: 'Access Key ID',
+      secretKey: 'Secret Access Key',
+      region: 'Region',
+      useSsl: 'Use HTTPS (SSL/TLS)',
+      presignedExpiry: 'Signed URL expiry (seconds)',
+      secretPlaceholder: '*** (unchanged)',
+    },
+    actions: {
+      save: 'Save settings',
+      saving: 'Saving...',
+      testConnection: 'Test connection',
+      testingConnection: 'Testing connection...',
+    },
+    state: {
+      loading: 'Loading settings...',
+    },
+    status: {
+      connected: 'Connection ready',
+      disconnected: 'Connection failed',
+      unknown: 'Not tested yet',
     },
   },
   planche: {

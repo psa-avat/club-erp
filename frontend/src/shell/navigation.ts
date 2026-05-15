@@ -20,11 +20,27 @@ export const shellNavItems: ShellNavItem[] = [
   },
   { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
   {
+    to: '/helloasso',
+    labelKey: 'nav.helloasso',
+    requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
+    children: [
+      { to: '/helloasso/integration', labelKey: 'nav.helloassoIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+    ],
+  },
+  {
     to: '/planche',
     labelKey: 'nav.planche',
     requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
     children: [
       { to: '/planche/integration', labelKey: 'nav.plancheIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+    ],
+  },
+  {
+    to: '/storage',
+    labelKey: 'nav.storage',
+    requiredCapability: 'MANAGE_SYSTEM_SETTINGS',
+    children: [
+      { to: '/storage/settings', labelKey: 'nav.storageSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
   {

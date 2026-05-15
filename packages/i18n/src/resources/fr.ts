@@ -45,8 +45,12 @@ export const fr = {
       clubCommissionsManagement: 'Gestion commissions',
       clubSheets: 'Fiches pilotes',
       planning: 'Planning',
+      helloasso: 'HelloAsso',
+      helloassoIntegration: 'Configuration',
       planche: 'Planche',
       plancheIntegration: 'Intégration',
+      storage: 'Stockage',
+      storageSettings: 'Configuration',
       banque: 'Banque',
       banqueOverview: 'Aperçu',
       banqueOps: 'Opérations',
@@ -466,6 +470,76 @@ export const fr = {
     home: {
       title: 'Module Planning',
       description: 'Planche de vol numérique, affectations quotidiennes et suivi des activités seront gérés ici.',
+    },
+  },
+  helloasso: {
+    hero: {
+      kicker: 'Intégration HelloAsso',
+      title: 'Configurez la connexion HelloAsso avant les synchronisations',
+      description: 'Renseignez les identifiants OAuth2 HelloAsso, enregistrez la configuration puis testez la connexion pour vérifier l’accès aux organisations.',
+    },
+    form: {
+      title: 'Paramètres de connexion',
+      description: 'Le test de connexion valide le jeton OAuth2 et la récupération des organisations associées au compte.',
+    },
+    fields: {
+      clientId: 'Client ID',
+      clientSecret: 'Client Secret',
+      environment: 'Environnement',
+      environments: {
+        test: 'Test',
+        production: 'Production',
+      },
+    },
+    actions: {
+      save: 'Enregistrer',
+      saving: 'Enregistrement...',
+      testConnection: 'Tester la connexion',
+      testingConnection: 'Test de connexion...',
+    },
+    state: {
+      loading: 'Chargement des paramètres...',
+    },
+    status: {
+      connected: 'Connexion prête',
+      connectedWithOrg: 'Connexion prête - organisation: {{slug}}',
+      disconnected: 'Connexion échouée',
+      unknown: 'Non testée',
+    },
+  },
+  storage: {
+    hero: {
+      kicker: 'Stockage objet S3',
+      title: 'Configurez le stockage avant d\'enregistrer des documents',
+      description: 'Renseignez les coordonnées de votre serveur S3 compatible (RustFS, MinIO, AWS…), enregistrez puis testez la connexion pour vérifier l\'accès au bucket.',
+    },
+    form: {
+      title: 'Paramètres de stockage',
+      description: 'Les documents membres et les factures seront stockés dans le bucket configuré. Laissez les champs secrets vides pour conserver les valeurs existantes.',
+    },
+    fields: {
+      endpoint: 'URL du point d\'accès',
+      bucketName: 'Nom du bucket',
+      accessKey: 'Clé d\'accès (Access Key)',
+      secretKey: 'Clé secrète (Secret Key)',
+      region: 'Région',
+      useSsl: 'Utiliser HTTPS (SSL/TLS)',
+      presignedExpiry: 'Durée des liens signés (secondes)',
+      secretPlaceholder: '*** (inchangé)',
+    },
+    actions: {
+      save: 'Enregistrer',
+      saving: 'Enregistrement...',
+      testConnection: 'Tester la connexion',
+      testingConnection: 'Test en cours...',
+    },
+    state: {
+      loading: 'Chargement des paramètres...',
+    },
+    status: {
+      connected: 'Connexion prête',
+      disconnected: 'Connexion échouée',
+      unknown: 'Non testée',
     },
   },
   planche: {
