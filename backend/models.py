@@ -297,8 +297,8 @@ class Member(Base):
     __table_args__ = (
         CheckConstraint("genre BETWEEN 0 AND 3", name="chk_members_genre"),
         CheckConstraint("member_category BETWEEN 1 AND 8", name="chk_members_category"),
-        CheckConstraint("status BETWEEN 1 AND 4", name="chk_members_status"),
-        CheckConstraint("registration_status BETWEEN 1 AND 4", name="chk_members_registration_status"),
+        CheckConstraint("status BETWEEN 1 AND 3", name="chk_members_status"),
+        CheckConstraint("registration_status BETWEEN 1 AND 2", name="chk_members_registration_status"),
         CheckConstraint("first_subscription_year IS NULL OR first_subscription_year BETWEEN 1950 AND 9999", name="chk_members_first_subscription_year"),
         CheckConstraint("NOT (is_employee AND is_executive)", name="chk_members_role_employee_executive"),
         CheckConstraint("NOT (is_employee AND is_board_member)", name="chk_members_role_employee_board"),

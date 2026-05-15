@@ -344,14 +344,15 @@ export const en = {
     statuses: {
       active: 'Active',
       suspended: 'Suspended',
-      resigned: 'Resigned',
+      resigned: 'Anonymized',
       anonymized: 'Anonymized',
     },
     registration: {
-      draft: 'Draft',
-      inProgress: 'In progress',
+      pending: 'Pending',
+      draft: 'Pending',
+      inProgress: 'Pending',
       completed: 'Completed',
-      archived: 'Archived',
+      archived: 'Pending',
     },
     registrationPeriod: {
       startDate: 'Registration starts',

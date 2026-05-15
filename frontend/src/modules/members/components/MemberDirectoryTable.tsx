@@ -135,7 +135,8 @@ export function MemberDirectoryTable({
       sortable: true,
       className: 'min-w-[200px]',
       cell: (row) => {
-        const needsRenewal = row.status === 1 && row.registration_status !== 3
+        const isPermanentCategory = [5, 7, 8].includes(row.member_category)
+        const needsRenewal = row.status === 1 && !isPermanentCategory && row.registration_status !== 2
         return (
           <div className="flex items-center gap-3">
             <InitialsAvatar firstName={row.first_name} lastName={row.last_name} />

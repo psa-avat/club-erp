@@ -90,14 +90,13 @@ export function RenewalWarningIcon() {
 }
 
 // ---------------------------------------------------------------------------
-// StatusBadge — maps member.status (1–4) to a colored pill
+// StatusBadge — maps member.status (1–3) to a colored pill
 // ---------------------------------------------------------------------------
 
 const STATUS_CONFIG: Record<number, { label: string; className: string }> = {
   1: { label: 'Actif',          className: 'bg-green-100 text-green-800' },
   2: { label: 'Suspendu',       className: 'bg-red-100 text-red-700' },
-  3: { label: 'Démissionnaire', className: 'bg-slate-100 text-slate-600' },
-  4: { label: 'Anonymisé',      className: 'bg-slate-100 text-slate-400' },
+  3: { label: 'Anonymisé',      className: 'bg-slate-100 text-slate-500' },
 }
 
 export function StatusBadge({ status }: { status: number }) {
@@ -110,14 +109,12 @@ export function StatusBadge({ status }: { status: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// RegistrationBadge — maps registration_status (1–4)
+// RegistrationBadge — maps registration_status (1–2)
 // ---------------------------------------------------------------------------
 
 const REG_CONFIG: Record<number, { icon: string; label: string; className: string }> = {
-  1: { icon: '⏳', label: 'Brouillon',  className: 'bg-amber-100 text-amber-800' },
-  2: { icon: '⏸',  label: 'En cours',   className: 'bg-blue-100 text-blue-800' },
-  3: { icon: '✅', label: 'Complété',   className: 'bg-green-100 text-green-800' },
-  4: { icon: '🗄',  label: 'Archivé',    className: 'bg-slate-100 text-slate-500' },
+  1: { icon: '⏳', label: 'En attente', className: 'bg-amber-100 text-amber-800' },
+  2: { icon: '✅', label: 'Complété',   className: 'bg-green-100 text-green-800' },
 }
 
 export function RegistrationBadge({ registrationStatus }: { registrationStatus: number }) {

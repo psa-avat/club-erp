@@ -275,8 +275,7 @@ function memberStatusLabel(status: number, t: (key: string) => string) {
   const map: Record<number, string> = {
     1: t('statuses.active'),
     2: t('statuses.suspended'),
-    3: t('statuses.resigned'),
-    4: t('statuses.anonymized'),
+    3: t('statuses.anonymized'),
   }
 
   return map[status] ?? `#${status}`
@@ -625,8 +624,7 @@ export function MembersPage() {
                   { value: '', label: t('filters.all') },
                   { value: '1', label: t('statuses.active') },
                   { value: '2', label: t('statuses.suspended') },
-                  { value: '3', label: t('statuses.resigned') },
-                  { value: '4', label: t('statuses.anonymized') },
+                  { value: '3', label: t('statuses.anonymized') },
                 ]}
                 value={filters.status ? String(filters.status) : ''}
                 onChange={(value) =>
@@ -769,8 +767,7 @@ export function MembersPage() {
                     options={[
                       { value: '1', label: t('statuses.active') },
                       { value: '2', label: t('statuses.suspended') },
-                      { value: '3', label: t('statuses.resigned') },
-                      { value: '4', label: t('statuses.anonymized') },
+                      { value: '3', label: t('statuses.anonymized') },
                     ]}
                     value={memberForm.status}
                     disabled={isRegistrationCompleted}
@@ -780,10 +777,8 @@ export function MembersPage() {
                     id="member-registration-status"
                     label={t('form.registrationStatus')}
                     options={[
-                      { value: '1', label: t('registration.draft') },
-                      { value: '2', label: t('registration.inProgress') },
-                      { value: '3', label: t('registration.completed') },
-                      { value: '4', label: t('registration.archived') },
+                      { value: '1', label: t('registration.pending') },
+                      { value: '2', label: t('registration.completed') },
                     ]}
                     value={memberForm.registration_status}
                     disabled={isRegistrationCompleted}

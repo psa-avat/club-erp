@@ -344,14 +344,15 @@ export const fr = {
     statuses: {
       active: 'Actif',
       suspended: 'Suspendu',
-      resigned: 'Démissionnaire',
+      resigned: 'Anonymisé',
       anonymized: 'Anonymisé',
     },
     registration: {
-      draft: 'Brouillon',
-      inProgress: 'En cours',
+      pending: 'En attente',
+      draft: 'En attente',
+      inProgress: 'En attente',
       completed: 'Complété',
-      archived: 'Archivé',
+      archived: 'En attente',
     },
     registrationPeriod: {
       startDate: "Début d'inscription",

@@ -42,6 +42,37 @@ class _FakeDb:
 
 
 class MemberUpdateTests(IsolatedAsyncioTestCase):
+    async def test_update_member_updates_registration_status(self):
+        db = _FakeDb()
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            account_id="EXT-0002",
+            legacy_account_id=None,
+            email="external@example.com",
+            ffvp_id=None,
+            registration_status=1,
+            is_employee=False,
+            is_executive=False,
+            is_board_member=False,
+            updated_by=None,
+        )
+
+        with (
+            patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)),
+            patch("services.members._ensure_unique_member_fields", new=AsyncMock()),
+        ):
+            updated = await update_member(
+                db=db,
+                member_uuid=member.uuid,
+                payload=MemberUpdateRequest(registration_status=2),
+                updated_by_user_id=42,
+            )
+
+        self.assertEqual(updated.registration_status, 2)
+        self.assertEqual(updated.updated_by, 42)
+        self.assertTrue(db.committed)
+        self.assertTrue(db.refreshed)
+
     async def test_update_member_rejects_account_id_change(self):
         db = _FakeDb()
         member = SimpleNamespace(

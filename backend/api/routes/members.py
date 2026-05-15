@@ -72,10 +72,10 @@ members_guard = Depends(require_capability(CAP_MANAGE_USERS))
 @router.get("", response_model=list[MemberSummaryResponse])
 async def list_members_endpoint(
     search: Optional[str] = Query(default=None),
-    status: Optional[int] = Query(default=None, ge=1, le=4),
+    status: Optional[int] = Query(default=None, ge=1, le=3),
     member_category: Optional[int] = Query(default=None, ge=1, le=8),
     member_categories: Optional[str] = Query(default=None),
-    registration_status: Optional[int] = Query(default=None, ge=1, le=4),
+    registration_status: Optional[int] = Query(default=None, ge=1, le=2),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),
     is_instructor: Optional[bool] = Query(default=None),
@@ -125,10 +125,10 @@ async def list_members_endpoint(
 @router.get("/count")
 async def count_members_endpoint(
     search: Optional[str] = Query(default=None),
-    status: Optional[int] = Query(default=None, ge=1, le=4),
+    status: Optional[int] = Query(default=None, ge=1, le=3),
     member_category: Optional[int] = Query(default=None, ge=1, le=8),
     member_categories: Optional[str] = Query(default=None),
-    registration_status: Optional[int] = Query(default=None, ge=1, le=4),
+    registration_status: Optional[int] = Query(default=None, ge=1, le=2),
     committee_uuid: Optional[UUID] = Query(default=None),
     can_fly: Optional[bool] = Query(default=None),
     is_instructor: Optional[bool] = Query(default=None),
@@ -315,7 +315,7 @@ async def import_members_endpoint(
 
 @router.get("/export", response_class=StreamingResponse)
 async def export_members_endpoint(
-    status: Optional[int] = Query(default=None, ge=1, le=4),
+    status: Optional[int] = Query(default=None, ge=1, le=3),
     member_category: Optional[int] = Query(default=None, ge=1, le=8),
     search: Optional[str] = Query(default=None),
     current_user: User = members_guard,

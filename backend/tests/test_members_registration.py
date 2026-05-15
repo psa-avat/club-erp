@@ -29,7 +29,13 @@ from fastapi import HTTPException
 from schemas.members import RegistrationCompletionRequest
 from schemas.members import MemberRegistrationCreateRequest
 from schemas.members import MemberRegistrationUpdateRequest
-from services.members import complete_member_registration, create_member_registration, update_member_registration
+from services.members import (
+    PERMANENT_MEMBER_REGISTRATION_ERROR,
+    _serialize_member_summary,
+    complete_member_registration,
+    create_member_registration,
+    update_member_registration,
+)
 
 
 class _FakeDb:
@@ -65,6 +71,88 @@ class _FakeExecuteResult:
 
 
 class MemberRegistrationTests(IsolatedAsyncioTestCase):
+    async def test_create_registration_rejects_permanent_member_category(self):
+        db = _FakeDb(scalar_values=[])
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            member_category=5,
+            can_fly=False,
+            registration_status=1,
+            status=1,
+            last_registration_date=None,
+            updated_by=None,
+        )
+
+        with patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)):
+            with self.assertRaises(HTTPException) as ctx:
+                await create_member_registration(
+                    db=db,
+                    member_uuid=member.uuid,
+                    payload=MemberRegistrationCreateRequest(
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31),
+                        registered_for_year=2026,
+                        status=1,
+                    ),
+                    registered_by_user_id=42,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, PERMANENT_MEMBER_REGISTRATION_ERROR)
+        self.assertFalse(db.committed)
+
+    async def test_complete_registration_rejects_permanent_member_category(self):
+        db = _FakeDb(scalar_values=[])
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            member_category=7,
+            registration_status=1,
+            status=1,
+            last_registration_year=None,
+            updated_by=None,
+        )
+
+        with patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)):
+            with self.assertRaises(HTTPException) as ctx:
+                await complete_member_registration(
+                    db=db,
+                    member_uuid=member.uuid,
+                    payload=RegistrationCompletionRequest(
+                        year=2026,
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31),
+                    ),
+                    updated_by_user_id=42,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, PERMANENT_MEMBER_REGISTRATION_ERROR)
+        self.assertFalse(db.committed)
+
+    async def test_serialize_member_summary_marks_permanent_member_registered(self):
+        db = SimpleNamespace(scalar=AsyncMock(side_effect=[0, 0]))
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            account_id="EXT-0001",
+            ffvp_id=None,
+            first_name="Ext",
+            last_name="Pilot",
+            email=None,
+            member_category=5,
+            status=1,
+            registration_status=1,
+            can_fly=False,
+            is_instructor=False,
+            is_employee=False,
+            is_executive=False,
+            is_board_member=False,
+        )
+
+        summary = await _serialize_member_summary(db=db, member=member, year=2026)
+
+        self.assertTrue(summary.is_registered_for_year)
+        self.assertEqual(db.scalar.await_count, 2)
+
     async def test_complete_registration_activates_member(self):
         db = _FakeDb(scalar_values=[1, None])
         member = SimpleNamespace(
@@ -230,7 +318,7 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
         )
         member = SimpleNamespace(
             uuid=registration.member_uuid,
-            registration_status=3,
+            registration_status=2,
             updated_by=None,
         )
         db = SimpleNamespace(
@@ -250,7 +338,7 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(updated.status, 2)
-        self.assertEqual(member.registration_status, 4)
+        self.assertEqual(member.registration_status, 1)
         self.assertEqual(member.updated_by, 42)
 
     async def test_update_registration_reactivate_marks_member_completed_for_year(self):
@@ -264,7 +352,7 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
         )
         member = SimpleNamespace(
             uuid=registration.member_uuid,
-            registration_status=4,
+            registration_status=1,
             updated_by=None,
         )
         db = SimpleNamespace(
@@ -284,5 +372,5 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(updated.status, 1)
-        self.assertEqual(member.registration_status, 3)
+        self.assertEqual(member.registration_status, 2)
         self.assertEqual(member.updated_by, 42)

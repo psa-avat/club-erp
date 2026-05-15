@@ -116,9 +116,9 @@ CREATE TABLE IF NOT EXISTS members (
   CONSTRAINT chk_members_category
     CHECK (member_category BETWEEN 1 AND 8),
   CONSTRAINT chk_members_status
-    CHECK (status BETWEEN 1 AND 4),
+    CHECK (status BETWEEN 1 AND 3),
   CONSTRAINT chk_members_registration_status
-    CHECK (registration_status BETWEEN 1 AND 4),
+    CHECK (registration_status BETWEEN 1 AND 2),
   CONSTRAINT chk_members_seniority
     CHECK (seniority IS NULL OR seniority >= 0),
   CONSTRAINT chk_members_last_registration_year

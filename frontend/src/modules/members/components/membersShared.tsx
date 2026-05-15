@@ -204,6 +204,7 @@ export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPay
     ...(form.legacy_account_id.trim() ? { legacy_account_id: form.legacy_account_id.trim() } : {}),
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
     status: Number(form.status),
+    registration_status: Number(form.registration_status),
     is_instructor: form.is_instructor,
     is_employee: form.is_employee,
     is_executive: form.is_executive,

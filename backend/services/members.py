@@ -61,10 +61,18 @@ from schemas.members import (
 logger = logging.getLogger(__name__)
 
 ACTIVE_REGISTRATION_STATUS = 1
-ANONYMIZED_MEMBER_STATUS = 4
+ANONYMIZED_MEMBER_STATUS = 3
 DEFAULT_ANONYMIZE_AFTER_YEARS = 5
+PERMANENT_MEMBER_CATEGORIES = {5, 7, 8}
+PERMANENT_MEMBER_REGISTRATION_ERROR = (
+    "Permanent members (categories 5, 7, 8) are managed from the edit screen and do not use annual registration periods"
+)
 
 _MEMBER_ACCOUNT_SUFFIX_RE = re.compile(r"(\d{4})$")
+
+
+def _is_permanent_member_category(member_category: int) -> bool:
+    return member_category in PERMANENT_MEMBER_CATEGORIES
 
 
 async def _create_registration_accounting_entry(
@@ -248,11 +256,15 @@ def _apply_member_filters(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A year is required when filtering by registration state",
             )
+        permanent_member = Member.member_category.in_(PERMANENT_MEMBER_CATEGORIES)
         registration_exists = exists().where(
             MemberRegistration.member_uuid == Member.uuid,
             _registration_overlaps_year_predicate(filters.year),
         )
-        query = query.where(registration_exists if filters.registration_state == "registered" else ~registration_exists)
+        if filters.registration_state == "registered":
+            query = query.where(permanent_member | registration_exists)
+        else:
+            query = query.where((~permanent_member) & (~registration_exists))
     if filters.committee_uuid is not None:
         year = filters.year
         query = query.join(CommitteeMember, CommitteeMember.member_uuid == Member.uuid).where(
@@ -445,11 +457,14 @@ async def _serialize_member_summary(
     has_member_sheet = ((await db.scalar(member_sheet_query)) or 0) > 0
     is_registered = False
     if year is not None:
-        registration_query = select(func.count()).select_from(MemberRegistration).where(
-            MemberRegistration.member_uuid == member.uuid,
-            _registration_overlaps_year_predicate(year),
-        )
-        is_registered = ((await db.scalar(registration_query)) or 0) > 0
+        if _is_permanent_member_category(member.member_category):
+            is_registered = True
+        else:
+            registration_query = select(func.count()).select_from(MemberRegistration).where(
+                MemberRegistration.member_uuid == member.uuid,
+                _registration_overlaps_year_predicate(year),
+            )
+            is_registered = ((await db.scalar(registration_query)) or 0) > 0
 
     return MemberSummaryResponse(
         uuid=member.uuid,
@@ -887,6 +902,12 @@ async def create_member_registration(
     """Create a dated member registration period and derived annual records."""
 
     member = await get_member_or_404(db, member_uuid)
+    if _is_permanent_member_category(member.member_category):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=PERMANENT_MEMBER_REGISTRATION_ERROR,
+        )
+
     _validate_registration_dates(payload.start_date, payload.end_date)
 
     duplicate_registration = await db.scalar(
@@ -915,7 +936,7 @@ async def create_member_registration(
     db.add(registration)
 
     if member.can_fly and payload.status == ACTIVE_REGISTRATION_STATUS:
-        member.registration_status = 3
+        member.registration_status = 2
         member.status = 1
         member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
@@ -936,7 +957,7 @@ async def create_member_registration(
                 )
             )
     elif payload.status == ACTIVE_REGISTRATION_STATUS:
-        member.registration_status = 3
+        member.registration_status = 2
         member.status = 1
         member.last_registration_date = max(member.last_registration_date or payload.end_date, payload.end_date)
         member.updated_by = registered_by_user_id
@@ -971,7 +992,7 @@ async def _sync_member_registration_summary_for_year(
         )
     )
     if active_for_year is not None:
-        member.registration_status = 3
+        member.registration_status = 2
         member.updated_by = updated_by_user_id
         return
 
@@ -982,7 +1003,7 @@ async def _sync_member_registration_summary_for_year(
         )
     )
     if any_for_year is not None:
-        member.registration_status = 4
+        member.registration_status = 1
         member.updated_by = updated_by_user_id
 
 
@@ -1044,6 +1065,11 @@ async def complete_member_registration(
     """Complete registration after committee validation and create a validity period."""
 
     member = await get_member_or_404(db, member_uuid)
+    if _is_permanent_member_category(member.member_category):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=PERMANENT_MEMBER_REGISTRATION_ERROR,
+        )
 
     if payload.committee_uuids is not None:
         requested_committee_uuids = set(payload.committee_uuids)
@@ -1276,16 +1302,18 @@ _GENRE_MAP: dict[str, int] = {
 
 _STATUS_MAP: dict[str, int] = {
     "1": 1, "active": 1, "actif": 1,
-    "2": 2, "inactive": 2, "inactif": 2,
-    "3": 3, "suspended": 3, "suspendu": 3,
-    "4": 4, "deceased": 4, "décédé": 4, "decede": 4,
+    "2": 2, "suspended": 2, "suspendu": 2,
+    "3": 3, "anonymized": 3, "anonymise": 3, "anonymisé": 3,
+    "resigned": 3, "demissionnaire": 3, "démissionnaire": 3,
+    "inactive": 2, "inactif": 2,
+    "deceased": 3, "décédé": 3, "decede": 3,
 }
 
 _REGISTRATION_STATUS_MAP: dict[str, int] = {
-    "1": 1, "draft": 1, "brouillon": 1,
-    "2": 2, "pending": 2, "en_attente": 2,
-    "3": 3, "complete": 3, "complet": 3,
-    "4": 4, "expired": 4, "expiré": 4, "expire": 4,
+    "1": 1, "pending": 1, "en_attente": 1,
+    "draft": 1, "brouillon": 1, "in_progress": 1, "inprogress": 1,
+    "2": 2, "complete": 2, "completed": 2, "complet": 2,
+    "expired": 1, "expiré": 1, "expire": 1, "archived": 1,
 }
 
 
@@ -1552,9 +1580,9 @@ _MEMBER_CATEGORY_REVERSE: dict[int, str] = {
 
 _GENRE_REVERSE: dict[int, str] = {0: "", 1: "M", 2: "F", 3: "other"}
 
-_STATUS_REVERSE: dict[int, str] = {1: "active", 2: "inactive", 3: "suspended", 4: "deceased"}
+_STATUS_REVERSE: dict[int, str] = {1: "active", 2: "suspended", 3: "anonymized"}
 
-_REGISTRATION_STATUS_REVERSE: dict[int, str] = {1: "draft", 2: "pending", 3: "complete", 4: "expired"}
+_REGISTRATION_STATUS_REVERSE: dict[int, str] = {1: "pending", 2: "completed"}
 
 
 async def export_members_to_csv(

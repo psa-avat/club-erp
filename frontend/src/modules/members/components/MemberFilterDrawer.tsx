@@ -111,10 +111,8 @@ export function MemberFilterDrawer({
               label={t('form.registrationStatus')}
               options={[
                 { value: '', label: t('filters.all') },
-                { value: '1', label: t('registration.draft') },
-                { value: '2', label: t('registration.inProgress') },
-                { value: '3', label: t('registration.completed') },
-                { value: '4', label: t('registration.archived') },
+                { value: '1', label: t('registration.pending') },
+                { value: '2', label: t('registration.completed') },
               ]}
               value={draft.registration_status !== undefined ? String(draft.registration_status) : ''}
               onChange={(value) =>

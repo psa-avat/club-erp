@@ -342,8 +342,7 @@ export function MembersListPage() {
               { value: '', label: t('filters.all') },
               { value: '1', label: t('statuses.active') },
               { value: '2', label: t('statuses.suspended') },
-              { value: '3', label: t('statuses.resigned') },
-              { value: '4', label: t('statuses.anonymized') },
+              { value: '3', label: t('statuses.anonymized') },
             ]}
             value={filters.status ? String(filters.status) : ''}
             onChange={(value) =>

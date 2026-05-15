@@ -30,8 +30,8 @@ class MemberBase(MemberRoleFlags):
     first_subscription_year: Optional[int] = Field(default=None, ge=1950, le=9999)
     ffvp_id: Optional[int] = Field(default=None, ge=1)
     photo_url: Optional[str] = None
-    status: int = Field(default=1, ge=1, le=4)
-    registration_status: int = Field(default=1, ge=1, le=4)
+    status: int = Field(default=1, ge=1, le=3)
+    registration_status: int = Field(default=1, ge=1, le=2)
     can_fly: bool = False
     external_auth_enabled: bool = False
     last_registration_date: Optional[date] = None
@@ -66,8 +66,8 @@ class MemberUpdateRequest(BaseModel):
         pattern=r"^(?:ME\d{4}-\d{4}|EXT-\d{4}|FO-\d{4})$",
     )
     photo_url: Optional[str] = None
-    status: Optional[int] = Field(default=None, ge=1, le=4)
-    registration_status: Optional[int] = Field(default=None, ge=1, le=4)
+    status: Optional[int] = Field(default=None, ge=1, le=3)
+    registration_status: Optional[int] = Field(default=None, ge=1, le=2)
     is_instructor: Optional[bool] = None
     is_employee: Optional[bool] = None
     is_executive: Optional[bool] = None
@@ -84,10 +84,10 @@ class MemberListFilters(BaseModel):
     """Filter contract for member list queries."""
 
     search: Optional[str] = None
-    status: Optional[int] = Field(default=None, ge=1, le=4)
+    status: Optional[int] = Field(default=None, ge=1, le=3)
     member_category: Optional[int] = Field(default=None, ge=1, le=8)
     member_categories: Optional[list[int]] = None
-    registration_status: Optional[int] = Field(default=None, ge=1, le=4)
+    registration_status: Optional[int] = Field(default=None, ge=1, le=2)
     committee_uuid: Optional[UUID] = None
     can_fly: Optional[bool] = None
     is_instructor: Optional[bool] = None

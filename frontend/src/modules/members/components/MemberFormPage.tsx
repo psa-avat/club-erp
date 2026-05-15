@@ -54,7 +54,6 @@ function sanitizeBusinessMemberForm(form: MemberFormState): MemberFormState {
     ffvp_id: '',
     legacy_account_id: '',
     photo_url: '',
-    registration_status: '1',
     is_instructor: false,
     is_employee: false,
     is_executive: false,
@@ -75,7 +74,6 @@ function hasBusinessOnlyFields(form: MemberFormState): boolean {
     form.ffvp_id !== '' ||
     form.legacy_account_id !== '' ||
     form.photo_url !== '' ||
-    form.registration_status !== '1' ||
     form.is_instructor ||
     form.is_employee ||
     form.is_executive ||
@@ -101,6 +99,7 @@ export function MemberFormPage() {
 
   const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
   const isBusinessCategory = memberForm.member_category === '8'
+  const isPermanentCategory = ['5', '7', '8'].includes(memberForm.member_category)
 
   useEffect(() => {
     if (isBusinessCategory && hasBusinessOnlyFields(memberForm)) {
@@ -257,11 +256,20 @@ export function MemberFormPage() {
                     options={[
                       { value: '1', label: t('statuses.active') },
                       { value: '2', label: t('statuses.suspended') },
-                      { value: '3', label: t('statuses.resigned') },
-                      { value: '4', label: t('statuses.anonymized') },
+                      { value: '3', label: t('statuses.anonymized') },
                     ]}
                     value={memberForm.status}
                     onChange={(value) => setMemberForm({ ...memberForm, status: value })}
+                  />
+                  <SelectField
+                    id="member-registration-status"
+                    label={t('form.registrationStatus')}
+                    options={[
+                      { value: '1', label: t('registration.pending') },
+                      { value: '2', label: t('registration.completed') },
+                    ]}
+                    value={memberForm.registration_status}
+                    onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
                   />
                 </>
               ) : (
@@ -305,14 +313,28 @@ export function MemberFormPage() {
                     options={[
                       { value: '1', label: t('statuses.active') },
                       { value: '2', label: t('statuses.suspended') },
-                      { value: '3', label: t('statuses.resigned') },
-                      { value: '4', label: t('statuses.anonymized') },
+                      { value: '3', label: t('statuses.anonymized') },
                     ]}
                     value={memberForm.status}
                     onChange={(value) => setMemberForm({ ...memberForm, status: value })}
                   />
+                  <SelectField
+                    id="member-registration-status"
+                    label={t('form.registrationStatus')}
+                    options={[
+                      { value: '1', label: t('registration.pending') },
+                      { value: '2', label: t('registration.completed') },
+                    ]}
+                    value={memberForm.registration_status}
+                    onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
+                  />
                 </>
               )}
+              {isPermanentCategory ? (
+                <p className="md:col-span-2 text-xs text-on-surface-variant">
+                  Permanent member category: annual registration periods are not required. Manage lifecycle and registration statuses directly on this page.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -352,11 +374,23 @@ export function MemberFormPage() {
                     options={[
                       { value: '1', label: t('statuses.active') },
                       { value: '2', label: t('statuses.suspended') },
-                      { value: '3', label: t('statuses.resigned') },
-                      { value: '4', label: t('statuses.anonymized') },
+                      { value: '3', label: t('statuses.anonymized') },
                     ]}
                     value={memberForm.status}
                     onChange={(value) => setMemberForm({ ...memberForm, status: value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="member-registration-status-business">{t('form.registrationStatus')}</Label>
+                  <SelectField
+                    id="member-registration-status-business"
+                    label={t('form.registrationStatus')}
+                    options={[
+                      { value: '1', label: t('registration.pending') },
+                      { value: '2', label: t('registration.completed') },
+                    ]}
+                    value={memberForm.registration_status}
+                    onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
                   />
                 </div>
               </CardContent>
