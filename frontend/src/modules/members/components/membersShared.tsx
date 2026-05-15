@@ -49,6 +49,7 @@ export type MemberFormState = {
   photo_url: string
   status: string
   registration_status: string
+  last_registration_date: string
   is_instructor: boolean
   is_employee: boolean
   is_executive: boolean
@@ -99,6 +100,7 @@ export function createEmptyMemberForm(): MemberFormState {
     photo_url: '',
     status: '1',
     registration_status: '1',
+    last_registration_date: '',
     is_instructor: false,
     is_employee: false,
     is_executive: false,
@@ -152,6 +154,7 @@ export function mapMemberToForm(member: MemberDetail): MemberFormState {
     photo_url: member.photo_url ?? '',
     status: String(member.status),
     registration_status: String(member.registration_status),
+    last_registration_date: member.last_registration_date ?? '',
     is_instructor: member.is_instructor,
     is_employee: member.is_employee,
     is_executive: member.is_executive,
@@ -179,6 +182,7 @@ export function buildMemberCreatePayload(form: MemberFormState): CreateMemberPay
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
     status: Number(form.status),
     registration_status: Number(form.registration_status),
+    ...(form.last_registration_date ? { last_registration_date: form.last_registration_date } : {}),
     is_instructor: form.is_instructor,
     is_employee: form.is_employee,
     is_executive: form.is_executive,
@@ -205,6 +209,7 @@ export function buildMemberUpdatePayload(form: MemberFormState): UpdateMemberPay
     ...(form.photo_url.trim() ? { photo_url: form.photo_url.trim() } : {}),
     status: Number(form.status),
     registration_status: Number(form.registration_status),
+    ...(form.last_registration_date ? { last_registration_date: form.last_registration_date } : {}),
     is_instructor: form.is_instructor,
     is_employee: form.is_employee,
     is_executive: form.is_executive,

@@ -54,6 +54,7 @@ function sanitizeBusinessMemberForm(form: MemberFormState): MemberFormState {
     ffvp_id: '',
     legacy_account_id: '',
     photo_url: '',
+    last_registration_date: form.last_registration_date,
     is_instructor: false,
     is_employee: false,
     is_executive: false,
@@ -271,6 +272,13 @@ export function MemberFormPage() {
                     value={memberForm.registration_status}
                     onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
                   />
+                  <TextField
+                    id="member-last-registration-date-business"
+                    label={t('form.lastRegistrationDate')}
+                    type="date"
+                    value={memberForm.last_registration_date}
+                    onChange={(value) => setMemberForm({ ...memberForm, last_registration_date: value })}
+                  />
                 </>
               ) : (
                 <>
@@ -327,6 +335,13 @@ export function MemberFormPage() {
                     ]}
                     value={memberForm.registration_status}
                     onChange={(value) => setMemberForm({ ...memberForm, registration_status: value })}
+                  />
+                  <TextField
+                    id="member-last-registration-date"
+                    label={t('form.lastRegistrationDate')}
+                    type="date"
+                    value={memberForm.last_registration_date}
+                    onChange={(value) => setMemberForm({ ...memberForm, last_registration_date: value })}
                   />
                 </>
               )}

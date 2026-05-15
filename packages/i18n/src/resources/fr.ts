@@ -209,6 +209,7 @@ export const fr = {
       ffvp: 'Identifiant FFVP',
       trigram: 'Trigramme',
       registrationYear: "Année d'inscription",
+      lastRegistrationDate: "Date dernière inscription",
       photoUrl: 'URL photo',
       status: 'Statut',
       registrationStatus: "Statut d'inscription",
@@ -440,6 +441,7 @@ export const fr = {
       currentYear: {
         title: 'Statut année {{year}}',
         statusLabel: 'État actuel : {{status}}',
+        revokeAction: 'Révoquer l inscription année courante',
         cancelAction: 'Annuler l inscription année courante',
         reactivateAction: 'Réactiver l inscription année courante',
         updating: 'Mise à jour…',

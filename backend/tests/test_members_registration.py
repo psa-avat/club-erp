@@ -146,6 +146,7 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
             is_employee=False,
             is_executive=False,
             is_board_member=False,
+            last_registration_date=None,
         )
 
         summary = await _serialize_member_summary(db=db, member=member, year=2026)
@@ -276,6 +277,39 @@ class MemberRegistrationTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "Member is already registered for year 2026")
+
+    async def test_complete_registration_rejects_duplicate_year_with_pricing_items(self):
+        db = _FakeDb(scalar_values=[1, uuid4()])
+        member = SimpleNamespace(
+            uuid=uuid4(),
+            member_category=1,
+            registration_status=1,
+            status=2,
+            last_registration_year=None,
+            updated_by=None,
+        )
+
+        with (
+            patch("services.members.get_member_or_404", new=AsyncMock(return_value=member)),
+            patch("services.members.create_member_registration", new=AsyncMock()),
+            patch("services.members._create_registration_accounting_entry", new=AsyncMock()) as create_entry_mock,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await complete_member_registration(
+                    db=db,
+                    member_uuid=member.uuid,
+                    payload=RegistrationCompletionRequest(
+                        year=2026,
+                        start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31),
+                        pricing_item_uuids=[uuid4()],
+                    ),
+                    updated_by_user_id=42,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "Member is already registered for year 2026")
+        create_entry_mock.assert_not_awaited()
 
     async def test_create_registration_rejects_duplicate_period(self):
         db = _FakeDb(scalar_values=[uuid4()])

@@ -15,6 +15,9 @@ export type MemberSummary = {
   is_employee: boolean
   is_executive: boolean
   is_board_member: boolean
+  last_registration_year?: number | null
+  registration_start_date_for_year?: string | null
+  registration_end_date_for_year?: string | null
   committee_count: number
   has_member_sheet_for_year: boolean
   is_registered_for_year: boolean
@@ -127,6 +130,7 @@ export type MemberFilters = {
   is_employee?: boolean
   is_executive?: boolean
   is_board_member?: boolean
+  last_registration_year?: number
   year?: number
   registration_state?: 'registered' | 'unregistered'
   limit?: number

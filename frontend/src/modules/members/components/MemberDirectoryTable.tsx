@@ -38,7 +38,7 @@ import {
 // Kebab dropdown
 // ---------------------------------------------------------------------------
 
-type KebabItem = { label: string; onClick: () => void }
+type KebabItem = { label: string; onClick: () => void; disabled?: boolean }
 
 function KebabMenu({ items }: { items: KebabItem[] }) {
   const [open, setOpen] = useState(false)
@@ -75,8 +75,12 @@ function KebabMenu({ items }: { items: KebabItem[] }) {
               key={item.label}
               type="button"
               role="menuitem"
-              className="w-full px-3 py-2 text-left text-sm text-on-surface transition-colors hover:bg-surface-container"
+              disabled={item.disabled}
+              className="w-full px-3 py-2 text-left text-sm text-on-surface transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => {
+                if (item.disabled) {
+                  return
+                }
                 item.onClick()
                 setOpen(false)
               }}
@@ -106,6 +110,19 @@ type Props = {
 }
 
 const PAGE_SIZE = 25
+
+function formatIsoDate(value: string | null | undefined): string {
+  if (!value) {
+    return '—'
+  }
+
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('fr-FR').format(parsedDate)
+}
 
 export function MemberDirectoryTable({
   members,
@@ -192,8 +209,27 @@ export function MemberDirectoryTable({
       sortable: true,
       // Hidden on small screens
       headerClassName: 'hidden sm:table-cell',
-      className: 'hidden sm:table-cell min-w-[130px]',
-      cell: (row) => <RegistrationBadge registrationStatus={row.registration_status} />,
+      className: 'hidden sm:table-cell min-w-[220px]',
+      cell: (row) => (
+        <div className="space-y-1">
+          <RegistrationBadge registrationStatus={row.registration_status} />
+          {row.is_registered_for_year && row.registration_start_date_for_year && row.registration_end_date_for_year ? (
+            <p className="text-xs text-on-surface-variant">
+              {formatIsoDate(row.registration_start_date_for_year)} - {formatIsoDate(row.registration_end_date_for_year)}
+            </p>
+          ) : (
+            <p className="text-xs text-on-surface-variant">—</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'last-registration-year',
+      header: 'Derniere annee',
+      sortable: true,
+      headerClassName: 'hidden lg:table-cell',
+      className: 'hidden lg:table-cell min-w-[120px]',
+      cell: (row) => <span className="text-sm text-on-surface">{row.last_registration_year ?? '—'}</span>,
     },
     {
       key: 'commission',
@@ -254,6 +290,7 @@ export function MemberDirectoryTable({
                 items={[
                   {
                     label: "Finaliser l'inscription",
+                    disabled: row.is_registered_for_year,
                     onClick: () => onFinalizeRegistration(row.uuid),
                   },
                 ]}

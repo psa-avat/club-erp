@@ -107,6 +107,7 @@ export function MembersListPage() {
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [registrationActionError, setRegistrationActionError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
 
   const PAGE_SIZE = 50
@@ -191,6 +192,13 @@ export function MembersListPage() {
   }
 
   function handleFinalizeRegistration(memberUuid: string) {
+    const targetMember = members.find((member) => member.uuid === memberUuid)
+    if (targetMember?.is_registered_for_year) {
+      setRegistrationActionError(`Le membre est deja inscrit pour ${selectedYear}.`)
+      return
+    }
+
+    setRegistrationActionError(null)
     handleOpenRegistrationPanel(memberUuid)
   }
 
@@ -280,6 +288,7 @@ export function MembersListPage() {
       {/* ── Error banner ─────────────────────────────────────────────── */}
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
       {exportError ? <Alert>{exportError}</Alert> : null}
+      {registrationActionError ? <Alert>{registrationActionError}</Alert> : null}
 
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       <Card>
@@ -310,7 +319,7 @@ export function MembersListPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-5">
+        <CardContent className="grid gap-4 md:grid-cols-6">
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="members-search">{t('filters.search')}</Label>
             <Input
@@ -362,6 +371,28 @@ export function MembersListPage() {
               setFilters({ ...filters, can_fly: value ? value === 'true' : undefined })
             }
           />
+          <div className="space-y-2">
+            <Label htmlFor="members-last-registration-year">Derniere annee d'inscription</Label>
+            <Input
+              id="members-last-registration-year"
+              type="number"
+              min={2000}
+              max={9999}
+              placeholder="2026"
+              value={filters.last_registration_year ?? ''}
+              onChange={(event) => {
+                const rawValue = event.target.value.trim()
+                const parsedValue = Number(rawValue)
+                setFilters({
+                  ...filters,
+                  last_registration_year:
+                    rawValue === '' || Number.isNaN(parsedValue)
+                      ? undefined
+                      : Math.min(9999, Math.max(2000, parsedValue)),
+                })
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
 

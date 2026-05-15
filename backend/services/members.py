@@ -250,6 +250,13 @@ def _apply_member_filters(
         query = query.where(Member.is_executive == filters.is_executive)
     if filters.is_board_member is not None:
         query = query.where(Member.is_board_member == filters.is_board_member)
+    if filters.last_registration_year is not None:
+        year_start, year_end = _year_bounds(filters.last_registration_year)
+        query = query.where(
+            Member.last_registration_date.is_not(None),
+            Member.last_registration_date >= year_start,
+            Member.last_registration_date <= year_end,
+        )
     if filters.registration_state is not None:
         if filters.year is None:
             raise HTTPException(
@@ -456,15 +463,28 @@ async def _serialize_member_summary(
         member_sheet_query = member_sheet_query.where(MemberSheet.year == year)
     has_member_sheet = ((await db.scalar(member_sheet_query)) or 0) > 0
     is_registered = False
+    registration_start_date_for_year: Optional[date] = None
+    registration_end_date_for_year: Optional[date] = None
     if year is not None:
         if _is_permanent_member_category(member.member_category):
             is_registered = True
         else:
-            registration_query = select(func.count()).select_from(MemberRegistration).where(
+            registration_query = select(MemberRegistration).where(
                 MemberRegistration.member_uuid == member.uuid,
                 _registration_overlaps_year_predicate(year),
             )
-            is_registered = ((await db.scalar(registration_query)) or 0) > 0
+            registration_query = registration_query.order_by(
+                MemberRegistration.end_date.desc(),
+                MemberRegistration.start_date.desc(),
+                MemberRegistration.registered_at.desc(),
+            )
+            registration = await db.scalar(registration_query)
+            is_registered = registration is not None
+            if registration is not None:
+                registration_start_date_for_year = registration.start_date
+                registration_end_date_for_year = registration.end_date
+
+    last_registration_year = member.last_registration_date.year if member.last_registration_date is not None else None
 
     return MemberSummaryResponse(
         uuid=member.uuid,
@@ -481,6 +501,9 @@ async def _serialize_member_summary(
         is_employee=member.is_employee,
         is_executive=member.is_executive,
         is_board_member=member.is_board_member,
+        last_registration_year=last_registration_year,
+        registration_start_date_for_year=registration_start_date_for_year,
+        registration_end_date_for_year=registration_end_date_for_year,
         committee_count=committee_count,
         has_member_sheet_for_year=has_member_sheet,
         is_registered_for_year=is_registered,
@@ -1129,15 +1152,6 @@ async def complete_member_registration(
         )
     )
     if existing_active_for_year is not None:
-        if payload.pricing_item_uuids:
-            await _create_registration_accounting_entry(
-                db,
-                member=member,
-                payload=payload,
-                user_id=updated_by_user_id,
-            )
-            await db.refresh(member)
-            return member
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Member is already registered for year {payload.year}",

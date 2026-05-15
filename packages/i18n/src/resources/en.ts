@@ -209,6 +209,7 @@ export const en = {
       ffvp: 'FFVP ID',
       trigram: 'Trigram',
       registrationYear: 'Registration year',
+      lastRegistrationDate: 'Last registration date',
       photoUrl: 'Photo URL',
       status: 'Status',
       registrationStatus: 'Registration status',
@@ -440,6 +441,7 @@ export const en = {
       currentYear: {
         title: 'Current year status {{year}}',
         statusLabel: 'Current state: {{status}}',
+        revokeAction: 'Revoke current year registration',
         cancelAction: 'Cancel current year registration',
         reactivateAction: 'Reactivate current year registration',
         updating: 'Updating…',

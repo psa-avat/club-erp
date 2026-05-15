@@ -82,6 +82,7 @@ async def list_members_endpoint(
     is_employee: Optional[bool] = Query(default=None),
     is_executive: Optional[bool] = Query(default=None),
     is_board_member: Optional[bool] = Query(default=None),
+    last_registration_year: Optional[int] = Query(default=None, ge=2000, le=9999),
     year: Optional[int] = Query(default=None, ge=2000, le=9999),
     registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
     limit: Optional[int] = Query(default=None, ge=1, le=500),
@@ -116,6 +117,7 @@ async def list_members_endpoint(
         is_employee=is_employee,
         is_executive=is_executive,
         is_board_member=is_board_member,
+        last_registration_year=last_registration_year,
         year=year,
         registration_state=registration_state,
     )
@@ -135,6 +137,7 @@ async def count_members_endpoint(
     is_employee: Optional[bool] = Query(default=None),
     is_executive: Optional[bool] = Query(default=None),
     is_board_member: Optional[bool] = Query(default=None),
+    last_registration_year: Optional[int] = Query(default=None, ge=2000, le=9999),
     year: Optional[int] = Query(default=None, ge=2000, le=9999),
     registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
     _: User = members_guard,
@@ -167,6 +170,7 @@ async def count_members_endpoint(
         is_employee=is_employee,
         is_executive=is_executive,
         is_board_member=is_board_member,
+        last_registration_year=last_registration_year,
         year=year,
         registration_state=registration_state,
     )

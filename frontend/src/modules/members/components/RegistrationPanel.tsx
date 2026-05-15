@@ -81,22 +81,6 @@ function unitLabel(unit: number): string {
   return map[unit] ?? `#${unit}`
 }
 
-function isAlreadyRegisteredError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null || !('response' in error)) {
-    return false
-  }
-
-  const response = (error as { response?: { data?: { detail?: unknown } } }).response
-  const detail = response?.data?.detail
-  if (typeof detail !== 'string') return false
-
-  const normalized = detail.toLowerCase()
-  return (
-    normalized.includes('already registered for year') ||
-    normalized.includes('already registered for this period')
-  )
-}
-
 type ChecklistState = 'valid' | 'pending'
 
 function ChecklistChip({ state, t }: { state: ChecklistState; t: (key: string) => string }) {
@@ -216,6 +200,11 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
       return
     }
 
+    if (currentYearRegistration?.status === 1) {
+      setLocalError(`Le membre est deja inscrit pour ${year}.`)
+      return
+    }
+
     if (!canValidate) {
       setLocalError(t('registrationPanel.actions.requiresSelection'))
       return
@@ -225,26 +214,20 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
 
     // Complete registration, attach selected committee memberships, and create
     // the draft accounting entry from selected pricing items on the backend.
-    try {
-      await completeRegistrationMutation.mutateAsync({
-        memberUuid: member.uuid,
-        payload: {
-          year,
-          start_date: `${year}-01-01`,
-          end_date: `${year}-12-31`,
-          registration_type: member.member_category,
-          pricing_item_uuids: selectedPricingItemUuids,
-          accounting_entry_date: effectiveDate,
-          committee_uuids: selectedCommitteeUuids,
-          notes: notes.trim() || undefined,
-          status: 1,
-        },
-      })
-    } catch (error) {
-      if (!isAlreadyRegisteredError(error)) {
-        throw error
-      }
-    }
+    await completeRegistrationMutation.mutateAsync({
+      memberUuid: member.uuid,
+      payload: {
+        year,
+        start_date: `${year}-01-01`,
+        end_date: `${year}-12-31`,
+        registration_type: member.member_category,
+        pricing_item_uuids: selectedPricingItemUuids,
+        accounting_entry_date: effectiveDate,
+        committee_uuids: selectedCommitteeUuids,
+        notes: notes.trim() || undefined,
+        status: 1,
+      },
+    })
 
     onCompleted(member.uuid)
   }
@@ -262,6 +245,8 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
       },
     })
   }
+
+  const isCurrentYearRegistrationActive = currentYearRegistration?.status === 1
 
   return (
     <Dialog
@@ -329,14 +314,14 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
                     </div>
                     <Button
                       type="button"
-                      variant={currentYearRegistration.status === 1 ? 'secondary' : 'default'}
+                      variant={isCurrentYearRegistrationActive ? 'secondary' : 'default'}
                       disabled={updateRegistrationMutation.isPending}
                       onClick={handleToggleCurrentYearRegistration}
                     >
                       {updateRegistrationMutation.isPending
                         ? t('registrationPanel.currentYear.updating')
-                        : currentYearRegistration.status === 1
-                          ? t('registrationPanel.currentYear.cancelAction')
+                        : isCurrentYearRegistrationActive
+                          ? t('registrationPanel.currentYear.revokeAction')
                           : t('registrationPanel.currentYear.reactivateAction')}
                     </Button>
                   </div>

@@ -94,6 +94,7 @@ class MemberListFilters(BaseModel):
     is_employee: Optional[bool] = None
     is_executive: Optional[bool] = None
     is_board_member: Optional[bool] = None
+    last_registration_year: Optional[int] = Field(default=None, ge=2000, le=9999)
     year: Optional[int] = Field(default=None, ge=2000, le=9999)
     registration_state: Optional[str] = Field(default=None, pattern="^(registered|unregistered)$")
 
@@ -259,6 +260,9 @@ class MemberSummaryResponse(BaseModel):
     is_employee: bool
     is_executive: bool
     is_board_member: bool
+    last_registration_year: Optional[int] = None
+    registration_start_date_for_year: Optional[date] = None
+    registration_end_date_for_year: Optional[date] = None
     committee_count: int = 0
     has_member_sheet_for_year: bool = False
     is_registered_for_year: bool = False
