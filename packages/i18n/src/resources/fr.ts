@@ -78,6 +78,10 @@ export const fr = {
       sampleDownloadPrefix: 'Télécharger un exemple de fichier CSV :',
       sampleDownloadLink: 'Exemple CSV',
     },
+    export: {
+      button: 'Exporter CSV',
+      exporting: 'Export en cours...',
+    },
   },
   dashboard: {
     home: {

@@ -3,6 +3,7 @@ export type MembersScreen = 'core' | 'external' | 'business'
 export type MemberSummary = {
   uuid: string
   account_id: string
+  ffvp_id?: string | number | null
   first_name: string
   last_name: string
   email: string | null

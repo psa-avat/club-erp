@@ -247,6 +247,7 @@ class MemberSummaryResponse(BaseModel):
 
     uuid: UUID
     account_id: str
+    ffvp_id: Optional[int] = None
     first_name: str
     last_name: str
     email: Optional[EmailStr] = None

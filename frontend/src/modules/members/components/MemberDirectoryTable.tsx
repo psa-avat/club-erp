@@ -146,7 +146,16 @@ export function MemberDirectoryTable({
                 </span>
                 {needsRenewal ? <RenewalWarningIcon /> : null}
               </div>
-              <span className="font-mono text-xs text-on-surface-variant">{row.account_id}</span>
+              <span className="font-mono text-xs text-on-surface-variant">
+                {row.account_id}
+                {row.ffvp_id ? (
+                  <>
+                    {' '}
+                    <span className="text-slate-400">|</span>{' '}
+                    <span title="FFVP ID">{row.ffvp_id}</span>
+                  </>
+                ) : null}
+              </span>
             </div>
           </div>
         )

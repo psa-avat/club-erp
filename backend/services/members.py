@@ -454,6 +454,7 @@ async def _serialize_member_summary(
     return MemberSummaryResponse(
         uuid=member.uuid,
         account_id=member.account_id,
+        ffvp_id=member.ffvp_id,
         first_name=member.first_name,
         last_name=member.last_name,
         email=member.email,
@@ -921,14 +922,14 @@ async def create_member_registration(
 
         existing_sheet = await db.scalar(
             select(MemberSheet).where(
-                MemberSheet.member_uuid == member_uuid,
+                MemberSheet.member_uuid == member.uuid,
                 MemberSheet.year == payload.registered_for_year,
             )
         )
         if existing_sheet is None:
             db.add(
                 MemberSheet(
-                    member_uuid=member_uuid,
+                    member_uuid=member.uuid,
                     year=payload.registered_for_year,
                     fare_type=1,
                     updated_by=registered_by_user_id,
@@ -1058,7 +1059,7 @@ async def complete_member_registration(
 
         existing_assignments_result = await db.execute(
             select(CommitteeMember).where(
-                CommitteeMember.member_uuid == member_uuid,
+                CommitteeMember.member_uuid == member.uuid,
                 CommitteeMember.membership_year == payload.year,
             )
         )
@@ -1074,7 +1075,7 @@ async def complete_member_registration(
                 db.add(
                     CommitteeMember(
                         committee_uuid=committee_uuid,
-                        member_uuid=member_uuid,
+                        member_uuid=member.uuid,
                         membership_year=payload.year,
                         assigned_by=updated_by_user_id,
                     )
@@ -1084,7 +1085,7 @@ async def complete_member_registration(
 
     committee_count = await db.scalar(
         select(func.count()).select_from(CommitteeMember).where(
-            CommitteeMember.member_uuid == member_uuid,
+            CommitteeMember.member_uuid == member.uuid,
             CommitteeMember.membership_year == payload.year,
         )
     )
@@ -1096,7 +1097,7 @@ async def complete_member_registration(
 
     existing_active_for_year = await db.scalar(
         select(MemberRegistration.uuid).where(
-            MemberRegistration.member_uuid == member_uuid,
+            MemberRegistration.member_uuid == member.uuid,
             MemberRegistration.registered_for_year == payload.year,
             MemberRegistration.status == ACTIVE_REGISTRATION_STATUS,
         )
@@ -1321,7 +1322,10 @@ async def import_members_from_csv(
 
     reader = csv.DictReader(io.StringIO(text))
 
-    required_columns = {"first_name", "last_name", "member_category"}
+    # member_category is required for create, optional for update
+    required_columns = {"first_name", "last_name"}
+    if not update_existing:
+        required_columns.add("member_category")
     if reader.fieldnames:
         missing = required_columns - {c.strip().lower() for c in reader.fieldnames}
         if missing:
@@ -1347,10 +1351,18 @@ async def import_members_from_csv(
             errors.append(ImportRowError(row=row_index, field="last_name", message="Required"))
             skipped += 1
             continue
-        if raw_category not in _MEMBER_CATEGORY_MAP:
-            errors.append(ImportRowError(row=row_index, field="member_category", message=f"Unknown value {raw_category!r}. Expected 1-8 or label."))
-            skipped += 1
-            continue
+        # member_category is required only for create (new members)
+        if not update_existing:
+            if raw_category not in _MEMBER_CATEGORY_MAP:
+                errors.append(ImportRowError(row=row_index, field="member_category", message=f"Unknown value {raw_category!r}. Expected 1-8 or label."))
+                skipped += 1
+                continue
+        else:
+            # For updates, validate member_category only if provided
+            if raw_category and raw_category not in _MEMBER_CATEGORY_MAP:
+                errors.append(ImportRowError(row=row_index, field="member_category", message=f"Unknown value {raw_category!r}. Expected 1-8 or label."))
+                skipped += 1
+                continue
 
         # --- optional fields ---
         raw_genre = row.get("genre", "0").lower()
@@ -1445,8 +1457,10 @@ async def import_members_from_csv(
                 update_fields: dict = {
                     "first_name": first_name,
                     "last_name": last_name,
-                    "member_category": _MEMBER_CATEGORY_MAP[raw_category],
                 }
+                # Only include member_category if provided
+                if raw_category:
+                    update_fields["member_category"] = _MEMBER_CATEGORY_MAP[raw_category]
                 if row.get("genre"):
                     update_fields["genre"] = genre
                 if email_raw is not None:
@@ -1524,3 +1538,100 @@ async def import_members_from_csv(
             skipped += 1
 
     return ImportResultResponse(created=created, updated=updated, skipped=skipped, errors=errors)
+
+
+# ---------------------------------------------------------------------------
+# CSV bulk export
+# ---------------------------------------------------------------------------
+
+# Reverse mappings for CSV export
+_MEMBER_CATEGORY_REVERSE: dict[int, str] = {
+    1: "full", 2: "temporary", 3: "non_flying", 4: "short_period",
+    5: "external_pilot", 6: "volunteer", 7: "external_organization", 8: "business",
+}
+
+_GENRE_REVERSE: dict[int, str] = {0: "", 1: "M", 2: "F", 3: "other"}
+
+_STATUS_REVERSE: dict[int, str] = {1: "active", 2: "inactive", 3: "suspended", 4: "deceased"}
+
+_REGISTRATION_STATUS_REVERSE: dict[int, str] = {1: "draft", 2: "pending", 3: "complete", 4: "expired"}
+
+
+async def export_members_to_csv(
+    db: AsyncSession,
+    *,
+    status: Optional[int] = None,
+    member_category: Optional[int] = None,
+    search: Optional[str] = None,
+) -> bytes:
+    """Export members to CSV format with applied filters.
+    
+    Returns UTF-8 encoded CSV content.
+    """
+    filters = MemberListFilters(
+        status=status,
+        member_category=member_category,
+        search=search,
+    )
+    query: Select[tuple[Member]] = select(Member).order_by(Member.last_name.asc(), Member.first_name.asc())
+    query = _apply_member_filters(query, filters)
+    query = query.limit(10000)  # Safety limit
+
+    result = await db.execute(query)
+    members = result.scalars().unique().all()
+    
+    # CSV headers
+    headers = [
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "account_id",
+        "ffvp_id",
+        "member_category",
+        "genre",
+        "date_of_birth",
+        "first_subscription_year",
+        "legacy_account_id",
+        "trigram",
+        "status",
+        "registration_status",
+        "can_fly",
+        "is_instructor",
+        "is_employee",
+        "is_executive",
+        "is_board_member",
+    ]
+    
+    rows: list[list[str]] = []
+    for member in members:
+        row = [
+            member.first_name,
+            member.last_name,
+            member.email or "",
+            member.phone or "",
+            member.account_id,
+            str(member.ffvp_id) if member.ffvp_id else "",
+            _MEMBER_CATEGORY_REVERSE.get(member.member_category, str(member.member_category)),
+            _GENRE_REVERSE.get(member.genre, ""),
+            member.date_of_birth.isoformat() if member.date_of_birth else "",
+            str(member.first_subscription_year) if member.first_subscription_year else "",
+            member.legacy_account_id or "",
+            member.trigram or "",
+            _STATUS_REVERSE.get(member.status, str(member.status)),
+            _REGISTRATION_STATUS_REVERSE.get(member.registration_status, str(member.registration_status)),
+            "yes" if member.can_fly else "no",
+            "yes" if member.is_instructor else "no",
+            "yes" if member.is_employee else "no",
+            "yes" if member.is_executive else "no",
+            "yes" if member.is_board_member else "no",
+        ]
+        rows.append(row)
+    
+    # Generate CSV content
+    csv_lines = [",".join(f'"{cell.replace('"', '""')}"' for cell in headers)]
+    for row in rows:
+        csv_lines.append(",".join(f'"{cell.replace('"', '""')}"' for cell in row))
+    
+    csv_content = "\n".join(csv_lines)
+    return csv_content.encode("utf-8")

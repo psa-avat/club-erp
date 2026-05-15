@@ -258,6 +258,10 @@ export function memberCategoryLabel(category: number) {
 }
 
 export function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && typeof error.message === 'string' && error.message.length > 0) {
+    return error.message
+  }
+
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const response = (error as { response?: { data?: { detail?: unknown; message?: string } } }).response
     const detail = response?.data?.detail

@@ -30,6 +30,7 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { PageHeader } from '../../../components/ui/page-header'
 import {
+  exportMembersToCSV,
   useImportMembersMutation,
   useMembersCountQuery,
   useMemberQuery,
@@ -104,6 +105,8 @@ export function MembersListPage() {
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [registrationPanelOpen, setRegistrationPanelOpen] = useState(false)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
 
   const PAGE_SIZE = 50
@@ -200,6 +203,22 @@ export function MembersListPage() {
     navigate(`/club/members/${memberUuid}/pilot-sheet`)
   }
 
+  async function handleExportMembers() {
+    try {
+      setIsExporting(true)
+      setExportError(null)
+      await exportMembersToCSV({
+        status: scopedFilters.status,
+        member_category: scopedFilters.member_category,
+        search: scopedFilters.search,
+      })
+    } catch (error) {
+      setExportError(toErrorMessage(error))
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const combinedError =
     membersQuery.error ??
     membersCountQuery.error ??
@@ -213,6 +232,14 @@ export function MembersListPage() {
         supportingText={`${t(activeScreenMeta.titleKey)}: ${t(activeScreenMeta.descriptionKey)}`}
         actions={
           <div className="flex flex-wrap gap-2">
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={handleExportMembers}
+              disabled={isExporting}
+            >
+              {isExporting ? tCommon('export.exporting') : tCommon('export.button')}
+            </Button>
             <Button type="button" variant="secondary" onClick={() => setShowImportDialog(true)}>
               {tCommon('import.button')}
             </Button>
@@ -252,6 +279,7 @@ export function MembersListPage() {
 
       {/* ── Error banner ─────────────────────────────────────────────── */}
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
+      {exportError ? <Alert>{exportError}</Alert> : null}
 
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       <Card>

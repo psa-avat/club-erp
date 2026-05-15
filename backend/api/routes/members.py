@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi import HTTPException, status as http_status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -46,6 +47,7 @@ from services.members import (
     create_member_registration,
     disable_member_sheet_expense_access,
     enable_member_sheet_expense_access,
+    export_members_to_csv,
     get_committee_or_404,
     get_member_or_404,
     get_member_sheet_or_404,
@@ -241,7 +243,7 @@ async def create_committee_endpoint(
     return CommitteeResponse.model_validate(committee)
 
 
-@router.get("/committees/{committee_uuid}", response_model=CommitteeResponse)
+@router.get("/committees/{committee_uuid:uuid}", response_model=CommitteeResponse)
 async def get_committee_endpoint(
     committee_uuid: UUID,
     _: User = members_guard,
@@ -251,7 +253,7 @@ async def get_committee_endpoint(
     return CommitteeResponse.model_validate(committee)
 
 
-@router.patch("/committees/{committee_uuid}", response_model=CommitteeResponse)
+@router.patch("/committees/{committee_uuid:uuid}", response_model=CommitteeResponse)
 async def update_committee_endpoint(
     committee_uuid: UUID,
     payload: CommitteeUpdateRequest,
@@ -267,7 +269,7 @@ async def update_committee_endpoint(
     return CommitteeResponse.model_validate(committee)
 
 
-@router.put("/committees/{committee_uuid}/members/{year}", response_model=list[CommitteeMembershipResponse])
+@router.put("/committees/{committee_uuid:uuid}/members/{year}", response_model=list[CommitteeMembershipResponse])
 async def replace_committee_members_endpoint(
     committee_uuid: UUID,
     year: int,
@@ -285,161 +287,8 @@ async def replace_committee_members_endpoint(
     return [CommitteeMembershipResponse.model_validate(membership) for membership in memberships]
 
 
-@router.get("/{member_uuid}", response_model=MemberDetailResponse)
-async def get_member_endpoint(
-    member_uuid: UUID,
-    _: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    member = await get_member_or_404(db=db, member_uuid=member_uuid)
-    return await serialize_member_detail(db=db, member=member)
-
-
-@router.patch("/{member_uuid}", response_model=MemberDetailResponse)
-async def update_member_endpoint(
-    member_uuid: UUID,
-    payload: MemberUpdateRequest,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    member = await update_member(
-        db=db,
-        member_uuid=member_uuid,
-        payload=payload,
-        updated_by_user_id=current_user.id,
-    )
-    return await serialize_member_detail(db=db, member=member)
-
-
-@router.post("/{member_uuid}/complete-registration", response_model=MemberDetailResponse)
-async def complete_member_registration_endpoint(
-    member_uuid: UUID,
-    payload: RegistrationCompletionRequest,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    member = await complete_member_registration(
-        db=db,
-        member_uuid=member_uuid,
-        payload=payload,
-        updated_by_user_id=current_user.id,
-    )
-    return await serialize_member_detail(db=db, member=member)
-
-
-@router.get("/{member_uuid}/registrations", response_model=list[MemberRegistrationResponse])
-async def list_member_registrations_endpoint(
-    member_uuid: UUID,
-    _: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    return await list_member_registrations(db=db, member_uuid=member_uuid)
-
-
-@router.post("/{member_uuid}/registrations", response_model=MemberRegistrationResponse)
-async def create_member_registration_endpoint(
-    member_uuid: UUID,
-    payload: MemberRegistrationCreateRequest,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    registration = await create_member_registration(
-        db=db,
-        member_uuid=member_uuid,
-        payload=payload,
-        registered_by_user_id=current_user.id,
-    )
-    return MemberRegistrationResponse.model_validate(registration)
-
-
-@router.patch("/{member_uuid}/registrations/{registration_uuid}", response_model=MemberRegistrationResponse)
-async def update_member_registration_endpoint(
-    member_uuid: UUID,
-    registration_uuid: UUID,
-    payload: MemberRegistrationUpdateRequest,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    registration = await update_member_registration(
-        db=db,
-        member_uuid=member_uuid,
-        registration_uuid=registration_uuid,
-        payload=payload,
-        updated_by_user_id=current_user.id,
-    )
-    return MemberRegistrationResponse.model_validate(registration)
-
-
-@router.get("/{member_uuid}/sheets", response_model=list[MemberSheetResponse])
-async def list_member_sheets_endpoint(
-    member_uuid: UUID,
-    _: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    return await list_member_sheets(db=db, member_uuid=member_uuid)
-
-
-@router.get("/{member_uuid}/sheets/{year}", response_model=MemberSheetResponse)
-async def get_member_sheet_endpoint(
-    member_uuid: UUID,
-    year: int,
-    _: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    sheet = await get_member_sheet_or_404(db=db, member_uuid=member_uuid, year=year)
-    return MemberSheetResponse.model_validate(sheet)
-
-
-@router.put("/{member_uuid}/sheets/{year}", response_model=MemberSheetResponse)
-async def upsert_member_sheet_endpoint(
-    member_uuid: UUID,
-    year: int,
-    payload: MemberSheetUpsertRequest,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    sheet = await upsert_member_sheet(
-        db=db,
-        member_uuid=member_uuid,
-        year=year,
-        payload=payload,
-        updated_by_user_id=current_user.id,
-    )
-    return MemberSheetResponse.model_validate(sheet)
-
-
-@router.post("/{member_uuid}/sheets/{year}/expense-access", response_model=ExpenseAccessResponse)
-async def enable_member_sheet_expense_access_endpoint(
-    member_uuid: UUID,
-    year: int,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    return await enable_member_sheet_expense_access(
-        db=db,
-        member_uuid=member_uuid,
-        year=year,
-        updated_by_user_id=current_user.id,
-    )
-
-
-@router.delete("/{member_uuid}/sheets/{year}/expense-access", response_model=ExpenseAccessResponse)
-async def disable_member_sheet_expense_access_endpoint(
-    member_uuid: UUID,
-    year: int,
-    current_user: User = members_guard,
-    db: AsyncSession = Depends(get_db),
-):
-    return await disable_member_sheet_expense_access(
-        db=db,
-        member_uuid=member_uuid,
-        year=year,
-        updated_by_user_id=current_user.id,
-    )
-
-
 # ---------------------------------------------------------------------------
-# CSV bulk import
+# CSV bulk import / export
 # ---------------------------------------------------------------------------
 
 @router.post("/import", response_model=ImportResultResponse)
@@ -460,5 +309,186 @@ async def import_members_endpoint(
         db=db,
         content=content,
         update_existing=update_existing,
+        updated_by_user_id=current_user.id,
+    )
+
+
+@router.get("/export", response_class=StreamingResponse)
+async def export_members_endpoint(
+    status: Optional[int] = Query(default=None, ge=1, le=4),
+    member_category: Optional[int] = Query(default=None, ge=1, le=8),
+    search: Optional[str] = Query(default=None),
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export filtered members to CSV file."""
+    from datetime import datetime
+
+    csv_content = await export_members_to_csv(
+        db=db,
+        status=status,
+        member_category=member_category,
+        search=search,
+    )
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"members_{timestamp}.csv"
+
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/{member_uuid:uuid}", response_model=MemberDetailResponse)
+async def get_member_endpoint(
+    member_uuid: UUID,
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    member = await get_member_or_404(db=db, member_uuid=member_uuid)
+    return await serialize_member_detail(db=db, member=member)
+
+
+@router.patch("/{member_uuid:uuid}", response_model=MemberDetailResponse)
+async def update_member_endpoint(
+    member_uuid: UUID,
+    payload: MemberUpdateRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    member = await update_member(
+        db=db,
+        member_uuid=member_uuid,
+        payload=payload,
+        updated_by_user_id=current_user.id,
+    )
+    return await serialize_member_detail(db=db, member=member)
+
+
+@router.post("/{member_uuid:uuid}/complete-registration", response_model=MemberDetailResponse)
+async def complete_member_registration_endpoint(
+    member_uuid: UUID,
+    payload: RegistrationCompletionRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    member = await complete_member_registration(
+        db=db,
+        member_uuid=member_uuid,
+        payload=payload,
+        updated_by_user_id=current_user.id,
+    )
+    return await serialize_member_detail(db=db, member=member)
+
+
+@router.get("/{member_uuid:uuid}/registrations", response_model=list[MemberRegistrationResponse])
+async def list_member_registrations_endpoint(
+    member_uuid: UUID,
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_member_registrations(db=db, member_uuid=member_uuid)
+
+
+@router.post("/{member_uuid:uuid}/registrations", response_model=MemberRegistrationResponse)
+async def create_member_registration_endpoint(
+    member_uuid: UUID,
+    payload: MemberRegistrationCreateRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    registration = await create_member_registration(
+        db=db,
+        member_uuid=member_uuid,
+        payload=payload,
+        registered_by_user_id=current_user.id,
+    )
+    return MemberRegistrationResponse.model_validate(registration)
+
+
+@router.patch("/{member_uuid:uuid}/registrations/{registration_uuid:uuid}", response_model=MemberRegistrationResponse)
+async def update_member_registration_endpoint(
+    member_uuid: UUID,
+    registration_uuid: UUID,
+    payload: MemberRegistrationUpdateRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    registration = await update_member_registration(
+        db=db,
+        member_uuid=member_uuid,
+        registration_uuid=registration_uuid,
+        payload=payload,
+        updated_by_user_id=current_user.id,
+    )
+    return MemberRegistrationResponse.model_validate(registration)
+
+
+@router.get("/{member_uuid:uuid}/sheets", response_model=list[MemberSheetResponse])
+async def list_member_sheets_endpoint(
+    member_uuid: UUID,
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_member_sheets(db=db, member_uuid=member_uuid)
+
+
+@router.get("/{member_uuid:uuid}/sheets/{year}", response_model=MemberSheetResponse)
+async def get_member_sheet_endpoint(
+    member_uuid: UUID,
+    year: int,
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    sheet = await get_member_sheet_or_404(db=db, member_uuid=member_uuid, year=year)
+    return MemberSheetResponse.model_validate(sheet)
+
+
+@router.put("/{member_uuid:uuid}/sheets/{year}", response_model=MemberSheetResponse)
+async def upsert_member_sheet_endpoint(
+    member_uuid: UUID,
+    year: int,
+    payload: MemberSheetUpsertRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    sheet = await upsert_member_sheet(
+        db=db,
+        member_uuid=member_uuid,
+        year=year,
+        payload=payload,
+        updated_by_user_id=current_user.id,
+    )
+    return MemberSheetResponse.model_validate(sheet)
+
+
+@router.post("/{member_uuid:uuid}/sheets/{year}/expense-access", response_model=ExpenseAccessResponse)
+async def enable_member_sheet_expense_access_endpoint(
+    member_uuid: UUID,
+    year: int,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await enable_member_sheet_expense_access(
+        db=db,
+        member_uuid=member_uuid,
+        year=year,
+        updated_by_user_id=current_user.id,
+    )
+
+
+@router.delete("/{member_uuid:uuid}/sheets/{year}/expense-access", response_model=ExpenseAccessResponse)
+async def disable_member_sheet_expense_access_endpoint(
+    member_uuid: UUID,
+    year: int,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await disable_member_sheet_expense_access(
+        db=db,
+        member_uuid=member_uuid,
+        year=year,
         updated_by_user_id=current_user.id,
     )

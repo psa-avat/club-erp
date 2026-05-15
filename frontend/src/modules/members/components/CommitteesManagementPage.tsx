@@ -386,6 +386,7 @@ function CommitteeAvatarStack({ committeeUuid, year }: CommitteeAvatarStackProps
 
 export function CommitteesManagementPage() {
   const { t } = useTranslation('members')
+  const { t: tCommon } = useTranslation('common')
   const { selectedYear } = useMembersStore()
 
   const [rosterCommittee, setRosterCommittee] = useState<Committee | null>(null)
@@ -413,7 +414,7 @@ export function CommitteesManagementPage() {
               variant="secondary"
               onClick={() => exportCsv(committees, membersByUuid)}
             >
-              Exporter CSV
+              {tCommon('export.button')}
             </Button>
             <Button type="button" onClick={() => setEditingCommittee(null)}>
               {t('actions.createCommittee')}
