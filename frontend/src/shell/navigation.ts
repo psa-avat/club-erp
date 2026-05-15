@@ -20,6 +20,14 @@ export const shellNavItems: ShellNavItem[] = [
   },
   { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
   {
+    to: '/planche',
+    labelKey: 'nav.planche',
+    requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
+    children: [
+      { to: '/planche/integration', labelKey: 'nav.plancheIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+    ],
+  },
+  {
     to: '/banque',
     labelKey: 'nav.banque',
     requiredCapability: 'VIEW_FINANCIALS',

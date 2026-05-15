@@ -24,6 +24,7 @@ import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheets
 import { MemberPilotSheetPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
+import { PlancheIntegrationPage } from './modules/planche'
 import { AppShell } from './shell/components'
 
 function App() {
@@ -47,6 +48,8 @@ function App() {
           <Route path="/club/commissions" element={<CommitteesManagementPage />} />
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
           <Route path="/planning" element={<PlanningPage />} />
+          <Route path="/planche" element={<Navigate replace to="/planche/integration" />} />
+          <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/banque" element={<BanquePage />} />
           <Route path="/banque/dashboard" element={<BanqueDashboardPage />} />
           <Route path="/banque/operations" element={<BanqueDailyOpsPage />} />

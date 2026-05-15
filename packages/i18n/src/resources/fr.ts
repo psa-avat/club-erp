@@ -45,6 +45,8 @@ export const fr = {
       clubCommissionsManagement: 'Gestion commissions',
       clubSheets: 'Fiches pilotes',
       planning: 'Planning',
+      planche: 'Planche',
+      plancheIntegration: 'Intégration',
       banque: 'Banque',
       banqueOverview: 'Aperçu',
       banqueOps: 'Opérations',
@@ -464,6 +466,45 @@ export const fr = {
     home: {
       title: 'Module Planning',
       description: 'Planche de vol numérique, affectations quotidiennes et suivi des activités seront gérés ici.',
+    },
+  },
+  planche: {
+    hero: {
+      kicker: 'Intégration Planche de Vol',
+      title: 'Configurez la connexion Planche avant toute synchronisation',
+      description: 'Renseignez l’URL distante, l’identifiant de connexion, le jeton API et les identifiants de login, puis validez la connectivité API et le login.',
+    },
+    form: {
+      title: 'Paramètres d’intégration',
+      description: 'Les boutons de test permettent de vérifier l’API distante avant d’activer les futures synchronisations des pilotes, machines et vols.',
+    },
+    fields: {
+      baseUrl: 'URL de base Planche',
+      connectionId: 'ID de connexion',
+      token: 'Jeton API',
+      environment: 'Environnement',
+      user: 'Utilisateur',
+      password: 'Mot de passe',
+      environments: {
+        test: 'Test',
+        production: 'Production',
+      },
+    },
+    actions: {
+      save: 'Enregistrer',
+      saving: 'Enregistrement...',
+      testConnection: 'Tester la connexion',
+      testingConnection: 'Test de connexion...',
+      testLogin: 'Tester le login',
+      testingLogin: 'Test du login...',
+    },
+    state: {
+      loading: 'Chargement des paramètres...',
+    },
+    status: {
+      connected: 'Connexion prête',
+      disconnected: 'Connexion échouée',
+      unknown: 'Non testée',
     },
   },
   banque: {

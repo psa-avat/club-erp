@@ -45,6 +45,8 @@ export const en = {
       clubCommissionsManagement: 'Committee management',
       clubSheets: 'Flight sheets',
       planning: 'Planning',
+      planche: 'Planche',
+      plancheIntegration: 'Integration',
       banque: 'Accounting',
       banqueOverview: 'Overview',
       banqueOps: 'Operations',
@@ -464,6 +466,45 @@ export const en = {
     home: {
       title: 'Planning Module',
       description: 'Digital flight board, daily assignments and activity tracking will be managed here.',
+    },
+  },
+  planche: {
+    hero: {
+      kicker: 'Planche de Vol integration',
+      title: 'Configure the Planche connection before any sync action',
+      description: 'Store the remote endpoint, connection identifier, API token and login credentials, then validate both the API connectivity and the login flow.',
+    },
+    form: {
+      title: 'Integration settings',
+      description: 'Use the test buttons to validate the remote API before enabling future pilot, machine and flight synchronization flows.',
+    },
+    fields: {
+      baseUrl: 'Planche base URL',
+      connectionId: 'Connection ID',
+      token: 'API token',
+      environment: 'Environment',
+      user: 'User',
+      password: 'Password',
+      environments: {
+        test: 'Test',
+        production: 'Production',
+      },
+    },
+    actions: {
+      save: 'Save settings',
+      saving: 'Saving...',
+      testConnection: 'Test connection',
+      testingConnection: 'Testing connection...',
+      testLogin: 'Test login',
+      testingLogin: 'Testing login...',
+    },
+    state: {
+      loading: 'Loading settings...',
+    },
+    status: {
+      connected: 'Connection ready',
+      disconnected: 'Connection failed',
+      unknown: 'Not tested yet',
     },
   },
   banque: {
