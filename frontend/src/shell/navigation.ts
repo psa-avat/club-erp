@@ -25,6 +25,7 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
     children: [
       { to: '/helloasso/integration', labelKey: 'nav.helloassoIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+      { to: '/helloasso/purchases', labelKey: 'nav.helloassoPurchases', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
     ],
   },
   {

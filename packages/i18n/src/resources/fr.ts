@@ -47,6 +47,7 @@ export const fr = {
       planning: 'Planning',
       helloasso: 'HelloAsso',
       helloassoIntegration: 'Configuration',
+      helloassoPurchases: 'Achats',
       planche: 'Planche',
       plancheIntegration: 'Intégration',
       storage: 'Stockage',
@@ -505,6 +506,49 @@ export const fr = {
       connectedWithOrg: 'Connexion prête - organisation: {{slug}}',
       disconnected: 'Connexion échouée',
       unknown: 'Non testée',
+    },
+    purchases: {
+      hero: {
+        kicker: 'Achat HelloAsso',
+        title: 'Produits achetés par vos adhérents',
+        description: 'Consultez les achats HelloAsso (items ou orders) et filtrez les activités actives ou terminées.',
+      },
+      filters: {
+        status: 'Filtre activité',
+        source: 'Source API',
+        campaignType: 'Type de campagne',
+        search: 'Recherche',
+        searchPlaceholder: 'Nom, email, téléphone, id commande...',
+        statusValues: {
+          active: 'Actif',
+          done: 'Terminé',
+        },
+        campaignTypeValues: {
+          all: 'Toutes',
+        },
+        sourceValues: {
+          items: 'Items',
+          orders: 'Orders',
+        },
+      },
+      results: {
+        count: '{{count}} achat(s) - organisation {{organization}}',
+      },
+      table: {
+        id: 'ID',
+        name: 'Nom',
+        campaignType: 'Campagne',
+        email: 'Email',
+        phone: 'Téléphone',
+        amount: 'Paiement',
+        payments: 'IDs paiements',
+        states: 'Statuts',
+        date: 'Date',
+      },
+      state: {
+        loading: 'Chargement des achats...',
+        empty: 'Aucun achat pour ce filtre.',
+      },
     },
   },
   storage: {

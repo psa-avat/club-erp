@@ -24,7 +24,7 @@ import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheets
 import { MemberPilotSheetPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
-import { HelloAssoIntegrationPage } from './modules/helloasso'
+import { HelloAssoIntegrationPage, HelloAssoPurchasesPage } from './modules/helloasso'
 import { PlancheIntegrationPage } from './modules/planche'
 import { StorageSettingsPage } from './modules/storage'
 import { AppShell } from './shell/components'
@@ -52,6 +52,7 @@ function App() {
           <Route path="/planning" element={<PlanningPage />} />
           <Route path="/helloasso" element={<Navigate replace to="/helloasso/integration" />} />
           <Route path="/helloasso/integration" element={<HelloAssoIntegrationPage />} />
+          <Route path="/helloasso/purchases" element={<HelloAssoPurchasesPage />} />
           <Route path="/planche" element={<Navigate replace to="/planche/integration" />} />
           <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/storage" element={<Navigate replace to="/storage/settings" />} />

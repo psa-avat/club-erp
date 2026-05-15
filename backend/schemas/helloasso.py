@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -52,3 +52,38 @@ class HelloAssoConnectionTestResponse(BaseModel):
     organizations_count: int = 0
     organization_slug: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+class HelloAssoPurchasesQuery(BaseModel):
+    status: Literal["active", "done"] = "active"
+    source: Literal["items", "orders"] = "items"
+    campaign_type: str | None = None
+    page_size: int = Field(default=100, ge=1, le=500)
+
+
+class HelloAssoPurchaseRecord(BaseModel):
+    id: int
+    order_id: int | None = None
+    item_id: int | None = None
+    source: Literal["items", "orders"]
+    campaign_type: str | None = None
+    form_slug: str | None = None
+    item_state: str | None = None
+    payment_state: str | None = None
+    date: datetime | None = None
+    full_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    amount_cents: int | None = None
+    payment_ids: list[int] = Field(default_factory=list)
+
+
+class HelloAssoPurchasesResponse(BaseModel):
+    organization_slug: str
+    status: Literal["active", "done"]
+    source: Literal["items", "orders"]
+    campaign_type: str | None = None
+    count: int
+    purchases: list[HelloAssoPurchaseRecord] = Field(default_factory=list)

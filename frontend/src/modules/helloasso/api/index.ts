@@ -5,6 +5,7 @@ import { apiClient, getAuthRequestConfig } from '../../../api/client'
 export const helloassoQueryKeys = {
   root: ['helloasso'] as const,
   settings: ['helloasso', 'settings'] as const,
+  purchases: (status: HelloAssoPurchaseStatus, source: HelloAssoPurchaseSource, campaignTypes: string[]) => ['helloasso', 'purchases', status, source, ...campaignTypes] as const,
 }
 
 export type HelloAssoSettings = {
@@ -27,6 +28,37 @@ export type HelloAssoConnectionTestResponse = {
   organizations_count: number
   organization_slug: string | null
   details: Record<string, unknown>
+}
+
+export type HelloAssoPurchaseStatus = 'active' | 'done'
+export type HelloAssoPurchaseSource = 'items' | 'orders'
+
+export type HelloAssoPurchaseRecord = {
+  id: number
+  order_id: number | null
+  item_id: number | null
+  source: HelloAssoPurchaseSource
+  campaign_type: string | null
+  form_slug: string | null
+  item_state: string | null
+  payment_state: string | null
+  date: string | null
+  full_name: string | null
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  phone: string | null
+  amount_cents: number | null
+  payment_ids: number[]
+}
+
+export type HelloAssoPurchasesResponse = {
+  organization_slug: string
+  status: HelloAssoPurchaseStatus
+  source: HelloAssoPurchaseSource
+  campaign_type: string | null
+  count: number
+  purchases: HelloAssoPurchaseRecord[]
 }
 
 const EMPTY_SETTINGS: HelloAssoSettings = {
@@ -71,6 +103,28 @@ export function useHelloAssoConnectionTestMutation() {
         '/api/v1/helloasso/settings/test-connection',
         settings,
         getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useHelloAssoPurchasesQuery(status: HelloAssoPurchaseStatus, source: HelloAssoPurchaseSource, campaignTypes: string[], enabled: boolean) {
+  return useQuery({
+    queryKey: helloassoQueryKeys.purchases(status, source, campaignTypes),
+    enabled,
+    queryFn: async () => {
+      const authConfig = getAuthRequestConfig()
+      const { data } = await apiClient.get<HelloAssoPurchasesResponse>(
+        '/api/v1/helloasso/purchases',
+        {
+          ...(authConfig ?? {}),
+          params: {
+            status,
+            source,
+            campaign_type: campaignTypes.length > 0 ? campaignTypes.join(',') : undefined,
+          },
+        },
       )
       return data
     },

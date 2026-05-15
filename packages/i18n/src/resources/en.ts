@@ -47,6 +47,7 @@ export const en = {
       planning: 'Planning',
       helloasso: 'HelloAsso',
       helloassoIntegration: 'Setup',
+      helloassoPurchases: 'Purchases',
       planche: 'Planche',
       plancheIntegration: 'Integration',
       storage: 'Storage',
@@ -505,6 +506,49 @@ export const en = {
       connectedWithOrg: 'Connection ready - organization: {{slug}}',
       disconnected: 'Connection failed',
       unknown: 'Not tested yet',
+    },
+    purchases: {
+      hero: {
+        kicker: 'HelloAsso purchases',
+        title: 'Products purchased by your members',
+        description: 'Browse HelloAsso purchases from items or orders endpoints and filter on active or done activities.',
+      },
+      filters: {
+        status: 'Activity filter',
+        source: 'API source',
+        campaignType: 'Campaign type',
+        search: 'Search',
+        searchPlaceholder: 'Name, email, phone, order id...',
+        statusValues: {
+          active: 'Active',
+          done: 'Done',
+        },
+        campaignTypeValues: {
+          all: 'All',
+        },
+        sourceValues: {
+          items: 'Items',
+          orders: 'Orders',
+        },
+      },
+      results: {
+        count: '{{count}} purchase(s) - organization {{organization}}',
+      },
+      table: {
+        id: 'ID',
+        name: 'Name',
+        campaignType: 'Campaign',
+        email: 'Email',
+        phone: 'Phone',
+        amount: 'Payment',
+        payments: 'Payment IDs',
+        states: 'States',
+        date: 'Date',
+      },
+      state: {
+        loading: 'Loading purchases...',
+        empty: 'No purchases for this filter.',
+      },
     },
   },
   storage: {

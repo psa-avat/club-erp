@@ -24,7 +24,11 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from api.routes.helloasso import router, test_helloasso_connection_endpoint
+from api.routes.helloasso import (
+    list_helloasso_purchases_endpoint,
+    router,
+    test_helloasso_connection_endpoint,
+)
 from schemas.helloasso import HelloAssoSettingsPayload
 
 
@@ -41,6 +45,7 @@ class HelloAssoRouteGuardTests(TestCase):
             ("/settings", "GET"),
             ("/settings", "PUT"),
             ("/settings/test-connection", "POST"),
+            ("/purchases", "GET"),
         ]
 
         for path, method in privileged:
@@ -99,3 +104,63 @@ class HelloAssoConnectionTests(IsolatedAsyncioTestCase):
                 await test_helloasso_connection_endpoint(payload, None, user)
 
         self.assertEqual(context.exception.status_code, 502)
+
+
+class HelloAssoPurchasesTests(IsolatedAsyncioTestCase):
+    async def test_purchases_items_active(self):
+        db = AsyncMock()
+        user = SimpleNamespace(id=99)
+        setting = SimpleNamespace(
+            settings={
+                "client_id": "cid",
+                "client_secret": "sec",
+            }
+        )
+
+        with patch(
+            "api.routes.helloasso.get_system_setting",
+            new=AsyncMock(return_value=setting),
+        ), patch(
+            "api.routes.helloasso._run_in_thread",
+            new=AsyncMock(
+                side_effect=[
+                    (200, {"access_token": "token-123"}),
+                    (200, [{"organizationSlug": "club-test"}]),
+                    (
+                        200,
+                        {
+                            "data": [
+                                {
+                                    "id": 321,
+                                    "state": "Processed",
+                                    "amount": 2500,
+                                    "payer": {
+                                        "firstName": "Alice",
+                                        "lastName": "Martin",
+                                        "email": "alice@example.org",
+                                    },
+                                    "order": {
+                                        "id": 123,
+                                        "date": "2026-05-15T09:30:00Z",
+                                    },
+                                    "payments": [
+                                        {
+                                            "id": 999,
+                                            "state": "Authorized",
+                                            "date": "2026-05-15T09:31:00Z",
+                                        }
+                                    ],
+                                }
+                            ]
+                        },
+                    ),
+                ]
+            ),
+        ):
+            response = await list_helloasso_purchases_endpoint("active", "items", None, 100, db, None, user)
+
+        self.assertEqual(response.organization_slug, "club-test")
+        self.assertEqual(response.count, 1)
+        self.assertEqual(response.purchases[0].id, 321)
+        self.assertEqual(response.purchases[0].order_id, 123)
+        self.assertEqual(response.purchases[0].email, "alice@example.org")
