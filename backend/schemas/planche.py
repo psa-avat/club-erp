@@ -36,6 +36,21 @@ class PlancheSettingsPayload(BaseModel):
     user: str = Field(min_length=1)
     password: str = Field(min_length=1)
     environment: str = Field(default="test", min_length=1)
+    # Sync cursor fields for incremental pulls (Phase 1+)
+    sync_cursor_flights: Optional[datetime] = Field(default=None)  # Last pull timestamp for flights
+    sync_cursor_pilots: Optional[datetime] = Field(default=None)  # Last push timestamp for pilots
+    sync_cursor_machines: Optional[datetime] = Field(default=None)  # Last push timestamp for machines
+    # Retry configuration for failed operations
+    retry_max_attempts: int = Field(default=3, ge=1, le=10)
+    retry_backoff_ms: int = Field(default=1000, ge=100, le=60000)
+    # Feature flags for enabling/disabling sync operations
+    feature_flags: dict[str, bool] = Field(
+        default_factory=lambda: {
+            "enable_pilot_push": True,
+            "enable_machine_push": True,
+            "enable_flight_pull": True,
+        }
+    )
 
 
 class PlancheSettingsResponse(BaseModel):

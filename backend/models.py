@@ -21,6 +21,7 @@
 """SQLAlchemy models for authentication, authorization, user settings, and members."""
 
 from datetime import datetime, timezone
+from enum import IntEnum
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -1092,3 +1093,153 @@ class CostProvisionRule(Base):
 
     def __repr__(self):
         return f"<CostProvisionRule asset_type={self.asset_type_uuid} metric={self.metric_name} fy={self.fiscal_year_uuid}>"
+
+
+class TypeOfFlight(IntEnum):
+    """Enum for type of flight."""
+
+    INSTRUCTION = 0
+    SOLO = 1
+    INITIATION = 2
+    PARTAGE = 3
+    PASSAGER = 4
+    LACHER = 5
+    SUPERVISE = 6
+    ESSAI = 7
+
+
+class LaunchMethod(IntEnum):
+    """Enum for launch method."""
+
+    EXTERNE = 0
+    TREUIL = 1
+    REMORQUEUR = 2
+    AUTONOME = 3
+
+
+class ValidatedFlight(Base):
+    """
+    Validated flights imported from Planche backend.
+
+    Status tracking enables modification detection and draft/validated lifecycle.
+    Flight prices are calculated and stored in accounting_entries (GL lines) when transferred.
+    Links to GL entry via accounting_entry_uuid (single source of truth for pricing).
+    """
+
+    __tablename__ = "validated_flights"
+    __table_args__ = (
+        UniqueConstraint("uuid", name="uq_validated_flights_uuid"),
+        UniqueConstraint("planche_uuid", name="uq_validated_flights_planche_uuid"),
+        CheckConstraint("typeOfFlight BETWEEN 0 AND 7", name="chk_vf_typeOfFlight"),
+        CheckConstraint("launchMethod BETWEEN 0 AND 3", name="chk_vf_launchMethod"),
+        CheckConstraint("erp_status IN (0, 1, 2)", name="chk_vf_erp_status"),
+        CheckConstraint("landingCount >= 1", name="chk_vf_landingCount"),
+    )
+
+    # Identifiers
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    planche_uuid = Column(String, nullable=False, index=True)  # Planche flight UUID (sync key)
+
+    # Flight context (required)
+    jour = Column(Date, nullable=False)  # Flight date
+    asset_code = Column(String, nullable=False)  # Glider registration (asset_code)
+
+    # Pilots (ERP member IDs)
+    pilot_erp_id = Column(String, nullable=False)  # Main pilot (ERP member UUID)
+    second_pilot_erp_id = Column(String, nullable=True)  # Second pilot/instructor
+    charge_to_erp_id = Column(String, nullable=True)  # Billing member
+    instruction_split = Column(Integer, nullable=False, default=0)  # Instruction split
+
+    vi_erp_id = Column(String, nullable=True)  # VI assignment (ERP identifier)
+
+    # Flight details (required)
+    typeOfFlight = Column(Integer, nullable=False)  # Enum: INSTRUCTION, SOLO, etc.
+    launchMethod = Column(Integer, nullable=False)  # Enum: EXTERNE, TREUIL, etc.
+    launchType = Column(Integer, nullable=True)  # Launch type (see plan for mapping)
+
+    # Tow/Winch details (optional)
+    launch_asset_code = Column(String, nullable=True)  # Tow/winch registration
+    launch_pilot_trigram = Column(String, nullable=True)  # Tow pilot trigram
+    launch_instructor_trigram = Column(String, nullable=True)  # Launch instructor trigram
+
+    # Timing & Indexes (required times, optional indices)
+    takeoffTime = Column(String, nullable=False)  # HH:MM format
+    landingTime = Column(String, nullable=False)  # HH:MM format
+    startIndex = Column(Float, nullable=True)  # TMG/tow plane index
+    stopIndex = Column(Float, nullable=True)  # TMG/tow plane index
+    engineTime = Column(Float, nullable=True)  # Engine time in 1/100ths of hours
+    landingCount = Column(Integer, nullable=False, default=1)
+
+    # Flight metrics (optional)
+    flightKm = Column(Float, nullable=True)  # Distance in km
+    takeoffLocation = Column(String, nullable=True)  # ICAO code
+    landedLocation = Column(String, nullable=True)  # ICAO code
+    observations = Column(Text, nullable=True)  # Free text
+
+    # ERP status and audit metadata
+    # 0=validated (draft), 1=transferred (locked), 2=modified_after_transfer
+    erp_status = Column(Integer, nullable=False, default=0, index=True)
+    validated_at = Column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    validated_by = Column(String, nullable=False)  # User/device ID who validated
+    transferred_at = Column(DateTime(timezone=True), nullable=True)  # When transferred to accounting
+    transferred_by = Column(String, nullable=True)  # User/device who transferred
+    last_export_hash = Column(String, nullable=True)  # Change marker for modification detection
+
+    # Accounting entry linkage
+    accounting_entry_uuid = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)  # Link to GL entry
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<ValidatedFlight uuid={self.uuid} planche_uuid={self.planche_uuid} asset_code={self.asset_code} jour={self.jour}>"
+
+
+class AuditLog(Base):
+    """
+    Immutable audit trail for all Planche sync, import, and validation operations.
+    Accessible via dedicated page and droppable by admin.
+    """
+
+    __tablename__ = "planche_audit_log"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    # Operation type: pilot_push, machine_push, flights_pull, flights_validate, flights_transfer, etc.
+    operation_type = Column(String, nullable=False, index=True)
+    # Affected record UUID (planche_uuid for flights, pilot_id for pilots, etc.)
+    affected_record_id = Column(String, nullable=True, index=True)
+    # Success/failure status
+    status = Column(SmallInteger, nullable=False, default=0)  # 0=success, 1=error, 2=partial
+    # Result summary (JSON-like description)
+    result_summary = Column(String, nullable=True)
+    # Detailed error message if applicable
+    error_message = Column(Text, nullable=True)
+    # Counts for batch operations
+    total_records = Column(Integer, nullable=True, default=0)
+    success_count = Column(Integer, nullable=True, default=0)
+    failure_count = Column(Integer, nullable=True, default=0)
+    # User/system that triggered the operation
+    triggered_by = Column(String, nullable=True)
+    # Operation metadata (JSON-like)
+    metadata = Column(Text, nullable=True)  # JSON string with operation-specific data
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+    def __repr__(self):
+        return f"<AuditLog operation={self.operation_type} status={self.status} at={self.created_at}>"
