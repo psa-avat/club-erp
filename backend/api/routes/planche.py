@@ -38,12 +38,71 @@ from constants import CAP_MANAGE_ACCOUNTING_SETTINGS
 from models import User
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import PLANCHE_SETTINGS_MODULE, PlancheConnectionTestResponse, PlancheLoginTestResponse, PlancheSettingsPayload, PlancheSettingsResponse
+from services.planche_integration import PlancheIntegrationService
+
+# --- Phase 2: Outbound Sync Endpoints ---
+from fastapi.responses import JSONResponse
+
 from services.accounting import get_system_setting, upsert_system_setting
 
 router = APIRouter(prefix="/api/v1/planche", tags=["planche"])
 logger = logging.getLogger(__name__)
 
 settings_guard = Depends(require_capability(CAP_MANAGE_ACCOUNTING_SETTINGS))
+
+
+
+def _get_planche_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    """Helper to extract Planche settings dict with defaults."""
+    allowed_keys = PlancheSettingsPayload.model_fields.keys()
+    return {key: settings.get(key, DEFAULT_PLANCHE_SETTINGS.get(key)) for key in allowed_keys}
+
+async def _get_planche_service(db: AsyncSession) -> PlancheIntegrationService:
+    setting = await get_system_setting(db, PLANCHE_SETTINGS_MODULE)
+    settings = _get_planche_settings(setting.settings if setting else {})
+    return PlancheIntegrationService(
+        base_url=settings["base_url"],
+        connection_id=settings["connection_id"],
+        token=settings["token"],
+        user=settings["user"],
+        password=settings["password"],
+        retry_max_attempts=settings.get("retry_max_attempts", 3),
+        retry_backoff_ms=settings.get("retry_backoff_ms", 1000),
+    )
+
+@router.post("/pilots/push")
+async def push_pilots_to_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Manually push eligible pilots to Planche."""
+    service = await _get_planche_service(db)
+    result = await service.batch_push_pilots(db, triggered_by=str(current_user.id))
+    return JSONResponse({
+        "success": result["failure"] == 0,
+        "pushed_count": result["success"],
+        "failed_count": result["failure"],
+        "errors": result["error_details"],
+        "last_synced_at": datetime.now(UTC).isoformat(),
+    })
+
+@router.post("/machines/push")
+async def push_machines_to_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Manually push eligible machines to Planche."""
+    service = await _get_planche_service(db)
+    result = await service.batch_push_machines(db, triggered_by=str(current_user.id))
+    return JSONResponse({
+        "success": result["failure"] == 0,
+        "pushed_count": result["success"],
+        "failed_count": result["failure"],
+        "errors": result["error_details"],
+        "last_synced_at": datetime.now(UTC).isoformat(),
+    })
 
 DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "base_url": "",

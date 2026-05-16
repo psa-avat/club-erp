@@ -67,7 +67,7 @@ CREATE TABLE planche_audit_log (
     success_count INTEGER DEFAULT 0,
     failure_count INTEGER DEFAULT 0,
     triggered_by VARCHAR,
-    metadata TEXT,
+    audit_metadata TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 

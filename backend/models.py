@@ -1233,7 +1233,7 @@ class AuditLog(Base):
     # User/system that triggered the operation
     triggered_by = Column(String, nullable=True)
     # Operation metadata (JSON-like)
-    metadata = Column(Text, nullable=True)  # JSON string with operation-specific data
+    audit_metadata = Column(Text, nullable=True)  # JSON string with operation-specific data
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
