@@ -34,6 +34,7 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
     children: [
       { to: '/planche/integration', labelKey: 'nav.plancheIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+      { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
     ],
   },
   {

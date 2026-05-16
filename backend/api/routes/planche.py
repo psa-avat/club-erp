@@ -30,6 +30,7 @@ from urllib import request as urllib_request
 from urllib.parse import urljoin
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -51,6 +52,10 @@ logger = logging.getLogger(__name__)
 settings_guard = Depends(require_capability(CAP_MANAGE_ACCOUNTING_SETTINGS))
 
 
+class PilotPushRequest(BaseModel):
+    dry_run: bool = False
+
+
 
 def _get_planche_settings(settings: dict[str, Any]) -> dict[str, Any]:
     """Helper to extract Planche settings dict with defaults."""
@@ -70,21 +75,104 @@ async def _get_planche_service(db: AsyncSession) -> PlancheIntegrationService:
         retry_backoff_ms=settings.get("retry_backoff_ms", 1000),
     )
 
+
+def _pilot_push_errors(error_details: list[Any]) -> list[dict[str, str]]:
+    """Normalize service errors to a stable API shape for frontend rendering."""
+    normalized: list[dict[str, str]] = []
+    for detail in error_details:
+        if isinstance(detail, dict):
+            normalized.append(
+                {
+                    "pilot_id": str(detail.get("pilot_id") or ""),
+                    "error_msg": str(detail.get("error_msg") or "Unexpected error"),
+                }
+            )
+            continue
+
+        text = str(detail)
+        prefix = "Member "
+        if text.startswith(prefix) and ":" in text:
+            pilot_id, error_msg = text[len(prefix):].split(":", 1)
+            normalized.append({"pilot_id": pilot_id.strip(), "error_msg": error_msg.strip()})
+        else:
+            normalized.append({"pilot_id": "", "error_msg": text})
+    return normalized
+
+
+@router.get("/pilots/push/preview")
+async def preview_pilot_push_to_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+):
+    """Return pilot push eligibility/exclusion counters for confirmation UI."""
+    service = await _get_planche_service(db)
+    result = await service.get_pilot_push_preview(db)
+    return JSONResponse(result)
+
+@router.get("/pilots/missing-erp-id")
+async def get_pilots_missing_erp_id(
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+):
+    """Retrieve Planche pilots missing erp_id (need repair/migration)."""
+    service = await _get_planche_service(db)
+    pilots = await service.get_pilots_missing_erp_id()
+    return JSONResponse({"pilots": pilots, "count": len(pilots)})
+
+@router.get("/pilots/orphaned")
+async def get_orphaned_pilots_on_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+):
+    """Retrieve Planche pilots not found in ERP (orphaned)."""
+    service = await _get_planche_service(db)
+    pilots = await service.get_orphaned_pilots_on_planche(db)
+    return JSONResponse({"pilots": pilots, "count": len(pilots)})
+
 @router.post("/pilots/push")
 async def push_pilots_to_planche(
+    request: PilotPushRequest | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Manually push eligible pilots to Planche."""
     service = await _get_planche_service(db)
+
+    if request and request.dry_run:
+        preview = await service.get_pilot_push_preview(db)
+        return JSONResponse(
+            {
+                "success": True,
+                "pushed_count": 0,
+                "failed_count": 0,
+                "errors": [],
+                "last_synced_at": preview.get("last_synced_at"),
+                "sync_year": preview.get("sync_year"),
+                "dry_run": True,
+                "dry_run_eligible_count": preview.get("eligible_count", 0),
+                "dry_run_excluded_count": preview.get("excluded_count", 0),
+            }
+        )
+
     result = await service.batch_push_pilots(db, triggered_by=str(current_user.id))
+    normalized_errors = _pilot_push_errors(result.get("error_details", []))
     return JSONResponse({
         "success": result["failure"] == 0,
         "pushed_count": result["success"],
         "failed_count": result["failure"],
-        "errors": result["error_details"],
+        "errors": normalized_errors,
         "last_synced_at": datetime.now(UTC).isoformat(),
+        "sync_year": result.get("sync_year"),
+        "created_count": result.get("created_count"),
+        "updated_count": result.get("updated_count"),
+        "repaired_erp_id_count": result.get("repaired_erp_id_count"),
+        "skipped_unchanged_count": result.get("skipped_unchanged_count"),
+        "processed_count": result.get("processed_count"),
+        "chunk_size": result.get("chunk_size"),
+        "total_chunks": result.get("total_chunks"),
+        "processed_chunks": result.get("processed_chunks"),
+        "dry_run": False,
     })
 
 @router.post("/machines/push")
@@ -111,6 +199,8 @@ DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "user": "",
     "password": "",
     "environment": "test",
+    "retry_max_attempts": 3,
+    "retry_backoff_ms": 1000,
 }
 
 
