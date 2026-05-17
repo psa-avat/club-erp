@@ -6,6 +6,7 @@ export const plancheQueryKeys = {
   root: ['planche'] as const,
   settings: ['planche', 'settings'] as const,
   pilotPushPreview: ['planche', 'pilots', 'push', 'preview'] as const,
+  machinePushPreview: ['planche', 'machines', 'push', 'preview'] as const,
   pilotsMissingErpId: ['planche', 'pilots', 'missing-erp-id'] as const,
   pilotsOrphaned: ['planche', 'pilots', 'orphaned'] as const,
 }
@@ -37,6 +38,19 @@ export type PlanchePilotsPushResponse = {
 
 export type PlanchePilotsPushRequest = {
   dry_run?: boolean
+}
+
+export type PlancheMachinesPushResponse = {
+  success: boolean
+  pushed_count: number
+  failed_count: number
+  errors: string[]
+  last_synced_at: string | null
+}
+
+export type PlancheMachinesPushPreviewResponse = {
+  eligible_count: number
+  last_synced_at: string | null
 }
 
 export type PlanchePilotsPushPreviewResponse = {
@@ -190,6 +204,33 @@ export function usePilotsPushPreviewQuery(enabled: boolean) {
     queryFn: async () => {
       const { data } = await apiClient.get<PlanchePilotsPushPreviewResponse>(
         '/api/v1/planche/pilots/push/preview',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useMachinesPushMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<PlancheMachinesPushResponse>(
+        '/api/v1/planche/machines/push',
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useMachinesPushPreviewQuery(enabled: boolean) {
+  return useQuery({
+    queryKey: plancheQueryKeys.machinePushPreview,
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<PlancheMachinesPushPreviewResponse>(
+        '/api/v1/planche/machines/push/preview',
         getAuthRequestConfig(),
       )
       return data

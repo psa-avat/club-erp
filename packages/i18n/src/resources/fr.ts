@@ -51,6 +51,7 @@ export const fr = {
       planche: 'Planche',
       plancheIntegration: 'Intégration',
       plancheMembersPush: 'Mise à jour des pilotes',
+      plancheMachinesPush: 'Mise à jour des machines',
       storage: 'Stockage',
       storageSettings: 'Configuration',
       banque: 'Banque',
@@ -701,6 +702,45 @@ export const fr = {
         tableActif: 'Statut',
         statusActif: 'Actif',
         statusInactif: 'Inactif',
+      },
+    },
+    machinesPush: {
+      hero: {
+        kicker: 'Synchronisation machines',
+        title: 'Pousser les machines vers Planche',
+        description: 'Déclenchez un export manuel des machines éligibles vers Planche en utilisant les identifiants configurés dans les paramètres d’intégration.',
+      },
+      card: {
+        title: 'Push manuel',
+        description: 'Cette opération envoie les machines éligibles vers Planche. Vous pouvez la relancer sans risque.',
+      },
+      status: {
+        settings: 'État des identifiants',
+        ready: 'Configuré',
+        missing: 'Paramètres requis manquants',
+        lastSync: 'Dernier push',
+        never: 'Jamais',
+      },
+      validation: {
+        configureFirst: 'Configurez les identifiants Planche sur la page d’intégration avant de lancer un push des machines.',
+      },
+      preview: {
+        eligible: 'Machines éligibles',
+      },
+      actions: {
+        pushNow: 'Pousser les machines',
+        pushing: 'Push des machines...',
+      },
+      confirm: {
+        title: 'Confirmer le push des machines',
+        description: 'Cette opération enverra toutes les machines éligibles vers Planche avec les identifiants actuels.',
+        cancel: 'Annuler',
+        push: 'Pousser',
+      },
+      result: {
+        title: 'Résultat de la dernière exécution',
+        summary: 'Poussées : {{pushed}} | Échecs : {{failed}}',
+        success: 'Toutes les machines éligibles ont été poussées avec succès.',
       },
     },
   },

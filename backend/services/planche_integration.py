@@ -740,7 +740,7 @@ class PlancheIntegrationService:
         self, db: AsyncSession, triggered_by: str = "system"
     ) -> dict[str, Any]:
         """
-        Push eligible machines (active assets) to Planche.
+        Push eligible machines (active assets) to Planche using ERP endpoint.
 
         Returns:
             {
@@ -758,39 +758,41 @@ class PlancheIntegrationService:
             result = await db.execute(stmt)
             eligible_assets = result.scalars().all()
 
+            chunk_size = 10
+            assets_chunks = [eligible_assets[i:i+chunk_size] for i in range(0, len(eligible_assets), chunk_size)]
+
             success_count = 0
             failure_count = 0
             error_details = []
 
-            for asset in eligible_assets:
-                try:
-                    machine_payload = {
+            for chunk in assets_chunks:
+                chunk_payload = [
+                    {
                         "code": asset.code,
                         "registration": asset.registration,
                         "model": asset.model,
                         "manufacturer": asset.manufacturer,
                         "year": asset.year_of_manufacture,
                     }
-
+                    for asset in chunk
+                ]
+                try:
                     response = await self._perform_request(
                         method="POST",
-                        endpoint="/machines",
-                        json=machine_payload,
+                        endpoint="/erp/machines/sync",
+                        json={"items": chunk_payload, "dry_run": False},
                     )
-
                     if response.status_code in (200, 201):
-                        response_data = response.json()
-                        # Planche successfully received the machine
-                        # (No need to cache Planche machine ID - Planche provides asset_code)
-                        success_count += 1
+                        # Optionally parse response for per-item results
+                        success_count += len(chunk)
                     else:
                         error_details.append(
-                            f"Asset {asset.uuid}: HTTP {response.status_code}"
+                            f"Chunk failed: HTTP {response.status_code} - {response.text[:200]}"
                         )
-                        failure_count += 1
+                        failure_count += len(chunk)
                 except Exception as e:
-                    error_details.append(f"Asset {asset.uuid}: {str(e)}")
-                    failure_count += 1
+                    error_details.append(f"Chunk exception: {str(e)}")
+                    failure_count += len(chunk)
 
             # Commit changes
             await db.commit()
@@ -824,6 +826,26 @@ class PlancheIntegrationService:
                 triggered_by=triggered_by,
             )
             raise
+
+    async def get_machine_push_preview(self, db: AsyncSession) -> dict[str, Any]:
+        """Return machine push eligibility counters for confirmation UI."""
+        eligible_stmt = select(func.count()).select_from(Asset).where(
+            (Asset.is_active == True) & (Asset.status == 1)
+        )
+        last_push_stmt = (
+            select(AuditLog.created_at)
+            .where(AuditLog.operation_type == "machine_push")
+            .order_by(desc(AuditLog.created_at))
+            .limit(1)
+        )
+
+        eligible_count = int((await db.execute(eligible_stmt)).scalar_one() or 0)
+        last_push_at = (await db.execute(last_push_stmt)).scalar_one_or_none()
+
+        return {
+            "eligible_count": eligible_count,
+            "last_synced_at": last_push_at.isoformat() if last_push_at else None,
+        }
 
     async def pull_validated_flights(
         self,

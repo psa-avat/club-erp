@@ -51,6 +51,7 @@ export const en = {
       planche: 'Planche',
       plancheIntegration: 'Integration',
       plancheMembersPush: 'Members push',
+      plancheMachinesPush: 'Machines push',
       storage: 'Storage',
       storageSettings: 'Settings',
       banque: 'Accounting',
@@ -701,6 +702,45 @@ export const en = {
         tableActif: 'Status',
         statusActif: 'Active',
         statusInactif: 'Inactive',
+      },
+    },
+    machinesPush: {
+      hero: {
+        kicker: 'Machines sync',
+        title: 'Push machines to Planche',
+        description: 'Trigger a manual export of eligible machines to Planche using the credentials configured in integration settings.',
+      },
+      card: {
+        title: 'Manual push',
+        description: 'This operation sends eligible machines to Planche. You can run it safely multiple times.',
+      },
+      status: {
+        settings: 'Credentials status',
+        ready: 'Configured',
+        missing: 'Missing required settings',
+        lastSync: 'Last push',
+        never: 'Never',
+      },
+      validation: {
+        configureFirst: 'Configure Planche credentials on the integration page before launching a machines push.',
+      },
+      preview: {
+        eligible: 'Eligible machines',
+      },
+      actions: {
+        pushNow: 'Push machines now',
+        pushing: 'Pushing machines...',
+      },
+      confirm: {
+        title: 'Confirm machines push',
+        description: 'This operation will send all eligible machines to Planche using the current integration credentials.',
+        cancel: 'Cancel',
+        push: 'Push now',
+      },
+      result: {
+        title: 'Last execution result',
+        summary: 'Pushed: {{pushed}} | Failed: {{failed}}',
+        success: 'All eligible machines were pushed successfully.',
       },
     },
   },

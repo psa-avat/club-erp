@@ -192,6 +192,17 @@ async def push_machines_to_planche(
         "last_synced_at": datetime.now(UTC).isoformat(),
     })
 
+
+@router.get("/machines/push/preview")
+async def preview_machine_push_to_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = settings_guard,
+):
+    """Return machine push eligibility counters for confirmation UI."""
+    service = await _get_planche_service(db)
+    result = await service.get_machine_push_preview(db)
+    return JSONResponse(result)
+
 DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "base_url": "",
     "connection_id": "",
