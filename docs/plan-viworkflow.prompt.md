@@ -73,3 +73,40 @@ Open points to lock
 1. Capability assignment policy: admin-only or shared with selected staff.
 2. Realisation date policy: auto-fill from validated flights with manual override, or manual-only.
 3. Template generation policy: nightly auto-generation or on-demand per planning session.
+
+Phased build order
+
+Phase 1 - ERP data foundation
+Deliverables: vi_type_catalog model, vi_entitlements model, and helloasso_vi_staging model in backend/models.py. SQL migration in deploy/init-db/. Pydantic request and response schemas. No routes yet.
+Depends on: nothing.
+Done when: models import cleanly, migration runs without error, and schemas validate correctly.
+
+Phase 2 - ERP service layer and CRUD routes
+Deliverables: service functions for type catalog and entitlement CRUD, focused patch helpers for scheduled_date, realisation_date, and notes, bulk scheduling helper, new CAP_MANAGE_VI capability in constants.py, and guarded routes at /api/v1/vi/* with capability enforcement.
+Depends on: Phase 1.
+Done when: backend test slice passes for CRUD, date patch, and capability guard on each route.
+
+Phase 3 - HelloAsso import pipeline
+Deliverables: token cache layer with 30-minute TTL and refresh via https://api.helloasso.com/oauth2/token, staging import endpoint that deduplicates on order_id/item_id/payment_id, promote-to-entitlement endpoint that marks rows consumed and excludes them from future pulls, and preview/diff endpoint showing net-new candidates.
+Depends on: Phase 1 and 2.
+Done when: repeated import runs produce no duplicate staging rows or entitlements.
+
+Phase 4 - Planche sync extension
+Deliverables: outbound VI schedule push endpoint that accepts a selection of entitlement UUIDs, maps to Planche payload including erp_entitlement_id, type code, scheduled date, notes, and origin_type, and deletes or archives removed records on Planche. Planche-side contract updated to accept and store these fields and return vi_erp_id and optionally schedule_slot_id in validated flights.
+Depends on: Phase 2.
+Done when: repeated push of the same selection produces an idempotent state in Planche, and inbound validated flights carry a vi_erp_id that maps deterministically to one ERP entitlement.
+
+Phase 5 - Frontend: HelloAsso import and VI management
+Deliverables: HelloAsso import page (staging table, dedupe diff, promote selection action), VI entitlement list and edit forms (type, origin badge, lifecycle status, date editing, notes editing), and type catalog admin screen (add or archive types).
+Depends on: Phase 2 and 3.
+Done when: tsc --noEmit passes, and the full import-and-promote flow works end to end.
+
+Phase 6 - Frontend: Planning page and Planche push
+Deliverables: VI planning page (calendar or list view, status filters, bulk schedule assignment, inline notes editor), Planche submenu entry for VI schedule push with selection controls and preview counts, and reconciliation feedback showing which entitlements have been realized.
+Depends on: Phase 4 and 5.
+Done when: staff can go from loaded entitlement to Planche-visible scheduled slot in one session without backend errors.
+
+Phase 7 - Tests and hardening
+Deliverables: backend test coverage for type catalog lifecycle, dedupe idempotency, scheduling state machine, Planche push idempotency, inbound reconciliation mapping. Frontend typecheck pass. Manual end-to-end walkthrough documented.
+Depends on: all phases.
+Done when: all backend tests pass, tsc --noEmit is clean, and the full user journey is verified manually.
