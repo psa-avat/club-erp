@@ -97,9 +97,9 @@ class PlancheIntegrationService:
             token = data.get("login_token")
             if not token:
                 raise Exception("No login_token in Planche login response")
-            # Optionally handle expiry if provided by API, else cache for 10min
-            self._login_token = token
-            self._login_token_expiry = time.time() + 600
+            # Write to class-level so the cache survives across instances
+            PlancheIntegrationService._login_token = token
+            PlancheIntegrationService._login_token_expiry = time.time() + 600
             return token
 
     async def get_pilot_push_preview(self, db: AsyncSession) -> dict[str, Any]:
@@ -621,7 +621,7 @@ class PlancheIntegrationService:
                 metadata=json.dumps(
                     {
                         "sync_year": sync_year,
-                        "chunk_size": chunk_size,
+                        "chunk_size": self.chunk_size,
                         "total_chunks": len(chunked_members),
                         "processed_chunks": processed_chunks,
                         "registered_members_count": len(registered_members),
@@ -640,7 +640,7 @@ class PlancheIntegrationService:
                 "success": success_count,
                 "failure": failure_count,
                 "error_details": error_details,
-                "chunk_size": chunk_size,
+                "chunk_size": self.chunk_size,
                 "total_chunks": len(chunked_members),
                 "processed_chunks": processed_chunks,
                 "processed_count": success_count + failure_count,
