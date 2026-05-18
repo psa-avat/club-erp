@@ -35,10 +35,49 @@ logger = logging.getLogger(__name__)
 ACTIVE_MEMBER_STATUS = 1
 ACTIVE_REGISTRATION_STATUS = 1
 
+"""
+    Service for syncing Member, Asset, and Flight data with Planche backend.
+
+    Handles batch operations for pushing pilots/machines and pulling validated flights.
+    Includes retry logic, error normalization, and audit trail logging.
+"""
 
 class PlancheIntegrationService:
     _login_token: str | None = None
     _login_token_expiry: float | None = None
+
+    def __init__(
+        self,
+        base_url: str,
+        connection_id: str,
+        token: str,
+        user: str,
+        password: str,
+        retry_max_attempts: int = 3,
+        retry_backoff_ms: int = 1000,
+        chunk_size: int = 10,
+    ):
+        """
+        Initialize the Planche integration service.
+
+        Args:
+            base_url: Base URL of Planche API
+            connection_id: Connection identifier
+            token: API token (LOGBOOK-API-KEY)
+            user: User/device credential
+            password: Password/credential
+            retry_max_attempts: Max retry attempts for failed requests
+            retry_backoff_ms: Backoff delay in milliseconds (exponential)
+            chunk_size: Batch size for pilot/machine push
+        """
+        self.base_url = base_url
+        self.connection_id = connection_id
+        self.token = token
+        self.user = user
+        self.password = password
+        self.retry_max_attempts = retry_max_attempts
+        self.retry_backoff_ms = retry_backoff_ms
+        self.chunk_size = chunk_size
 
     async def _get_login_token(self) -> str:
         """Fetch and cache the Planche login_token using user/password/API key."""
@@ -62,42 +101,6 @@ class PlancheIntegrationService:
             self._login_token = token
             self._login_token_expiry = time.time() + 600
             return token
-    """
-    Service for syncing Member, Asset, and Flight data with Planche backend.
-
-    Handles batch operations for pushing pilots/machines and pulling validated flights.
-    Includes retry logic, error normalization, and audit trail logging.
-    """
-
-    def __init__(
-        self,
-        base_url: str,
-        connection_id: str,
-        token: str,
-        user: str,
-        password: str,
-        retry_max_attempts: int = 3,
-        retry_backoff_ms: int = 1000,
-    ):
-        """
-        Initialize the Planche integration service.
-
-        Args:
-            base_url: Base URL of Planche API
-            connection_id: Connection identifier
-            token: API token (LOGBOOK-API-KEY)
-            user: User/device credential
-            password: Password/credential
-            retry_max_attempts: Max retry attempts for failed requests
-            retry_backoff_ms: Backoff delay in milliseconds (exponential)
-        """
-        self.base_url = base_url
-        self.connection_id = connection_id
-        self.token = token
-        self.user = user
-        self.password = password
-        self.retry_max_attempts = retry_max_attempts
-        self.retry_backoff_ms = retry_backoff_ms
 
     async def get_pilot_push_preview(self, db: AsyncSession) -> dict[str, Any]:
         """Return pilot push eligibility counters and Planche reconciliation data."""
@@ -487,8 +490,7 @@ class PlancheIntegrationService:
                     if member.uuid not in registered_member_uuids and existing is not None:
                         synchronized_unregistered_present_count += 1
 
-            chunk_size = 10
-            chunked_members = self._chunk_members(members_to_sync, chunk_size)
+            chunked_members = self._chunk_members(members_to_sync, self.chunk_size)
 
             success_count = 0
             failure_count = 0
@@ -758,24 +760,45 @@ class PlancheIntegrationService:
             result = await db.execute(stmt)
             eligible_assets = result.scalars().all()
 
-            chunk_size = 10
-            assets_chunks = [eligible_assets[i:i+chunk_size] for i in range(0, len(eligible_assets), chunk_size)]
+            assets_chunks = [
+                eligible_assets[i : i + self.chunk_size]
+                for i in range(0, len(eligible_assets), self.chunk_size)
+            ]
 
             success_count = 0
             failure_count = 0
             error_details = []
 
             for chunk in assets_chunks:
-                chunk_payload = [
-                    {
-                        "code": asset.code,
-                        "registration": asset.registration,
-                        "model": asset.model,
-                        "manufacturer": asset.manufacturer,
-                        "year": asset.year_of_manufacture,
-                    }
-                    for asset in chunk
-                ]
+                chunk_items: list[tuple[Asset, dict[str, Any]]] = []
+                for asset in chunk:
+                    erp_id = (asset.code or "").strip() or str(asset.uuid)
+                    immat = (asset.registration or "").strip() or (asset.code or "").strip()
+                    if not immat:
+                        error_details.append(
+                            f"Asset {asset.uuid}: missing required immat (registration/code)"
+                        )
+                        failure_count += 1
+                        continue
+
+                    chunk_items.append(
+                        (
+                            asset,
+                            {
+                                "erp_id": erp_id,
+                                "immat": immat,
+                                "modele": asset.model,
+                                "private": 1 if asset.ownership == 2 else 0,
+                                "arretee": 0 if asset.status == 1 else 1,
+                                "asset_absent": not bool(asset.is_active),
+                            },
+                        )
+                    )
+
+                if not chunk_items:
+                    continue
+
+                chunk_payload = [payload for _, payload in chunk_items]
                 try:
                     response = await self._perform_request(
                         method="POST",
@@ -783,16 +806,25 @@ class PlancheIntegrationService:
                         json={"items": chunk_payload, "dry_run": False},
                     )
                     if response.status_code in (200, 201):
-                        # Optionally parse response for per-item results
-                        success_count += len(chunk)
+                        success_count += len(chunk_items)
                     else:
-                        error_details.append(
-                            f"Chunk failed: HTTP {response.status_code} - {response.text[:200]}"
-                        )
-                        failure_count += len(chunk)
+                        # Fallback to per-item retries for better partial-success behavior.
+                        for asset, payload in chunk_items:
+                            single_response = await self._perform_request(
+                                method="POST",
+                                endpoint="/erp/machines/sync",
+                                json={"items": [payload], "dry_run": False},
+                            )
+                            if single_response.status_code in (200, 201):
+                                success_count += 1
+                            else:
+                                error_details.append(
+                                    f"Asset {asset.code or asset.uuid}: HTTP {single_response.status_code}"
+                                )
+                                failure_count += 1
                 except Exception as e:
                     error_details.append(f"Chunk exception: {str(e)}")
-                    failure_count += len(chunk)
+                    failure_count += len(chunk_items)
 
             # Commit changes
             await db.commit()

@@ -73,6 +73,7 @@ async def _get_planche_service(db: AsyncSession) -> PlancheIntegrationService:
         password=settings["password"],
         retry_max_attempts=settings.get("retry_max_attempts", 3),
         retry_backoff_ms=settings.get("retry_backoff_ms", 1000),
+        chunk_size=settings.get("chunk_size", 10),
     )
 
 
@@ -212,6 +213,7 @@ DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "environment": "test",
     "retry_max_attempts": 3,
     "retry_backoff_ms": 1000,
+    "chunk_size": 10,
 }
 
 

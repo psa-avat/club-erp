@@ -30,6 +30,8 @@ PLANCHE_SETTINGS_MODULE = "planche"
 
 
 class PlancheSettingsPayload(BaseModel):
+    # Chunk size for batch sync (pilots/machines)
+    chunk_size: int = Field(default=10, ge=1, le=100)
     base_url: str = Field(min_length=1)
     connection_id: str = Field(min_length=1)
     token: str = Field(min_length=1)

@@ -94,6 +94,7 @@ export type PlancheSettings = {
   user: string
   password: string
   environment: 'test' | 'production' | string
+  chunk_size?: number
 }
 
 export type PlancheSettingsResponse = {
@@ -127,6 +128,7 @@ const EMPTY_SETTINGS: PlancheSettings = {
   user: '',
   password: '',
   environment: 'test',
+  chunk_size: 10,
 }
 
 export function usePlancheSettingsQuery(enabled: boolean) {

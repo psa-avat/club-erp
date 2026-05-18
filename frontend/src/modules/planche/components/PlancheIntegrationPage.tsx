@@ -45,6 +45,7 @@ const EMPTY_SETTINGS: PlancheSettings = {
   user: '',
   password: '',
   environment: 'test',
+  chunk_size: 10,
 }
 
 export function PlancheIntegrationPage() {
@@ -172,6 +173,9 @@ export function PlancheIntegrationPage() {
           </Field>
           <Field label={t('fields.password')} htmlFor="planche-password">
             <Input id="planche-password" required type="password" value={formState.password} onChange={(event) => updateField('password', event.target.value)} />
+          </Field>
+          <Field label={t('fields.chunkSize')} htmlFor="planche-chunk-size">
+            <Input id="planche-chunk-size" type="number" min={1} max={100} value={formState.chunk_size ?? 10} onChange={(event) => updateField('chunk_size', parseInt(event.target.value, 10) || 10)} />
           </Field>
         </div>
 

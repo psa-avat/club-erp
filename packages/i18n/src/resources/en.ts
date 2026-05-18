@@ -605,6 +605,7 @@ export const en = {
       environment: 'Environment',
       user: 'User',
       password: 'Password',
+      chunkSize: 'Chunk size (sync batch size)',
       environments: {
         test: 'Test',
         production: 'Production',
