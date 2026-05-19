@@ -74,7 +74,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
-  const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
+  const canManageModels = useCapability('MANAGE_SYSTEM_SETTINGS')
   const today = new Date().toISOString().slice(0, 10)
 
   const fiscalYearsQuery = useFiscalYearsQuery(canView)

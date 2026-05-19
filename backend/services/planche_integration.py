@@ -25,10 +25,19 @@ import json
 import logging
 
 import httpx
-from sqlalchemy import desc, func, select
+from sqlalchemy import String, cast, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Member, MemberRegistration, Asset, ValidatedFlight, AuditLog
+from models import (
+    Member,
+    MemberRegistration,
+    Asset,
+    ValidatedFlight,
+    AuditLog,
+    ViEntitlement,
+    ViEntitlementStatus,
+    ViTypeCatalog,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -878,6 +887,155 @@ class PlancheIntegrationService:
             "eligible_count": eligible_count,
             "last_synced_at": last_push_at.isoformat() if last_push_at else None,
         }
+
+    async def push_vi_entitlements(
+        self,
+        db: AsyncSession,
+        entitlement_uuids: list[str],
+        triggered_by: str = "system",
+    ) -> dict[str, Any]:
+        """Push selected VI entitlements to Planche operational scheduling endpoint."""
+        if not entitlement_uuids:
+            return {
+                "selected_count": 0,
+                "success": 0,
+                "failure": 0,
+                "error_details": [],
+            }
+
+        entitlements_stmt = (
+            select(ViEntitlement, ViTypeCatalog)
+            .join(ViTypeCatalog, ViTypeCatalog.uuid == ViEntitlement.vi_type_uuid)
+            .where(ViEntitlement.uuid.in_(entitlement_uuids))
+        )
+        result = await db.execute(entitlements_stmt)
+        rows = result.all()
+
+        found_ids = {str(entitlement.uuid) for entitlement, _ in rows}
+        missing_ids = [value for value in entitlement_uuids if value not in found_ids]
+        if missing_ids:
+            raise ValueError(f"Some entitlement UUIDs were not found: {', '.join(missing_ids)}")
+
+        payload_items = []
+        for entitlement, vi_type in rows:
+            payload_items.append(
+                {
+                    "erp_entitlement_id": str(entitlement.uuid),
+                    "entitlement_code": entitlement.code,
+                    "type_code": vi_type.code,
+                    "scheduled_date": entitlement.scheduled_date.isoformat() if entitlement.scheduled_date else None,
+                    "validity_date": entitlement.validity_date.isoformat() if entitlement.validity_date else None,
+                    "origin_type": int(entitlement.origin_type),
+                    "notes": entitlement.notes,
+                    "description": entitlement.description,
+                    "partner_code": entitlement.partner_code,
+                    "status": int(entitlement.status),
+                }
+            )
+
+        chunks = [
+            payload_items[i : i + self.chunk_size]
+            for i in range(0, len(payload_items), self.chunk_size)
+        ]
+        success_count = 0
+        failure_count = 0
+        error_details: list[str] = []
+
+        for chunk in chunks:
+            response = await self._perform_request(
+                method="POST",
+                endpoint="/erp/vi/sync",
+                json={"dry_run": False, "items": chunk},
+            )
+            if response.status_code in (200, 201):
+                success_count += len(chunk)
+            else:
+                failure_count += len(chunk)
+                error_details.append(f"Chunk failed: HTTP {response.status_code}")
+
+        await self._log_audit(
+            db=db,
+            operation_type="vi_push",
+            status=0 if failure_count == 0 else (2 if success_count > 0 else 1),
+            total_records=len(payload_items),
+            success_count=success_count,
+            failure_count=failure_count,
+            error_message="\n".join(error_details) if error_details else None,
+            triggered_by=triggered_by,
+            metadata=json.dumps({"selected_count": len(entitlement_uuids), "chunk_size": self.chunk_size}),
+        )
+
+        return {
+            "selected_count": len(entitlement_uuids),
+            "success": success_count,
+            "failure": failure_count,
+            "error_details": error_details,
+        }
+
+    async def reconcile_vi_realisation_from_validated_flights(
+        self,
+        db: AsyncSession,
+        from_date: Optional[datetime] = None,
+        to_date: Optional[datetime] = None,
+        triggered_by: str = "system",
+    ) -> dict[str, Any]:
+        """Mark VI entitlements as realized from validated_flights.vi_erp_id references."""
+        filters = [ValidatedFlight.vi_erp_id.isnot(None)]
+        if from_date is not None:
+            filters.append(ValidatedFlight.jour >= from_date.date())
+        if to_date is not None:
+            filters.append(ValidatedFlight.jour <= to_date.date())
+
+        flights_result = await db.execute(select(ValidatedFlight).where(*filters))
+        flights = list(flights_result.scalars().all())
+
+        if not flights:
+            return {"total": 0, "updated": 0, "unmatched": 0}
+
+        candidate_ids = {str(flight.vi_erp_id).strip() for flight in flights if flight.vi_erp_id}
+
+        entitlements_result = await db.execute(
+            select(ViEntitlement).where(
+                (cast(ViEntitlement.uuid, String).in_(candidate_ids)) | (ViEntitlement.code.in_(candidate_ids))
+            )
+        )
+        entitlements = list(entitlements_result.scalars().all())
+        by_uuid = {str(entitlement.uuid): entitlement for entitlement in entitlements}
+        by_code = {entitlement.code: entitlement for entitlement in entitlements}
+
+        updated = 0
+        unmatched = 0
+        for flight in flights:
+            key = str(flight.vi_erp_id).strip() if flight.vi_erp_id else ""
+            entitlement = by_uuid.get(key) or by_code.get(key)
+            if entitlement is None:
+                unmatched += 1
+                continue
+
+            if entitlement.status in (
+                int(ViEntitlementStatus.CANCELLED),
+                int(ViEntitlementStatus.EXPIRED),
+            ):
+                continue
+
+            if entitlement.realisation_date is None:
+                entitlement.realisation_date = flight.jour
+            entitlement.status = int(ViEntitlementStatus.REALIZED)
+            updated += 1
+
+        await db.commit()
+
+        await self._log_audit(
+            db=db,
+            operation_type="vi_reconcile",
+            status=0,
+            total_records=len(flights),
+            success_count=updated,
+            failure_count=unmatched,
+            triggered_by=triggered_by,
+        )
+
+        return {"total": len(flights), "updated": updated, "unmatched": unmatched}
 
     async def pull_validated_flights(
         self,

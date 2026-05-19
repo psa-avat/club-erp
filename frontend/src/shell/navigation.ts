@@ -22,28 +22,29 @@ export const shellNavItems: ShellNavItem[] = [
   {
     to: '/helloasso',
     labelKey: 'nav.helloasso',
-    requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
+    requiredCapability: 'HELLOASSO',
     children: [
-      { to: '/helloasso/integration', labelKey: 'nav.helloassoIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
-      { to: '/helloasso/purchases', labelKey: 'nav.helloassoPurchases', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+      { to: '/helloasso/purchases', labelKey: 'nav.helloassoPurchases', requiredCapability: 'HELLOASSO' },
+      { to: '/helloasso/vi-import', labelKey: 'nav.helloassoViImport', requiredCapability: 'HELLOASSO' },
     ],
   },
   {
     to: '/planche',
     labelKey: 'nav.planche',
-    requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS',
+    requiredCapability: 'MANAGE_PLANCHE',
     children: [
-      { to: '/planche/integration', labelKey: 'nav.plancheIntegration', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
-      { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
-      { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+      { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_PLANCHE' },
+      { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_PLANCHE' },
+      { to: '/planche/vi-sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
   {
-    to: '/storage',
-    labelKey: 'nav.storage',
-    requiredCapability: 'MANAGE_SYSTEM_SETTINGS',
+    to: '/vi',
+    labelKey: 'nav.vi',
     children: [
-      { to: '/storage/settings', labelKey: 'nav.storageSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/vi/entitlements', labelKey: 'nav.viEntitlements', requiredCapability: 'MANAGE_VI' },
+      { to: '/vi/types', labelKey: 'nav.viTypes', requiredCapability: 'MANAGE_VI' },
+      { to: '/vi/planning', labelKey: 'nav.viPlanning', requiredCapability: 'PLAN_VI' },
     ],
   },
   {
@@ -57,8 +58,17 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/banque/pricing', labelKey: 'nav.banquePricing' },
       { to: '/banque/fiscal-years', labelKey: 'nav.banqueFiscalYears' },
       { to: '/banque/pcg', labelKey: 'nav.banquePcg' },
-      { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings' },
     ],
   },
-  { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
+  {
+    to: '/admin',
+    labelKey: 'nav.admin',
+    children: [
+      { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
+      { to: '/helloasso/integration', labelKey: 'nav.helloassoIntegration', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/planche/integration', labelKey: 'nav.plancheIntegration', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/storage/settings', labelKey: 'nav.storageSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+    ],
+  },
 ]

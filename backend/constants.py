@@ -60,6 +60,11 @@ CAP_MANAGE_USERS = "MANAGE_USERS"
 CAP_MEMBER_PORTAL = "MEMBER_PORTAL"
 CAP_MANAGE_SYSTEM_SETTINGS = "MANAGE_SYSTEM_SETTINGS"
 CAP_MANAGE_ASSETS = "MANAGE_ASSETS"
+CAP_MANAGE_VI = "MANAGE_VI"
+CAP_PLAN_VI = "PLAN_VI"
+CAP_SYNC_VI_PLANCHE = "SYNC_VI_PLANCHE"
+CAP_MANAGE_PLANCHE = "MANAGE_PLANCHE"
+CAP_HELLOASSO = "HELLOASSO"
 
 CAPABILITY_SEEDS = (
     (CAP_EDIT_FLIGHTS, "Gestion des vols"),
@@ -71,4 +76,9 @@ CAPABILITY_SEEDS = (
     (CAP_MANAGE_USERS, "Gestion des utilisateurs"),
     (CAP_MEMBER_PORTAL, "Acces portail membre"),
     (CAP_MANAGE_ASSETS, "Gestion des aeronefs et equipements"),
+    (CAP_MANAGE_PLANCHE, "Gestion Planche (pilotes, machines, VI)"),
+    (CAP_HELLOASSO, "Acces HelloAsso"),
+    (CAP_MANAGE_VI, "Gestion des droits VI"),
+    (CAP_PLAN_VI, "Planification des droits VI"),
+    (CAP_SYNC_VI_PLANCHE, "Synchronisation VI vers Planche"),
 )

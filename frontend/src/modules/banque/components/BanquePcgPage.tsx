@@ -61,7 +61,7 @@ function toErrorMessages(error: unknown): string[] {
 
 export function BanquePcgPage() {
   const { t } = useTranslation('banque')
-  const canManage = useCapability('MANAGE_ACCOUNTING_SETTINGS')
+  const canManage = useCapability('MANAGE_SYSTEM_SETTINGS')
 
   const pcgSeedQuery = usePcgSeedQuery()
   const importMutation = useImportPcgSeedMutation()

@@ -1244,3 +1244,163 @@ class AuditLog(Base):
 
     def __repr__(self):
         return f"<AuditLog operation={self.operation_type} status={self.status} at={self.created_at}>"
+
+
+class ViOriginType(IntEnum):
+    """Origin/source for VI entitlement ownership and traceability."""
+
+    HELLOASSO = 1
+    CLUB = 2
+    COMPLEMENTARY = 3
+    MANUAL = 4
+    PARTNER = 5
+
+
+class ViEntitlementStatus(IntEnum):
+    """Lifecycle status for VI entitlement records."""
+
+    LOADED = 1
+    SCHEDULED = 2
+    REALIZED = 3
+    EXPIRED = 4
+    CANCELLED = 5
+
+
+class ViTypeCatalog(Base):
+    """Dynamic catalog of VI type codes (VI, JD, STAGE, ...)."""
+
+    __tablename__ = "vi_type_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_vi_type_catalog_code"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(32), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(String(255), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    updated_by_user = relationship("User")
+    entitlements = relationship("ViEntitlement", back_populates="vi_type")
+
+    def __repr__(self):
+        return f"<ViTypeCatalog code={self.code} active={self.is_active}>"
+
+
+class ViEntitlement(Base):
+    """ERP source-of-truth entitlement record for VI/JD/STAGE planning lifecycle."""
+
+    __tablename__ = "vi_entitlements"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_vi_entitlements_code"),
+        CheckConstraint("origin_type BETWEEN 1 AND 5", name="chk_vi_entitlements_origin_type"),
+        CheckConstraint("status BETWEEN 1 AND 5", name="chk_vi_entitlements_status"),
+        CheckConstraint(
+            "realisation_date IS NULL OR scheduled_date IS NULL OR realisation_date >= scheduled_date",
+            name="chk_vi_entitlements_date_consistency",
+        ),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(64), nullable=False, index=True)
+    vi_type_uuid = Column(
+        UUID(as_uuid=True),
+        ForeignKey("vi_type_catalog.uuid", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    description = Column(Text, nullable=True)
+    validity_date = Column(Date, nullable=True, index=True)
+    scheduled_date = Column(Date, nullable=True, index=True)
+    realisation_date = Column(Date, nullable=True, index=True)
+    partner_code = Column(String(64), nullable=True, index=True)
+    origin_type = Column(SmallInteger, nullable=False, default=int(ViOriginType.MANUAL))
+    origin_ref = Column(String(128), nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+    status = Column(SmallInteger, nullable=False, default=int(ViEntitlementStatus.LOADED), index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    vi_type = relationship("ViTypeCatalog", back_populates="entitlements")
+    updated_by_user = relationship("User")
+    helloasso_staging_rows = relationship("HelloAssoViStaging", back_populates="promoted_vi")
+
+    def __repr__(self):
+        return f"<ViEntitlement code={self.code} status={self.status} type={self.vi_type_uuid}>"
+
+
+class HelloAssoViStaging(Base):
+    """Staging table for HelloAsso import rows before promotion to ERP entitlements."""
+
+    __tablename__ = "helloasso_vi_staging"
+    __table_args__ = (
+        UniqueConstraint(
+            "order_id",
+            "item_id",
+            "payment_id",
+            name="uq_helloasso_vi_staging_order_item_payment",
+        ),
+        CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="chk_helloasso_vi_staging_amount_cents"),
+        CheckConstraint("status BETWEEN 1 AND 3", name="chk_helloasso_vi_staging_status"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    order_id = Column(BigInteger, nullable=False, index=True)
+    item_id = Column(BigInteger, nullable=False, index=True)
+    payment_id = Column(BigInteger, nullable=False, index=True)
+    full_name = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True, index=True)
+    phone = Column(String(64), nullable=True)
+    amount_cents = Column(Integer, nullable=True)
+    campaign_type = Column(String(64), nullable=True, index=True)
+    form_slug = Column(String(128), nullable=True, index=True)
+    payment_state = Column(String(64), nullable=True)
+    item_state = Column(String(64), nullable=True)
+    purchased_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    promoted_vi_uuid = Column(
+        UUID(as_uuid=True),
+        ForeignKey("vi_entitlements.uuid", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    promoted_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(SmallInteger, nullable=False, default=1, index=True)  # 1=staged, 2=promoted, 3=discarded
+    raw_payload = Column(JSON, nullable=False, default=dict)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    promoted_vi = relationship("ViEntitlement", back_populates="helloasso_staging_rows")
+
+    def __repr__(self):
+        return f"<HelloAssoViStaging order={self.order_id} item={self.item_id} payment={self.payment_id}>"

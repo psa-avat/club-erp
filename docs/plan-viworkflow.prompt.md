@@ -34,6 +34,7 @@ Steps
 5. Extend HelloAsso import behavior:
 	- use OAuth token caching (30 minute TTL)
 	- fetch token from https://api.helloasso.com/oauth2/token when cache is absent or expired
+	- browse only items events for VI-relevant records, not the full order history
 	- deduplicate with stable external keys (order_id, item_id, payment_id)
 	- exclude already-promoted or already-consumed rows from next import runs
 6. Extend Planche integration contract (Planche side can be updated):

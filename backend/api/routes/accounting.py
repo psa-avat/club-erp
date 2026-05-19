@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
-from constants import CAP_MANAGE_ACCOUNTING_SETTINGS, CAP_MANAGE_PRICES, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_FINANCIALS
+from constants import CAP_MANAGE_PRICES, CAP_MANAGE_SYSTEM_SETTINGS, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_FINANCIALS
 from models import User
 from schemas.accounting import (
     AccountBalanceResponse,
@@ -117,7 +117,7 @@ logger = logging.getLogger(__name__)
 
 view_guard = Depends(require_capability(CAP_VIEW_FINANCIALS))
 post_guard = Depends(require_capability(CAP_POST_ACCOUNTING_ENTRIES))
-settings_guard = Depends(require_capability(CAP_MANAGE_ACCOUNTING_SETTINGS))
+settings_guard = Depends(require_capability(CAP_MANAGE_SYSTEM_SETTINGS))
 prices_guard = Depends(require_capability(CAP_MANAGE_PRICES))
 
 FISCAL_YEAR_VALIDATION_ERRORS = {

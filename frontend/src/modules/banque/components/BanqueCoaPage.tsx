@@ -60,7 +60,7 @@ function accountClass(code: string): string {
 export function BanqueCoaPage() {
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
-  const canManage = useCapability('MANAGE_ACCOUNTING_SETTINGS')
+  const canManage = useCapability('MANAGE_SYSTEM_SETTINGS')
 
   const accountsQuery = useAccountsQuery(canView)
   const accounts = useMemo(

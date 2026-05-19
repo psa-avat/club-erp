@@ -48,6 +48,21 @@ export type PlancheMachinesPushResponse = {
   last_synced_at: string | null
 }
 
+export type PlancheViPushResponse = {
+  success: boolean
+  selected_count: number
+  pushed_count: number
+  failed_count: number
+  errors: string[]
+  last_synced_at: string | null
+}
+
+export type PlancheViReconcileResponse = {
+  total: number
+  updated: number
+  unmatched: number
+}
+
 export type PlancheMachinesPushPreviewResponse = {
   eligible_count: number
   last_synced_at: string | null
@@ -270,4 +285,30 @@ export function usePilotsOrphanedQuery(enabled: boolean = true) {
 
 export function plancheSettingsFromResponse(response?: PlancheSettingsResponse | null): PlancheSettings {
   return response?.settings ?? EMPTY_SETTINGS
+}
+
+export function usePlancheViPushMutation() {
+  return useMutation({
+    mutationFn: async (payload: { entitlement_uuids: string[] }) => {
+      const { data } = await apiClient.post<PlancheViPushResponse>(
+        '/api/v1/planche/vi/push',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function usePlancheViReconcileMutation() {
+  return useMutation({
+    mutationFn: async (payload: { from_date?: string; to_date?: string }) => {
+      const { data } = await apiClient.post<PlancheViReconcileResponse>(
+        '/api/v1/planche/vi/reconcile',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
 }

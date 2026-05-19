@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib import error as urllib_error
@@ -34,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
-from constants import CAP_MANAGE_ACCOUNTING_SETTINGS
+from constants import CAP_HELLOASSO, CAP_MANAGE_SYSTEM_SETTINGS
 from models import User
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.helloasso import (
@@ -45,12 +46,15 @@ from schemas.helloasso import (
     HelloAssoSettingsPayload,
     HelloAssoSettingsResponse,
 )
+from schemas.vi import ViHelloAssoImportPreviewResponse, ViHelloAssoImportRequest, ViHelloAssoImportResponse
+from services.vi import import_helloasso_records_to_staging, preview_staging_net_new
 from services.accounting import get_system_setting, upsert_system_setting
 
 router = APIRouter(prefix="/api/v1/helloasso", tags=["helloasso"])
 logger = logging.getLogger(__name__)
 
-settings_guard = Depends(require_capability(CAP_MANAGE_ACCOUNTING_SETTINGS))
+configuration_guard = Depends(require_capability(CAP_MANAGE_SYSTEM_SETTINGS))
+helloasso_guard = Depends(require_capability(CAP_HELLOASSO))
 
 DEFAULT_HELLOASSO_SETTINGS: dict[str, Any] = {
     "client_id": "",
@@ -66,6 +70,12 @@ ALLOWED_CAMPAIGN_TYPES = {"CrowdFunding", "Membership", "Event", "Donation", "Pa
 
 ACTIVE_ITEM_STATES = {"Processed", "Registered"}
 DONE_ITEM_STATES = {"Canceled", "Refused", "Abandoned", "Deleted"}
+
+_HELLOASSO_TOKEN_CACHE: dict[str, Any] = {
+    "access_token": None,
+    "expires_at": 0.0,
+    "client_id": None,
+}
 
 
 def _settings_payload_from_dict(settings: dict[str, Any]) -> dict[str, Any]:
@@ -143,6 +153,179 @@ def _perform_json_get(
 
 async def _run_in_thread(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
+
+
+async def _get_cached_helloasso_token(client_id: str, client_secret: str) -> str:
+    now = time.time()
+    if (
+        isinstance(_HELLOASSO_TOKEN_CACHE.get("access_token"), str)
+        and _HELLOASSO_TOKEN_CACHE.get("client_id") == client_id
+        and isinstance(_HELLOASSO_TOKEN_CACHE.get("expires_at"), (int, float))
+        and float(_HELLOASSO_TOKEN_CACHE["expires_at"]) > now
+    ):
+        return str(_HELLOASSO_TOKEN_CACHE["access_token"])
+
+    token_status_code, token_payload = await _run_in_thread(
+        _perform_form_request,
+        HELLOASSO_AUTH_URL,
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "grant_type": "client_credentials",
+        },
+    )
+
+    access_token = token_payload.get("access_token") if isinstance(token_payload, dict) else None
+    if not (200 <= token_status_code < 300 and isinstance(access_token, str) and access_token):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Unable to authenticate with HelloAsso using the configured credentials",
+                "status_code": token_status_code,
+                "details": token_payload if isinstance(token_payload, dict) else {"raw": str(token_payload)},
+            },
+        )
+
+    _HELLOASSO_TOKEN_CACHE["access_token"] = access_token
+    _HELLOASSO_TOKEN_CACHE["client_id"] = client_id
+    _HELLOASSO_TOKEN_CACHE["expires_at"] = now + 1800
+    return access_token
+
+
+async def _fetch_helloasso_records(
+    db: AsyncSession,
+    status_filter: Literal["active", "done"],
+    source: Literal["items", "orders"],
+    campaign_type: str | None,
+    page_size: int,
+) -> tuple[str, list[HelloAssoPurchaseRecord], list[str]]:
+    normalized_campaign_types: list[str] = []
+    if isinstance(campaign_type, str) and campaign_type.strip():
+        normalized_campaign_types = list(
+            dict.fromkeys(
+                value.strip()
+                for value in campaign_type.split(",")
+                if value.strip()
+            )
+        )
+
+    invalid_campaign_types = [value for value in normalized_campaign_types if value not in ALLOWED_CAMPAIGN_TYPES]
+    if invalid_campaign_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Invalid campaign_type value",
+                "invalid_values": invalid_campaign_types,
+                "allowed_values": sorted(ALLOWED_CAMPAIGN_TYPES),
+            },
+        )
+
+    try:
+        setting = await get_system_setting(db, HELLOASSO_SETTINGS_MODULE)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="HelloAsso settings are not configured",
+            ) from exc
+        raise
+
+    settings = setting.settings if isinstance(setting.settings, dict) else {}
+    client_id = settings.get("client_id") if isinstance(settings.get("client_id"), str) else ""
+    client_secret = settings.get("client_secret") if isinstance(settings.get("client_secret"), str) else ""
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="HelloAsso settings must include client_id and client_secret",
+        )
+
+    access_token = await _get_cached_helloasso_token(client_id, client_secret)
+    auth_headers = {"Authorization": f"Bearer {access_token}"}
+
+    org_status_code, organizations_payload = await _run_in_thread(
+        _perform_json_get,
+        HELLOASSO_ORGANIZATIONS_URL,
+        auth_headers,
+    )
+    if not 200 <= org_status_code < 300:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Connected to HelloAsso but failed to fetch organizations",
+                "status_code": org_status_code,
+                "details": organizations_payload if isinstance(organizations_payload, dict) else {"raw": str(organizations_payload)},
+            },
+        )
+
+    organizations = organizations_payload if isinstance(organizations_payload, list) else []
+    first_org = organizations[0] if organizations else {}
+    organization_slug = first_org.get("organizationSlug") if isinstance(first_org, dict) else None
+    if not isinstance(organization_slug, str) or not organization_slug:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No HelloAsso organization is available for the configured credentials",
+        )
+
+    if source == "items":
+        item_states = sorted(ACTIVE_ITEM_STATES if status_filter == "active" else DONE_ITEM_STATES)
+        query = urllib_parse.urlencode(
+            {
+                "pageIndex": 1,
+                "pageSize": page_size,
+                "withDetails": "true",
+                "sortOrder": "Desc",
+                "itemStates": item_states,
+            },
+            doseq=True,
+        )
+        url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_PATH.format(organization_slug=organization_slug)}?{query}"
+        items_status_code, items_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
+        if not 200 <= items_status_code < 300:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "Unable to fetch HelloAsso items",
+                    "status_code": items_status_code,
+                    "details": items_payload if isinstance(items_payload, dict) else {"raw": str(items_payload)},
+                },
+            )
+        items = _extract_data_list(items_payload)
+        records = [
+            record
+            for item in items
+            for record in [_normalize_item_to_record(item, "items")]
+            if record is not None
+        ]
+    else:
+        query_params: dict[str, Any] = {
+            "pageIndex": 1,
+            "pageSize": page_size,
+            "withDetails": "true",
+            "sortOrder": "Desc",
+        }
+        if normalized_campaign_types:
+            query_params["formTypes"] = normalized_campaign_types
+
+        query = urllib_parse.urlencode(query_params, doseq=True)
+        url = f"https://api.helloasso.com/v5{HELLOASSO_ORDERS_PATH.format(organization_slug=organization_slug)}?{query}"
+        orders_status_code, orders_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
+        if not 200 <= orders_status_code < 300:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "Unable to fetch HelloAsso orders",
+                    "status_code": orders_status_code,
+                    "details": orders_payload if isinstance(orders_payload, dict) else {"raw": str(orders_payload)},
+                },
+            )
+        orders = _extract_data_list(orders_payload)
+        records = _normalize_orders_to_records(orders, status_filter)
+
+    if normalized_campaign_types:
+        allowed = set(normalized_campaign_types)
+        records = [record for record in records if record.campaign_type in allowed]
+
+    return organization_slug, records, normalized_campaign_types
 
 
 def _to_helloasso_datetime(value: Any) -> datetime | None:
@@ -286,7 +469,7 @@ def _normalize_orders_to_records(orders: list[dict[str, Any]], status_filter: Li
 @router.get("/settings", response_model=HelloAssoSettingsResponse)
 async def get_helloasso_settings_endpoint(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Return the stored HelloAsso integration settings, or defaults when missing."""
@@ -314,7 +497,7 @@ async def get_helloasso_settings_endpoint(
 async def update_helloasso_settings_endpoint(
     request: HelloAssoSettingsPayload,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Create or update the stored HelloAsso integration settings."""
@@ -330,7 +513,7 @@ async def update_helloasso_settings_endpoint(
 @router.post("/settings/test-connection", response_model=HelloAssoConnectionTestResponse)
 async def test_helloasso_connection_endpoint(
     request: HelloAssoSettingsPayload,
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Validate HelloAsso API credentials and retrieve organization access."""
@@ -394,7 +577,7 @@ async def list_helloasso_purchases_endpoint(
     campaign_type: str | None = Query(default=None),
     page_size: int = Query(default=100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = helloasso_guard,
     current_user: User = Depends(get_current_user),
 ):
     """List HelloAsso purchases with active/done filtering from items or orders endpoints."""
@@ -406,154 +589,13 @@ async def list_helloasso_purchases_endpoint(
         page_size,
     )
 
-    normalized_campaign_types: list[str] = []
-    if isinstance(campaign_type, str) and campaign_type.strip():
-        normalized_campaign_types = list(
-            dict.fromkeys(
-                value.strip()
-                for value in campaign_type.split(",")
-                if value.strip()
-            )
-        )
-
-    invalid_campaign_types = [value for value in normalized_campaign_types if value not in ALLOWED_CAMPAIGN_TYPES]
-    if invalid_campaign_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "message": "Invalid campaign_type value",
-                "invalid_values": invalid_campaign_types,
-                "allowed_values": sorted(ALLOWED_CAMPAIGN_TYPES),
-            },
-        )
-
-    try:
-        setting = await get_system_setting(db, HELLOASSO_SETTINGS_MODULE)
-    except HTTPException as exc:
-        if exc.status_code == status.HTTP_404_NOT_FOUND:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="HelloAsso settings are not configured",
-            ) from exc
-        raise
-
-    settings = setting.settings if isinstance(setting.settings, dict) else {}
-    client_id = settings.get("client_id") if isinstance(settings.get("client_id"), str) else ""
-    client_secret = settings.get("client_secret") if isinstance(settings.get("client_secret"), str) else ""
-    if not client_id or not client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="HelloAsso settings must include client_id and client_secret",
-        )
-
-    token_status_code, token_payload = await _run_in_thread(
-        _perform_form_request,
-        HELLOASSO_AUTH_URL,
-        {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "grant_type": "client_credentials",
-        },
+    organization_slug, records, normalized_campaign_types = await _fetch_helloasso_records(
+        db=db,
+        status_filter=status_filter,
+        source=source,
+        campaign_type=campaign_type,
+        page_size=page_size,
     )
-
-    access_token = token_payload.get("access_token") if isinstance(token_payload, dict) else None
-    if not (200 <= token_status_code < 300 and isinstance(access_token, str) and access_token):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "message": "Unable to authenticate with HelloAsso using the configured credentials",
-                "status_code": token_status_code,
-                "details": token_payload if isinstance(token_payload, dict) else {"raw": str(token_payload)},
-            },
-        )
-
-    auth_headers = {"Authorization": f"Bearer {access_token}"}
-    org_status_code, organizations_payload = await _run_in_thread(
-        _perform_json_get,
-        HELLOASSO_ORGANIZATIONS_URL,
-        auth_headers,
-    )
-    if not 200 <= org_status_code < 300:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "message": "Connected to HelloAsso but failed to fetch organizations",
-                "status_code": org_status_code,
-                "details": organizations_payload if isinstance(organizations_payload, dict) else {"raw": str(organizations_payload)},
-            },
-        )
-
-    organizations = organizations_payload if isinstance(organizations_payload, list) else []
-    first_org = organizations[0] if organizations else {}
-    organization_slug = first_org.get("organizationSlug") if isinstance(first_org, dict) else None
-    if not isinstance(organization_slug, str) or not organization_slug:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No HelloAsso organization is available for the configured credentials",
-        )
-
-    if source == "items":
-        item_states = sorted(ACTIVE_ITEM_STATES if status_filter == "active" else DONE_ITEM_STATES)
-        query = urllib_parse.urlencode(
-            {
-                "pageIndex": 1,
-                "pageSize": page_size,
-                "withDetails": "true",
-                "sortOrder": "Desc",
-                "itemStates": item_states,
-            },
-            doseq=True,
-        )
-        url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_PATH.format(organization_slug=organization_slug)}?{query}"
-        items_status_code, items_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
-        if not 200 <= items_status_code < 300:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "message": "Unable to fetch HelloAsso items",
-                    "status_code": items_status_code,
-                    "details": items_payload if isinstance(items_payload, dict) else {"raw": str(items_payload)},
-                },
-            )
-
-        items = _extract_data_list(items_payload)
-        records = [
-            record
-            for item in items
-            for record in [_normalize_item_to_record(item, "items")]
-            if record is not None
-        ]
-        if normalized_campaign_types:
-            allowed = set(normalized_campaign_types)
-            records = [record for record in records if record.campaign_type in allowed]
-    else:
-        query_params: dict[str, Any] = {
-            "pageIndex": 1,
-            "pageSize": page_size,
-            "withDetails": "true",
-            "sortOrder": "Desc",
-        }
-        if normalized_campaign_types:
-            query_params["formTypes"] = normalized_campaign_types
-
-        query = urllib_parse.urlencode(query_params, doseq=True)
-        url = f"https://api.helloasso.com/v5{HELLOASSO_ORDERS_PATH.format(organization_slug=organization_slug)}?{query}"
-        orders_status_code, orders_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
-        if not 200 <= orders_status_code < 300:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "message": "Unable to fetch HelloAsso orders",
-                    "status_code": orders_status_code,
-                    "details": orders_payload if isinstance(orders_payload, dict) else {"raw": str(orders_payload)},
-                },
-            )
-
-        orders = _extract_data_list(orders_payload)
-        records = _normalize_orders_to_records(orders, status_filter)
-        if normalized_campaign_types:
-            allowed = set(normalized_campaign_types)
-            records = [record for record in records if record.campaign_type in allowed]
 
     return HelloAssoPurchasesResponse(
         organization_slug=organization_slug,
@@ -563,3 +605,35 @@ async def list_helloasso_purchases_endpoint(
         count=len(records),
         purchases=records,
     )
+
+
+@router.post("/vi/staging/preview", response_model=ViHelloAssoImportPreviewResponse)
+async def preview_helloasso_vi_staging_import_endpoint(
+    request: ViHelloAssoImportRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = helloasso_guard,
+):
+    _, records, _ = await _fetch_helloasso_records(
+        db=db,
+        status_filter="active" if request.status not in ("active", "done") else request.status,
+        source="items",
+        campaign_type="Event",
+        page_size=request.page_size,
+    )
+    return await preview_staging_net_new(db=db, records=records)
+
+
+@router.post("/vi/staging/import", response_model=ViHelloAssoImportResponse)
+async def import_helloasso_vi_staging_endpoint(
+    request: ViHelloAssoImportRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = helloasso_guard,
+):
+    _, records, _ = await _fetch_helloasso_records(
+        db=db,
+        status_filter="active" if request.status not in ("active", "done") else request.status,
+        source="items",
+        campaign_type="Event",
+        page_size=request.page_size,
+    )
+    return await import_helloasso_records_to_staging(db=db, records=records)

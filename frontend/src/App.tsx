@@ -24,8 +24,9 @@ import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheets
 import { MemberPilotSheetPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
-import { HelloAssoIntegrationPage, HelloAssoPurchasesPage } from './modules/helloasso'
-import { PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
+import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
+import { PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
+import { ViEntitlementsPage, ViPlanningPage, ViTypesPage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
 import { AppShell } from './shell/components'
 
@@ -50,13 +51,18 @@ function App() {
           <Route path="/club/commissions" element={<CommitteesManagementPage />} />
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
           <Route path="/planning" element={<PlanningPage />} />
-          <Route path="/helloasso" element={<Navigate replace to="/helloasso/integration" />} />
+          <Route path="/helloasso" element={<Navigate replace to="/helloasso/purchases" />} />
           <Route path="/helloasso/integration" element={<HelloAssoIntegrationPage />} />
           <Route path="/helloasso/purchases" element={<HelloAssoPurchasesPage />} />
-          <Route path="/planche" element={<Navigate replace to="/planche/integration" />} />
+          <Route path="/helloasso/vi-import" element={<HelloAssoViImportPage />} />
+          <Route path="/planche" element={<Navigate replace to="/planche/members-push" />} />
           <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
           <Route path="/planche/machines-push" element={<PlancheMachinesPushPage />} />
+          <Route path="/planche/vi-sync" element={<PlancheViSyncPage />} />
+          <Route path="/vi/entitlements" element={<ViEntitlementsPage />} />
+          <Route path="/vi/types" element={<ViTypesPage />} />
+          <Route path="/vi/planning" element={<ViPlanningPage />} />
           <Route path="/storage" element={<Navigate replace to="/storage/settings" />} />
           <Route path="/storage/settings" element={<StorageSettingsPage />} />
           <Route path="/banque" element={<BanquePage />} />

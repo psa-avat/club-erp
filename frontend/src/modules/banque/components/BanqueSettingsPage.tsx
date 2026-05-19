@@ -63,7 +63,7 @@ function toErrorMessage(error: unknown): string {
 
 export function BanqueSettingsPage() {
   const { t } = useTranslation('banque')
-  const canManageSettings = useCapability('MANAGE_ACCOUNTING_SETTINGS')
+  const canManageSettings = useCapability('MANAGE_SYSTEM_SETTINGS')
   const params = useParams<{ section: string }>()
 
   const activeSection = useMemo(

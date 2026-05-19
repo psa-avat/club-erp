@@ -25,6 +25,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urljoin
@@ -35,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
-from constants import CAP_MANAGE_ACCOUNTING_SETTINGS
+from constants import CAP_MANAGE_PLANCHE, CAP_MANAGE_SYSTEM_SETTINGS
 from models import User
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import PLANCHE_SETTINGS_MODULE, PlancheConnectionTestResponse, PlancheLoginTestResponse, PlancheSettingsPayload, PlancheSettingsResponse
@@ -49,11 +50,21 @@ from services.accounting import get_system_setting, upsert_system_setting
 router = APIRouter(prefix="/api/v1/planche", tags=["planche"])
 logger = logging.getLogger(__name__)
 
-settings_guard = Depends(require_capability(CAP_MANAGE_ACCOUNTING_SETTINGS))
+configuration_guard = Depends(require_capability(CAP_MANAGE_SYSTEM_SETTINGS))
+planche_guard = Depends(require_capability(CAP_MANAGE_PLANCHE))
 
 
 class PilotPushRequest(BaseModel):
     dry_run: bool = False
+
+
+class ViPushRequest(BaseModel):
+    entitlement_uuids: list[UUID]
+
+
+class ViReconcileRequest(BaseModel):
+    from_date: datetime | None = None
+    to_date: datetime | None = None
 
 
 
@@ -103,7 +114,7 @@ def _pilot_push_errors(error_details: list[Any]) -> list[dict[str, str]]:
 @router.get("/pilots/push/preview")
 async def preview_pilot_push_to_planche(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = planche_guard,
 ):
     """Return pilot push eligibility/exclusion counters for confirmation UI."""
     service = await _get_planche_service(db)
@@ -113,7 +124,7 @@ async def preview_pilot_push_to_planche(
 @router.get("/pilots/missing-erp-id")
 async def get_pilots_missing_erp_id(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = planche_guard,
 ):
     """Retrieve Planche pilots missing erp_id (need repair/migration)."""
     service = await _get_planche_service(db)
@@ -123,7 +134,7 @@ async def get_pilots_missing_erp_id(
 @router.get("/pilots/orphaned")
 async def get_orphaned_pilots_on_planche(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = planche_guard,
 ):
     """Retrieve Planche pilots not found in ERP (orphaned)."""
     service = await _get_planche_service(db)
@@ -134,7 +145,7 @@ async def get_orphaned_pilots_on_planche(
 async def push_pilots_to_planche(
     request: PilotPushRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = planche_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Manually push eligible pilots to Planche."""
@@ -179,7 +190,7 @@ async def push_pilots_to_planche(
 @router.post("/machines/push")
 async def push_machines_to_planche(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = planche_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Manually push eligible machines to Planche."""
@@ -197,11 +208,55 @@ async def push_machines_to_planche(
 @router.get("/machines/push/preview")
 async def preview_machine_push_to_planche(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = planche_guard,
 ):
     """Return machine push eligibility counters for confirmation UI."""
     service = await _get_planche_service(db)
     result = await service.get_machine_push_preview(db)
+    return JSONResponse(result)
+
+
+@router.post("/vi/push")
+async def push_vi_entitlements_to_planche(
+    request: ViPushRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = planche_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Push selected VI entitlements to Planche operational schedule."""
+    service = await _get_planche_service(db)
+    result = await service.push_vi_entitlements(
+        db=db,
+        entitlement_uuids=[str(value) for value in request.entitlement_uuids],
+        triggered_by=str(current_user.id),
+    )
+    return JSONResponse(
+        {
+            "success": result.get("failure", 0) == 0,
+            "selected_count": result.get("selected_count", 0),
+            "pushed_count": result.get("success", 0),
+            "failed_count": result.get("failure", 0),
+            "errors": result.get("error_details", []),
+            "last_synced_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+
+@router.post("/vi/reconcile")
+async def reconcile_vi_from_validated_flights(
+    request: ViReconcileRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = planche_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Reconcile VI realization status from validated flights vi_erp_id references."""
+    service = await _get_planche_service(db)
+    result = await service.reconcile_vi_realisation_from_validated_flights(
+        db=db,
+        from_date=request.from_date,
+        to_date=request.to_date,
+        triggered_by=str(current_user.id),
+    )
     return JSONResponse(result)
 
 DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
@@ -284,7 +339,7 @@ async def _run_in_thread(func, *args, **kwargs):
 @router.get("/settings", response_model=PlancheSettingsResponse)
 async def get_planche_settings_endpoint(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Return the stored Planche integration settings, or defaults when missing."""
@@ -312,7 +367,7 @@ async def get_planche_settings_endpoint(
 async def update_planche_settings_endpoint(
     request: PlancheSettingsPayload,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Create or update the stored Planche integration settings."""
@@ -328,7 +383,7 @@ async def update_planche_settings_endpoint(
 @router.post("/settings/test-connection", response_model=PlancheConnectionTestResponse)
 async def test_planche_connection_endpoint(
     request: PlancheSettingsPayload,
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Validate the configured base URL and API token against a lightweight Planche endpoint."""
@@ -362,7 +417,7 @@ async def test_planche_connection_endpoint(
 @router.post("/settings/test-login", response_model=PlancheLoginTestResponse)
 async def test_planche_login_endpoint(
     request: PlancheSettingsPayload,
-    _: User = settings_guard,
+    _: User = configuration_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Validate the Planche username/password against the remote auth endpoint."""

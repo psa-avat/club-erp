@@ -1,0 +1,173 @@
+EEEEEEE.
+======================================================================
+ERROR: test_vi_route_guards (unittest.loader._FailedTest.test_vi_route_guards)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_vi_route_guards
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 137, in loadTestsFromName
+    module = __import__(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_vi_route_guards.py", line 15, in <module>
+    from api.routes.vi import router
+  File "/home/erpadmin/club-erp/backend/api/routes/__init__.py", line 3, in <module>
+    from . import accounting, admin, assets, auth, helloasso, members, planche, storage, vi
+  File "/home/erpadmin/club-erp/backend/api/routes/planche.py", line 43, in <module>
+    from services.planche_integration import PlancheIntegrationService
+  File "/home/erpadmin/club-erp/backend/services/planche_integration.py", line 27, in <module>
+    import httpx
+ModuleNotFoundError: No module named 'httpx'
+
+
+======================================================================
+ERROR: test_planche_vi_routes (unittest.loader._FailedTest.test_planche_vi_routes)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_planche_vi_routes
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/loader.py", line 137, in loadTestsFromName
+    module = __import__(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_planche_vi_routes.py", line 10, in <module>
+    from api.routes.planche import router
+  File "/home/erpadmin/club-erp/backend/api/routes/__init__.py", line 3, in <module>
+    from . import accounting, admin, assets, auth, helloasso, members, planche, storage, vi
+  File "/home/erpadmin/club-erp/backend/api/routes/planche.py", line 43, in <module>
+    from services.planche_integration import PlancheIntegrationService
+  File "/home/erpadmin/club-erp/backend/services/planche_integration.py", line 27, in <module>
+    import httpx
+ModuleNotFoundError: No module named 'httpx'
+
+
+======================================================================
+ERROR: test_cache_is_scoped_per_client (backend.tests.test_helloasso_token_cache.HelloAssoTokenCacheTests.test_cache_is_scoped_per_client)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_helloasso_token_cache.py", line 33, in test_cache_is_scoped_per_client
+    with patch(
+  File "/usr/lib/python3.12/unittest/mock.py", line 1442, in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pkgutil.py", line 528, in resolve_name
+    result = getattr(result, p)
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'api' has no attribute 'routes'
+
+======================================================================
+ERROR: test_token_is_cached_for_same_client (backend.tests.test_helloasso_token_cache.HelloAssoTokenCacheTests.test_token_is_cached_for_same_client)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_helloasso_token_cache.py", line 21, in test_token_is_cached_for_same_client
+    with patch(
+  File "/usr/lib/python3.12/unittest/mock.py", line 1442, in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pkgutil.py", line 528, in resolve_name
+    result = getattr(result, p)
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'api' has no attribute 'routes'
+
+======================================================================
+ERROR: test_connection_raises_when_credentials_are_invalid (backend.tests.test_helloasso_routes.HelloAssoConnectionTests.test_connection_raises_when_credentials_are_invalid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_helloasso_routes.py", line 99, in test_connection_raises_when_credentials_are_invalid
+    with patch(
+  File "/usr/lib/python3.12/unittest/mock.py", line 1442, in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pkgutil.py", line 528, in resolve_name
+    result = getattr(result, p)
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'api' has no attribute 'routes'
+
+======================================================================
+ERROR: test_connection_returns_first_organization_slug (backend.tests.test_helloasso_routes.HelloAssoConnectionTests.test_connection_returns_first_organization_slug)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_helloasso_routes.py", line 76, in test_connection_returns_first_organization_slug
+    with patch(
+  File "/usr/lib/python3.12/unittest/mock.py", line 1442, in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pkgutil.py", line 528, in resolve_name
+    result = getattr(result, p)
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'api' has no attribute 'routes'
+
+======================================================================
+ERROR: test_purchases_items_active (backend.tests.test_helloasso_routes.HelloAssoPurchasesTests.test_purchases_items_active)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/unittest/async_case.py", line 90, in _callTestMethod
+    if self._callMaybeAsync(method) is not None:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/async_case.py", line 112, in _callMaybeAsync
+    return self._asyncioRunner.run(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/erpadmin/club-erp/backend/tests/test_helloasso_routes.py", line 120, in test_purchases_items_active
+    with patch(
+  File "/usr/lib/python3.12/unittest/mock.py", line 1442, in __enter__
+    self.target = self.getter()
+                  ^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pkgutil.py", line 528, in resolve_name
+    result = getattr(result, p)
+             ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'api' has no attribute 'routes'
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.078s
+
+FAILED (errors=7)
