@@ -60,6 +60,7 @@ function App() {
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
           <Route path="/planche/machines-push" element={<PlancheMachinesPushPage />} />
           <Route path="/planche/vi-sync" element={<PlancheViSyncPage />} />
+          <Route path="/vi" element={<Navigate replace to="/vi/entitlements" />} />
           <Route path="/vi/entitlements" element={<ViEntitlementsPage />} />
           <Route path="/vi/types" element={<ViTypesPage />} />
           <Route path="/vi/planning" element={<ViPlanningPage />} />

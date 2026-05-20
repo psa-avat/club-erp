@@ -65,10 +65,10 @@ export const shellNavItems: ShellNavItem[] = [
     labelKey: 'nav.admin',
     children: [
       { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
-      { to: '/helloasso/integration', labelKey: 'nav.helloassoIntegration', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/planche/integration', labelKey: 'nav.plancheIntegration', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/storage/settings', labelKey: 'nav.storageSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/helloasso/integration', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/planche/integration', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/storage/settings', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/banque/settings/journals', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 ]
