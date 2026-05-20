@@ -1347,6 +1347,10 @@ class ViEntitlement(Base):
     updated_by_user = relationship("User")
     helloasso_staging_rows = relationship("HelloAssoViStaging", back_populates="promoted_vi")
 
+    @property
+    def vi_type_code(self) -> str | None:
+        return self.vi_type.code if self.vi_type else None
+
     def __repr__(self):
         return f"<ViEntitlement code={self.code} status={self.status} type={self.vi_type_uuid}>"
 

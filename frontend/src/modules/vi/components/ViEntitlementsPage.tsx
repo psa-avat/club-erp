@@ -141,6 +141,7 @@ function ViEntitlementRow({
     uuid: string
     code: string
     vi_type_uuid: string
+    vi_type_code: string | null
     status: number
     scheduled_date: string | null
     realisation_date: string | null
@@ -161,7 +162,7 @@ function ViEntitlementRow({
   return (
     <tr>
       <td className="px-3 py-2">{row.code}</td>
-      <td className="px-3 py-2">{row.vi_type_uuid.slice(0, 8)}</td>
+      <td className="px-3 py-2">{row.vi_type_code ?? row.vi_type_uuid.slice(0, 8)}</td>
       <td className="px-3 py-2">{statusLabel}</td>
       <td className="px-3 py-2">{row.scheduled_date ?? '-'}</td>
       <td className="px-3 py-2">{row.realisation_date ?? '-'}</td>

@@ -27,6 +27,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from models import HelloAssoViStaging, ViEntitlement, ViEntitlementStatus, ViOriginType, ViTypeCatalog
 from schemas.helloasso import HelloAssoPurchaseRecord
@@ -122,7 +123,7 @@ async def list_vi_entitlements(
     scheduled_from: date | None = None,
     scheduled_to: date | None = None,
 ) -> list[ViEntitlement]:
-    stmt = select(ViEntitlement).order_by(ViEntitlement.created_at.desc())
+    stmt = select(ViEntitlement).options(joinedload(ViEntitlement.vi_type)).order_by(ViEntitlement.created_at.desc())
 
     if status_filter is not None:
         stmt = stmt.where(ViEntitlement.status == status_filter)
@@ -138,7 +139,9 @@ async def list_vi_entitlements(
 
 
 async def get_vi_entitlement(db: AsyncSession, entitlement_uuid: UUID) -> ViEntitlement:
-    result = await db.execute(select(ViEntitlement).where(ViEntitlement.uuid == entitlement_uuid))
+    result = await db.execute(
+        select(ViEntitlement).options(joinedload(ViEntitlement.vi_type)).where(ViEntitlement.uuid == entitlement_uuid)
+    )
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VI entitlement not found")
@@ -177,7 +180,7 @@ async def create_vi_entitlement(
     )
     db.add(row)
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, attribute_names=["vi_type"])
     return row
 
 
@@ -227,7 +230,7 @@ async def update_vi_entitlement(
 
     row.updated_by = user_id
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, attribute_names=["vi_type"])
     return row
 
 
@@ -244,7 +247,7 @@ async def patch_vi_scheduled_date(
         row.status = int(ViEntitlementStatus.SCHEDULED if scheduled_date else ViEntitlementStatus.LOADED)
     row.updated_by = user_id
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, attribute_names=["vi_type"])
     return row
 
 
@@ -265,7 +268,7 @@ async def patch_vi_realisation_date(
         row.status = int(ViEntitlementStatus.LOADED)
     row.updated_by = user_id
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, attribute_names=["vi_type"])
     return row
 
 
@@ -279,7 +282,7 @@ async def patch_vi_notes(
     row.notes = notes
     row.updated_by = user_id
     await db.commit()
-    await db.refresh(row)
+    await db.refresh(row, attribute_names=["vi_type"])
     return row
 
 

@@ -68,6 +68,7 @@ class ViEntitlementResponse(BaseModel):
     uuid: UUID
     code: str
     vi_type_uuid: UUID
+    vi_type_code: str | None = None
     description: str | None = None
     validity_date: date | None = None
     scheduled_date: date | None = None

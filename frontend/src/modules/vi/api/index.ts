@@ -41,6 +41,7 @@ export type ViEntitlement = {
   uuid: string
   code: string
   vi_type_uuid: string
+  vi_type_code: string | null
   description: string | null
   validity_date: string | null
   scheduled_date: string | null
