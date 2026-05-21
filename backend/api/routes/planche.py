@@ -60,6 +60,7 @@ class PilotPushRequest(BaseModel):
 
 class ViPushRequest(BaseModel):
     entitlement_uuids: list[UUID]
+    replace: bool = False
 
 
 class ViReconcileRequest(BaseModel):
@@ -229,6 +230,7 @@ async def push_vi_entitlements_to_planche(
         db=db,
         entitlement_uuids=[str(value) for value in request.entitlement_uuids],
         triggered_by=str(current_user.id),
+        replace=request.replace,
     )
     return JSONResponse(
         {

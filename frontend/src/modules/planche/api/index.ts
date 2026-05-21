@@ -289,7 +289,7 @@ export function plancheSettingsFromResponse(response?: PlancheSettingsResponse |
 
 export function usePlancheViPushMutation() {
   return useMutation({
-    mutationFn: async (payload: { entitlement_uuids: string[] }) => {
+    mutationFn: async (payload: { entitlement_uuids: string[]; replace?: boolean }) => {
       const { data } = await apiClient.post<PlancheViPushResponse>(
         '/api/v1/planche/vi/push',
         payload,

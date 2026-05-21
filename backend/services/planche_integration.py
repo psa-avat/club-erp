@@ -893,6 +893,7 @@ class PlancheIntegrationService:
         db: AsyncSession,
         entitlement_uuids: list[str],
         triggered_by: str = "system",
+        replace: bool = False,
     ) -> dict[str, Any]:
         """Push selected VI entitlements to Planche operational scheduling endpoint."""
         if not entitlement_uuids:
@@ -920,9 +921,9 @@ class PlancheIntegrationService:
         for entitlement, vi_type in rows:
             payload_items.append(
                 {
-                    "erp_entitlement_id": str(entitlement.uuid),
+                    "erp_id": entitlement.code,
                     "entitlement_code": entitlement.code,
-                    "type_code": vi_type.code,
+                    "type": vi_type.code,
                     "scheduled_date": entitlement.scheduled_date.isoformat() if entitlement.scheduled_date else None,
                     "validity_date": entitlement.validity_date.isoformat() if entitlement.validity_date else None,
                     "origin_type": int(entitlement.origin_type),
@@ -941,17 +942,24 @@ class PlancheIntegrationService:
         failure_count = 0
         error_details: list[str] = []
 
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
+            if idx == 0:
+                logger.info("VI push chunk[0] payload: %s", json.dumps(chunk, default=str))
             response = await self._perform_request(
                 method="POST",
                 endpoint="/erp/vi/sync",
-                json={"dry_run": False, "items": chunk},
+                json={"dry_run": False, "replace": replace, "items": chunk},
             )
             if response.status_code in (200, 201):
                 success_count += len(chunk)
             else:
                 failure_count += len(chunk)
-                error_details.append(f"Chunk failed: HTTP {response.status_code}")
+                error_body = ""
+                try:
+                    error_body = response.text
+                except Exception:
+                    error_body = "(unable to read response body)"
+                error_details.append(f"Chunk failed: HTTP {response.status_code} - {error_body}")
 
         await self._log_audit(
             db=db,

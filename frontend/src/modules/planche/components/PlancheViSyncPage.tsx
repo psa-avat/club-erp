@@ -29,12 +29,13 @@ export function PlancheViSyncPage() {
   const reconcileMutation = usePlancheViReconcileMutation()
 
   const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [replace, setReplace] = useState(false)
 
   const rows = entitlementsQuery.data ?? []
   const selectedIds = useMemo(() => rows.filter((row) => selected[row.uuid]).map((row) => row.uuid), [rows, selected])
 
   async function runPush() {
-    await pushMutation.mutateAsync({ entitlement_uuids: selectedIds })
+    await pushMutation.mutateAsync({ entitlement_uuids: selectedIds, replace })
   }
 
   async function runReconcile() {
@@ -49,10 +50,18 @@ export function PlancheViSyncPage() {
       </div>
 
       <div className="rounded-xl border border-outline-variant bg-surface p-4">
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap gap-2 items-center">
           <Button disabled={selectedIds.length === 0 || pushMutation.isPending} onClick={() => { void runPush() }}>
             Pousser vers Planche ({selectedIds.length})
           </Button>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={replace}
+              onChange={(event) => setReplace(event.target.checked)}
+            />
+            Remplacer (écrase les données existantes sur Planche)
+          </label>
           <Button variant="secondary" disabled={reconcileMutation.isPending} onClick={() => { void runReconcile() }}>
             Rapprocher depuis vols validés
           </Button>
