@@ -48,6 +48,8 @@ export function HelloAssoViImportPage() {
   const [searchText, setSearchText] = useState('')
   const [promotionTypeUuid, setPromotionTypeUuid] = useState('')
   const [showPromoted, setShowPromoted] = useState(false)
+  const [sortField, setSortField] = useState<'item_id' | 'amount' | 'date' | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const activeTypes = useMemo(() => (typesQuery.data ?? []).filter((item) => item.is_active), [typesQuery.data])
 
@@ -70,20 +72,52 @@ export function HelloAssoViImportPage() {
     if (!showPromoted) {
       rows = rows.filter((row) => row.status !== 2)
     }
-    if (!searchText.trim()) return rows
-    const lower = searchText.trim().toLowerCase()
-    return rows.filter(
-      (row) =>
-        row.full_name?.toLowerCase().includes(lower) ||
-        String(row.item_id).includes(lower) ||
-        row.email?.toLowerCase().includes(lower),
-    )
-  }, [stagingQuery.data, searchText, showPromoted])
+    if (searchText.trim()) {
+      const lower = searchText.trim().toLowerCase()
+      rows = rows.filter(
+        (row) =>
+          row.full_name?.toLowerCase().includes(lower) ||
+          String(row.item_id).includes(lower) ||
+          row.email?.toLowerCase().includes(lower),
+      )
+    }
+    // Sort
+    if (sortField) {
+      rows = [...rows].sort((a, b) => {
+        let cmp = 0
+        if (sortField === 'item_id') {
+          cmp = a.item_id - b.item_id
+        } else if (sortField === 'amount') {
+          cmp = (a.amount_cents ?? 0) - (b.amount_cents ?? 0)
+        } else if (sortField === 'date') {
+          const da = a.purchased_at ? new Date(a.purchased_at).getTime() : 0
+          const db = b.purchased_at ? new Date(b.purchased_at).getTime() : 0
+          cmp = da - db
+        }
+        return sortDir === 'asc' ? cmp : -cmp
+      })
+    }
+    return rows
+  }, [stagingQuery.data, searchText, showPromoted, sortField, sortDir])
 
   const selectedIds = useMemo(
     () => filteredRows.filter((row) => selected[row.uuid]).map((row) => row.uuid),
     [selected, filteredRows],
   )
+
+  function handleSort(field: 'item_id' | 'amount' | 'date') {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  function sortArrow(field: 'item_id' | 'amount' | 'date'): string {
+    if (sortField !== field) return ' ↕'
+    return sortDir === 'asc' ? ' ↑' : ' ↓'
+  }
 
   async function runPreview() {
     await previewMutation.mutateAsync({ source: 'items', status, campaign_type: 'Event' })
@@ -200,12 +234,18 @@ export function HelloAssoViImportPage() {
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-3 py-2 text-left">{t('viImport.table.select')}</th>
-                <th className="px-3 py-2 text-left">{t('viImport.table.item')}</th>
+                <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('item_id')}>
+                  {t('viImport.table.item')}{sortArrow('item_id')}
+                </th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.event')}</th>
-                <th className="px-3 py-2 text-left">{t('viImport.table.amount')}</th>
+                <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('amount')}>
+                  {t('viImport.table.amount')}{sortArrow('amount')}
+                </th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.name')}</th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.email')}</th>
-                <th className="px-3 py-2 text-left">{t('viImport.table.purchaseDate')}</th>
+                <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('date')}>
+                  {t('viImport.table.purchaseDate')}{sortArrow('date')}
+                </th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.status')}</th>
               </tr>
             </thead>
