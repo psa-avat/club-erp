@@ -521,6 +521,13 @@ export const en = {
         campaignType: 'Campaign type',
         search: 'Search',
         searchPlaceholder: 'Name, email, phone, order id...',
+        fetch: 'Fetch purchases',
+        filterName: 'Filter by name',
+        filterNamePlaceholder: 'First name, last name...',
+        filterCampaign: 'Filter by campaign',
+        filterCampaignPlaceholder: 'CrowdFunding, Event...',
+        filterFormSlug: 'Filter by form',
+        filterFormSlugPlaceholder: 'Form slug...',
         statusValues: {
           active: 'Active',
           done: 'Done',

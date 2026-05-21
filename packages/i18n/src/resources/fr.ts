@@ -531,6 +531,13 @@ export const fr = {
         campaignType: 'Type de campagne',
         search: 'Recherche',
         searchPlaceholder: 'Nom, email, téléphone, id commande...',
+        fetch: 'Récupérer les achats',
+        filterName: 'Filtrer par nom',
+        filterNamePlaceholder: 'Nom, prénom...',
+        filterCampaign: 'Filtrer par campagne',
+        filterCampaignPlaceholder: 'CrowdFunding, Event...',
+        filterFormSlug: 'Filtrer par formulaire',
+        filterFormSlugPlaceholder: 'Slug du formulaire...',
         statusValues: {
           active: 'Actif',
           done: 'Terminé',
