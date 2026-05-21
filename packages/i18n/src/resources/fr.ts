@@ -55,7 +55,7 @@ export const fr = {
       plancheMachinesPush: 'Mise à jour des machines',
       plancheViSync: 'Sync VI',
       vi: 'VI',
-      viEntitlements: 'Droits VI',
+      viEntitlements: 'Bons VI',
       viTypes: 'Types VI',
       viPlanning: 'Planning VI',
       storage: 'Stockage',
@@ -619,6 +619,14 @@ export const fr = {
       },
     },
     viEntitlements: {
+      filters: {
+        code: 'Filtrer par code',
+        codePlaceholder: 'Code...',
+        type: 'Filtrer par type',
+        typePlaceholder: 'Type...',
+        description: 'Filtrer par description',
+        descriptionPlaceholder: 'Description...',
+      },
       table: {
         code: 'Code',
         type: 'Type',

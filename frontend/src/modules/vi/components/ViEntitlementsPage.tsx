@@ -44,6 +44,15 @@ export function ViEntitlementsPage() {
   const [description, setDescription] = useState('')
   const [originType, setOriginType] = useState(4)
 
+  // Filter state
+  const [filterCode, setFilterCode] = useState('')
+  const [filterType, setFilterType] = useState('')
+  const [filterDescription, setFilterDescription] = useState('')
+
+  // Sort state
+  const [sortField, setSortField] = useState<'code' | 'type' | 'validity' | 'status' | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
   const activeTypes = useMemo(() => (typesQuery.data ?? []).filter((item) => item.is_active), [typesQuery.data])
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
@@ -62,6 +71,60 @@ export function ViEntitlementsPage() {
   async function saveNotes(entitlementUuid: string, notes: string) {
     await patchNotesMutation.mutateAsync({ entitlementUuid, notes: notes || null })
   }
+
+  function handleSort(field: 'code' | 'type' | 'validity' | 'status') {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  function sortArrow(field: 'code' | 'type' | 'validity' | 'status'): string {
+    if (sortField !== field) return ' ↕'
+    return sortDir === 'asc' ? ' ↑' : ' ↓'
+  }
+
+  const filteredAndSortedRows = useMemo(() => {
+    let rows = entitlementsQuery.data ?? []
+
+    // Apply filters
+    const codeLower = filterCode.trim().toLowerCase()
+    const typeLower = filterType.trim().toLowerCase()
+    const descLower = filterDescription.trim().toLowerCase()
+
+    if (codeLower) {
+      rows = rows.filter((row) => row.code.toLowerCase().includes(codeLower))
+    }
+    if (typeLower) {
+      rows = rows.filter((row) => (row.vi_type_code ?? '').toLowerCase().includes(typeLower))
+    }
+    if (descLower) {
+      rows = rows.filter((row) => (row.description ?? '').toLowerCase().includes(descLower))
+    }
+
+    // Sort
+    if (sortField) {
+      rows = [...rows].sort((a, b) => {
+        let cmp = 0
+        if (sortField === 'code') {
+          cmp = a.code.localeCompare(b.code)
+        } else if (sortField === 'type') {
+          cmp = (a.vi_type_code ?? '').localeCompare(b.vi_type_code ?? '')
+        } else if (sortField === 'validity') {
+          const da = a.validity_date ? new Date(a.validity_date).getTime() : 0
+          const db = b.validity_date ? new Date(b.validity_date).getTime() : 0
+          cmp = da - db
+        } else if (sortField === 'status') {
+          cmp = a.status - b.status
+        }
+        return sortDir === 'asc' ? cmp : -cmp
+      })
+    }
+
+    return rows
+  }, [entitlementsQuery.data, filterCode, filterType, filterDescription, sortField, sortDir])
 
   return (
     <section className="space-y-4">
@@ -110,7 +173,7 @@ export function ViEntitlementsPage() {
           <Input id="vi-ent-desc" value={description} onChange={(event) => setDescription(event.target.value)} />
         </div>
         <div className="md:col-span-4">
-          <Button disabled={createMutation.isPending} type="submit">Créer le droit</Button>
+          <Button disabled={createMutation.isPending} type="submit">Créer le bon</Button>
         </div>
       </form>
 
@@ -119,23 +182,61 @@ export function ViEntitlementsPage() {
       {patchNotesMutation.error ? <Alert>{toErrorMessage(patchNotesMutation.error)}</Alert> : null}
       {patchEntitlementMutation.error ? <Alert>{toErrorMessage(patchEntitlementMutation.error)}</Alert> : null}
 
+      <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-4 md:grid-cols-3">
+        <div className="space-y-1">
+          <Label htmlFor="vi-filter-code" className="text-xs">{t('viEntitlements.filters.code')}</Label>
+          <Input
+            id="vi-filter-code"
+            placeholder={t('viEntitlements.filters.codePlaceholder')}
+            value={filterCode}
+            onChange={(event) => setFilterCode(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="vi-filter-type" className="text-xs">{t('viEntitlements.filters.type')}</Label>
+          <Input
+            id="vi-filter-type"
+            placeholder={t('viEntitlements.filters.typePlaceholder')}
+            value={filterType}
+            onChange={(event) => setFilterType(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="vi-filter-desc" className="text-xs">{t('viEntitlements.filters.description')}</Label>
+          <Input
+            id="vi-filter-desc"
+            placeholder={t('viEntitlements.filters.descriptionPlaceholder')}
+            value={filterDescription}
+            onChange={(event) => setFilterDescription(event.target.value)}
+          />
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
-              <th className="px-3 py-2 text-left">{t('viEntitlements.table.code')}</th>
-              <th className="px-3 py-2 text-left">{t('viEntitlements.table.type')}</th>
+              <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('code')}>
+                {t('viEntitlements.table.code')}{sortArrow('code')}
+              </th>
+              <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('type')}>
+                {t('viEntitlements.table.type')}{sortArrow('type')}
+              </th>
               <th className="px-3 py-2 text-left">{t('viEntitlements.table.description')}</th>
-              <th className="px-3 py-2 text-left">{t('viEntitlements.table.status')}</th>
+              <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('status')}>
+                {t('viEntitlements.table.status')}{sortArrow('status')}
+              </th>
               <th className="px-3 py-2 text-left">{t('viEntitlements.table.scheduledDate')}</th>
               <th className="px-3 py-2 text-left">{t('viEntitlements.table.realisationDate')}</th>
-              <th className="px-3 py-2 text-left">{t('viEntitlements.table.validityDate')}</th>
+              <th className="px-3 py-2 text-left cursor-pointer select-none hover:text-slate-900" onClick={() => handleSort('validity')}>
+                {t('viEntitlements.table.validityDate')}{sortArrow('validity')}
+              </th>
               <th className="px-3 py-2 text-left">{t('viEntitlements.table.notes')}</th>
               <th className="px-3 py-2 text-left">{t('viEntitlements.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {(entitlementsQuery.data ?? []).map((row) => (
+            {filteredAndSortedRows.map((row) => (
               <ViEntitlementRow
                 key={row.uuid}
                 row={row}
@@ -145,6 +246,13 @@ export function ViEntitlementsPage() {
                 onSaveNotes={saveNotes}
               />
             ))}
+            {filteredAndSortedRows.length === 0 && !entitlementsQuery.isLoading ? (
+              <tr>
+                <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
+                  Aucun droit trouvé.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

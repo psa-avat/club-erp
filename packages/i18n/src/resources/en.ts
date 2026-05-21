@@ -609,6 +609,14 @@ export const en = {
       },
     },
     viEntitlements: {
+      filters: {
+        code: 'Filter by code',
+        codePlaceholder: 'Code...',
+        type: 'Filter by type',
+        typePlaceholder: 'Type...',
+        description: 'Filter by description',
+        descriptionPlaceholder: 'Description...',
+      },
       table: {
         code: 'Code',
         type: 'Type',
