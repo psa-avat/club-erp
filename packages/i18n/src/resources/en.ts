@@ -590,6 +590,7 @@ export const en = {
         amount: 'Amount',
         name: 'Name',
         email: 'Email',
+        purchaseDate: 'Purchase date',
         status: 'Status',
         statusStaging: 'Staging',
         statusPromoted: 'Promoted',
@@ -598,6 +599,19 @@ export const en = {
       empty: {
         noResults: 'No results for this filter.',
         noRows: 'No rows in staging.',
+      },
+    },
+    viEntitlements: {
+      table: {
+        code: 'Code',
+        type: 'Type',
+        description: 'Description',
+        status: 'Status',
+        scheduledDate: 'Scheduled date',
+        realisationDate: 'Realisation date',
+        validityDate: 'Valid until',
+        notes: 'Notes',
+        actions: 'Actions',
       },
     },
   },

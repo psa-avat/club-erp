@@ -6,6 +6,7 @@
 */
 
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
@@ -31,6 +32,7 @@ function toErrorMessage(error: unknown): string {
 }
 
 export function ViEntitlementsPage() {
+  const { t } = useTranslation('helloasso')
   const typesQuery = useViTypesQuery()
   const entitlementsQuery = useViEntitlementsQuery()
   const createMutation = useCreateViEntitlementMutation()
@@ -121,15 +123,15 @@ export function ViEntitlementsPage() {
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
-              <th className="px-3 py-2 text-left">Code</th>
-              <th className="px-3 py-2 text-left">Type</th>
-              <th className="px-3 py-2 text-left">Description</th>
-              <th className="px-3 py-2 text-left">Statut</th>
-              <th className="px-3 py-2 text-left">Date planifiée</th>
-              <th className="px-3 py-2 text-left">Date réalisée</th>
-              <th className="px-3 py-2 text-left">Valable jusqu'au</th>
-              <th className="px-3 py-2 text-left">Notes</th>
-              <th className="px-3 py-2 text-left">Actions</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.code')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.type')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.description')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.status')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.scheduledDate')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.realisationDate')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.validityDate')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.notes')}</th>
+              <th className="px-3 py-2 text-left">{t('viEntitlements.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">

@@ -29,6 +29,12 @@ function formatAmount(cents: number | null): string {
   return (cents / 100).toFixed(2) + ' €'
 }
 
+function formatDateOnly(value: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short' }).format(date)
+}
+
 export function HelloAssoViImportPage() {
   const { t } = useTranslation('helloasso')
   const stagingQuery = useViStagingQuery()
@@ -199,6 +205,7 @@ export function HelloAssoViImportPage() {
                 <th className="px-3 py-2 text-left">{t('viImport.table.amount')}</th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.name')}</th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.email')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.purchaseDate')}</th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.status')}</th>
               </tr>
             </thead>
@@ -218,6 +225,7 @@ export function HelloAssoViImportPage() {
                   <td className="px-3 py-2">{formatAmount(row.amount_cents)}</td>
                   <td className="px-3 py-2">{row.full_name ?? '-'}</td>
                   <td className="px-3 py-2">{row.email ?? '-'}</td>
+                  <td className="px-3 py-2">{formatDateOnly(row.purchased_at)}</td>
                   <td className="px-3 py-2">
                     {row.status === 2
                       ? t('viImport.table.statusPromoted')
@@ -229,7 +237,7 @@ export function HelloAssoViImportPage() {
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={7}>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
                     {searchText ? t('viImport.empty.noResults') : t('viImport.empty.noRows')}
                   </td>
                 </tr>

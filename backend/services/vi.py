@@ -20,7 +20,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -483,11 +483,16 @@ async def promote_staging_rows_to_entitlements(
         existing_entitlement = existing_entitlement_result.scalar_one_or_none()
 
         if existing_entitlement is None:
+            # Compute validity_date: purchased_at + 1 year (date only, no time)
+            computed_validity: date | None = None
+            if row.purchased_at is not None:
+                computed_validity = row.purchased_at.date() + timedelta(days=365)
+
             entitlement = ViEntitlement(
                 code=code,
                 vi_type_uuid=vi_type_uuid,
                 description=f"{vi_type_code} - {row.full_name}" if row.full_name else vi_type_code,
-                validity_date=None,
+                validity_date=computed_validity,
                 scheduled_date=None,
                 realisation_date=None,
                 partner_code=None,

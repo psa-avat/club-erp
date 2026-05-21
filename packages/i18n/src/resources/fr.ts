@@ -600,6 +600,7 @@ export const fr = {
         amount: 'Montant',
         name: 'Nom',
         email: 'Email',
+        purchaseDate: "Date d'achat",
         status: 'Statut',
         statusStaging: 'Staging',
         statusPromoted: 'Promu',
@@ -608,6 +609,19 @@ export const fr = {
       empty: {
         noResults: 'Aucun résultat pour ce filtre.',
         noRows: 'Aucune ligne en staging.',
+      },
+    },
+    viEntitlements: {
+      table: {
+        code: 'Code',
+        type: 'Type',
+        description: 'Description',
+        status: 'Statut',
+        scheduledDate: 'Date planifiée',
+        realisationDate: 'Date réalisée',
+        validityDate: "Valable jusqu'au",
+        notes: 'Notes',
+        actions: 'Actions',
       },
     },
   },
