@@ -5,11 +5,13 @@
     Copyright (C) 2026  SAFORCADA Patrick
 */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
-import { useHelloassoViImportMutation, useHelloassoViPreviewMutation, usePromoteViStagingMutation, useViStagingQuery } from '../../vi/api'
+import { Input } from '../../../components/ui/input'
+import { useHelloassoViImportMutation, useHelloassoViPreviewMutation, usePromoteViStagingMutation, useViStagingQuery, useViTypesQuery } from '../../vi/api'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -22,18 +24,59 @@ function toErrorMessage(error: unknown): string {
   return 'Unexpected error'
 }
 
+function formatAmount(cents: number | null): string {
+  if (cents === null || cents === undefined) return '-'
+  return (cents / 100).toFixed(2) + ' €'
+}
+
 export function HelloAssoViImportPage() {
+  const { t } = useTranslation('helloasso')
   const stagingQuery = useViStagingQuery()
+  const typesQuery = useViTypesQuery()
   const previewMutation = useHelloassoViPreviewMutation()
   const importMutation = useHelloassoViImportMutation()
   const promoteMutation = usePromoteViStagingMutation()
 
   const [status, setStatus] = useState<'active' | 'done'>('active')
   const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [searchText, setSearchText] = useState('')
+  const [promotionTypeUuid, setPromotionTypeUuid] = useState('')
+  const [showPromoted, setShowPromoted] = useState(false)
+
+  const activeTypes = useMemo(() => (typesQuery.data ?? []).filter((item) => item.is_active), [typesQuery.data])
+
+  // Auto-select default "VI" type when types load
+  const defaultTypeUuid = useMemo(() => {
+    const vi = activeTypes.find((t) => t.code === 'VI')
+    return vi?.uuid ?? activeTypes[0]?.uuid ?? ''
+  }, [activeTypes])
+
+  // Keep promotionTypeUuid in sync with default
+  useEffect(() => {
+    if (!promotionTypeUuid && defaultTypeUuid) {
+      setPromotionTypeUuid(defaultTypeUuid)
+    }
+  }, [promotionTypeUuid, defaultTypeUuid])
+
+  const filteredRows = useMemo(() => {
+    let rows = stagingQuery.data ?? []
+    // Filter out promoted rows unless showPromoted is checked
+    if (!showPromoted) {
+      rows = rows.filter((row) => row.status !== 2)
+    }
+    if (!searchText.trim()) return rows
+    const lower = searchText.trim().toLowerCase()
+    return rows.filter(
+      (row) =>
+        row.full_name?.toLowerCase().includes(lower) ||
+        String(row.item_id).includes(lower) ||
+        row.email?.toLowerCase().includes(lower),
+    )
+  }, [stagingQuery.data, searchText, showPromoted])
 
   const selectedIds = useMemo(
-    () => (stagingQuery.data ?? []).filter((row) => selected[row.uuid]).map((row) => row.uuid),
-    [selected, stagingQuery.data],
+    () => filteredRows.filter((row) => selected[row.uuid]).map((row) => row.uuid),
+    [selected, filteredRows],
   )
 
   async function runPreview() {
@@ -46,7 +89,10 @@ export function HelloAssoViImportPage() {
   }
 
   async function promoteSelected() {
-    await promoteMutation.mutateAsync({ staging_uuids: selectedIds })
+    await promoteMutation.mutateAsync({
+      staging_uuids: selectedIds,
+      vi_type_uuid: promotionTypeUuid || undefined,
+    })
     setSelected({})
     await stagingQuery.refetch()
   }
@@ -54,55 +100,55 @@ export function HelloAssoViImportPage() {
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-outline-variant bg-surface p-6">
-        <h1 className="text-xl font-semibold text-slate-900">Import HelloAsso vers staging VI</h1>
-        <p className="text-sm text-slate-600">Prévisualisez, importez puis promouvez les achats en droits VI.</p>
+        <h1 className="text-xl font-semibold text-slate-900">{t('viImport.hero.title')}</h1>
+        <p className="text-sm text-slate-600">{t('viImport.hero.description')}</p>
       </div>
 
       <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-4 md:items-end">
         <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Source</label>
+          <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.source')}</label>
           <input
             readOnly
             className="h-10 w-full rounded-md border border-slate-300 bg-slate-100 px-3 text-sm text-slate-700"
-            value="Items (fixe)"
+            value={t('viImport.form.sourceFixed')}
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Statut</label>
+          <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.status')}</label>
           <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value as 'active' | 'done')}>
             <option value="active">Active</option>
             <option value="done">Done</option>
           </select>
         </div>
         <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Type campagne</label>
+          <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.campaignType')}</label>
           <input
             readOnly
             className="h-10 w-full rounded-md border border-slate-300 bg-slate-100 px-3 text-sm text-slate-700"
-            value="Event (fixe)"
+            value={t('viImport.form.campaignTypeFixed')}
           />
         </div>
         <Button variant="secondary" onClick={() => { void runPreview() }}>
-          Prévisualiser
+          {t('viImport.form.preview')}
         </Button>
         <Button onClick={() => { void runImport() }}>
-          Importer dans staging
+          {t('viImport.form.import')}
         </Button>
       </div>
 
       {previewMutation.data ? (
         <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
-          <p>Récupérés: {previewMutation.data.fetched_count}</p>
-          <p>Nouveaux: {previewMutation.data.net_new_count}</p>
-          <p>Déjà présents: {previewMutation.data.already_staged_count}</p>
+          <p>{t('viImport.preview.fetched')}: {previewMutation.data.fetched_count}</p>
+          <p>{t('viImport.preview.new')}: {previewMutation.data.net_new_count}</p>
+          <p>{t('viImport.preview.alreadyStaged')}: {previewMutation.data.already_staged_count}</p>
         </div>
       ) : null}
 
       {importMutation.data ? (
         <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
-          <p>Créés: {importMutation.data.created_count}</p>
-          <p>Doublons: {importMutation.data.duplicate_count}</p>
-          <p>Total staging: {importMutation.data.staging_total_count}</p>
+          <p>{t('viImport.importResult.created')}: {importMutation.data.created_count}</p>
+          <p>{t('viImport.importResult.duplicates')}: {importMutation.data.duplicate_count}</p>
+          <p>{t('viImport.importResult.totalStaging')}: {importMutation.data.staging_total_count}</p>
         </div>
       ) : null}
 
@@ -112,28 +158,52 @@ export function HelloAssoViImportPage() {
       {stagingQuery.error ? <Alert>{toErrorMessage(stagingQuery.error)}</Alert> : null}
 
       <div className="rounded-xl border border-outline-variant bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">Staging HelloAsso</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold text-slate-900">{t('viImport.staging.title')}</h2>
+          <div className="flex-1" />
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={showPromoted}
+              onChange={(event) => setShowPromoted(event.target.checked)}
+            />
+            {t('viImport.staging.showPromoted')}
+          </label>
+          <Input
+            className="w-64"
+            placeholder={t('viImport.staging.searchPlaceholder')}
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+          />
+          <select
+            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            value={promotionTypeUuid}
+            onChange={(event) => setPromotionTypeUuid(event.target.value)}
+          >
+            <option value="">{t('viImport.staging.typeDefault')}</option>
+            {activeTypes.map((t) => (
+              <option key={t.uuid} value={t.uuid}>{t.code} - {t.name}</option>
+            ))}
+          </select>
           <Button disabled={selectedIds.length === 0 || promoteMutation.isPending} onClick={() => { void promoteSelected() }}>
-            Promouvoir sélection ({selectedIds.length})
+            {t('viImport.staging.promote')} ({selectedIds.length})
           </Button>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-3 py-2 text-left">Sel</th>
-                <th className="px-3 py-2 text-left">Order</th>
-                <th className="px-3 py-2 text-left">Item</th>
-                <th className="px-3 py-2 text-left">Payment</th>
-                <th className="px-3 py-2 text-left">Événement</th>
-                <th className="px-3 py-2 text-left">Nom</th>
-                <th className="px-3 py-2 text-left">Email</th>
-                <th className="px-3 py-2 text-left">Statut</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.select')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.item')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.event')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.amount')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.name')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.email')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {(stagingQuery.data ?? []).map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.uuid}>
                   <td className="px-3 py-2">
                     <input
@@ -143,15 +213,27 @@ export function HelloAssoViImportPage() {
                       onChange={() => setSelected((current) => ({ ...current, [row.uuid]: !current[row.uuid] }))}
                     />
                   </td>
-                  <td className="px-3 py-2">{row.order_id}</td>
                   <td className="px-3 py-2">{row.item_id}</td>
-                  <td className="px-3 py-2">{row.payment_id}</td>
-                  <td className="px-3 py-2">{row.form_slug ?? row.campaign_type ?? '-'}</td>
+                  <td className="px-3 py-2">{row.form_slug ?? '-'}</td>
+                  <td className="px-3 py-2">{formatAmount(row.amount_cents)}</td>
                   <td className="px-3 py-2">{row.full_name ?? '-'}</td>
                   <td className="px-3 py-2">{row.email ?? '-'}</td>
-                  <td className="px-3 py-2">{row.status === 2 ? 'Promu' : row.status === 3 ? 'Ignoré' : 'Staging'}</td>
+                  <td className="px-3 py-2">
+                    {row.status === 2
+                      ? t('viImport.table.statusPromoted')
+                      : row.status === 3
+                        ? t('viImport.table.statusDiscarded')
+                        : t('viImport.table.statusStaging')}
+                  </td>
                 </tr>
               ))}
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={7}>
+                    {searchText ? t('viImport.empty.noResults') : t('viImport.empty.noRows')}
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

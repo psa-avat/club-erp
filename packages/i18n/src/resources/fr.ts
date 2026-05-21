@@ -562,6 +562,54 @@ export const fr = {
         empty: 'Aucun achat pour ce filtre.',
       },
     },
+    viImport: {
+      hero: {
+        title: 'Import HelloAsso vers staging VI',
+        description: 'Prévisualisez, importez puis promouvez les achats en droits VI.',
+      },
+      form: {
+        source: 'Source',
+        sourceFixed: 'Items (fixe)',
+        status: 'Statut',
+        campaignType: 'Type campagne',
+        campaignTypeFixed: 'Event (fixe)',
+        preview: 'Prévisualiser',
+        import: 'Importer dans staging',
+      },
+      preview: {
+        fetched: 'Récupérés',
+        new: 'Nouveaux',
+        alreadyStaged: 'Déjà présents',
+      },
+      importResult: {
+        created: 'Créés',
+        duplicates: 'Doublons',
+        totalStaging: 'Total staging',
+      },
+      staging: {
+        title: 'Staging HelloAsso',
+        searchPlaceholder: 'Filtrer par nom, email ou item ID...',
+        typeDefault: 'Type VI (défaut: VI)',
+        promote: 'Promouvoir',
+        showPromoted: 'Afficher les promus',
+      },
+      table: {
+        select: 'Sel',
+        item: 'Item',
+        event: 'Événement',
+        amount: 'Montant',
+        name: 'Nom',
+        email: 'Email',
+        status: 'Statut',
+        statusStaging: 'Staging',
+        statusPromoted: 'Promu',
+        statusDiscarded: 'Ignoré',
+      },
+      empty: {
+        noResults: 'Aucun résultat pour ce filtre.',
+        noRows: 'Aucune ligne en staging.',
+      },
+    },
   },
   storage: {
     hero: {

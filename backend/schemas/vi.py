@@ -88,17 +88,12 @@ class ViEntitlementResponse(BaseModel):
 
 class HelloAssoViStagingResponse(BaseModel):
     uuid: UUID
-    order_id: int
     item_id: int
-    payment_id: int
     full_name: str | None = None
     email: str | None = None
     phone: str | None = None
     amount_cents: int | None = None
-    campaign_type: str | None = None
     form_slug: str | None = None
-    payment_state: str | None = None
-    item_state: str | None = None
     purchased_at: datetime | None = None
     promoted_vi_uuid: UUID | None = None
     promoted_at: datetime | None = None

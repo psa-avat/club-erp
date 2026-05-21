@@ -11,7 +11,13 @@ import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
-import { useCreateViEntitlementMutation, usePatchViNotesMutation, useViEntitlementsQuery, useViTypesQuery } from '../api'
+import {
+  useCreateViEntitlementMutation,
+  usePatchViEntitlementMutation,
+  usePatchViNotesMutation,
+  useViEntitlementsQuery,
+  useViTypesQuery,
+} from '../api'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -29,6 +35,7 @@ export function ViEntitlementsPage() {
   const entitlementsQuery = useViEntitlementsQuery()
   const createMutation = useCreateViEntitlementMutation()
   const patchNotesMutation = usePatchViNotesMutation()
+  const patchEntitlementMutation = usePatchViEntitlementMutation()
 
   const [code, setCode] = useState('')
   const [typeUuid, setTypeUuid] = useState('')
@@ -108,6 +115,7 @@ export function ViEntitlementsPage() {
       {entitlementsQuery.error ? <Alert>{toErrorMessage(entitlementsQuery.error)}</Alert> : null}
       {createMutation.error ? <Alert>{toErrorMessage(createMutation.error)}</Alert> : null}
       {patchNotesMutation.error ? <Alert>{toErrorMessage(patchNotesMutation.error)}</Alert> : null}
+      {patchEntitlementMutation.error ? <Alert>{toErrorMessage(patchEntitlementMutation.error)}</Alert> : null}
 
       <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -115,16 +123,25 @@ export function ViEntitlementsPage() {
             <tr>
               <th className="px-3 py-2 text-left">Code</th>
               <th className="px-3 py-2 text-left">Type</th>
+              <th className="px-3 py-2 text-left">Description</th>
               <th className="px-3 py-2 text-left">Statut</th>
               <th className="px-3 py-2 text-left">Date planifiée</th>
               <th className="px-3 py-2 text-left">Date réalisée</th>
+              <th className="px-3 py-2 text-left">Valable jusqu'au</th>
               <th className="px-3 py-2 text-left">Notes</th>
-              <th className="px-3 py-2 text-left">Action notes</th>
+              <th className="px-3 py-2 text-left">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {(entitlementsQuery.data ?? []).map((row) => (
-              <ViEntitlementRow key={row.uuid} row={row} onSaveNotes={saveNotes} />
+              <ViEntitlementRow
+                key={row.uuid}
+                row={row}
+                activeTypes={activeTypes}
+                saving={patchEntitlementMutation.isPending}
+                onSave={(uuid, payload) => patchEntitlementMutation.mutateAsync({ entitlementUuid: uuid, payload })}
+                onSaveNotes={saveNotes}
+              />
             ))}
           </tbody>
         </table>
@@ -135,6 +152,9 @@ export function ViEntitlementsPage() {
 
 function ViEntitlementRow({
   row,
+  activeTypes,
+  saving,
+  onSave,
   onSaveNotes,
 }: {
   row: {
@@ -142,37 +162,146 @@ function ViEntitlementRow({
     code: string
     vi_type_uuid: string
     vi_type_code: string | null
+    description: string | null
     status: number
     scheduled_date: string | null
     realisation_date: string | null
+    validity_date: string | null
     notes: string | null
   }
+  activeTypes: { uuid: string; code: string; name: string }[]
+  saving: boolean
+  onSave: (uuid: string, payload: Record<string, unknown>) => Promise<unknown>
   onSaveNotes: (uuid: string, notes: string) => Promise<void>
 }) {
+  const [editing, setEditing] = useState(false)
+  const [code, setCode] = useState(row.code)
+  const [typeUuid, setTypeUuid] = useState(row.vi_type_uuid)
+  const [description, setDescription] = useState(row.description ?? '')
+  const [status, setStatus] = useState(row.status)
+  const [scheduledDate, setScheduledDate] = useState(row.scheduled_date ?? '')
+  const [realisationDate, setRealisationDate] = useState(row.realisation_date ?? '')
+  const [validityDate, setValidityDate] = useState(row.validity_date ?? '')
   const [notes, setNotes] = useState(row.notes ?? '')
 
-  const statusLabel = {
+  function resetFields() {
+    setCode(row.code)
+    setTypeUuid(row.vi_type_uuid)
+    setDescription(row.description ?? '')
+    setStatus(row.status)
+    setScheduledDate(row.scheduled_date ?? '')
+    setRealisationDate(row.realisation_date ?? '')
+    setValidityDate(row.validity_date ?? '')
+    setNotes(row.notes ?? '')
+  }
+
+  async function handleSave() {
+    const payload: Record<string, unknown> = {}
+    if (code !== row.code) payload.code = code
+    if (typeUuid !== row.vi_type_uuid) payload.vi_type_uuid = typeUuid
+    if (description !== (row.description ?? '')) payload.description = description || null
+    if (status !== row.status) payload.status = status
+    if (scheduledDate !== (row.scheduled_date ?? '')) payload.scheduled_date = scheduledDate || null
+    if (realisationDate !== (row.realisation_date ?? '')) payload.realisation_date = realisationDate || null
+    if (validityDate !== (row.validity_date ?? '')) payload.validity_date = validityDate || null
+    if (notes !== (row.notes ?? '')) payload.notes = notes || null
+
+    if (Object.keys(payload).length === 0) {
+      setEditing(false)
+      return
+    }
+
+    await onSave(row.uuid, payload)
+    setEditing(false)
+  }
+
+  function handleCancel() {
+    resetFields()
+    setEditing(false)
+  }
+
+  const statusLabel: Record<number, string> = {
     1: 'Chargé',
     2: 'Planifié',
     3: 'Réalisé',
     4: 'Expiré',
     5: 'Annulé',
-  }[row.status] ?? String(row.status)
+  }
+
+  if (editing) {
+    return (
+      <tr className="bg-amber-50">
+        <td className="px-2 py-1">
+          <Input value={code} onChange={(event) => setCode(event.target.value)} />
+        </td>
+        <td className="px-2 py-1">
+          <select
+            className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+            value={typeUuid}
+            onChange={(event) => setTypeUuid(event.target.value)}
+          >
+            {activeTypes.map((t) => (
+              <option key={t.uuid} value={t.uuid}>{t.code}</option>
+            ))}
+          </select>
+        </td>
+        <td className="px-2 py-1">
+          <Input value={description} onChange={(event) => setDescription(event.target.value)} />
+        </td>
+        <td className="px-2 py-1">
+          <select
+            className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+            value={status}
+            onChange={(event) => setStatus(Number(event.target.value))}
+          >
+            {Object.entries(statusLabel).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </td>
+        <td className="px-2 py-1">
+          <Input type="date" value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} />
+        </td>
+        <td className="px-2 py-1">
+          <Input type="date" value={realisationDate} onChange={(event) => setRealisationDate(event.target.value)} />
+        </td>
+        <td className="px-2 py-1">
+          <Input type="date" value={validityDate} onChange={(event) => setValidityDate(event.target.value)} />
+        </td>
+        <td className="px-2 py-1">
+          <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </td>
+        <td className="px-2 py-1">
+          <div className="flex gap-1">
+            <Button size="sm" disabled={saving} onClick={() => { void handleSave() }}>💾</Button>
+            <Button size="sm" variant="secondary" onClick={handleCancel}>✕</Button>
+          </div>
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <tr>
       <td className="px-3 py-2">{row.code}</td>
       <td className="px-3 py-2">{row.vi_type_code ?? row.vi_type_uuid.slice(0, 8)}</td>
-      <td className="px-3 py-2">{statusLabel}</td>
+      <td className="px-3 py-2">{row.description ?? '-'}</td>
+      <td className="px-3 py-2">{statusLabel[row.status] ?? String(row.status)}</td>
       <td className="px-3 py-2">{row.scheduled_date ?? '-'}</td>
       <td className="px-3 py-2">{row.realisation_date ?? '-'}</td>
+      <td className="px-3 py-2">{row.validity_date ?? '-'}</td>
       <td className="px-3 py-2">
         <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
       </td>
       <td className="px-3 py-2">
-        <Button size="sm" variant="secondary" onClick={() => { void onSaveNotes(row.uuid, notes) }}>
-          Enregistrer
-        </Button>
+        <div className="flex gap-1">
+          <Button size="sm" variant="secondary" onClick={() => { void onSaveNotes(row.uuid, notes) }}>
+            Notes
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => { resetFields(); setEditing(true) }}>
+            ✎
+          </Button>
+        </div>
       </td>
     </tr>
   )

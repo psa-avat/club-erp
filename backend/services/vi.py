@@ -25,7 +25,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select, tuple_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -333,20 +333,16 @@ async def preview_staging_net_new(
     db: AsyncSession,
     records: list[HelloAssoPurchaseRecord],
 ) -> dict[str, int]:
-    keys: list[tuple[int, int, int]] = []
+    keys: list[int] = []
     for record in records:
-        if record.order_id is None or record.item_id is None:
-            continue
-        payment_ids = record.payment_ids if record.payment_ids else [0]
-        for payment_id in payment_ids:
-            if isinstance(payment_id, int):
-                keys.append((record.order_id, record.item_id, payment_id))
+        if record.item_id is not None:
+            keys.append(record.item_id)
 
     if not keys:
         return {"fetched_count": len(records), "net_new_count": 0, "already_staged_count": 0}
 
     existing_stmt = select(func.count()).select_from(HelloAssoViStaging).where(
-        tuple_(HelloAssoViStaging.order_id, HelloAssoViStaging.item_id, HelloAssoViStaging.payment_id).in_(keys)
+        HelloAssoViStaging.item_id.in_(keys)
     )
     existing_count = int((await db.execute(existing_stmt)).scalar_one() or 0)
     return {
@@ -369,25 +365,15 @@ async def import_helloasso_records_to_staging(
             "staging_total_count": int((await db.execute(total_stmt)).scalar_one() or 0),
         }
 
-    keys: list[tuple[int, int, int]] = []
+    keys: list[int] = []
     candidates: list[dict[str, Any]] = []
 
     for record in records:
-        if record.order_id is None or record.item_id is None:
+        if record.item_id is None:
             continue
-        payment_ids = record.payment_ids if record.payment_ids else [0]
-        for payment_id in payment_ids:
-            if not isinstance(payment_id, int):
-                continue
-            key = (record.order_id, record.item_id, payment_id)
-            keys.append(key)
-            candidates.append(
-                {
-                    "key": key,
-                    "record": record,
-                    "payment_id": payment_id,
-                }
-            )
+        key = record.item_id
+        keys.append(key)
+        candidates.append({"key": key, "record": record})
 
     if not keys:
         total_stmt = select(func.count()).select_from(HelloAssoViStaging)
@@ -399,13 +385,9 @@ async def import_helloasso_records_to_staging(
         }
 
     existing_result = await db.execute(
-        select(
-            HelloAssoViStaging.order_id,
-            HelloAssoViStaging.item_id,
-            HelloAssoViStaging.payment_id,
-        ).where(tuple_(HelloAssoViStaging.order_id, HelloAssoViStaging.item_id, HelloAssoViStaging.payment_id).in_(keys))
+        select(HelloAssoViStaging.item_id).where(HelloAssoViStaging.item_id.in_(keys))
     )
-    existing_keys = set(existing_result.all())
+    existing_keys = {row[0] for row in existing_result.all()}
 
     created_count = 0
     duplicate_count = 0
@@ -413,24 +395,18 @@ async def import_helloasso_records_to_staging(
     for candidate in candidates:
         key = candidate["key"]
         record = candidate["record"]
-        payment_id = candidate["payment_id"]
 
         if key in existing_keys:
             duplicate_count += 1
             continue
 
         staging = HelloAssoViStaging(
-            order_id=record.order_id,
             item_id=record.item_id,
-            payment_id=payment_id,
             full_name=record.full_name,
             email=record.email,
             phone=record.phone,
             amount_cents=record.amount_cents,
-            campaign_type=record.campaign_type,
             form_slug=record.form_slug,
-            payment_state=record.payment_state,
-            item_state=record.item_state,
             purchased_at=record.date,
             status=1,
             raw_payload=record.model_dump(mode="json"),
@@ -473,10 +449,13 @@ async def promote_staging_rows_to_entitlements(
         if vi_type is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Default VI type is missing")
         vi_type_uuid = vi_type.uuid
+        vi_type_code = vi_type.code
     else:
         vi_type_result = await db.execute(select(ViTypeCatalog).where(ViTypeCatalog.uuid == vi_type_uuid))
-        if vi_type_result.scalar_one_or_none() is None:
+        vi_type = vi_type_result.scalar_one_or_none()
+        if vi_type is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown VI type")
+        vi_type_code = vi_type.code
 
     rows_result = await db.execute(select(HelloAssoViStaging).where(HelloAssoViStaging.uuid.in_(staging_uuids)))
     rows = list(rows_result.scalars().all())
@@ -499,7 +478,7 @@ async def promote_staging_rows_to_entitlements(
             already_promoted_count += 1
             continue
 
-        code = _normalize_code(f"HA-{row.order_id}-{row.item_id}-{row.payment_id}")
+        code = _normalize_code(f"HA-{row.item_id}")
         existing_entitlement_result = await db.execute(select(ViEntitlement).where(ViEntitlement.code == code))
         existing_entitlement = existing_entitlement_result.scalar_one_or_none()
 
@@ -507,13 +486,13 @@ async def promote_staging_rows_to_entitlements(
             entitlement = ViEntitlement(
                 code=code,
                 vi_type_uuid=vi_type_uuid,
-                description=row.full_name,
+                description=f"{vi_type_code} - {row.full_name}" if row.full_name else vi_type_code,
                 validity_date=None,
                 scheduled_date=None,
                 realisation_date=None,
                 partner_code=None,
                 origin_type=int(ViOriginType.HELLOASSO),
-                origin_ref=f"order:{row.order_id}|item:{row.item_id}|payment:{row.payment_id}",
+                origin_ref=f"item:{row.item_id}",
                 notes=row.phone,
                 status=int(ViEntitlementStatus.LOADED),
                 updated_by=user_id,

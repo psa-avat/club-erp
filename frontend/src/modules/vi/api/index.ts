@@ -57,17 +57,12 @@ export type ViEntitlement = {
 
 export type ViStagingRow = {
   uuid: string
-  order_id: number
   item_id: number
-  payment_id: number
   full_name: string | null
   email: string | null
   phone: string | null
   amount_cents: number | null
-  campaign_type: string | null
   form_slug: string | null
-  payment_state: string | null
-  item_state: string | null
   purchased_at: string | null
   promoted_vi_uuid: string | null
   promoted_at: string | null
@@ -164,6 +159,41 @@ export function useCreateViEntitlementMutation() {
       status?: number
     }) => {
       const { data } = await apiClient.post<ViEntitlement>('/api/v1/vi/entitlements', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.root })
+    },
+  })
+}
+
+export function usePatchViEntitlementMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      entitlementUuid,
+      payload,
+    }: {
+      entitlementUuid: string
+      payload: {
+        code?: string
+        vi_type_uuid?: string
+        description?: string | null
+        validity_date?: string | null
+        scheduled_date?: string | null
+        realisation_date?: string | null
+        partner_code?: string | null
+        origin_type?: number
+        origin_ref?: string | null
+        notes?: string | null
+        status?: number
+      }
+    }) => {
+      const { data } = await apiClient.patch<ViEntitlement>(
+        `/api/v1/vi/entitlements/${entitlementUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
       return data
     },
     onSuccess: async () => {

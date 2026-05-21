@@ -552,6 +552,54 @@ export const en = {
         empty: 'No purchases for this filter.',
       },
     },
+    viImport: {
+      hero: {
+        title: 'HelloAsso VI staging import',
+        description: 'Preview, import then promote purchases into VI entitlements.',
+      },
+      form: {
+        source: 'Source',
+        sourceFixed: 'Items (fixed)',
+        status: 'Status',
+        campaignType: 'Campaign type',
+        campaignTypeFixed: 'Event (fixed)',
+        preview: 'Preview',
+        import: 'Import to staging',
+      },
+      preview: {
+        fetched: 'Fetched',
+        new: 'New',
+        alreadyStaged: 'Already staged',
+      },
+      importResult: {
+        created: 'Created',
+        duplicates: 'Duplicates',
+        totalStaging: 'Total staging',
+      },
+      staging: {
+        title: 'HelloAsso staging',
+        searchPlaceholder: 'Filter by name, email or item ID...',
+        typeDefault: 'VI type (default: VI)',
+        promote: 'Promote',
+        showPromoted: 'Show promoted',
+      },
+      table: {
+        select: 'Sel',
+        item: 'Item',
+        event: 'Event',
+        amount: 'Amount',
+        name: 'Name',
+        email: 'Email',
+        status: 'Status',
+        statusStaging: 'Staging',
+        statusPromoted: 'Promoted',
+        statusDiscarded: 'Discarded',
+      },
+      empty: {
+        noResults: 'No results for this filter.',
+        noRows: 'No rows in staging.',
+      },
+    },
   },
   storage: {
     hero: {

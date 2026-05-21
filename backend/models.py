@@ -1360,28 +1360,18 @@ class HelloAssoViStaging(Base):
 
     __tablename__ = "helloasso_vi_staging"
     __table_args__ = (
-        UniqueConstraint(
-            "order_id",
-            "item_id",
-            "payment_id",
-            name="uq_helloasso_vi_staging_order_item_payment",
-        ),
+        UniqueConstraint("item_id", name="uq_helloasso_vi_staging_item_id"),
         CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="chk_helloasso_vi_staging_amount_cents"),
         CheckConstraint("status BETWEEN 1 AND 3", name="chk_helloasso_vi_staging_status"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    order_id = Column(BigInteger, nullable=False, index=True)
     item_id = Column(BigInteger, nullable=False, index=True)
-    payment_id = Column(BigInteger, nullable=False, index=True)
     full_name = Column(String(255), nullable=True)
     email = Column(String(255), nullable=True, index=True)
     phone = Column(String(64), nullable=True)
     amount_cents = Column(Integer, nullable=True)
-    campaign_type = Column(String(64), nullable=True, index=True)
     form_slug = Column(String(128), nullable=True, index=True)
-    payment_state = Column(String(64), nullable=True)
-    item_state = Column(String(64), nullable=True)
     purchased_at = Column(DateTime(timezone=True), nullable=True, index=True)
     promoted_vi_uuid = Column(
         UUID(as_uuid=True),
@@ -1407,4 +1397,4 @@ class HelloAssoViStaging(Base):
     promoted_vi = relationship("ViEntitlement", back_populates="helloasso_staging_rows")
 
     def __repr__(self):
-        return f"<HelloAssoViStaging order={self.order_id} item={self.item_id} payment={self.payment_id}>"
+        return f"<HelloAssoViStaging item={self.item_id}>"
