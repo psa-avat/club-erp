@@ -7,6 +7,22 @@
 
 from unittest import TestCase
 
+import sys
+import types
+
+
+if "httpx" not in sys.modules:
+    httpx_stub = types.ModuleType("httpx")
+    httpx_stub.AsyncClient = object
+    httpx_stub.Response = object
+    httpx_stub.TimeoutException = TimeoutError
+    httpx_stub.NetworkError = OSError
+    httpx_stub.RequestError = OSError
+    sys.modules["httpx"] = httpx_stub
+
+if "aioboto3" not in sys.modules:
+    sys.modules["aioboto3"] = types.ModuleType("aioboto3")
+
 from api.routes.planche import router
 
 

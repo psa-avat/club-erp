@@ -19,6 +19,7 @@
 """
 
 from datetime import date, datetime, timezone
+from hashlib import sha256
 from typing import Any, Optional
 import asyncio
 import json
@@ -33,6 +34,7 @@ from models import (
     MemberRegistration,
     Asset,
     ValidatedFlight,
+    PlancheFlightSnapshot,
     AuditLog,
     ViEntitlement,
     ViEntitlementStatus,
@@ -1045,135 +1047,304 @@ class PlancheIntegrationService:
 
         return {"total": len(flights), "updated": updated, "unmatched": unmatched}
 
+    @staticmethod
+    def _canonical_source_hash(payload: dict[str, Any]) -> str:
+        """Return a stable digest for a Planche source payload."""
+        encoded = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+        return sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _parse_planche_date(value: Any) -> date | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        return date.fromisoformat(str(value)[:10])
+
+    @staticmethod
+    def _parse_planche_datetime(value: Any) -> datetime | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        normalized = str(value).replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    @staticmethod
+    def _as_int(value: Any, default: int = 0) -> int:
+        if value is None or value == "":
+            return default
+        return int(value)
+
+    @staticmethod
+    def _extract_change_item(raw: dict[str, Any]) -> dict[str, Any]:
+        """Normalize both changes-endpoint items and legacy validated-flight rows."""
+        if isinstance(raw.get("flight"), dict):
+            flight = dict(raw["flight"])
+            planche_uuid = raw.get("uuid") or flight.get("uuid")
+            revision = raw.get("revision") or flight.get("revision") or 1
+            status_value = raw.get("status") or flight.get("status") or "active"
+            updated_at = raw.get("updated_at") or flight.get("lastUpdated")
+            corrected_at = raw.get("corrected_at") or flight.get("corrected_at")
+            corrected_by = raw.get("corrected_by") or flight.get("corrected_by")
+            correction_reason = raw.get("correction_reason") or flight.get("correction_reason")
+            flight.setdefault("uuid", planche_uuid)
+            flight.setdefault("revision", revision)
+            flight.setdefault("corrected_at", corrected_at)
+            flight.setdefault("corrected_by", corrected_by)
+            flight.setdefault("correction_reason", correction_reason)
+            return {
+                "planche_uuid": str(planche_uuid) if planche_uuid is not None else "",
+                "revision": int(revision or 1),
+                "status": str(status_value or "active"),
+                "updated_at": updated_at,
+                "corrected_at": corrected_at,
+                "corrected_by": corrected_by,
+                "correction_reason": correction_reason,
+                "flight": flight,
+                "raw": raw,
+            }
+
+        planche_uuid = raw.get("uuid")
+        revision = raw.get("revision") or 1
+        status_value = raw.get("status") or raw.get("erp_transfer_status") or "active"
+        return {
+            "planche_uuid": str(planche_uuid) if planche_uuid is not None else "",
+            "revision": int(revision or 1),
+            "status": str(status_value or "active"),
+            "updated_at": raw.get("updated_at") or raw.get("lastUpdated"),
+            "corrected_at": raw.get("corrected_at"),
+            "corrected_by": raw.get("corrected_by"),
+            "correction_reason": raw.get("correction_reason"),
+            "flight": dict(raw),
+            "raw": raw,
+        }
+
+    def _apply_planche_flight_data(
+        self,
+        flight_obj: ValidatedFlight,
+        flight_data: dict[str, Any],
+        change_item: dict[str, Any],
+        snapshot: PlancheFlightSnapshot,
+        triggered_by: str,
+        existing_status: int | None,
+        source_hash_changed: bool,
+    ) -> None:
+        """Map Planche flight fields onto the current normalized ERP flight row."""
+        jour = self._parse_planche_date(flight_data.get("jour"))
+        if jour is None:
+            raise ValueError("jour is required")
+
+        planche_uuid = change_item["planche_uuid"]
+        revision = change_item["revision"]
+        status_value = change_item["status"]
+
+        flight_obj.planche_uuid = planche_uuid
+        flight_obj.source_snapshot_uuid = snapshot.uuid
+        flight_obj.aero = flight_data.get("aero")
+        flight_obj.jour = jour
+        # Planche uses *_immat for aircraft registrations; ERP assets store the same value in assets.registration.
+        flight_obj.asset_code = flight_data.get("glider_immat") or ""
+        flight_obj.pilot_erp_id = flight_data.get("pilot_erp_id") or ""
+        flight_obj.pilot_compta_id = flight_data.get("pilot_compta_id")
+        flight_obj.second_pilot_erp_id = flight_data.get("second_pilot_erp_id")
+        flight_obj.second_pilot_id = flight_data.get("second_pilot_id")
+        flight_obj.charge_to_erp_id = flight_data.get("charge_to_erp_id")
+        flight_obj.charge_to_compta_id = flight_data.get("charge_to_compta_id")
+        flight_obj.instruction_split = self._as_int(flight_data.get("instruction_split"), 0)
+        flight_obj.vi_erp_id = flight_data.get("vi_erp_id") or flight_data.get("vi_id")
+        flight_obj.typeOfFlight = self._as_int(flight_data.get("typeOfFlight"), 0)
+        flight_obj.launchMethod = self._as_int(flight_data.get("launchMethod"), 0)
+        flight_obj.launchType = flight_data.get("launchType")
+        flight_obj.launch_asset_code = flight_data.get("launch_machine_immat")
+        flight_obj.launch_pilot_trigram = flight_data.get("launch_pilot_trigram")
+        flight_obj.launch_instructor_trigram = flight_data.get("launch_instructor_trigram")
+        flight_obj.takeoffTime = flight_data.get("takeoffTime") or "00:00"
+        flight_obj.landingTime = flight_data.get("landingTime") or "00:00"
+        flight_obj.startIndex = flight_data.get("startIndex")
+        flight_obj.stopIndex = flight_data.get("stopIndex")
+        flight_obj.engineTime = flight_data.get("engineTime")
+        flight_obj.landingCount = self._as_int(flight_data.get("landingCount"), 1)
+        flight_obj.flightKm = flight_data.get("flightKm")
+        flight_obj.takeoffLocation = flight_data.get("takeoffLocation")
+        flight_obj.landedLocation = flight_data.get("landedLocation")
+        flight_obj.observations = flight_data.get("observations")
+        flight_obj.last_export_hash = snapshot.source_hash
+        flight_obj.last_updated = snapshot.updated_at_source
+        flight_obj.revision = revision
+        flight_obj.source_status = status_value
+        flight_obj.corrected_at = snapshot.corrected_at
+        flight_obj.corrected_by = snapshot.corrected_by
+        flight_obj.correction_reason = snapshot.correction_reason
+        flight_obj.validated_at = datetime.now(timezone.utc)
+        flight_obj.validated_by = triggered_by
+
+        if existing_status == 1 and source_hash_changed:
+            flight_obj.erp_status = 2  # modified_after_transfer
+        elif existing_status is None:
+            flight_obj.erp_status = 0
+        else:
+            flight_obj.erp_status = existing_status
+
     async def pull_validated_flights(
         self,
         db: AsyncSession,
         from_date: Optional[datetime] = None,
         to_date: Optional[datetime] = None,
         triggered_by: str = "system",
+        cursor: str | None = None,
+        limit: int = 500,
     ) -> dict[str, Any]:
         """
-        Pull validated flights from Planche and upsert into ERP.
+        Pull validated flights from Planche and upsert the current ERP view.
 
-        Args:
-            db: AsyncSession for database operations
-            from_date: Start date for flight query (optional)
-            to_date: End date for flight query (optional)
-            triggered_by: User/system identifier triggering the pull
-
-        Returns:
-            {
-                "total": int,
-                "created": int,
-                "updated": int,
-                "skipped": int,
-                "error_details": [str],
-            }
+        Routine sync uses the revision-aware /erp/validated-flights/changes endpoint.
+        Date ranges keep using the legacy export endpoint for manual backfills.
         """
         try:
-            # Build query parameters
-            params = {}
-            if from_date:
-                params["from_date"] = from_date.isoformat()
-            if to_date:
-                params["to_date"] = to_date.isoformat()
-
-            # Pull flights from Planche
-            response = await self._perform_request(
-                method="GET",
-                endpoint="/validated-flights",
-                params=params,
-            )
-
-            if response.status_code != 200:
-                raise ValueError(
-                    f"Failed to pull flights: HTTP {response.status_code}"
+            using_changes_endpoint = from_date is None and to_date is None
+            if using_changes_endpoint:
+                response = await self._perform_request(
+                    method="GET",
+                    endpoint="/erp/validated-flights/changes",
+                    params={"since": cursor or "", "limit": limit},
+                )
+            else:
+                if from_date is None or to_date is None:
+                    raise ValueError("from_date and to_date are both required for legacy date-range flight pulls")
+                response = await self._perform_request(
+                    method="GET",
+                    endpoint="/validated-flights",
+                    params={
+                        "date_from": from_date.date().isoformat(),
+                        "date_to": to_date.date().isoformat(),
+                        "include_deleted": True,
+                    },
                 )
 
-            flights_data = response.json()
-            if not isinstance(flights_data, list):
-                flights_data = flights_data.get("results", [])
+            if response.status_code != 200:
+                raise ValueError(f"Failed to pull flights: HTTP {response.status_code}")
+
+            payload = response.json()
+            if using_changes_endpoint:
+                raw_items = payload.get("items", []) if isinstance(payload, dict) else []
+                next_cursor = payload.get("next_cursor") if isinstance(payload, dict) else None
+                has_more = bool(payload.get("has_more")) if isinstance(payload, dict) else False
+            else:
+                raw_items = payload if isinstance(payload, list) else payload.get("results", [])
+                next_cursor = None
+                has_more = False
 
             created_count = 0
             updated_count = 0
             skipped_count = 0
-            error_details = []
+            idempotent_count = 0
+            snapshots_created = 0
+            modified_after_transfer_count = 0
+            error_details: list[str] = []
 
-            for flight_data in flights_data:
+            for raw_item in raw_items:
+                planche_uuid = ""
                 try:
-                    planche_uuid = flight_data.get("uuid")
+                    if not isinstance(raw_item, dict):
+                        skipped_count += 1
+                        continue
+                    change_item = self._extract_change_item(raw_item)
+                    planche_uuid = change_item["planche_uuid"]
                     if not planche_uuid:
                         skipped_count += 1
                         continue
 
-                    # Check if flight already exists
-                    stmt = select(ValidatedFlight).where(
-                        ValidatedFlight.planche_uuid == planche_uuid
-                    )
-                    result = await db.execute(stmt)
-                    existing_flight = result.scalar_one_or_none()
+                    revision = change_item["revision"]
+                    flight_data = change_item["flight"]
+                    source_payload = {
+                        "uuid": planche_uuid,
+                        "revision": revision,
+                        "status": change_item["status"],
+                        "updated_at": change_item["updated_at"],
+                        "corrected_at": change_item["corrected_at"],
+                        "corrected_by": change_item["corrected_by"],
+                        "correction_reason": change_item["correction_reason"],
+                        "flight": flight_data,
+                    }
+                    source_hash = self._canonical_source_hash(source_payload)
 
-                    # Map Planche fields to ValidatedFlight model
+                    snapshot_result = await db.execute(
+                        select(PlancheFlightSnapshot).where(
+                            PlancheFlightSnapshot.planche_uuid == planche_uuid,
+                            PlancheFlightSnapshot.planche_revision == revision,
+                        )
+                    )
+                    snapshot = snapshot_result.scalar_one_or_none()
+                    snapshot_created = snapshot is None
+                    if snapshot is None:
+                        snapshot = PlancheFlightSnapshot(
+                            planche_uuid=planche_uuid,
+                            planche_revision=revision,
+                            source_hash=source_hash,
+                            status=change_item["status"],
+                            payload_json=source_payload,
+                            updated_at_source=self._parse_planche_datetime(change_item["updated_at"]),
+                            corrected_at=self._parse_planche_datetime(change_item["corrected_at"]),
+                            corrected_by=change_item["corrected_by"],
+                            correction_reason=change_item["correction_reason"],
+                        )
+                        db.add(snapshot)
+                        await db.flush()
+                        snapshots_created += 1
+
+                    current_result = await db.execute(
+                        select(ValidatedFlight).where(ValidatedFlight.planche_uuid == planche_uuid)
+                    )
+                    existing_flight = current_result.scalar_one_or_none()
+                    existing_status = existing_flight.erp_status if existing_flight else None
+                    existing_hash = existing_flight.last_export_hash if existing_flight else None
+                    existing_revision = existing_flight.revision if existing_flight else None
+                    source_hash_changed = existing_hash != source_hash
+
+                    if existing_flight and existing_revision == revision and existing_hash == source_hash:
+                        if existing_flight.source_snapshot_uuid != snapshot.uuid:
+                            existing_flight.source_snapshot_uuid = snapshot.uuid
+                        idempotent_count += 1
+                        continue
+
                     flight_obj = existing_flight or ValidatedFlight()
-                    flight_obj.planche_uuid = planche_uuid
-                    flight_obj.aero = flight_data.get("aero", "")
-                    flight_obj.jour = flight_data.get("jour")
-                    flight_obj.glider_immat = flight_data.get("glider_immat", "")
-                    flight_obj.pilot_erp_id = flight_data.get("pilot_erp_id", "")
-                    flight_obj.second_pilot_erp_id = flight_data.get("second_pilot_erp_id")
-                    flight_obj.charge_to_erp_id = flight_data.get("charge_to_erp_id")
-                    flight_obj.instruction_split = flight_data.get("instruction_split", 0)
-                    flight_obj.vi_erp_id = flight_data.get("vi_erp_id")
-                    flight_obj.typeOfFlight = flight_data.get("typeOfFlight", 0)
-                    flight_obj.launchMethod = flight_data.get("launchMethod", 0)
-                    flight_obj.launchType = flight_data.get("launchType")
-                    flight_obj.launch_machine_immat = flight_data.get(
-                        "launch_machine_immat"
+                    self._apply_planche_flight_data(
+                        flight_obj=flight_obj,
+                        flight_data=flight_data,
+                        change_item=change_item,
+                        snapshot=snapshot,
+                        triggered_by=triggered_by,
+                        existing_status=existing_status,
+                        source_hash_changed=source_hash_changed,
                     )
-                    flight_obj.launch_pilot_trigram = flight_data.get(
-                        "launch_pilot_trigram"
-                    )
-                    flight_obj.launch_instructor_trigram = flight_data.get(
-                        "launch_instructor_trigram"
-                    )
-                    flight_obj.takeoffTime = flight_data.get("takeoffTime", "00:00")
-                    flight_obj.landingTime = flight_data.get("landingTime", "00:00")
-                    flight_obj.startIndex = flight_data.get("startIndex")
-                    flight_obj.stopIndex = flight_data.get("stopIndex")
-                    flight_obj.engineTime = flight_data.get("engineTime")
-                    flight_obj.landingCount = flight_data.get("landingCount", 1)
-                    flight_obj.flightKm = flight_data.get("flightKm")
-                    flight_obj.takeoffLocation = flight_data.get("takeoffLocation")
-                    flight_obj.landedLocation = flight_data.get("landedLocation")
-                    flight_obj.observations = flight_data.get("observations")
-                    # NOTE: Charges are stored separately in flight_charges table
-                    # They will be imported/managed by Phase 2 charge reconciliation endpoints
-                    flight_obj.erp_status = 0  # validated (draft)
-                    flight_obj.validated_at = datetime.now(timezone.utc)
-                    flight_obj.validated_by = triggered_by
 
                     if existing_flight:
-                        # Mark as potentially modified if status was transferred
-                        if flight_obj.erp_status == 1:
-                            flight_obj.erp_status = 2  # modified_after_transfer
                         updated_count += 1
+                        if existing_status == 1 and source_hash_changed:
+                            modified_after_transfer_count += 1
                     else:
                         db.add(flight_obj)
                         created_count += 1
 
-                except Exception as e:
-                    error_details.append(f"Flight {planche_uuid}: {str(e)}")
+                    if not snapshot_created and snapshot.source_hash != source_hash:
+                        # Same Planche UUID+revision should be immutable. Surface this as an error instead of mutating history.
+                        error_details.append(f"Flight {planche_uuid}: revision {revision} payload differs from stored snapshot")
 
-            # Commit all changes
+                except Exception as e:
+                    error_details.append(f"Flight {planche_uuid or '?'}: {str(e)}")
+
             await db.commit()
 
-            # Log audit trail
             await self._log_audit(
                 db=db,
                 operation_type="flights_pull",
                 status=0 if not error_details else (2 if created_count + updated_count > 0 else 1),
-                total_records=len(flights_data),
-                success_count=created_count + updated_count,
+                total_records=len(raw_items),
+                success_count=created_count + updated_count + idempotent_count,
                 failure_count=len(error_details),
                 error_message="\n".join(error_details) if error_details else None,
                 triggered_by=triggered_by,
@@ -1182,15 +1353,26 @@ class PlancheIntegrationService:
                         "created": created_count,
                         "updated": updated_count,
                         "skipped": skipped_count,
+                        "idempotent": idempotent_count,
+                        "snapshots_created": snapshots_created,
+                        "modified_after_transfer": modified_after_transfer_count,
+                        "next_cursor": next_cursor,
+                        "has_more": has_more,
+                        "source_endpoint": "/erp/validated-flights/changes" if using_changes_endpoint else "/validated-flights",
                     }
                 ),
             )
 
             return {
-                "total": len(flights_data),
+                "total": len(raw_items),
                 "created": created_count,
                 "updated": updated_count,
                 "skipped": skipped_count,
+                "idempotent": idempotent_count,
+                "snapshots_created": snapshots_created,
+                "modified_after_transfer": modified_after_transfer_count,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
                 "error_details": error_details,
             }
 
@@ -1199,7 +1381,7 @@ class PlancheIntegrationService:
             await self._log_audit(
                 db=db,
                 operation_type="flights_pull",
-                status=1,  # error
+                status=1,
                 error_message=str(e),
                 triggered_by=triggered_by,
             )

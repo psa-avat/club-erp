@@ -39,7 +39,15 @@ from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_PLANCHE, CAP_MANAGE_SYSTEM_SETTINGS
 from models import User
 from schemas.accounting import SystemSettingUpdateRequest
-from schemas.planche import PLANCHE_SETTINGS_MODULE, PlancheConnectionTestResponse, PlancheLoginTestResponse, PlancheSettingsPayload, PlancheSettingsResponse
+from schemas.planche import (
+    PLANCHE_SETTINGS_MODULE,
+    FlightPullRequest,
+    FlightPullResponse,
+    PlancheConnectionTestResponse,
+    PlancheLoginTestResponse,
+    PlancheSettingsPayload,
+    PlancheSettingsResponse,
+)
 from services.planche_integration import PlancheIntegrationService
 
 # --- Phase 2: Outbound Sync Endpoints ---
@@ -261,6 +269,28 @@ async def reconcile_vi_from_validated_flights(
     )
     return JSONResponse(result)
 
+
+@router.post("/flights/pull", response_model=FlightPullResponse)
+async def pull_validated_flights_from_planche(
+    request: FlightPullRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = planche_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Pull Planche validated flight revisions into ERP current flight storage."""
+    payload = request or FlightPullRequest()
+    service = await _get_planche_service(db)
+    result = await service.pull_validated_flights(
+        db=db,
+        from_date=payload.from_date,
+        to_date=payload.to_date,
+        cursor=payload.cursor,
+        limit=payload.limit,
+        triggered_by=str(current_user.id),
+    )
+    return result
+
+
 DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "base_url": "",
     "connection_id": "",
@@ -271,6 +301,9 @@ DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "retry_max_attempts": 3,
     "retry_backoff_ms": 1000,
     "chunk_size": 10,
+    "sync_cursor_flights": None,
+    "sync_cursor_pilots": None,
+    "sync_cursor_machines": None,
 }
 
 

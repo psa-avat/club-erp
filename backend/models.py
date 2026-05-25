@@ -1118,6 +1118,43 @@ class LaunchMethod(IntEnum):
     AUTONOME = 3
 
 
+class PlancheFlightSnapshot(Base):
+    """
+    Immutable source payload received from Planche for one flight revision.
+
+    `validated_flights` keeps the current normalized ERP view. This table keeps
+    the source-of-truth history keyed by Planche UUID + revision.
+    """
+
+    __tablename__ = "planche_flight_snapshots"
+    __table_args__ = (
+        UniqueConstraint("planche_uuid", "planche_revision", name="uq_planche_flight_snapshot_revision"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    planche_uuid = Column(String, nullable=False, index=True)
+    planche_revision = Column(Integer, nullable=False, default=1)
+    source_hash = Column(String(64), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    payload_json = Column(JSON, nullable=False, default=dict)
+    updated_at_source = Column(DateTime(timezone=True), nullable=True, index=True)
+    corrected_at = Column(DateTime(timezone=True), nullable=True)
+    corrected_by = Column(String, nullable=True)
+    correction_reason = Column(Text, nullable=True)
+    ack_status = Column(String(32), nullable=False, default="not_acknowledged", index=True)
+    ack_at = Column(DateTime(timezone=True), nullable=True)
+    ack_error = Column(Text, nullable=True)
+    received_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+    def __repr__(self):
+        return f"<PlancheFlightSnapshot planche_uuid={self.planche_uuid} revision={self.planche_revision}>"
+
+
 class ValidatedFlight(Base):
     """
     Validated flights imported from Planche backend.
@@ -1140,15 +1177,22 @@ class ValidatedFlight(Base):
     # Identifiers
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     planche_uuid = Column(String, nullable=False, index=True)  # Planche flight UUID (sync key)
+    source_snapshot_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("planche_flight_snapshots.uuid", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Flight context (required)
+    aero = Column(String, nullable=True)  # Planche aerodrome code
     jour = Column(Date, nullable=False)  # Flight date
-    asset_code = Column(String, nullable=False)  # Glider registration (asset_code)
+    asset_code = Column(String, nullable=False)  # Glider registration snapshot (Planche glider_immat)
 
     # Pilots (ERP member IDs)
     pilot_erp_id = Column(String, nullable=False)  # Main pilot (ERP member UUID)
+    pilot_compta_id = Column(String, nullable=True)  # Planche/legacy accounting ID
     second_pilot_erp_id = Column(String, nullable=True)  # Second pilot/instructor
+    second_pilot_id = Column(String, nullable=True)  # Planche/legacy second pilot ID
     charge_to_erp_id = Column(String, nullable=True)  # Billing member
+    charge_to_compta_id = Column(String, nullable=True)  # Planche/legacy billing ID
     instruction_split = Column(Integer, nullable=False, default=0)  # Instruction split
 
     vi_erp_id = Column(String, nullable=True)  # VI assignment (ERP identifier)
@@ -1187,6 +1231,14 @@ class ValidatedFlight(Base):
     transferred_at = Column(DateTime(timezone=True), nullable=True)  # When transferred to accounting
     transferred_by = Column(String, nullable=True)  # User/device who transferred
     last_export_hash = Column(String, nullable=True)  # Change marker for modification detection
+    last_updated = Column(DateTime(timezone=True), nullable=True)  # Planche lastUpdated timestamp
+    revision = Column(Integer, nullable=False, default=1)  # Planche revision counter
+    source_status = Column(String(32), nullable=False, default="active")  # active/updated/deleted from Planche changes API
+    corrected_at = Column(DateTime(timezone=True), nullable=True)
+    corrected_by = Column(String, nullable=True)
+    correction_reason = Column(Text, nullable=True)
+
+    source_snapshot = relationship("PlancheFlightSnapshot")
 
     # Accounting entry linkage
     accounting_entry_uuid = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)  # Link to GL entry

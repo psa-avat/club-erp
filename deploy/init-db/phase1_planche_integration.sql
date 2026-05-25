@@ -8,15 +8,46 @@
 -- NOTE: Pilot/Machine sync does NOT require schema changes to members/assets tables.
 -- Planche sends member_id and asset_code for sync key; no caching of Planche IDs needed.
 
+-- Create immutable Planche flight source snapshots
+CREATE TABLE planche_flight_snapshots (
+    uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    planche_uuid VARCHAR NOT NULL,
+    planche_revision INTEGER DEFAULT 1 NOT NULL,
+    source_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(32) DEFAULT 'active' NOT NULL,
+    payload_json JSONB DEFAULT '{}'::jsonb NOT NULL,
+    updated_at_source TIMESTAMP WITH TIME ZONE,
+    corrected_at TIMESTAMP WITH TIME ZONE,
+    corrected_by VARCHAR,
+    correction_reason TEXT,
+    ack_status VARCHAR(32) DEFAULT 'not_acknowledged' NOT NULL,
+    ack_at TIMESTAMP WITH TIME ZONE,
+    ack_error TEXT,
+    received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT uq_planche_flight_snapshot_revision UNIQUE (planche_uuid, planche_revision)
+);
+
+CREATE INDEX idx_planche_flight_snapshots_planche_uuid ON planche_flight_snapshots(planche_uuid);
+CREATE INDEX idx_planche_flight_snapshots_source_hash ON planche_flight_snapshots(source_hash);
+CREATE INDEX idx_planche_flight_snapshots_status ON planche_flight_snapshots(status);
+CREATE INDEX idx_planche_flight_snapshots_updated_at_source ON planche_flight_snapshots(updated_at_source);
+CREATE INDEX idx_planche_flight_snapshots_ack_status ON planche_flight_snapshots(ack_status);
+CREATE INDEX idx_planche_flight_snapshots_received_at ON planche_flight_snapshots(received_at);
+
 -- Create validated_flights table
 CREATE TABLE validated_flights (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     planche_uuid VARCHAR NOT NULL UNIQUE,
+    source_snapshot_uuid UUID REFERENCES planche_flight_snapshots(uuid) ON DELETE SET NULL,
+    aero VARCHAR,
     jour DATE NOT NULL,
     asset_code VARCHAR NOT NULL,
     pilot_erp_id VARCHAR NOT NULL,
+    pilot_compta_id VARCHAR,
     second_pilot_erp_id VARCHAR,
+    second_pilot_id VARCHAR,
     charge_to_erp_id VARCHAR,
+    charge_to_compta_id VARCHAR,
     instruction_split INTEGER DEFAULT 0 NOT NULL,
     vi_erp_id VARCHAR,
     typeOfFlight SMALLINT NOT NULL,
@@ -41,6 +72,12 @@ CREATE TABLE validated_flights (
     transferred_at TIMESTAMP WITH TIME ZONE,
     transferred_by VARCHAR,
     last_export_hash VARCHAR,
+    last_updated TIMESTAMP WITH TIME ZONE,
+    revision INTEGER DEFAULT 1 NOT NULL,
+    source_status VARCHAR(32) DEFAULT 'active' NOT NULL,
+    corrected_at TIMESTAMP WITH TIME ZONE,
+    corrected_by VARCHAR,
+    correction_reason TEXT,
     accounting_entry_uuid UUID UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -51,6 +88,7 @@ CREATE TABLE validated_flights (
 );
 
 CREATE INDEX idx_validated_flights_planche_uuid ON validated_flights(planche_uuid);
+CREATE INDEX idx_validated_flights_source_snapshot_uuid ON validated_flights(source_snapshot_uuid);
 CREATE INDEX idx_validated_flights_jour ON validated_flights(jour);
 CREATE INDEX idx_validated_flights_erp_status ON validated_flights(erp_status);
 CREATE INDEX idx_validated_flights_accounting_entry_uuid ON validated_flights(accounting_entry_uuid);

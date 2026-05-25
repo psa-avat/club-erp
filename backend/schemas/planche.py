@@ -39,7 +39,7 @@ class PlancheSettingsPayload(BaseModel):
     password: str = Field(min_length=1)
     environment: str = Field(default="test", min_length=1)
     # Sync cursor fields for incremental pulls (Phase 1+)
-    sync_cursor_flights: Optional[datetime] = Field(default=None)  # Last pull timestamp for flights
+    sync_cursor_flights: Optional[str] = Field(default=None)  # Composite cursor for Planche flight changes
     sync_cursor_pilots: Optional[datetime] = Field(default=None)  # Last push timestamp for pilots
     sync_cursor_machines: Optional[datetime] = Field(default=None)  # Last push timestamp for machines
     # Retry configuration for failed operations
@@ -80,3 +80,23 @@ class PlancheLoginTestResponse(BaseModel):
     roles: list[str] = Field(default_factory=list)
     login_token: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)
+
+class FlightPullRequest(BaseModel):
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+    cursor: Optional[str] = None
+    limit: int = Field(default=500, ge=1, le=5000)
+
+
+class FlightPullResponse(BaseModel):
+    total: int
+    created: int
+    updated: int
+    skipped: int
+    idempotent: int = 0
+    snapshots_created: int = 0
+    modified_after_transfer: int = 0
+    next_cursor: Optional[str] = None
+    has_more: bool = False
+    error_details: list[str] = Field(default_factory=list)
+
