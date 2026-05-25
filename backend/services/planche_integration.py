@@ -1232,6 +1232,9 @@ class PlancheIntegrationService:
             if using_changes_endpoint:
                 raw_items = payload.get("items", []) if isinstance(payload, dict) else []
                 next_cursor = payload.get("next_cursor") if isinstance(payload, dict) else None
+                # Normalize empty string to None so the frontend never receives
+                # a falsy cursor that would disable the Continue button.
+                next_cursor = next_cursor or None
                 has_more = bool(payload.get("has_more")) if isinstance(payload, dict) else False
             else:
                 raw_items = payload if isinstance(payload, list) else payload.get("results", [])

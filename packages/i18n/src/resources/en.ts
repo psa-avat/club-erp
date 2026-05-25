@@ -883,6 +883,7 @@ export const en = {
         errors: 'Errors',
         success: 'Import completed successfully.',
         noChanges: 'No changes detected.',
+        moreWithoutCursor: 'More flights are available but the resume cursor is missing. Use date range mode to import the rest.',
       },
     },
   },

@@ -135,7 +135,10 @@ export function PlancheFlightsPullPage() {
 
   async function handleContinue() {
     setErrorMessage(null)
-    if (!lastResult?.next_cursor) return
+    if (!lastResult?.next_cursor) {
+      setErrorMessage(t('flightsPull.result.moreWithoutCursor'))
+      return
+    }
     try {
       const response = await pullMutation.mutateAsync({
         cursor: lastResult.next_cursor,
@@ -148,6 +151,7 @@ export function PlancheFlightsPullPage() {
   }
 
   const canContinue = lastResult?.has_more && !!lastResult.next_cursor && !pullMutation.isPending
+  const hasMoreWithoutCursor = lastResult?.has_more && !lastResult.next_cursor
 
   return (
     <section className="space-y-4">
@@ -319,18 +323,24 @@ export function PlancheFlightsPullPage() {
             )}
 
             {lastResult.has_more ? (
-              <Button
-                disabled={!canContinue}
-                onClick={() => {
-                  void handleContinue()
-                }}
-                type="button"
-                variant="secondary"
-              >
-                {pullMutation.isPending
-                  ? t('flightsPull.actions.pulling')
-                  : t('flightsPull.actions.continue')}
-              </Button>
+              hasMoreWithoutCursor ? (
+                <p className="text-sm text-amber-700">
+                  {t('flightsPull.result.moreWithoutCursor')}
+                </p>
+              ) : (
+                <Button
+                  disabled={!canContinue}
+                  onClick={() => {
+                    void handleContinue()
+                  }}
+                  type="button"
+                  variant="secondary"
+                >
+                  {pullMutation.isPending
+                    ? t('flightsPull.actions.pulling')
+                    : t('flightsPull.actions.continue')}
+                </Button>
+              )
             ) : lastResult.total > 0 ? (
               <Alert variant="success">{t('flightsPull.result.success')}</Alert>
             ) : (

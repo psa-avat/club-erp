@@ -892,6 +892,7 @@ export const fr = {
         errors: 'Erreurs',
         success: 'Import terminé avec succès.',
         noChanges: 'Aucun changement détecté.',
+        moreWithoutCursor: 'D\'autres vols sont disponibles mais le curseur de reprise est manquant. Utilisez le mode plage de dates pour importer la suite.',
       },
     },
   },

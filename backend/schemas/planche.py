@@ -99,4 +99,5 @@ class FlightPullResponse(BaseModel):
     next_cursor: Optional[str] = None
     has_more: bool = False
     error_details: list[str] = Field(default_factory=list)
+    error_details: list[str] = Field(default_factory=list)
 
