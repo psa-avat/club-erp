@@ -948,7 +948,7 @@ class PlancheIntegrationService:
             response = await self._perform_request(
                 method="POST",
                 endpoint="/erp/vi/sync",
-                json={"dry_run": False, "replace": replace, "items": chunk},
+                json={"dry_run": False, "mode": "replace" if replace else "update", "items": chunk},
             )
             if response.status_code in (200, 201):
                 success_count += len(chunk)
