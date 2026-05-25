@@ -1168,10 +1168,10 @@ class ValidatedFlight(Base):
     __table_args__ = (
         UniqueConstraint("uuid", name="uq_validated_flights_uuid"),
         UniqueConstraint("planche_uuid", name="uq_validated_flights_planche_uuid"),
-        CheckConstraint("typeOfFlight BETWEEN 0 AND 7", name="chk_vf_typeOfFlight"),
-        CheckConstraint("launchMethod BETWEEN 0 AND 3", name="chk_vf_launchMethod"),
+        CheckConstraint("type_of_flight BETWEEN 0 AND 7", name="chk_vf_type_of_flight"),
+        CheckConstraint("launch_method BETWEEN 0 AND 3", name="chk_vf_launch_method"),
         CheckConstraint("erp_status IN (0, 1, 2)", name="chk_vf_erp_status"),
-        CheckConstraint("landingCount >= 1", name="chk_vf_landingCount"),
+        CheckConstraint("landing_count >= 1", name="chk_vf_landing_count"),
     )
 
     # Identifiers
@@ -1198,9 +1198,9 @@ class ValidatedFlight(Base):
     vi_erp_id = Column(String, nullable=True)  # VI assignment (ERP identifier)
 
     # Flight details (required)
-    typeOfFlight = Column(Integer, nullable=False)  # Enum: INSTRUCTION, SOLO, etc.
-    launchMethod = Column(Integer, nullable=False)  # Enum: EXTERNE, TREUIL, etc.
-    launchType = Column(Integer, nullable=True)  # Launch type (see plan for mapping)
+    type_of_flight = Column("type_of_flight", Integer, nullable=False)  # Enum: INSTRUCTION, SOLO, etc.
+    launch_method = Column("launch_method", Integer, nullable=False)  # Enum: EXTERNE, TREUIL, etc.
+    launch_type = Column("launch_type", Integer, nullable=True)  # Launch type (see plan for mapping)
 
     # Tow/Winch details (optional)
     launch_asset_code = Column(String, nullable=True)  # Tow/winch registration
@@ -1208,17 +1208,17 @@ class ValidatedFlight(Base):
     launch_instructor_trigram = Column(String, nullable=True)  # Launch instructor trigram
 
     # Timing & Indexes (required times, optional indices)
-    takeoffTime = Column(String, nullable=False)  # HH:MM format
-    landingTime = Column(String, nullable=False)  # HH:MM format
-    startIndex = Column(Float, nullable=True)  # TMG/tow plane index
-    stopIndex = Column(Float, nullable=True)  # TMG/tow plane index
-    engineTime = Column(Float, nullable=True)  # Engine time in 1/100ths of hours
-    landingCount = Column(Integer, nullable=False, default=1)
+    takeoff_time = Column("takeoff_time", String, nullable=False)  # HH:MM format
+    landing_time = Column("landing_time", String, nullable=False)  # HH:MM format
+    start_index = Column("start_index", Float, nullable=True)  # TMG/tow plane index
+    stop_index = Column("stop_index", Float, nullable=True)  # TMG/tow plane index
+    engine_time = Column("engine_time", Float, nullable=True)  # Engine time in 1/100ths of hours
+    landing_count = Column("landing_count", Integer, nullable=False, default=1)
 
     # Flight metrics (optional)
-    flightKm = Column(Float, nullable=True)  # Distance in km
-    takeoffLocation = Column(String, nullable=True)  # ICAO code
-    landedLocation = Column(String, nullable=True)  # ICAO code
+    flight_km = Column("flight_km", Float, nullable=True)  # Distance in km
+    takeoff_location = Column("takeoff_location", String, nullable=True)  # ICAO code
+    landed_location = Column("landed_location", String, nullable=True)  # ICAO code
     observations = Column(Text, nullable=True)  # Free text
 
     # ERP status and audit metadata

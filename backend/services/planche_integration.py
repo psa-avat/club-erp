@@ -1156,21 +1156,21 @@ class PlancheIntegrationService:
         flight_obj.charge_to_compta_id = flight_data.get("charge_to_compta_id")
         flight_obj.instruction_split = self._as_int(flight_data.get("instruction_split"), 0)
         flight_obj.vi_erp_id = flight_data.get("vi_erp_id") or flight_data.get("vi_id")
-        flight_obj.typeOfFlight = self._as_int(flight_data.get("typeOfFlight"), 0)
-        flight_obj.launchMethod = self._as_int(flight_data.get("launchMethod"), 0)
-        flight_obj.launchType = flight_data.get("launchType")
+        flight_obj.type_of_flight = self._as_int(flight_data.get("typeOfFlight"), 0)
+        flight_obj.launch_method = self._as_int(flight_data.get("launchMethod"), 0)
+        flight_obj.launch_type = flight_data.get("launchType")
         flight_obj.launch_asset_code = flight_data.get("launch_machine_immat")
         flight_obj.launch_pilot_trigram = flight_data.get("launch_pilot_trigram")
         flight_obj.launch_instructor_trigram = flight_data.get("launch_instructor_trigram")
-        flight_obj.takeoffTime = flight_data.get("takeoffTime") or "00:00"
-        flight_obj.landingTime = flight_data.get("landingTime") or "00:00"
-        flight_obj.startIndex = flight_data.get("startIndex")
-        flight_obj.stopIndex = flight_data.get("stopIndex")
-        flight_obj.engineTime = flight_data.get("engineTime")
-        flight_obj.landingCount = self._as_int(flight_data.get("landingCount"), 1)
-        flight_obj.flightKm = flight_data.get("flightKm")
-        flight_obj.takeoffLocation = flight_data.get("takeoffLocation")
-        flight_obj.landedLocation = flight_data.get("landedLocation")
+        flight_obj.takeoff_time = flight_data.get("takeoffTime") or "00:00"
+        flight_obj.landing_time = flight_data.get("landingTime") or "00:00"
+        flight_obj.start_index = flight_data.get("startIndex")
+        flight_obj.stop_index = flight_data.get("stopIndex")
+        flight_obj.engine_time = flight_data.get("engineTime")
+        flight_obj.landing_count = self._as_int(flight_data.get("landingCount"), 1)
+        flight_obj.flight_km = flight_data.get("flightKm")
+        flight_obj.takeoff_location = flight_data.get("takeoffLocation")
+        flight_obj.landed_location = flight_data.get("landedLocation")
         flight_obj.observations = flight_data.get("observations")
         flight_obj.last_export_hash = snapshot.source_hash
         flight_obj.last_updated = snapshot.updated_at_source
@@ -1272,6 +1272,7 @@ class PlancheIntegrationService:
                     }
                     source_hash = self._canonical_source_hash(source_payload)
 
+                    # Determine snapshot state before entering savepoint
                     snapshot_result = await db.execute(
                         select(PlancheFlightSnapshot).where(
                             PlancheFlightSnapshot.planche_uuid == planche_uuid,
@@ -1279,63 +1280,90 @@ class PlancheIntegrationService:
                         )
                     )
                     snapshot = snapshot_result.scalar_one_or_none()
-                    snapshot_created = snapshot is None
-                    if snapshot is None:
-                        snapshot = PlancheFlightSnapshot(
-                            planche_uuid=planche_uuid,
-                            planche_revision=revision,
-                            source_hash=source_hash,
-                            status=change_item["status"],
-                            payload_json=source_payload,
-                            updated_at_source=self._parse_planche_datetime(change_item["updated_at"]),
-                            corrected_at=self._parse_planche_datetime(change_item["corrected_at"]),
-                            corrected_by=change_item["corrected_by"],
-                            correction_reason=change_item["correction_reason"],
-                        )
-                        db.add(snapshot)
-                        await db.flush()
-                        snapshots_created += 1
-                    elif snapshot.source_hash != source_hash:
-                        error_details.append(
-                            f"Flight {planche_uuid}: revision {revision} payload differs from stored snapshot"
-                        )
-                        continue
 
-                    current_result = await db.execute(
+                    existing_result = await db.execute(
                         select(ValidatedFlight).where(ValidatedFlight.planche_uuid == planche_uuid)
                     )
-                    existing_flight = current_result.scalar_one_or_none()
-                    existing_status = existing_flight.erp_status if existing_flight else None
-                    existing_hash = existing_flight.last_export_hash if existing_flight else None
-                    existing_revision = existing_flight.revision if existing_flight else None
-                    source_hash_changed = existing_hash != source_hash
+                    existing_flight = existing_result.scalar_one_or_none()
 
-                    if existing_flight and existing_revision == revision and existing_hash == source_hash:
+                    # ── Fast path: already fully in sync ──────────────────────────
+                    if (
+                        snapshot is not None
+                        and existing_flight is not None
+                        and existing_flight.revision == revision
+                        and (existing_flight.last_export_hash or "") == source_hash
+                    ):
                         if existing_flight.source_snapshot_uuid != snapshot.uuid:
                             existing_flight.source_snapshot_uuid = snapshot.uuid
                         idempotent_count += 1
                         continue
 
-                    flight_obj = existing_flight or ValidatedFlight()
-                    self._apply_planche_flight_data(
-                        flight_obj=flight_obj,
-                        flight_data=flight_data,
-                        change_item=change_item,
-                        snapshot=snapshot,
-                        triggered_by=triggered_by,
-                        existing_status=existing_status,
-                        source_hash_changed=source_hash_changed,
-                    )
+                    # ── Process / upsert inside a savepoint ────────────────────────
+                    # A DB failure on one flight must NOT poison the whole transaction
+                    # for subsequent flights (avoids InFailedSQLTransactionError).
+                    async with db.begin_nested():
+                        # Re-read snapshot inside savepoint for freshness
+                        sp_snap_result = await db.execute(
+                            select(PlancheFlightSnapshot).where(
+                                PlancheFlightSnapshot.planche_uuid == planche_uuid,
+                                PlancheFlightSnapshot.planche_revision == revision,
+                            )
+                        )
+                        sp_snapshot = sp_snap_result.scalar_one_or_none()
 
-                    if existing_flight:
-                        updated_count += 1
-                        if existing_status == 1 and source_hash_changed:
-                            modified_after_transfer_count += 1
-                    else:
-                        db.add(flight_obj)
-                        created_count += 1
+                        if sp_snapshot is None:
+                            sp_snapshot = PlancheFlightSnapshot(
+                                planche_uuid=planche_uuid,
+                                planche_revision=revision,
+                                source_hash=source_hash,
+                                status=change_item["status"],
+                                payload_json=source_payload,
+                                updated_at_source=self._parse_planche_datetime(change_item["updated_at"]),
+                                corrected_at=self._parse_planche_datetime(change_item["corrected_at"]),
+                                corrected_by=change_item["corrected_by"],
+                                correction_reason=change_item["correction_reason"],
+                            )
+                            db.add(sp_snapshot)
+                            await db.flush()
+                            snapshots_created += 1
+                        elif sp_snapshot.source_hash != source_hash:
+                            raise ValueError(
+                                f"Revision {revision} payload hash {source_hash} "
+                                f"differs from stored hash {sp_snapshot.source_hash}"
+                            )
 
+                        # Re-read existing flight inside savepoint
+                        sp_existing_result = await db.execute(
+                            select(ValidatedFlight).where(ValidatedFlight.planche_uuid == planche_uuid)
+                        )
+                        sp_existing = sp_existing_result.scalar_one_or_none()
+                        sp_status = sp_existing.erp_status if sp_existing else None
+                        sp_hash = sp_existing.last_export_hash if sp_existing else None
+                        sp_hash_changed = (sp_hash or "") != source_hash
+
+                        flight_obj = sp_existing or ValidatedFlight()
+                        self._apply_planche_flight_data(
+                            flight_obj=flight_obj,
+                            flight_data=flight_data,
+                            change_item=change_item,
+                            snapshot=sp_snapshot,
+                            triggered_by=triggered_by,
+                            existing_status=sp_status,
+                            source_hash_changed=sp_hash_changed,
+                        )
+
+                        if sp_existing:
+                            updated_count += 1
+                            if sp_status == 1 and sp_hash_changed:
+                                modified_after_transfer_count += 1
+                        else:
+                            db.add(flight_obj)
+                            created_count += 1
+
+                except ValueError as e:
+                    error_details.append(f"Flight {planche_uuid or '?'}: {str(e)}")
                 except Exception as e:
+                    logger.warning("DB error processing flight %s: %s", planche_uuid, e)
                     error_details.append(f"Flight {planche_uuid or '?'}: {str(e)}")
 
             await db.commit()

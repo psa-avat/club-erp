@@ -312,3 +312,47 @@ export function usePlancheViReconcileMutation() {
     },
   })
 }
+
+// ─── Flight Pull ─────────────────────────────────────────────────────────────
+
+export const plancheFlightPullKeys = {
+  pull: ['planche', 'flights', 'pull'] as const,
+}
+
+export type FlightPullRequest = {
+  from_date?: string | null
+  to_date?: string | null
+  cursor?: string | null
+  limit?: number
+}
+
+export type FlightPullResponse = {
+  total: number
+  created: number
+  updated: number
+  skipped: number
+  idempotent: number
+  snapshots_created: number
+  modified_after_transfer: number
+  next_cursor: string | null
+  has_more: boolean
+  error_details?: string[]
+}
+
+export function usePlancheFlightsPullMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (request: FlightPullRequest = {}) => {
+      const { data } = await apiClient.post<FlightPullResponse>(
+        '/api/v1/planche/flights/pull',
+        request,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: plancheQueryKeys.settings })
+    },
+  })
+}

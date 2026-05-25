@@ -36,6 +36,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_PLANCHE' },
       { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_PLANCHE' },
       { to: '/planche/vi-sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
+      { to: '/planche/flights-pull', labelKey: 'nav.plancheFlightsPull', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
   {
