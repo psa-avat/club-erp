@@ -1295,6 +1295,11 @@ class PlancheIntegrationService:
                         db.add(snapshot)
                         await db.flush()
                         snapshots_created += 1
+                    elif snapshot.source_hash != source_hash:
+                        error_details.append(
+                            f"Flight {planche_uuid}: revision {revision} payload differs from stored snapshot"
+                        )
+                        continue
 
                     current_result = await db.execute(
                         select(ValidatedFlight).where(ValidatedFlight.planche_uuid == planche_uuid)
@@ -1329,10 +1334,6 @@ class PlancheIntegrationService:
                     else:
                         db.add(flight_obj)
                         created_count += 1
-
-                    if not snapshot_created and snapshot.source_hash != source_hash:
-                        # Same Planche UUID+revision should be immutable. Surface this as an error instead of mutating history.
-                        error_details.append(f"Flight {planche_uuid}: revision {revision} payload differs from stored snapshot")
 
                 except Exception as e:
                     error_details.append(f"Flight {planche_uuid or '?'}: {str(e)}")
