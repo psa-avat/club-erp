@@ -66,6 +66,7 @@ DEFAULT_HELLOASSO_SETTINGS: dict[str, Any] = {
 HELLOASSO_AUTH_URL = "https://api.helloasso.com/oauth2/token"
 HELLOASSO_ORGANIZATIONS_URL = "https://api.helloasso.com/v5/users/me/organizations"
 HELLOASSO_ITEMS_PATH = "/organizations/{organization_slug}/items"
+HELLOASSO_ITEMS_DETAILS_PATH = "items/{item_id}"
 HELLOASSO_ORDERS_PATH = "/organizations/{organization_slug}/orders"
 ALLOWED_CAMPAIGN_TYPES = {"CrowdFunding", "Membership", "Event", "Donation", "PaymentForm", "Checkout", "Shop"}
 
@@ -668,7 +669,7 @@ async def get_helloasso_item_details_endpoint(
     logger.debug("Fetching HelloAsso item details for user_id=%s item_id=%s", current_user.id, item_id)
 
     organization_slug, auth_headers = await _get_helloasso_organization_context(db)
-    url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_PATH.format(organization_slug=organization_slug)}/{item_id}"
+    url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_DETAILS_PATH.format(item_id=item_id)}"
     details_status_code, details_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
     if not 200 <= details_status_code < 300:
         raise HTTPException(
