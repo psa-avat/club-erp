@@ -155,6 +155,65 @@ async def _run_in_thread(func, *args, **kwargs):
     return await asyncio.to_thread(func, *args, **kwargs)
 
 
+def _extract_continuation_token(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+
+    pagination = payload.get("pagination")
+    if isinstance(pagination, dict):
+        token = pagination.get("continuationToken")
+        if isinstance(token, str) and token:
+            return token
+
+    token = payload.get("continuationToken")
+    if isinstance(token, str) and token:
+        return token
+    return None
+
+
+async def _fetch_all_helloasso_pages(
+    *,
+    base_url: str,
+    initial_query_params: dict[str, Any],
+    auth_headers: dict[str, str],
+    endpoint_label: str,
+) -> list[dict[str, Any]]:
+    all_records: list[dict[str, Any]] = []
+    continuation_token: str | None = None
+    seen_tokens: set[str] = set()
+
+    while True:
+        query_params = dict(initial_query_params)
+        if continuation_token:
+            query_params["continuationToken"] = continuation_token
+
+        query = urllib_parse.urlencode(query_params, doseq=True)
+        url = f"{base_url}?{query}"
+        status_code, payload = await _run_in_thread(_perform_json_get, url, auth_headers)
+        if not 200 <= status_code < 300:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": f"Unable to fetch HelloAsso {endpoint_label}",
+                    "status_code": status_code,
+                    "details": payload if isinstance(payload, dict) else {"raw": str(payload)},
+                },
+            )
+
+        page_records = _extract_data_list(payload)
+        if not page_records:
+            break
+
+        all_records.extend(page_records)
+        next_token = _extract_continuation_token(payload)
+        if not next_token or next_token in seen_tokens:
+            break
+        seen_tokens.add(next_token)
+        continuation_token = next_token
+
+    return all_records
+
+
 async def _get_cached_helloasso_token(client_id: str, client_secret: str) -> str:
     now = time.time()
     if (
@@ -268,28 +327,19 @@ async def _fetch_helloasso_records(
 
     if source == "items":
         item_states = sorted(ACTIVE_ITEM_STATES if status_filter == "active" else DONE_ITEM_STATES)
-        query = urllib_parse.urlencode(
-            {
+        base_url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_PATH.format(organization_slug=organization_slug)}"
+        items = await _fetch_all_helloasso_pages(
+            base_url=base_url,
+            initial_query_params={
                 "pageIndex": 1,
                 "pageSize": page_size,
                 "withDetails": "true",
                 "sortOrder": "Desc",
                 "itemStates": item_states,
             },
-            doseq=True,
+            auth_headers=auth_headers,
+            endpoint_label="items",
         )
-        url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_PATH.format(organization_slug=organization_slug)}?{query}"
-        items_status_code, items_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
-        if not 200 <= items_status_code < 300:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "message": "Unable to fetch HelloAsso items",
-                    "status_code": items_status_code,
-                    "details": items_payload if isinstance(items_payload, dict) else {"raw": str(items_payload)},
-                },
-            )
-        items = _extract_data_list(items_payload)
         records = [
             record
             for item in items
@@ -306,19 +356,13 @@ async def _fetch_helloasso_records(
         if normalized_campaign_types:
             query_params["formTypes"] = normalized_campaign_types
 
-        query = urllib_parse.urlencode(query_params, doseq=True)
-        url = f"https://api.helloasso.com/v5{HELLOASSO_ORDERS_PATH.format(organization_slug=organization_slug)}?{query}"
-        orders_status_code, orders_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
-        if not 200 <= orders_status_code < 300:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "message": "Unable to fetch HelloAsso orders",
-                    "status_code": orders_status_code,
-                    "details": orders_payload if isinstance(orders_payload, dict) else {"raw": str(orders_payload)},
-                },
-            )
-        orders = _extract_data_list(orders_payload)
+        base_url = f"https://api.helloasso.com/v5{HELLOASSO_ORDERS_PATH.format(organization_slug=organization_slug)}"
+        orders = await _fetch_all_helloasso_pages(
+            base_url=base_url,
+            initial_query_params=query_params,
+            auth_headers=auth_headers,
+            endpoint_label="orders",
+        )
         records = _normalize_orders_to_records(orders, status_filter)
 
     if normalized_campaign_types:
