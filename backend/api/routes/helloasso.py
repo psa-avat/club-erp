@@ -41,6 +41,7 @@ from schemas.accounting import SystemSettingUpdateRequest
 from schemas.helloasso import (
     HELLOASSO_SETTINGS_MODULE,
     HelloAssoConnectionTestResponse,
+    HelloAssoItemDetailsResponse,
     HelloAssoPurchaseRecord,
     HelloAssoPurchasesResponse,
     HelloAssoSettingsPayload,
@@ -251,34 +252,7 @@ async def _get_cached_helloasso_token(client_id: str, client_secret: str) -> str
     return access_token
 
 
-async def _fetch_helloasso_records(
-    db: AsyncSession,
-    status_filter: Literal["active", "done"],
-    source: Literal["items", "orders"],
-    campaign_type: str | None,
-    page_size: int,
-) -> tuple[str, list[HelloAssoPurchaseRecord], list[str]]:
-    normalized_campaign_types: list[str] = []
-    if isinstance(campaign_type, str) and campaign_type.strip():
-        normalized_campaign_types = list(
-            dict.fromkeys(
-                value.strip()
-                for value in campaign_type.split(",")
-                if value.strip()
-            )
-        )
-
-    invalid_campaign_types = [value for value in normalized_campaign_types if value not in ALLOWED_CAMPAIGN_TYPES]
-    if invalid_campaign_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "message": "Invalid campaign_type value",
-                "invalid_values": invalid_campaign_types,
-                "allowed_values": sorted(ALLOWED_CAMPAIGN_TYPES),
-            },
-        )
-
+async def _get_helloasso_organization_context(db: AsyncSession) -> tuple[str, dict[str, str]]:
     try:
         setting = await get_system_setting(db, HELLOASSO_SETTINGS_MODULE)
     except HTTPException as exc:
@@ -324,6 +298,39 @@ async def _fetch_helloasso_records(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No HelloAsso organization is available for the configured credentials",
         )
+
+    return organization_slug, auth_headers
+
+
+async def _fetch_helloasso_records(
+    db: AsyncSession,
+    status_filter: Literal["active", "done"],
+    source: Literal["items", "orders"],
+    campaign_type: str | None,
+    page_size: int,
+) -> tuple[str, list[HelloAssoPurchaseRecord], list[str]]:
+    normalized_campaign_types: list[str] = []
+    if isinstance(campaign_type, str) and campaign_type.strip():
+        normalized_campaign_types = list(
+            dict.fromkeys(
+                value.strip()
+                for value in campaign_type.split(",")
+                if value.strip()
+            )
+        )
+
+    invalid_campaign_types = [value for value in normalized_campaign_types if value not in ALLOWED_CAMPAIGN_TYPES]
+    if invalid_campaign_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Invalid campaign_type value",
+                "invalid_values": invalid_campaign_types,
+                "allowed_values": sorted(ALLOWED_CAMPAIGN_TYPES),
+            },
+        )
+
+    organization_slug, auth_headers = await _get_helloasso_organization_context(db)
 
     if source == "items":
         item_states = sorted(ACTIVE_ITEM_STATES if status_filter == "active" else DONE_ITEM_STATES)
@@ -648,6 +655,35 @@ async def list_helloasso_purchases_endpoint(
         campaign_type=",".join(normalized_campaign_types) if normalized_campaign_types else None,
         count=len(records),
         purchases=records,
+    )
+
+
+@router.get("/items/{item_id}", response_model=HelloAssoItemDetailsResponse)
+async def get_helloasso_item_details_endpoint(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = helloasso_guard,
+    current_user: User = Depends(get_current_user),
+):
+    logger.debug("Fetching HelloAsso item details for user_id=%s item_id=%s", current_user.id, item_id)
+
+    organization_slug, auth_headers = await _get_helloasso_organization_context(db)
+    url = f"https://api.helloasso.com/v5{HELLOASSO_ITEMS_PATH.format(organization_slug=organization_slug)}/{item_id}"
+    details_status_code, details_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
+    if not 200 <= details_status_code < 300:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Unable to fetch HelloAsso item details",
+                "status_code": details_status_code,
+                "details": details_payload if isinstance(details_payload, dict) else {"raw": str(details_payload)},
+            },
+        )
+
+    return HelloAssoItemDetailsResponse(
+        organization_slug=organization_slug,
+        item_id=item_id,
+        details=details_payload if isinstance(details_payload, dict) else {"raw": str(details_payload)},
     )
 
 

@@ -610,9 +610,17 @@ export const fr = {
         email: 'Email',
         purchaseDate: "Date d'achat",
         status: 'Statut',
+        actions: 'Actions',
         statusStaging: 'Staging',
         statusPromoted: 'Promu',
         statusDiscarded: 'Ignoré',
+      },
+      details: {
+        fetch: 'Get details',
+        loading: 'Chargement...',
+        title: 'Détails item HelloAsso',
+        item: 'Item',
+        organization: 'Organisation',
       },
       empty: {
         noResults: 'Aucun résultat pour ce filtre.',

@@ -87,3 +87,9 @@ class HelloAssoPurchasesResponse(BaseModel):
     campaign_type: str | None = None
     count: int
     purchases: list[HelloAssoPurchaseRecord] = Field(default_factory=list)
+
+
+class HelloAssoItemDetailsResponse(BaseModel):
+    organization_slug: str
+    item_id: int
+    details: dict[str, Any] = Field(default_factory=dict)

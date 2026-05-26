@@ -601,9 +601,17 @@ export const en = {
         email: 'Email',
         purchaseDate: 'Purchase date',
         status: 'Status',
+        actions: 'Actions',
         statusStaging: 'Staging',
         statusPromoted: 'Promoted',
         statusDiscarded: 'Discarded',
+      },
+      details: {
+        fetch: 'Get details',
+        loading: 'Loading...',
+        title: 'HelloAsso item details',
+        item: 'Item',
+        organization: 'Organization',
       },
       empty: {
         noResults: 'No results for this filter.',

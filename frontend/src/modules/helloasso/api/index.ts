@@ -61,6 +61,12 @@ export type HelloAssoPurchasesResponse = {
   purchases: HelloAssoPurchaseRecord[]
 }
 
+export type HelloAssoItemDetailsResponse = {
+  organization_slug: string
+  item_id: number
+  details: Record<string, unknown>
+}
+
 const EMPTY_SETTINGS: HelloAssoSettings = {
   client_id: '',
   client_secret: '',
@@ -125,6 +131,18 @@ export function useHelloAssoPurchasesQuery(status: HelloAssoPurchaseStatus, sour
             campaign_type: campaignTypes.length > 0 ? campaignTypes.join(',') : undefined,
           },
         },
+      )
+      return data
+    },
+  })
+}
+
+export function useHelloAssoItemDetailsMutation() {
+  return useMutation({
+    mutationFn: async (itemId: number) => {
+      const { data } = await apiClient.get<HelloAssoItemDetailsResponse>(
+        `/api/v1/helloasso/items/${itemId}`,
+        getAuthRequestConfig(),
       )
       return data
     },

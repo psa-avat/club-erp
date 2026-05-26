@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from api.routes.helloasso import (
+    get_helloasso_item_details_endpoint,
     list_helloasso_purchases_endpoint,
     router,
     test_helloasso_connection_endpoint,
@@ -46,6 +47,7 @@ class HelloAssoRouteGuardTests(TestCase):
             ("/settings", "PUT"),
             ("/settings/test-connection", "POST"),
             ("/purchases", "GET"),
+            ("/items/{item_id}", "GET"),
         ]
 
         for path, method in privileged:
@@ -225,6 +227,65 @@ class HelloAssoPurchasesTests(IsolatedAsyncioTestCase):
         requested_urls = [call.args[1] for call in run_in_thread_mock.await_args_list[2:]]
         self.assertIn("continuationToken=token-a", requested_urls[1])
         self.assertIn("continuationToken=token-b", requested_urls[2])
+
+
+class HelloAssoItemDetailsTests(IsolatedAsyncioTestCase):
+    async def test_item_details_returns_payload(self):
+        db = AsyncMock()
+        user = SimpleNamespace(id=14)
+        setting = SimpleNamespace(
+            settings={
+                "client_id": "cid",
+                "client_secret": "sec",
+            }
+        )
+
+        with patch(
+            "api.routes.helloasso.get_system_setting",
+            new=AsyncMock(return_value=setting),
+        ), patch(
+            "api.routes.helloasso._run_in_thread",
+            new=AsyncMock(
+                side_effect=[
+                    (200, {"access_token": "token-123"}),
+                    (200, [{"organizationSlug": "club-test"}]),
+                    (200, {"id": 321, "state": "Processed", "amount": 2500}),
+                ]
+            ),
+        ):
+            response = await get_helloasso_item_details_endpoint(321, db, None, user)
+
+        self.assertEqual(response.organization_slug, "club-test")
+        self.assertEqual(response.item_id, 321)
+        self.assertEqual(response.details.get("id"), 321)
+
+    async def test_item_details_raises_on_upstream_error(self):
+        db = AsyncMock()
+        user = SimpleNamespace(id=15)
+        setting = SimpleNamespace(
+            settings={
+                "client_id": "cid",
+                "client_secret": "sec",
+            }
+        )
+
+        with patch(
+            "api.routes.helloasso.get_system_setting",
+            new=AsyncMock(return_value=setting),
+        ), patch(
+            "api.routes.helloasso._run_in_thread",
+            new=AsyncMock(
+                side_effect=[
+                    (200, {"access_token": "token-123"}),
+                    (200, [{"organizationSlug": "club-test"}]),
+                    (404, {"message": "not found"}),
+                ]
+            ),
+        ):
+            with self.assertRaises(HTTPException) as context:
+                await get_helloasso_item_details_endpoint(999, db, None, user)
+
+        self.assertEqual(context.exception.status_code, 502)
 
     async def test_purchases_orders_aggregate_multiple_pages(self):
         db = AsyncMock()

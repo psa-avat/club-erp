@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { useHelloAssoItemDetailsMutation } from '../api'
 import { useHelloassoViImportMutation, useHelloassoViPreviewMutation, usePromoteViStagingMutation, useViStagingQuery, useViTypesQuery } from '../../vi/api'
 
 function toErrorMessage(error: unknown): string {
@@ -42,6 +43,7 @@ export function HelloAssoViImportPage() {
   const previewMutation = useHelloassoViPreviewMutation()
   const importMutation = useHelloassoViImportMutation()
   const promoteMutation = usePromoteViStagingMutation()
+  const itemDetailsMutation = useHelloAssoItemDetailsMutation()
 
   const [status, setStatus] = useState<'active' | 'done'>('active')
   const [selected, setSelected] = useState<Record<string, boolean>>({})
@@ -50,6 +52,10 @@ export function HelloAssoViImportPage() {
   const [showPromoted, setShowPromoted] = useState(false)
   const [sortField, setSortField] = useState<'item_id' | 'amount' | 'date' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [detailsItemId, setDetailsItemId] = useState<number | null>(null)
+  const [detailsOrganizationSlug, setDetailsOrganizationSlug] = useState<string | null>(null)
+  const [detailsData, setDetailsData] = useState<Record<string, unknown> | null>(null)
+  const [loadingDetailsItemId, setLoadingDetailsItemId] = useState<number | null>(null)
 
   const activeTypes = useMemo(() => (typesQuery.data ?? []).filter((item) => item.is_active), [typesQuery.data])
 
@@ -137,6 +143,18 @@ export function HelloAssoViImportPage() {
     await stagingQuery.refetch()
   }
 
+  async function getItemDetails(itemId: number) {
+    setLoadingDetailsItemId(itemId)
+    try {
+      const response = await itemDetailsMutation.mutateAsync(itemId)
+      setDetailsItemId(response.item_id)
+      setDetailsOrganizationSlug(response.organization_slug)
+      setDetailsData(response.details)
+    } finally {
+      setLoadingDetailsItemId(null)
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-outline-variant bg-surface p-6">
@@ -195,6 +213,7 @@ export function HelloAssoViImportPage() {
       {previewMutation.error ? <Alert>{toErrorMessage(previewMutation.error)}</Alert> : null}
       {importMutation.error ? <Alert>{toErrorMessage(importMutation.error)}</Alert> : null}
       {promoteMutation.error ? <Alert>{toErrorMessage(promoteMutation.error)}</Alert> : null}
+      {itemDetailsMutation.error ? <Alert>{toErrorMessage(itemDetailsMutation.error)}</Alert> : null}
       {stagingQuery.error ? <Alert>{toErrorMessage(stagingQuery.error)}</Alert> : null}
 
       <div className="rounded-xl border border-outline-variant bg-surface p-4">
@@ -247,6 +266,7 @@ export function HelloAssoViImportPage() {
                   {t('viImport.table.purchaseDate')}{sortArrow('date')}
                 </th>
                 <th className="px-3 py-2 text-left">{t('viImport.table.status')}</th>
+                <th className="px-3 py-2 text-left">{t('viImport.table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -273,11 +293,23 @@ export function HelloAssoViImportPage() {
                         ? t('viImport.table.statusDiscarded')
                         : t('viImport.table.statusStaging')}
                   </td>
+                  <td className="px-3 py-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={itemDetailsMutation.isPending}
+                      onClick={() => {
+                        void getItemDetails(row.item_id)
+                      }}
+                    >
+                      {loadingDetailsItemId === row.item_id ? t('viImport.details.loading') : t('viImport.details.fetch')}
+                    </Button>
+                  </td>
                 </tr>
               ))}
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
                     {searchText ? t('viImport.empty.noResults') : t('viImport.empty.noRows')}
                   </td>
                 </tr>
@@ -286,6 +318,17 @@ export function HelloAssoViImportPage() {
           </table>
         </div>
       </div>
+
+      {detailsData ? (
+        <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            <h3 className="text-sm font-semibold text-slate-900">{t('viImport.details.title')}</h3>
+            <span>{t('viImport.details.item')}: {detailsItemId ?? '-'}</span>
+            <span>{t('viImport.details.organization')}: {detailsOrganizationSlug ?? '-'}</span>
+          </div>
+          <pre className="max-h-96 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-xs leading-relaxed">{JSON.stringify(detailsData, null, 2)}</pre>
+        </div>
+      ) : null}
     </section>
   )
 }
