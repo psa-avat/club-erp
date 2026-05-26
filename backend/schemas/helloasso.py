@@ -93,3 +93,9 @@ class HelloAssoItemDetailsResponse(BaseModel):
     organization_slug: str
     item_id: int
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+class HelloAssoOrderDetailsResponse(BaseModel):
+    organization_slug: str
+    order_id: int
+    details: dict[str, Any] = Field(default_factory=dict)

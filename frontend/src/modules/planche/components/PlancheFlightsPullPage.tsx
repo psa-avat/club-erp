@@ -26,10 +26,12 @@ import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
+  usePlancheFlightListQuery,
   usePlancheFlightsPullMutation,
   usePlancheSettingsQuery,
   plancheSettingsFromResponse,
   type FlightPullResponse,
+  type ValidatedFlightItem,
 } from '../api'
 
 type PullMode = 'incremental' | 'daterange'
@@ -62,6 +64,51 @@ function toErrorMessage(error: unknown): string {
   return 'Unexpected error'
 }
 
+const FLIGHT_TYPE_LABELS: Record<number, string> = {
+  0: 'Instruction',
+  1: 'Solo',
+  2: 'Initiation',
+  3: 'Partage',
+  4: 'Passager',
+  5: 'Lâcher',
+  6: 'Supervisé',
+  7: 'Essai',
+}
+
+function formatFlightType(value: number | null): string {
+  if (value === null || value === undefined) return '-'
+  return FLIGHT_TYPE_LABELS[value] ?? `Type ${value}`
+}
+
+function formatDuration(takeoff: string, landing: string): string {
+  const [th, tm] = takeoff.split(':').map(Number)
+  const [lh, lm] = landing.split(':').map(Number)
+  if (isNaN(th) || isNaN(tm) || isNaN(lh) || isNaN(lm)) return `${takeoff} → ${landing}`
+  const start = th * 60 + tm
+  const end = lh * 60 + lm
+  let diff = end - start
+  if (diff < 0) diff += 1440 // cross-midnight
+  const h = Math.floor(diff / 60)
+  const m = diff % 60
+  return `${h}h${m.toString().padStart(2, '0')}`
+}
+
+const LAUNCH_METHOD_LABELS: Record<number, string> = {
+  0: 'Extérieur',
+  1: 'Treuil',
+  2: 'Remorqueur',
+  3: 'Autonome',
+}
+
+function formatLaunchMethod(flight: ValidatedFlightItem): string {
+  const method = flight.launch_method
+  if (method === null || method === undefined) return '-'
+  if (method === 0) return 'Extérieur'
+  if (method === 3) return 'Autonome'
+  const label = LAUNCH_METHOD_LABELS[method] ?? `Méthode ${method}`
+  return flight.launch_asset_code ? `${label} ${flight.launch_asset_code}` : label
+}
+
 function isSettingsConfigured(settings: {
   base_url?: string
   connection_id?: string
@@ -90,6 +137,11 @@ export function PlancheFlightsPullPage() {
   const [lastResult, setLastResult] = useState<FlightPullResponse | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Pagination for the flights table
+  const [flightPage, setFlightPage] = useState(1)
+  const flightPageSize = 50
+  const flightsQuery = usePlancheFlightListQuery(flightPage, flightPageSize)
 
   const settings = settingsQuery.data ? plancheSettingsFromResponse(settingsQuery.data) : null
   const canPull = useMemo(() => isSettingsConfigured(settings ?? {}), [settings])
@@ -347,6 +399,101 @@ export function PlancheFlightsPullPage() {
               <p className="text-sm text-slate-600">{t('flightsPull.result.noChanges')}</p>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Flights table */}
+      <div className="rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">{t('flightsPull.flightsTable.title')}</h2>
+            <p className="text-sm text-slate-600">{t('flightsPull.flightsTable.description')}</p>
+          </div>
+          <div className="text-sm text-slate-600">
+            {t('flightsPull.flightsTable.count', { total: flightsQuery.data?.total ?? 0 })}
+          </div>
+        </div>
+
+        {flightsQuery.isLoading ? (
+          <p className="text-sm text-slate-600">{t('flightsPull.state.loading')}</p>
+        ) : flightsQuery.error ? (
+          <Alert>{t('flightsPull.flightsTable.loadError')}</Alert>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-xl border border-outline-variant">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.date')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.glider')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.type')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.pilot')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.secondPilot')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.duration')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.launch')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.launchPilot')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.chargeTo')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {flightsQuery.data?.items.map((flight) => (
+                    <tr key={flight.uuid}>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-800">
+                        {flight.jour ? new Date(flight.jour).toLocaleDateString('fr-FR') : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-slate-800">{flight.asset_code ?? '-'}</td>
+                      <td className="px-3 py-2 text-slate-800">{formatFlightType(flight.type_of_flight)}</td>
+                      <td className="px-3 py-2 text-slate-800">{flight.pilot_erp_id ?? '-'}</td>
+                      <td className="px-3 py-2 text-slate-800">{flight.second_pilot_erp_id ?? '-'}</td>
+                      <td className="px-3 py-2 text-slate-800">
+                        {flight.takeoff_time && flight.landing_time
+                          ? formatDuration(flight.takeoff_time, flight.landing_time)
+                          : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-slate-800">{formatLaunchMethod(flight)}</td>
+                      <td className="px-3 py-2 text-slate-800">{flight.launch_pilot_trigram ?? '-'}</td>
+                      <td className="px-3 py-2 text-slate-800">{flight.charge_to_erp_id ?? '-'}</td>
+                    </tr>
+                  ))}
+                  {(!flightsQuery.data || flightsQuery.data.items.length === 0) && (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
+                        {t('flightsPull.flightsTable.empty')}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {flightsQuery.data && flightsQuery.data.total_pages > 1 && (
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={flightPage <= 1}
+                  onClick={() => setFlightPage((p) => Math.max(1, p - 1))}
+                >
+                  {t('flightsPull.flightsTable.prev')}
+                </Button>
+                <span className="px-2 text-sm text-slate-700">
+                  {t('flightsPull.flightsTable.pageInfo', {
+                    page: flightPage,
+                    total: flightsQuery.data.total_pages,
+                  })}
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={flightPage >= (flightsQuery.data.total_pages)}
+                  onClick={() => setFlightPage((p) => p + 1)}
+                >
+                  {t('flightsPull.flightsTable.next')}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

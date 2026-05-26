@@ -67,6 +67,12 @@ export type HelloAssoItemDetailsResponse = {
   details: Record<string, unknown>
 }
 
+export type HelloAssoOrderDetailsResponse = {
+  organization_slug: string
+  order_id: number
+  details: Record<string, unknown>
+}
+
 const EMPTY_SETTINGS: HelloAssoSettings = {
   client_id: '',
   client_secret: '',
@@ -142,6 +148,18 @@ export function useHelloAssoItemDetailsMutation() {
     mutationFn: async (itemId: number) => {
       const { data } = await apiClient.get<HelloAssoItemDetailsResponse>(
         `/api/v1/helloasso/items/${itemId}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useHelloAssoOrderDetailsMutation() {
+  return useMutation({
+    mutationFn: async (orderId: number) => {
+      const { data } = await apiClient.get<HelloAssoOrderDetailsResponse>(
+        `/api/v1/helloasso/orders/${orderId}`,
         getAuthRequestConfig(),
       )
       return data

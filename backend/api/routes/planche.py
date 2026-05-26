@@ -30,14 +30,15 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_PLANCHE, CAP_MANAGE_SYSTEM_SETTINGS
-from models import User
+from models import User, ValidatedFlight
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import (
     PLANCHE_SETTINGS_MODULE,
@@ -47,6 +48,8 @@ from schemas.planche import (
     PlancheLoginTestResponse,
     PlancheSettingsPayload,
     PlancheSettingsResponse,
+    ValidatedFlightItem,
+    ValidatedFlightListResponse,
 )
 from services.planche_integration import PlancheIntegrationService
 
@@ -289,6 +292,60 @@ async def pull_validated_flights_from_planche(
         triggered_by=str(current_user.id),
     )
     return result
+
+
+@router.get("/flights", response_model=ValidatedFlightListResponse)
+async def list_validated_flights(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: User = planche_guard,
+):
+    """Return a paginated list of validated flights for the UI table view."""
+    # Count total
+    count_q = select(func.count(ValidatedFlight.uuid))
+    total_result = await db.execute(count_q)
+    total = total_result.scalar() or 0
+
+    # Fetch page
+    offset = (page - 1) * page_size
+    query = (
+        select(ValidatedFlight)
+        .order_by(ValidatedFlight.jour.desc(), ValidatedFlight.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    rows_result = await db.execute(query)
+    rows = rows_result.scalars().all()
+
+    items = []
+    for r in rows:
+        items.append(ValidatedFlightItem(
+            uuid=str(r.uuid),
+            jour=r.jour.isoformat() if r.jour else None,
+            type_of_flight=r.type_of_flight,
+            pilot_erp_id=r.pilot_erp_id,
+            second_pilot_erp_id=r.second_pilot_erp_id,
+            takeoff_time=r.takeoff_time,
+            landing_time=r.landing_time,
+            launch_method=r.launch_method,
+            launch_asset_code=r.launch_asset_code,
+            launch_pilot_trigram=r.launch_pilot_trigram,
+            charge_to_erp_id=r.charge_to_erp_id,
+            asset_code=r.asset_code,
+            glider_erp_id=r.glider_erp_id,
+            launch_machine_erp_id=r.launch_machine_erp_id,
+            aero=r.aero,
+        ))
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return ValidatedFlightListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {

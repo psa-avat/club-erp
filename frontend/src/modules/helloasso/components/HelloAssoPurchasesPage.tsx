@@ -25,7 +25,13 @@ import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
-import { useHelloAssoPurchasesQuery, type HelloAssoPurchaseSource, type HelloAssoPurchaseStatus } from '../api'
+import {
+  useHelloAssoItemDetailsMutation,
+  useHelloAssoOrderDetailsMutation,
+  useHelloAssoPurchasesQuery,
+  type HelloAssoPurchaseSource,
+  type HelloAssoPurchaseStatus,
+} from '../api'
 
 const CAMPAIGN_TYPES = ['CrowdFunding', 'Membership', 'Event', 'Donation', 'PaymentForm', 'Checkout', 'Shop'] as const
 
@@ -87,6 +93,14 @@ export function HelloAssoPurchasesPage() {
   const [search, setSearch] = useState('')
   const [enabled, setEnabled] = useState(false)
 
+  // Details modal state
+  const itemDetailsMutation = useHelloAssoItemDetailsMutation()
+  const orderDetailsMutation = useHelloAssoOrderDetailsMutation()
+  const [detailsId, setDetailsId] = useState<number | null>(null)
+  const [detailsOrgSlug, setDetailsOrgSlug] = useState<string | null>(null)
+  const [detailsData, setDetailsData] = useState<Record<string, unknown> | null>(null)
+  const [loadingDetailsId, setLoadingDetailsId] = useState<number | null>(null)
+
   // Sort state
   const [sortField, setSortField] = useState<'date' | 'amount' | 'campaign' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -101,6 +115,40 @@ export function HelloAssoPurchasesPage() {
   function handleFetch() {
     setEnabled(true)
     purchasesQuery.refetch()
+  }
+
+  async function fetchItemDetails(itemId: number) {
+    setLoadingDetailsId(itemId)
+    setDetailsData(null)
+    try {
+      const result = await itemDetailsMutation.mutateAsync(itemId)
+      setDetailsId(itemId)
+      setDetailsOrgSlug(result.organization_slug)
+      setDetailsData(result.details)
+    } catch {
+      setDetailsId(null)
+      setDetailsOrgSlug(null)
+      setDetailsData(null)
+    } finally {
+      setLoadingDetailsId(null)
+    }
+  }
+
+  async function fetchOrderDetails(orderId: number) {
+    setLoadingDetailsId(orderId)
+    setDetailsData(null)
+    try {
+      const result = await orderDetailsMutation.mutateAsync(orderId)
+      setDetailsId(orderId)
+      setDetailsOrgSlug(result.organization_slug)
+      setDetailsData(result.details)
+    } catch {
+      setDetailsId(null)
+      setDetailsOrgSlug(null)
+      setDetailsData(null)
+    } finally {
+      setLoadingDetailsId(null)
+    }
   }
 
   function toggleCampaignType(value: string) {
@@ -325,6 +373,7 @@ export function HelloAssoPurchasesPage() {
                   {t('purchases.table.amount')}{sortArrow('amount')}
                 </th>
                 <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('purchases.table.states')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('purchases.table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -338,11 +387,29 @@ export function HelloAssoPurchasesPage() {
                   <td className="px-3 py-2 text-slate-800">{row.phone ?? '-'}</td>
                   <td className="px-3 py-2 text-slate-800">{formatAmount(row.amount_cents)}</td>
                   <td className="px-3 py-2 text-slate-800">{[row.item_state, row.payment_state].filter(Boolean).join(' / ') || '-'}</td>
+                  <td className="px-3 py-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={itemDetailsMutation.isPending || orderDetailsMutation.isPending}
+                      onClick={() => {
+                        if (source === 'orders' && row.order_id) {
+                          void fetchOrderDetails(row.order_id)
+                        } else if (row.item_id) {
+                          void fetchItemDetails(row.item_id)
+                        }
+                      }}
+                    >
+                      {(loadingDetailsId === (source === 'orders' ? row.order_id : row.item_id))
+                        ? t('purchases.details.loading')
+                        : t('purchases.details.view')}
+                    </Button>
+                  </td>
                 </tr>
               ))}
               {filteredRows.length === 0 && !purchasesQuery.isLoading ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
+                  <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
                     {t('purchases.state.empty')}
                   </td>
                 </tr>
@@ -350,6 +417,24 @@ export function HelloAssoPurchasesPage() {
             </tbody>
           </table>
         </div>
+
+        {detailsData ? (
+          <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <h3 className="text-sm font-semibold text-slate-900">{t('purchases.table.details')}</h3>
+              <span>{source === 'orders' ? t('purchases.details.order') : t('purchases.details.item')}: {detailsId ?? '-'}</span>
+              <span>{t('purchases.details.organization')}: {detailsOrgSlug ?? '-'}</span>
+              <button
+                type="button"
+                className="ml-auto text-xs font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-900"
+                onClick={() => setDetailsData(null)}
+              >
+                {t('purchases.details.close')}
+              </button>
+            </div>
+            <pre className="max-h-96 overflow-auto rounded-md border border-slate-200 bg-white p-3 text-xs leading-relaxed">{JSON.stringify(detailsData, null, 2)}</pre>
+          </div>
+        ) : null}
       </div>
     </section>
   )

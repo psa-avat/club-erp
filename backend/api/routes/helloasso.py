@@ -42,6 +42,7 @@ from schemas.helloasso import (
     HELLOASSO_SETTINGS_MODULE,
     HelloAssoConnectionTestResponse,
     HelloAssoItemDetailsResponse,
+    HelloAssoOrderDetailsResponse,
     HelloAssoPurchaseRecord,
     HelloAssoPurchasesResponse,
     HelloAssoSettingsPayload,
@@ -68,6 +69,7 @@ HELLOASSO_ORGANIZATIONS_URL = "https://api.helloasso.com/v5/users/me/organizatio
 HELLOASSO_ITEMS_PATH = "/organizations/{organization_slug}/items"
 HELLOASSO_ITEMS_DETAILS_PATH = "/items/{item_id}"
 HELLOASSO_ORDERS_PATH = "/organizations/{organization_slug}/orders"
+HELLOASSO_ORDERS_DETAILS_PATH = "/orders/{order_id}"
 ALLOWED_CAMPAIGN_TYPES = {"CrowdFunding", "Membership", "Event", "Donation", "PaymentForm", "Checkout", "Shop"}
 
 ACTIVE_ITEM_STATES = {"Processed", "Registered"}
@@ -684,6 +686,35 @@ async def get_helloasso_item_details_endpoint(
     return HelloAssoItemDetailsResponse(
         organization_slug=organization_slug,
         item_id=item_id,
+        details=details_payload if isinstance(details_payload, dict) else {"raw": str(details_payload)},
+    )
+
+
+@router.get("/orders/{order_id}", response_model=HelloAssoOrderDetailsResponse)
+async def get_helloasso_order_details_endpoint(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = helloasso_guard,
+    current_user: User = Depends(get_current_user),
+):
+    logger.debug("Fetching HelloAsso order details for user_id=%s order_id=%s", current_user.id, order_id)
+
+    organization_slug, auth_headers = await _get_helloasso_organization_context(db)
+    url = f"https://api.helloasso.com/v5{HELLOASSO_ORDERS_DETAILS_PATH.format(order_id=order_id)}"
+    details_status_code, details_payload = await _run_in_thread(_perform_json_get, url, auth_headers)
+    if not 200 <= details_status_code < 300:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Unable to fetch HelloAsso order details",
+                "status_code": details_status_code,
+                "details": details_payload if isinstance(details_payload, dict) else {"raw": str(details_payload)},
+            },
+        )
+
+    return HelloAssoOrderDetailsResponse(
+        organization_slug=organization_slug,
+        order_id=order_id,
         details=details_payload if isinstance(details_payload, dict) else {"raw": str(details_payload)},
     )
 

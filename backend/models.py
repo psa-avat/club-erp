@@ -1185,6 +1185,7 @@ class ValidatedFlight(Base):
     aero = Column(String, nullable=True)  # Planche aerodrome code
     jour = Column(Date, nullable=False)  # Flight date
     asset_code = Column(String, nullable=False)  # Glider registration snapshot (Planche glider_immat)
+    glider_erp_id = Column(String, nullable=True)  # ERP asset UUID for the glider
 
     # Pilots (ERP member IDs)
     pilot_erp_id = Column(String, nullable=False)  # Main pilot (ERP member UUID)
@@ -1204,6 +1205,7 @@ class ValidatedFlight(Base):
 
     # Tow/Winch details (optional)
     launch_asset_code = Column(String, nullable=True)  # Tow/winch registration
+    launch_machine_erp_id = Column(String, nullable=True)  # ERP asset UUID for the launch machine
     launch_pilot_trigram = Column(String, nullable=True)  # Tow pilot trigram
     launch_instructor_trigram = Column(String, nullable=True)  # Launch instructor trigram
 

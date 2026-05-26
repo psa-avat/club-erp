@@ -1148,6 +1148,7 @@ class PlancheIntegrationService:
         flight_obj.jour = jour
         # Planche uses *_immat for aircraft registrations; ERP assets store the same value in assets.registration.
         flight_obj.asset_code = flight_data.get("glider_immat") or ""
+        flight_obj.glider_erp_id = flight_data.get("glider_erp_id")
         flight_obj.pilot_erp_id = flight_data.get("pilot_erp_id") or ""
         flight_obj.pilot_compta_id = flight_data.get("pilot_compta_id")
         flight_obj.second_pilot_erp_id = flight_data.get("second_pilot_erp_id")
@@ -1160,6 +1161,7 @@ class PlancheIntegrationService:
         flight_obj.launch_method = self._as_int(flight_data.get("launchMethod"), 0)
         flight_obj.launch_type = flight_data.get("launchType")
         flight_obj.launch_asset_code = flight_data.get("launch_machine_immat")
+        flight_obj.launch_machine_erp_id = flight_data.get("launch_machine_erp_id")
         flight_obj.launch_pilot_trigram = flight_data.get("launch_pilot_trigram")
         flight_obj.launch_instructor_trigram = flight_data.get("launch_instructor_trigram")
         flight_obj.takeoff_time = flight_data.get("takeoffTime") or "00:00"

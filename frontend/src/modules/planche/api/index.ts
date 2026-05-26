@@ -356,3 +356,51 @@ export function usePlancheFlightsPullMutation() {
     },
   })
 }
+
+// ─── Flight Listing ──────────────────────────────────────────────────────────
+
+export const plancheFlightListKeys = {
+  list: (page: number, pageSize: number) => ['planche', 'flights', 'list', page, pageSize] as const,
+}
+
+export type ValidatedFlightItem = {
+  uuid: string
+  jour: string | null
+  type_of_flight: number | null
+  pilot_erp_id: string | null
+  second_pilot_erp_id: string | null
+  takeoff_time: string | null
+  landing_time: string | null
+  launch_method: number | null
+  launch_asset_code: string | null
+  launch_pilot_trigram: string | null
+  charge_to_erp_id: string | null
+  asset_code: string | null
+  glider_erp_id: string | null
+  launch_machine_erp_id: string | null
+  aero: string | null
+}
+
+export type ValidatedFlightListResponse = {
+  items: ValidatedFlightItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export function usePlancheFlightListQuery(page: number, pageSize: number) {
+  return useQuery({
+    queryKey: plancheFlightListKeys.list(page, pageSize),
+    queryFn: async () => {
+      const { data } = await apiClient.get<ValidatedFlightListResponse>(
+        '/api/v1/planche/flights',
+        {
+          ...(getAuthRequestConfig() ?? {}),
+          params: { page, page_size: pageSize },
+        },
+      )
+      return data
+    },
+  })
+}
