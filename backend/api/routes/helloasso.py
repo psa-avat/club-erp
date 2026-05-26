@@ -66,7 +66,7 @@ DEFAULT_HELLOASSO_SETTINGS: dict[str, Any] = {
 HELLOASSO_AUTH_URL = "https://api.helloasso.com/oauth2/token"
 HELLOASSO_ORGANIZATIONS_URL = "https://api.helloasso.com/v5/users/me/organizations"
 HELLOASSO_ITEMS_PATH = "/organizations/{organization_slug}/items"
-HELLOASSO_ITEMS_DETAILS_PATH = "items/{item_id}"
+HELLOASSO_ITEMS_DETAILS_PATH = "/items/{item_id}"
 HELLOASSO_ORDERS_PATH = "/organizations/{organization_slug}/orders"
 ALLOWED_CAMPAIGN_TYPES = {"CrowdFunding", "Membership", "Event", "Donation", "PaymentForm", "Checkout", "Shop"}
 
