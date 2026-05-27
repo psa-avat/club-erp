@@ -135,6 +135,7 @@ export function useFlightsFetchMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['flights', 'list'] })
+      await queryClient.invalidateQueries({ queryKey: ['planche', 'settings'] })
     },
   })
 }

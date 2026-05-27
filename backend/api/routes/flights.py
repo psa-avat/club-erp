@@ -39,8 +39,9 @@ from schemas.flights import (
     ValidatedFlightItem,
     ValidatedFlightListResponse,
 )
+from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import PLANCHE_SETTINGS_MODULE, PlancheSettingsPayload
-from services.accounting import get_system_setting
+from services.accounting import get_system_setting, upsert_system_setting
 from services.planche_integration import PlancheIntegrationService
 
 router = APIRouter(prefix="/api/v1/flights", tags=["flights"])
@@ -118,7 +119,7 @@ async def list_validated_flights(
     if erp_status is not None:
         filters.append(ValidatedFlight.erp_status == erp_status)
 
-    # Pilot search: resolve member UUIDs first, then filter by pilot_erp_id
+    # Pilot search: resolve member UUIDs first, then filter by pilot_erp_id OR second_pilot_erp_id
     pilot_member_uuids: list[str] = []
     if pilot_query is not None and pilot_query.strip():
         search = f"%{pilot_query.strip()}%"
@@ -133,7 +134,12 @@ async def list_validated_flights(
         )
         pilot_member_uuids = [str(row[0]) for row in member_rows.all()]
         if pilot_member_uuids:
-            filters.append(ValidatedFlight.pilot_erp_id.in_(pilot_member_uuids))
+            filters.append(
+                or_(
+                    ValidatedFlight.pilot_erp_id.in_(pilot_member_uuids),
+                    ValidatedFlight.second_pilot_erp_id.in_(pilot_member_uuids),
+                )
+            )
         else:
             # No matching members → return empty result
             return ValidatedFlightListResponse(
@@ -240,4 +246,23 @@ async def fetch_validated_flights_from_planche(
         limit=payload.limit,
         triggered_by=str(current_user.id),
     )
+
+    # Persist next_cursor + timestamp into Planche settings so they survive page reload
+    try:
+        current_setting = await get_system_setting(db, PLANCHE_SETTINGS_MODULE)
+        current_settings = dict(current_setting.settings) if isinstance(current_setting.settings, dict) else {}
+        next_cursor = result.get("next_cursor")
+        if next_cursor is not None:
+            current_settings["sync_cursor_flights"] = next_cursor
+        current_settings["last_fetch_at"] = datetime.now(UTC).isoformat()
+        await upsert_system_setting(
+            db,
+            PLANCHE_SETTINGS_MODULE,
+            SystemSettingUpdateRequest(settings=current_settings),
+            current_user.id,
+        )
+    except HTTPException:
+        # Settings may not exist yet — that's acceptable
+        pass
+
     return result

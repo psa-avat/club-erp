@@ -97,11 +97,12 @@ export function PlancheFlightsPullPage() {
   const canFetch = useMemo(() => isSettingsConfigured(settings ?? {}), [settings])
   const busy = settingsQuery.isLoading || fetchMutation.isPending
 
-  // Extract cursor info from settings
+  // Extract cursor + last fetch timestamp from settings
   const settingsRaw = settingsQuery.data?.settings as
     | Record<string, unknown>
     | undefined
   const syncCursorFlights = (settingsRaw?.sync_cursor_flights as string) ?? null
+  const lastFetchAt = (settingsRaw?.last_fetch_at as string) ?? null
 
   function buildRequest() {
     if (mode === 'incremental') {
@@ -202,9 +203,11 @@ export function PlancheFlightsPullPage() {
               {t('flightsFetch.status.lastSync')}
             </p>
             <p className="text-sm font-medium text-slate-900">
-              {lastResult
-                ? new Date().toLocaleString()
-                : t('flightsFetch.status.never')}
+              {lastFetchAt
+                ? new Date(lastFetchAt).toLocaleString()
+                : lastResult
+                  ? new Date().toLocaleString()
+                  : t('flightsFetch.status.never')}
             </p>
           </div>
         </div>
