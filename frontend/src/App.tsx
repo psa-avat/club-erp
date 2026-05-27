@@ -25,7 +25,8 @@ import { MemberPilotSheetPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
-import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
+import { FlightsPage } from './modules/flights'
+import { PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
 import { ViEntitlementsPage, ViPlanningPage, ViTypesPage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
 import { AppShell } from './shell/components'
@@ -55,12 +56,13 @@ function App() {
           <Route path="/helloasso/integration" element={<HelloAssoIntegrationPage />} />
           <Route path="/helloasso/purchases" element={<HelloAssoPurchasesPage />} />
           <Route path="/helloasso/vi-import" element={<HelloAssoViImportPage />} />
+          <Route path="/flights" element={<FlightsPage />} />
           <Route path="/planche" element={<Navigate replace to="/planche/members-push" />} />
           <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
           <Route path="/planche/machines-push" element={<PlancheMachinesPushPage />} />
           <Route path="/planche/vi-sync" element={<PlancheViSyncPage />} />
-          <Route path="/planche/flights-pull" element={<PlancheFlightsPullPage />} />
+          <Route path="/planche/flights-pull" element={<Navigate replace to="/flights" />} />
           <Route path="/vi" element={<Navigate replace to="/vi/entitlements" />} />
           <Route path="/vi/entitlements" element={<ViEntitlementsPage />} />
           <Route path="/vi/types" element={<ViTypesPage />} />

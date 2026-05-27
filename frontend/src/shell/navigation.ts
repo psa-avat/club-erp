@@ -19,6 +19,7 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
   { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
+  { to: '/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
   {
     to: '/helloasso',
     labelKey: 'nav.helloasso',
@@ -36,7 +37,6 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_PLANCHE' },
       { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_PLANCHE' },
       { to: '/planche/vi-sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
-      { to: '/planche/flights-pull', labelKey: 'nav.plancheFlightsPull', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
   {
