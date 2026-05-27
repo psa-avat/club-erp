@@ -378,7 +378,11 @@ export type ValidatedFlightItem = {
   asset_code: string | null
   glider_erp_id: string | null
   launch_machine_erp_id: string | null
+  instruction_split: number | null
   aero: string | null
+  pilot_name: string | null
+  second_pilot_name: string | null
+  second_pilot_trigram: string | null
 }
 
 export type ValidatedFlightListResponse = {

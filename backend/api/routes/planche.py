@@ -30,7 +30,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_PLANCHE, CAP_MANAGE_SYSTEM_SETTINGS
-from models import User, ValidatedFlight
+from models import Member, User, ValidatedFlight
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import (
     PLANCHE_SETTINGS_MODULE,
@@ -318,14 +318,42 @@ async def list_validated_flights(
     rows_result = await db.execute(query)
     rows = rows_result.scalars().all()
 
+    # Batch-fetch member names for pilot/second/charge_to columns
+    member_uuids: set[str] = set()
+    for r in rows:
+        if r.pilot_erp_id:
+            member_uuids.add(r.pilot_erp_id)
+        if r.second_pilot_erp_id:
+            member_uuids.add(r.second_pilot_erp_id)
+        if r.charge_to_erp_id:
+            member_uuids.add(r.charge_to_erp_id)
+
+    member_map: dict[str, tuple[str | None, str | None]] = {}  # uuid -> (full_name, trigram)
+    if member_uuids:
+        member_result = await db.execute(
+            select(Member.uuid, Member.first_name, Member.last_name, Member.trigram).where(
+                Member.uuid.in_([UUID(u) for u in member_uuids if u])
+            )
+        )
+        for row in member_result.all():
+            uid = str(row.uuid)
+            name = f"{row.first_name} {row.last_name}" if row.first_name and row.last_name else None
+            member_map[uid] = (name, row.trigram)
+
     items = []
     for r in rows:
+        pilot_name = member_map.get(r.pilot_erp_id, (None, None))[0] if r.pilot_erp_id else None
+        second_name = member_map.get(r.second_pilot_erp_id, (None, None))[0] if r.second_pilot_erp_id else None
+        second_trigram = member_map.get(r.second_pilot_erp_id, (None, None))[1] if r.second_pilot_erp_id else None
         items.append(ValidatedFlightItem(
             uuid=str(r.uuid),
             jour=r.jour.isoformat() if r.jour else None,
             type_of_flight=r.type_of_flight,
             pilot_erp_id=r.pilot_erp_id,
             second_pilot_erp_id=r.second_pilot_erp_id,
+            pilot_name=pilot_name,
+            second_pilot_name=second_name,
+            second_pilot_trigram=second_trigram,
             takeoff_time=r.takeoff_time,
             landing_time=r.landing_time,
             launch_method=r.launch_method,
@@ -335,6 +363,7 @@ async def list_validated_flights(
             asset_code=r.asset_code,
             glider_erp_id=r.glider_erp_id,
             launch_machine_erp_id=r.launch_machine_erp_id,
+            instruction_split=r.instruction_split,
             aero=r.aero,
         ))
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0

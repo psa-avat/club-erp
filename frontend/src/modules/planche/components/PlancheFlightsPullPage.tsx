@@ -75,9 +75,21 @@ const FLIGHT_TYPE_LABELS: Record<number, string> = {
   7: 'Essai',
 }
 
+/** Flight types where second pilot should show as trigram instead of name. */
+const TRIGRAM_FLIGHT_TYPES = new Set([0, 5, 6]) // Instruction, Lâcher, Supervisé
+
 function formatFlightType(value: number | null): string {
   if (value === null || value === undefined) return '-'
   return FLIGHT_TYPE_LABELS[value] ?? `Type ${value}`
+}
+
+function formatSecondPilot(flight: ValidatedFlightItem): string {
+  if (!flight.second_pilot_erp_id) return '-'
+  // Lâcher (5), Supervisé (6), Instruction (0) → show trigram, else name
+  if (flight.type_of_flight !== null && TRIGRAM_FLIGHT_TYPES.has(flight.type_of_flight)) {
+    return flight.second_pilot_trigram ?? flight.second_pilot_name ?? flight.second_pilot_erp_id
+  }
+  return flight.second_pilot_name ?? flight.second_pilot_erp_id
 }
 
 function formatDuration(takeoff: string, landing: string): string {
@@ -107,6 +119,12 @@ function formatLaunchMethod(flight: ValidatedFlightItem): string {
   if (method === 3) return 'Autonome'
   const label = LAUNCH_METHOD_LABELS[method] ?? `Méthode ${method}`
   return flight.launch_asset_code ? `${label} ${flight.launch_asset_code}` : label
+}
+
+function highlightType(flight: ValidatedFlightItem): boolean {
+  const hasSplit = (flight.instruction_split ?? 0) > 0
+  const hasChargeTo = !!flight.charge_to_erp_id && flight.charge_to_erp_id !== flight.pilot_erp_id
+  return hasSplit || hasChargeTo
 }
 
 function isSettingsConfigured(settings: {
@@ -442,9 +460,9 @@ export function PlancheFlightsPullPage() {
                         {flight.jour ? new Date(flight.jour).toLocaleDateString('fr-FR') : '-'}
                       </td>
                       <td className="px-3 py-2 text-slate-800">{flight.asset_code ?? '-'}</td>
-                      <td className="px-3 py-2 text-slate-800">{formatFlightType(flight.type_of_flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.pilot_erp_id ?? '-'}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.second_pilot_erp_id ?? '-'}</td>
+                      <td className={`px-3 py-2 ${highlightType(flight) ? 'font-bold text-amber-600' : 'text-slate-800'}`}>{formatFlightType(flight.type_of_flight)}</td>
+                      <td className="px-3 py-2 text-slate-800">{flight.pilot_name ?? flight.pilot_erp_id ?? '-'}</td>
+                      <td className="px-3 py-2 text-slate-800">{formatSecondPilot(flight)}</td>
                       <td className="px-3 py-2 text-slate-800">
                         {flight.takeoff_time && flight.landing_time
                           ? formatDuration(flight.takeoff_time, flight.landing_time)

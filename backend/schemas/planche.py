@@ -118,7 +118,11 @@ class ValidatedFlightItem(BaseModel):
     asset_code: str | None = None
     glider_erp_id: str | None = None
     launch_machine_erp_id: str | None = None
+    instruction_split: int | None = None
     aero: str | None = None
+    pilot_name: str | None = None
+    second_pilot_name: str | None = None
+    second_pilot_trigram: str | None = None
 
     class Config:
         from_attributes = True
