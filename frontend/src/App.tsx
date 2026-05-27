@@ -26,7 +26,7 @@ import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, Asset
 import { PlanningPage } from './modules/planning'
 import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
 import { FlightsPage } from './modules/flights'
-import { PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
+import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
 import { ViEntitlementsPage, ViPlanningPage, ViTypesPage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
 import { AppShell } from './shell/components'
@@ -62,7 +62,7 @@ function App() {
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
           <Route path="/planche/machines-push" element={<PlancheMachinesPushPage />} />
           <Route path="/planche/vi-sync" element={<PlancheViSyncPage />} />
-          <Route path="/planche/flights-pull" element={<Navigate replace to="/flights" />} />
+          <Route path="/planche/flights-pull" element={<PlancheFlightsPullPage />} />
           <Route path="/vi" element={<Navigate replace to="/vi/entitlements" />} />
           <Route path="/vi/entitlements" element={<ViEntitlementsPage />} />
           <Route path="/vi/types" element={<ViTypesPage />} />

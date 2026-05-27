@@ -1,7 +1,7 @@
 """
     ERP-CLUB - ERP pour Club de vol à voile 
     - Logiciel libre de gestion d'un club de vol à voile
-    - flights: FastAPI routes for validated flight listing and Planche flight pull
+    - flights: FastAPI routes for validated flight listing and Planche flight fetch
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -34,8 +34,8 @@ from api.security import get_current_user, require_capability
 from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE
 from models import Member, User, ValidatedFlight
 from schemas.flights import (
-    FlightPullRequest,
-    FlightPullResponse,
+    FlightFetchRequest,
+    FlightFetchResponse,
     ValidatedFlightItem,
     ValidatedFlightListResponse,
 )
@@ -222,15 +222,15 @@ async def list_validated_flights(
     )
 
 
-@router.post("/pull", response_model=FlightPullResponse)
-async def pull_validated_flights_from_planche(
-    request: FlightPullRequest | None = None,
+@router.post("/fetch", response_model=FlightFetchResponse)
+async def fetch_validated_flights_from_planche(
+    request: FlightFetchRequest | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = planche_guard,
     current_user: User = Depends(get_current_user),
 ):
-    """Pull Planche validated flight revisions into ERP current flight storage."""
-    payload = request or FlightPullRequest()
+    """Fetch Planche validated flight revisions into ERP current flight storage."""
+    payload = request or FlightFetchRequest()
     service = await _get_planche_service(db)
     result = await service.pull_validated_flights(
         db=db,

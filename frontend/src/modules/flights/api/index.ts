@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - flights: API hooks for flight data and Planche flight pull
+    - flights: API hooks for flight data and Planche flight fetch
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ export const flightsQueryKeys = {
   root: ['flights'] as const,
   list: (page: number, pageSize: number, filters: FlightListFilters) =>
     ['flights', 'list', { page, pageSize, ...filters }] as const,
-  pull: ['flights', 'pull'] as const,
+  fetch: ['flights', 'fetch'] as const,
 }
 
 export type FlightListFilters = {
@@ -39,14 +39,14 @@ export type FlightListFilters = {
   erp_status?: number | null
 }
 
-export type FlightPullRequest = {
+export type FlightFetchRequest = {
   from_date?: string | null
   to_date?: string | null
   cursor?: string | null
   limit?: number
 }
 
-export type FlightPullResponse = {
+export type FlightFetchResponse = {
   total: number
   created: number
   updated: number
@@ -121,13 +121,13 @@ export function useFlightListQuery(page: number, pageSize: number, filters: Flig
   })
 }
 
-export function useFlightsPullMutation() {
+export function useFlightsFetchMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (request: FlightPullRequest = {}) => {
-      const { data } = await apiClient.post<FlightPullResponse>(
-        '/api/v1/flights/pull',
+    mutationFn: async (request: FlightFetchRequest = {}) => {
+      const { data } = await apiClient.post<FlightFetchResponse>(
+        '/api/v1/flights/fetch',
         request,
         getAuthRequestConfig(),
       )

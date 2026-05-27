@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - planche: manual flights pull page for Planche integration
+    - planche: manual flights fetch page for Planche integration
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -26,15 +26,15 @@ import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
-  usePlancheFlightListQuery,
-  usePlancheFlightsPullMutation,
   usePlancheSettingsQuery,
   plancheSettingsFromResponse,
-  type FlightPullResponse,
-  type ValidatedFlightItem,
 } from '../api'
+import {
+  useFlightsFetchMutation,
+  type FlightFetchResponse,
+} from '../../flights/api'
 
-type PullMode = 'incremental' | 'daterange'
+type FetchMode = 'incremental' | 'daterange'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -64,69 +64,6 @@ function toErrorMessage(error: unknown): string {
   return 'Unexpected error'
 }
 
-const FLIGHT_TYPE_LABELS: Record<number, string> = {
-  0: 'Instruction',
-  1: 'Solo',
-  2: 'Initiation',
-  3: 'Partage',
-  4: 'Passager',
-  5: 'Lâcher',
-  6: 'Supervisé',
-  7: 'Essai',
-}
-
-/** Flight types where second pilot should show as trigram instead of name. */
-const TRIGRAM_FLIGHT_TYPES = new Set([0, 5, 6]) // Instruction, Lâcher, Supervisé
-
-function formatFlightType(value: number | null): string {
-  if (value === null || value === undefined) return '-'
-  return FLIGHT_TYPE_LABELS[value] ?? `Type ${value}`
-}
-
-function formatSecondPilot(flight: ValidatedFlightItem): string {
-  if (!flight.second_pilot_erp_id) return '-'
-  // Lâcher (5), Supervisé (6), Instruction (0) → show trigram, else name
-  if (flight.type_of_flight !== null && TRIGRAM_FLIGHT_TYPES.has(flight.type_of_flight)) {
-    return flight.second_pilot_trigram ?? flight.second_pilot_name ?? flight.second_pilot_erp_id
-  }
-  return flight.second_pilot_name ?? flight.second_pilot_erp_id
-}
-
-function formatDuration(takeoff: string, landing: string): string {
-  const [th, tm] = takeoff.split(':').map(Number)
-  const [lh, lm] = landing.split(':').map(Number)
-  if (isNaN(th) || isNaN(tm) || isNaN(lh) || isNaN(lm)) return `${takeoff} → ${landing}`
-  const start = th * 60 + tm
-  const end = lh * 60 + lm
-  let diff = end - start
-  if (diff < 0) diff += 1440 // cross-midnight
-  const h = Math.floor(diff / 60)
-  const m = diff % 60
-  return `${h}h${m.toString().padStart(2, '0')}`
-}
-
-const LAUNCH_METHOD_LABELS: Record<number, string> = {
-  0: 'Extérieur',
-  1: 'Treuil',
-  2: 'Remorqueur',
-  3: 'Autonome',
-}
-
-function formatLaunchMethod(flight: ValidatedFlightItem): string {
-  const method = flight.launch_method
-  if (method === null || method === undefined) return '-'
-  if (method === 0) return 'Extérieur'
-  if (method === 3) return 'Autonome'
-  const label = LAUNCH_METHOD_LABELS[method] ?? `Méthode ${method}`
-  return flight.launch_asset_code ? `${label} ${flight.launch_asset_code}` : label
-}
-
-function highlightType(flight: ValidatedFlightItem): boolean {
-  const hasSplit = (flight.instruction_split ?? 0) > 0
-  const hasChargeTo = !!flight.charge_to_erp_id && flight.charge_to_erp_id !== flight.pilot_erp_id
-  return hasSplit || hasChargeTo
-}
-
 function isSettingsConfigured(settings: {
   base_url?: string
   connection_id?: string
@@ -147,23 +84,18 @@ export function PlancheFlightsPullPage() {
   const { t } = useTranslation('planche')
 
   const settingsQuery = usePlancheSettingsQuery(true)
-  const pullMutation = usePlancheFlightsPullMutation()
+  const fetchMutation = useFlightsFetchMutation()
 
-  const [mode, setMode] = useState<PullMode>('incremental')
+  const [mode, setMode] = useState<FetchMode>('incremental')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const [lastResult, setLastResult] = useState<FlightPullResponse | null>(null)
+  const [lastResult, setLastResult] = useState<FlightFetchResponse | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Pagination for the flights table
-  const [flightPage, setFlightPage] = useState(1)
-  const flightPageSize = 50
-  const flightsQuery = usePlancheFlightListQuery(flightPage, flightPageSize)
-
   const settings = settingsQuery.data ? plancheSettingsFromResponse(settingsQuery.data) : null
-  const canPull = useMemo(() => isSettingsConfigured(settings ?? {}), [settings])
-  const busy = settingsQuery.isLoading || pullMutation.isPending
+  const canFetch = useMemo(() => isSettingsConfigured(settings ?? {}), [settings])
+  const busy = settingsQuery.isLoading || fetchMutation.isPending
 
   // Extract cursor info from settings
   const settingsRaw = settingsQuery.data?.settings as
@@ -183,18 +115,18 @@ export function PlancheFlightsPullPage() {
   }
 
   function canConfirm(): boolean {
-    if (!canPull) return false
+    if (!canFetch) return false
     if (mode === 'daterange') {
       return Boolean(fromDate && toDate)
     }
     return true
   }
 
-  async function handlePull() {
+  async function handleFetch() {
     setErrorMessage(null)
     setLastResult(null)
     try {
-      const response = await pullMutation.mutateAsync(buildRequest())
+      const response = await fetchMutation.mutateAsync(buildRequest())
       setLastResult(response)
     } catch (err) {
       setErrorMessage(toErrorMessage(err))
@@ -206,11 +138,11 @@ export function PlancheFlightsPullPage() {
   async function handleContinue() {
     setErrorMessage(null)
     if (!lastResult?.next_cursor) {
-      setErrorMessage(t('flightsPull.result.moreWithoutCursor'))
+      setErrorMessage(t('flightsFetch.result.moreWithoutCursor'))
       return
     }
     try {
-      const response = await pullMutation.mutateAsync({
+      const response = await fetchMutation.mutateAsync({
         cursor: lastResult.next_cursor,
         limit: 500,
       })
@@ -220,7 +152,7 @@ export function PlancheFlightsPullPage() {
     }
   }
 
-  const canContinue = lastResult?.has_more && !!lastResult.next_cursor && !pullMutation.isPending
+  const canContinue = lastResult?.has_more && !!lastResult.next_cursor && !fetchMutation.isPending
   const hasMoreWithoutCursor = lastResult?.has_more && !lastResult.next_cursor
 
   return (
@@ -229,57 +161,57 @@ export function PlancheFlightsPullPage() {
       <div className="rounded-2xl border border-outline-variant bg-gradient-to-r from-indigo-950 via-purple-900 to-violet-800 p-6 text-white shadow-sm">
         <div className="max-w-3xl space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-100">
-            {t('flightsPull.hero.kicker')}
+            {t('flightsFetch.hero.kicker')}
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t('flightsPull.hero.title')}</h1>
-          <p className="max-w-2xl text-sm text-violet-50/90">{t('flightsPull.hero.description')}</p>
+          <h1 className="text-3xl font-semibold tracking-tight">{t('flightsFetch.hero.title')}</h1>
+          <p className="max-w-2xl text-sm text-violet-50/90">{t('flightsFetch.hero.description')}</p>
         </div>
       </div>
 
       {/* Main Card */}
       <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold text-slate-900">{t('flightsPull.card.title')}</h2>
-          <p className="text-sm text-slate-600">{t('flightsPull.card.description')}</p>
+          <h2 className="text-xl font-semibold text-slate-900">{t('flightsFetch.card.title')}</h2>
+          <p className="text-sm text-slate-600">{t('flightsFetch.card.description')}</p>
         </div>
 
         {/* Status Indicators */}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {t('flightsPull.status.settings')}
+              {t('flightsFetch.status.settings')}
             </p>
-            <p className={canPull ? 'text-sm font-medium text-green-700' : 'text-sm font-medium text-amber-700'}>
-              {canPull ? t('flightsPull.status.ready') : t('flightsPull.status.missing')}
+            <p className={canFetch ? 'text-sm font-medium text-green-700' : 'text-sm font-medium text-amber-700'}>
+              {canFetch ? t('flightsFetch.status.ready') : t('flightsFetch.status.missing')}
             </p>
           </div>
 
           <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {t('flightsPull.status.cursor')}
+              {t('flightsFetch.status.cursor')}
             </p>
             <p className="truncate text-sm font-medium text-slate-900" title={syncCursorFlights ?? undefined}>
               {syncCursorFlights
                 ? `${syncCursorFlights.slice(0, 30)}...`
-                : t('flightsPull.status.notAvailable')}
+                : t('flightsFetch.status.notAvailable')}
             </p>
           </div>
 
           <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {t('flightsPull.status.lastSync')}
+              {t('flightsFetch.status.lastSync')}
             </p>
             <p className="text-sm font-medium text-slate-900">
               {lastResult
                 ? new Date().toLocaleString()
-                : t('flightsPull.status.never')}
+                : t('flightsFetch.status.never')}
             </p>
           </div>
         </div>
 
         {/* Mode Selector */}
         <div className="space-y-3">
-          <p className="text-sm font-semibold text-slate-800">{t('flightsPull.mode.label')}</p>
+          <p className="text-sm font-semibold text-slate-800">{t('flightsFetch.mode.label')}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <button
               type="button"
@@ -290,8 +222,8 @@ export function PlancheFlightsPullPage() {
               }`}
               onClick={() => setMode('incremental')}
             >
-              <p className="text-sm font-semibold text-slate-900">{t('flightsPull.mode.incremental')}</p>
-              <p className="mt-1 text-xs text-slate-600">{t('flightsPull.mode.incrementalDesc')}</p>
+              <p className="text-sm font-semibold text-slate-900">{t('flightsFetch.mode.incremental')}</p>
+              <p className="mt-1 text-xs text-slate-600">{t('flightsFetch.mode.incrementalDesc')}</p>
             </button>
             <button
               type="button"
@@ -302,8 +234,8 @@ export function PlancheFlightsPullPage() {
               }`}
               onClick={() => setMode('daterange')}
             >
-              <p className="text-sm font-semibold text-slate-900">{t('flightsPull.mode.dateRange')}</p>
-              <p className="mt-1 text-xs text-slate-600">{t('flightsPull.mode.dateRangeDesc')}</p>
+              <p className="text-sm font-semibold text-slate-900">{t('flightsFetch.mode.dateRange')}</p>
+              <p className="mt-1 text-xs text-slate-600">{t('flightsFetch.mode.dateRangeDesc')}</p>
             </button>
           </div>
         </div>
@@ -312,18 +244,18 @@ export function PlancheFlightsPullPage() {
         {mode === 'daterange' && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="flights-pull-from">{t('flightsPull.mode.from')}</Label>
+              <Label htmlFor="flights-fetch-from">{t('flightsFetch.mode.from')}</Label>
               <Input
-                id="flights-pull-from"
+                id="flights-fetch-from"
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="flights-pull-to">{t('flightsPull.mode.to')}</Label>
+              <Label htmlFor="flights-fetch-to">{t('flightsFetch.mode.to')}</Label>
               <Input
-                id="flights-pull-to"
+                id="flights-fetch-to"
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
@@ -333,57 +265,57 @@ export function PlancheFlightsPullPage() {
         )}
 
         {/* Validation Messages */}
-        {!canPull && <Alert>{t('flightsPull.validation.configureFirst')}</Alert>}
-        {mode === 'daterange' && (!fromDate || !toDate) && canPull && (
-          <Alert>{t('flightsPull.validation.selectDateRange')}</Alert>
+        {!canFetch && <Alert>{t('flightsFetch.validation.configureFirst')}</Alert>}
+        {mode === 'daterange' && (!fromDate || !toDate) && canFetch && (
+          <Alert>{t('flightsFetch.validation.selectDateRange')}</Alert>
         )}
         {errorMessage && <Alert>{errorMessage}</Alert>}
 
-        {/* Pull Button */}
+        {/* Fetch Button */}
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={busy || !canPull || (mode === 'daterange' && (!fromDate || !toDate))}
+            disabled={busy || !canFetch || (mode === 'daterange' && (!fromDate || !toDate))}
             onClick={() => setConfirmOpen(true)}
             type="button"
           >
-            {pullMutation.isPending
-              ? t('flightsPull.actions.pulling')
-              : t('flightsPull.actions.pullNow')}
+            {fetchMutation.isPending
+              ? t('flightsFetch.actions.fetching')
+              : t('flightsFetch.actions.fetchNow')}
           </Button>
         </div>
 
         {/* Results Section */}
         {lastResult && (
           <div className="space-y-3 rounded-lg border border-outline-variant bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-900">{t('flightsPull.result.title')}</p>
+            <p className="text-sm font-semibold text-slate-900">{t('flightsFetch.result.title')}</p>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <ResultStat label={t('flightsPull.result.total')} value={lastResult.total} />
-              <ResultStat label={t('flightsPull.result.created')} value={lastResult.created} variant="success" />
-              <ResultStat label={t('flightsPull.result.updated')} value={lastResult.updated} variant="info" />
-              <ResultStat label={t('flightsPull.result.skipped')} value={lastResult.skipped} />
-              <ResultStat label={t('flightsPull.result.idempotent')} value={lastResult.idempotent} />
-              <ResultStat label={t('flightsPull.result.snapshots')} value={lastResult.snapshots_created} />
+              <ResultStat label={t('flightsFetch.result.total')} value={lastResult.total} />
+              <ResultStat label={t('flightsFetch.result.created')} value={lastResult.created} variant="success" />
+              <ResultStat label={t('flightsFetch.result.updated')} value={lastResult.updated} variant="info" />
+              <ResultStat label={t('flightsFetch.result.skipped')} value={lastResult.skipped} />
+              <ResultStat label={t('flightsFetch.result.idempotent')} value={lastResult.idempotent} />
+              <ResultStat label={t('flightsFetch.result.snapshots')} value={lastResult.snapshots_created} />
               <ResultStat
-                label={t('flightsPull.result.modifiedAfterTransfer')}
+                label={t('flightsFetch.result.modifiedAfterTransfer')}
                 value={lastResult.modified_after_transfer}
                 variant={lastResult.modified_after_transfer > 0 ? 'warning' : 'neutral'}
               />
               <ResultStat
-                label={t('flightsPull.result.hasMore')}
-                value={lastResult.has_more ? t('flightsPull.result.yes') : t('flightsPull.result.no')}
+                label={t('flightsFetch.result.hasMore')}
+                value={lastResult.has_more ? t('flightsFetch.result.yes') : t('flightsFetch.result.no')}
               />
             </div>
 
             {lastResult.next_cursor && (
               <p className="truncate text-xs text-slate-500" title={lastResult.next_cursor}>
-                {t('flightsPull.result.nextCursor')}: {lastResult.next_cursor.slice(0, 40)}...
+                {t('flightsFetch.result.nextCursor')}: {lastResult.next_cursor.slice(0, 40)}...
               </p>
             )}
 
             {lastResult.error_details && lastResult.error_details.length > 0 && (
               <div className="space-y-1">
-                <p className="text-sm font-medium text-red-700">{t('flightsPull.result.errors')}</p>
+                <p className="text-sm font-medium text-red-700">{t('flightsFetch.result.errors')}</p>
                 <ul className="list-disc space-y-1 pl-5 text-sm text-red-700">
                   {lastResult.error_details.map((err, i) => (
                     <li key={i}>{err}</li>
@@ -395,7 +327,7 @@ export function PlancheFlightsPullPage() {
             {lastResult.has_more ? (
               hasMoreWithoutCursor ? (
                 <p className="text-sm text-amber-700">
-                  {t('flightsPull.result.moreWithoutCursor')}
+                  {t('flightsFetch.result.moreWithoutCursor')}
                 </p>
               ) : (
                 <Button
@@ -406,112 +338,17 @@ export function PlancheFlightsPullPage() {
                   type="button"
                   variant="secondary"
                 >
-                  {pullMutation.isPending
-                    ? t('flightsPull.actions.pulling')
-                    : t('flightsPull.actions.continue')}
+                  {fetchMutation.isPending
+                    ? t('flightsFetch.actions.fetching')
+                    : t('flightsFetch.actions.continue')}
                 </Button>
               )
             ) : lastResult.total > 0 ? (
-              <Alert variant="success">{t('flightsPull.result.success')}</Alert>
+              <Alert variant="success">{t('flightsFetch.result.success')}</Alert>
             ) : (
-              <p className="text-sm text-slate-600">{t('flightsPull.result.noChanges')}</p>
+              <p className="text-sm text-slate-600">{t('flightsFetch.result.noChanges')}</p>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Flights table */}
-      <div className="rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">{t('flightsPull.flightsTable.title')}</h2>
-            <p className="text-sm text-slate-600">{t('flightsPull.flightsTable.description')}</p>
-          </div>
-          <div className="text-sm text-slate-600">
-            {t('flightsPull.flightsTable.count', { total: flightsQuery.data?.total ?? 0 })}
-          </div>
-        </div>
-
-        {flightsQuery.isLoading ? (
-          <p className="text-sm text-slate-600">{t('flightsPull.state.loading')}</p>
-        ) : flightsQuery.error ? (
-          <Alert>{t('flightsPull.flightsTable.loadError')}</Alert>
-        ) : (
-          <>
-            <div className="overflow-x-auto rounded-xl border border-outline-variant">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.date')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.glider')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.type')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.pilot')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.secondPilot')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.duration')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.launch')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.launchPilot')}</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('flightsPull.flightsTable.chargeTo')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {flightsQuery.data?.items.map((flight) => (
-                    <tr key={flight.uuid}>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-800">
-                        {flight.jour ? new Date(flight.jour).toLocaleDateString('fr-FR') : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-800">{flight.asset_code ?? '-'}</td>
-                      <td className={`px-3 py-2 ${highlightType(flight) ? 'font-bold text-amber-600' : 'text-slate-800'}`}>{formatFlightType(flight.type_of_flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.pilot_name ?? flight.pilot_erp_id ?? '-'}</td>
-                      <td className="px-3 py-2 text-slate-800">{formatSecondPilot(flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">
-                        {flight.takeoff_time && flight.landing_time
-                          ? formatDuration(flight.takeoff_time, flight.landing_time)
-                          : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-800">{formatLaunchMethod(flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.launch_pilot_trigram ?? '-'}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.charge_to_erp_id ?? '-'}</td>
-                    </tr>
-                  ))}
-                  {(!flightsQuery.data || flightsQuery.data.items.length === 0) && (
-                    <tr>
-                      <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
-                        {t('flightsPull.flightsTable.empty')}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {flightsQuery.data && flightsQuery.data.total_pages > 1 && (
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={flightPage <= 1}
-                  onClick={() => setFlightPage((p) => Math.max(1, p - 1))}
-                >
-                  {t('flightsPull.flightsTable.prev')}
-                </Button>
-                <span className="px-2 text-sm text-slate-700">
-                  {t('flightsPull.flightsTable.pageInfo', {
-                    page: flightPage,
-                    total: flightsQuery.data.total_pages,
-                  })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={flightPage >= (flightsQuery.data.total_pages)}
-                  onClick={() => setFlightPage((p) => p + 1)}
-                >
-                  {t('flightsPull.flightsTable.next')}
-                </Button>
-              </div>
-            )}
-          </>
         )}
       </div>
 
@@ -519,18 +356,18 @@ export function PlancheFlightsPullPage() {
       <Dialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        aria-labelledby="planche-flights-pull-confirm-title"
-        aria-describedby="planche-flights-pull-confirm-body"
+        aria-labelledby="planche-flights-fetch-confirm-title"
+        aria-describedby="planche-flights-fetch-confirm-body"
       >
         <div className="space-y-4 p-6">
-          <h2 id="planche-flights-pull-confirm-title" className="text-lg font-semibold text-slate-900">
-            {t('flightsPull.confirm.title')}
+          <h2 id="planche-flights-fetch-confirm-title" className="text-lg font-semibold text-slate-900">
+            {t('flightsFetch.confirm.title')}
           </h2>
 
-          <p id="planche-flights-pull-confirm-body" className="text-sm text-slate-600">
+          <p id="planche-flights-fetch-confirm-body" className="text-sm text-slate-600">
             {mode === 'incremental'
-              ? t('flightsPull.confirm.descriptionIncremental')
-              : t('flightsPull.confirm.descriptionDateRange', {
+              ? t('flightsFetch.confirm.descriptionIncremental')
+              : t('flightsFetch.confirm.descriptionDateRange', {
                   from: fromDate || '...',
                   to: toDate || '...',
                 })}
@@ -539,40 +376,40 @@ export function PlancheFlightsPullPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                {t('flightsPull.mode.label')}
+                {t('flightsFetch.mode.label')}
               </p>
               <p className="text-sm font-medium text-slate-900">
                 {mode === 'incremental'
-                  ? t('flightsPull.mode.incremental')
-                  : t('flightsPull.mode.dateRange')}
+                  ? t('flightsFetch.mode.incremental')
+                  : t('flightsFetch.mode.dateRange')}
               </p>
             </div>
             <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                {t('flightsPull.status.cursor')}
+                {t('flightsFetch.status.cursor')}
               </p>
               <p className="truncate text-sm font-medium text-slate-900">
                 {syncCursorFlights
                   ? `${syncCursorFlights.slice(0, 20)}...`
-                  : t('flightsPull.status.notAvailable')}
+                  : t('flightsFetch.status.notAvailable')}
               </p>
             </div>
           </div>
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setConfirmOpen(false)}>
-              {t('flightsPull.confirm.cancel')}
+              {t('flightsFetch.confirm.cancel')}
             </Button>
             <Button
               type="button"
-              disabled={!canConfirm() || pullMutation.isPending}
+              disabled={!canConfirm() || fetchMutation.isPending}
               onClick={() => {
-                void handlePull()
+                void handleFetch()
               }}
             >
-              {pullMutation.isPending
-                ? t('flightsPull.actions.pulling')
-                : t('flightsPull.confirm.pull')}
+              {fetchMutation.isPending
+                ? t('flightsFetch.actions.fetching')
+                : t('flightsFetch.confirm.fetch')}
             </Button>
           </div>
         </div>

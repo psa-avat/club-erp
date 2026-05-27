@@ -1,7 +1,7 @@
 """
     ERP-CLUB - ERP pour Club de vol à voile 
     - Logiciel libre de gestion d'un club de vol à voile
-    - flights: Pydantic schemas for flight data and Planche flight pull
+    - flights: Pydantic schemas for flight data and Planche flight fetch
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -26,14 +26,14 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class FlightPullRequest(BaseModel):
+class FlightFetchRequest(BaseModel):
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None
     cursor: Optional[str] = None
     limit: int = Field(default=500, ge=1, le=5000)
 
 
-class FlightPullResponse(BaseModel):
+class FlightFetchResponse(BaseModel):
     total: int
     created: int
     updated: int
