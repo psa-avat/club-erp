@@ -328,15 +328,15 @@ async def list_validated_flights(
         if r.charge_to_erp_id:
             member_uuids.add(r.charge_to_erp_id)
 
-    member_map: dict[str, tuple[str | None, str | None]] = {}  # uuid -> (full_name, trigram)
+    member_map: dict[str, tuple[str | None, str | None]] = {}  # account_id -> (full_name, trigram)
     if member_uuids:
         member_result = await db.execute(
-            select(Member.uuid, Member.first_name, Member.last_name, Member.trigram).where(
-                Member.uuid.in_([UUID(u) for u in member_uuids if u])
+            select(Member.account_id, Member.first_name, Member.last_name, Member.trigram).where(
+                Member.account_id.in_(list(member_uuids))
             )
         )
         for row in member_result.all():
-            uid = str(row.uuid)
+            uid = str(row.account_id)
             name = f"{row.first_name} {row.last_name}" if row.first_name and row.last_name else None
             member_map[uid] = (name, row.trigram)
 
