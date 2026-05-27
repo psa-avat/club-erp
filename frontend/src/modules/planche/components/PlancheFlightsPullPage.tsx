@@ -31,6 +31,7 @@ import {
 } from '../api'
 import {
   useFlightsFetchMutation,
+  useFlightStatsQuery,
   type FlightFetchResponse,
 } from '../../flights/api'
 
@@ -104,6 +105,9 @@ export function PlancheFlightsPullPage() {
   const syncCursorFlights = (settingsRaw?.sync_cursor_flights as string) ?? null
   const lastFetchAt = (settingsRaw?.last_fetch_at as string) ?? null
 
+  const statsQuery = useFlightStatsQuery()
+  const stats = statsQuery.data
+
   function buildRequest() {
     if (mode === 'incremental') {
       return { cursor: syncCursorFlights || undefined, limit: 500 }
@@ -168,6 +172,57 @@ export function PlancheFlightsPullPage() {
           <p className="max-w-2xl text-sm text-violet-50/90">{t('flightsFetch.hero.description')}</p>
         </div>
       </div>
+
+      {/* KPI Dashboard */}
+      {statsQuery.isLoading ? (
+        <div className="rounded-2xl border border-outline-variant bg-surface p-4 text-sm text-slate-500">
+          {t('flightsFetch.stats.loading')}
+        </div>
+      ) : stats ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Total flights */}
+          <KpiCard
+            label={t('flightsFetch.stats.totalFlights')}
+            value={stats.total_flights}
+          />
+          {/* By status */}
+          <KpiCard
+            label={t('flightsFetch.stats.byStatus')}
+            subItems={[
+              { label: t('flightsFetch.stats.validated'), value: stats.by_status.validated ?? 0, variant: 'info' },
+              { label: t('flightsFetch.stats.transferred'), value: stats.by_status.transferred ?? 0, variant: 'success' },
+              { label: t('flightsFetch.stats.modified'), value: stats.by_status.modified ?? 0, variant: 'warning' },
+            ]}
+          />
+          {/* Unbilled / splits */}
+          <KpiCard
+            label={t('flightsFetch.stats.billing')}
+            subItems={[
+              { label: t('flightsFetch.stats.unbilled'), value: stats.unbilled_count, variant: 'warning' },
+              { label: t('flightsFetch.stats.instructionSplit'), value: stats.instruction_split_count, variant: 'info' },
+              { label: t('flightsFetch.stats.modifiedAfterTransfer'), value: stats.modified_after_transfer_count, variant: 'warning' },
+            ]}
+          />
+          {/* Planche sync status */}
+          <KpiCard
+            label={t('flightsFetch.stats.plancheSync')}
+            subItems={[
+              {
+                label: t('flightsFetch.stats.pendingFetch'),
+                value: stats.pending_planche_count !== null ? stats.pending_planche_count : '?',
+                variant: (stats.pending_planche_count ?? 0) > 0 ? 'warning' : 'success',
+              },
+              {
+                label: t('flightsFetch.stats.lastFetch'),
+                value: stats.last_fetch_at
+                  ? new Date(stats.last_fetch_at).toLocaleString()
+                  : t('flightsFetch.status.never'),
+                variant: 'neutral',
+              },
+            ]}
+          />
+        </div>
+      ) : null}
 
       {/* Main Card */}
       <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
@@ -316,14 +371,32 @@ export function PlancheFlightsPullPage() {
               </p>
             )}
 
-            {lastResult.error_details && lastResult.error_details.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-red-700">{t('flightsFetch.result.errors')}</p>
-                <ul className="list-disc space-y-1 pl-5 text-sm text-red-700">
-                  {lastResult.error_details.map((err, i) => (
-                    <li key={i}>{err}</li>
-                  ))}
-                </ul>
+            {/* Diagnostic summary: flight failures */}
+            {(lastResult.failed_count ?? 0) > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm font-semibold text-red-800">
+                  {t('flightsFetch.result.failedFlights')}: {lastResult.failed_count}
+                </p>
+                <div className="mt-1 flex gap-4 text-xs text-red-700">
+                  {(lastResult.missing_required_field_count ?? 0) > 0 && (
+                    <span>⚠ {t('flightsFetch.result.missingFields')}: {lastResult.missing_required_field_count}</span>
+                  )}
+                  {(lastResult.constraint_violation_count ?? 0) > 0 && (
+                    <span>⚠ {t('flightsFetch.result.constraintViolations')}: {lastResult.constraint_violation_count}</span>
+                  )}
+                </div>
+                {lastResult.error_details && lastResult.error_details.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-red-700">
+                      {t('flightsFetch.result.showDetails')} ({lastResult.error_details.length})
+                    </summary>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-red-700">
+                      {lastResult.error_details.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </div>
             )}
 
@@ -441,6 +514,37 @@ function ResultStat({
     <div className="rounded-lg border border-outline-variant bg-white p-3">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
       <p className={`text-lg font-bold ${colorMap[variant]}`}>{value}</p>
+    </div>
+  )
+}
+
+type SubItem = { label: string; value: string | number; variant?: 'neutral' | 'success' | 'info' | 'warning' }
+
+function KpiCard({ label, value, subItems }: { label: string; value?: string | number; subItems?: SubItem[] }) {
+  return (
+    <div className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
+      {value !== undefined && (
+        <p className="text-2xl font-bold text-slate-900">{value}</p>
+      )}
+      {subItems && (
+        <div className="mt-2 space-y-1">
+          {subItems.map((item, i) => {
+            const colorMap = {
+              neutral: 'text-slate-700',
+              success: 'text-green-700',
+              info: 'text-blue-700',
+              warning: 'text-amber-700',
+            }
+            return (
+              <div key={i} className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">{item.label}</span>
+                <span className={`font-semibold ${colorMap[item.variant ?? 'neutral']}`}>{item.value}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

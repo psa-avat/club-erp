@@ -57,6 +57,9 @@ export type FlightFetchResponse = {
   next_cursor: string | null
   has_more: boolean
   error_details?: string[]
+  failed_count?: number
+  missing_required_field_count?: number
+  constraint_violation_count?: number
 }
 
 export type ValidatedFlightItem = {
@@ -87,6 +90,31 @@ export type ValidatedFlightListResponse = {
   page: number
   page_size: number
   total_pages: number
+}
+
+export type FlightStats = {
+  total_flights: number
+  by_status: Record<string, number>
+  by_type: Record<string, number>
+  by_launch_method: Record<string, number>
+  unbilled_count: number
+  instruction_split_count: number
+  modified_after_transfer_count: number
+  last_fetch_at: string | null
+  cursor: string | null
+  pending_planche_count: number | null
+}
+
+export const flightStatsQueryKey = ['flights', 'stats'] as const
+
+export function useFlightStatsQuery() {
+  return useQuery({
+    queryKey: flightStatsQueryKey,
+    queryFn: async () => {
+      const { data } = await apiClient.get<FlightStats>('/api/v1/flights/stats', getAuthRequestConfig())
+      return data
+    },
+  })
 }
 
 export function useFlightListQuery(page: number, pageSize: number, filters: FlightListFilters = {}) {
@@ -136,6 +164,7 @@ export function useFlightsFetchMutation() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['flights', 'list'] })
       await queryClient.invalidateQueries({ queryKey: ['planche', 'settings'] })
+      await queryClient.invalidateQueries({ queryKey: flightStatsQueryKey })
     },
   })
 }

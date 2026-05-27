@@ -281,12 +281,20 @@ DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "sync_cursor_flights": None,
     "sync_cursor_pilots": None,
     "sync_cursor_machines": None,
+    "last_fetch_at": None,
 }
 
 
-def _settings_payload_from_dict(settings: dict[str, Any]) -> PlancheSettingsPayload:
+def _settings_payload_from_dict(settings: dict[str, Any]) -> dict[str, Any]:
+    """Build settings dict with defaults for known keys, preserving extra keys (e.g. last_fetch_at)."""
     allowed_keys = PlancheSettingsPayload.model_fields.keys()
-    merged = DEFAULT_PLANCHE_SETTINGS | {key: value for key, value in settings.items() if key in allowed_keys}
+    merged: dict[str, Any] = DEFAULT_PLANCHE_SETTINGS | {
+        key: value for key, value in settings.items() if key in allowed_keys
+    }
+    # Preserve any extra keys from the DB that are not in the model (e.g. last_fetch_at)
+    for key, value in settings.items():
+        if key not in merged:
+            merged[key] = value
     return merged
 
 

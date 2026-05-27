@@ -44,6 +44,9 @@ class FlightFetchResponse(BaseModel):
     next_cursor: Optional[str] = None
     has_more: bool = False
     error_details: list[str] = Field(default_factory=list)
+    failed_count: int = 0
+    missing_required_field_count: int = 0
+    constraint_violation_count: int = 0
 
 
 class ValidatedFlightItem(BaseModel):
@@ -80,3 +83,18 @@ class ValidatedFlightListResponse(BaseModel):
     page_size: int = 50
     total_pages: int = 0
     error_details: list[str] = Field(default_factory=list)
+
+
+class FlightStatsResponse(BaseModel):
+    """Aggregated KPIs for the flight operations dashboard."""
+
+    total_flights: int = 0
+    by_status: dict[str, int] = Field(default_factory=lambda: {"validated": 0, "transferred": 0, "modified": 0})
+    by_type: dict[str, int] = Field(default_factory=dict)
+    by_launch_method: dict[str, int] = Field(default_factory=dict)
+    unbilled_count: int = 0
+    instruction_split_count: int = 0
+    modified_after_transfer_count: int = 0
+    last_fetch_at: str | None = None
+    cursor: str | None = None
+    pending_planche_count: int | None = None

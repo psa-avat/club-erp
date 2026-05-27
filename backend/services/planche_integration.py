@@ -1250,6 +1250,10 @@ class PlancheIntegrationService:
             snapshots_created = 0
             modified_after_transfer_count = 0
             error_details: list[str] = []
+            # Track UUIDs of flights that failed, for diagnostics
+            failed_uuids: list[str] = []
+            missing_required_field_count = 0
+            constraint_violation_count = 0
 
             for raw_item in raw_items:
                 planche_uuid = ""
@@ -1366,12 +1370,31 @@ class PlancheIntegrationService:
                             created_count += 1
 
                 except ValueError as e:
-                    error_details.append(f"Flight {planche_uuid or '?'}: {str(e)}")
+                    error_msg = str(e)
+                    error_details.append(f"Flight {planche_uuid or '?'}: {error_msg}")
+                    failed_uuids.append(planche_uuid or '?')
+                    if "required" in error_msg.lower():
+                        missing_required_field_count += 1
                 except Exception as e:
-                    logger.warning("DB error processing flight %s: %s", planche_uuid, e)
-                    error_details.append(f"Flight {planche_uuid or '?'}: {str(e)}")
+                    error_msg = str(e)
+                    logger.warning("DB error processing flight %s: %s", planche_uuid, error_msg)
+                    error_details.append(f"Flight {planche_uuid or '?'}: {error_msg}")
+                    failed_uuids.append(planche_uuid or '?')
+                    # Check if it's a constraint violation
+                    if "check" in error_msg.lower() or "constraint" in error_msg.lower():
+                        constraint_violation_count += 1
 
             await db.commit()
+
+            logger.info(
+                "pull_validated_flights: %d items, %d created, %d updated, %d idempotent, %d skipped, %d errors, %d failed_uuids",
+                len(raw_items), created_count, updated_count, idempotent_count,
+                skipped_count, len(error_details), len(failed_uuids),
+            )
+            if error_details:
+                logger.warning("Flight import errors (showing first 10): %s", error_details[:10])
+                if failed_uuids:
+                    logger.warning("Failed flight UUIDs (showing first 10): %s", failed_uuids[:10])
 
             await self._log_audit(
                 db=db,
@@ -1392,6 +1415,9 @@ class PlancheIntegrationService:
                         "modified_after_transfer": modified_after_transfer_count,
                         "next_cursor": next_cursor,
                         "has_more": has_more,
+                        "missing_required_field_count": missing_required_field_count,
+                        "constraint_violation_count": constraint_violation_count,
+                        "failed_uuids": failed_uuids[:50],  # limit to 50 in metadata
                         "source_endpoint": "/erp/validated-flights/changes" if using_changes_endpoint else "/validated-flights",
                     }
                 ),
@@ -1408,6 +1434,9 @@ class PlancheIntegrationService:
                 "next_cursor": next_cursor,
                 "has_more": has_more,
                 "error_details": error_details,
+                "failed_count": len(failed_uuids),
+                "missing_required_field_count": missing_required_field_count,
+                "constraint_violation_count": constraint_violation_count,
             }
 
         except Exception as e:
@@ -1420,6 +1449,50 @@ class PlancheIntegrationService:
                 triggered_by=triggered_by,
             )
             raise
+
+    async def get_pending_flights_count(
+        self,
+        db: AsyncSession,
+        cursor: str | None = None,
+    ) -> int | None:
+        """Lightweight call to Planche ERP preview endpoint to count pending flights.
+
+        Uses POST /erp/validated-flights/preview with a wide date range,
+        falling back to GET /erp/validated-flights/changes?limit=1
+        if the preview endpoint is unavailable.
+        """
+        # Primary: ERP preview endpoint (lightweight, returns counts only)
+        try:
+            response = await self._perform_request(
+                method="POST",
+                endpoint="/erp/validated-flights/preview",
+                json={"from_date": "2000-01-01", "to_date": "2100-01-01", "include_transferred": False},
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                if isinstance(payload, dict):
+                    total = payload.get("total", 0)
+                    transferred = payload.get("already_transferred", 0)
+                    return max(0, total - transferred)
+        except Exception:
+            logger.debug("Preview endpoint unavailable, falling back to changes endpoint", exc_info=True)
+
+        # Fallback: changes endpoint with limit=1 to get total count
+        try:
+            response = await self._perform_request(
+                method="GET",
+                endpoint="/erp/validated-flights/changes",
+                params={"since": cursor or "", "limit": 1},
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                if isinstance(payload, dict):
+                    return payload.get("total", None)
+                if isinstance(payload, list):
+                    return len(payload)
+        except Exception:
+            logger.warning("Failed to count pending flights from Planche ERP API", exc_info=True)
+            return None
 
     async def _perform_request(
         self,

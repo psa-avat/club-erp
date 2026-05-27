@@ -36,6 +36,7 @@ from models import Member, User, ValidatedFlight
 from schemas.flights import (
     FlightFetchRequest,
     FlightFetchResponse,
+    FlightStatsResponse,
     ValidatedFlightItem,
     ValidatedFlightListResponse,
 )
@@ -63,6 +64,7 @@ DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "sync_cursor_flights": None,
     "sync_cursor_pilots": None,
     "sync_cursor_machines": None,
+    "last_fetch_at": None,
 }
 
 
@@ -225,6 +227,108 @@ async def list_validated_flights(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+    )
+
+
+TYPE_OF_FLIGHT_LABELS: dict[int, str] = {
+    0: "instruction", 1: "solo", 2: "initiation", 3: "partage",
+    4: "passager", 5: "lacher", 6: "supervise", 7: "essai",
+}
+LAUNCH_METHOD_LABELS: dict[int, str] = {
+    0: "exterieur", 1: "treuil", 2: "remorqueur", 3: "autonome",
+}
+STATUS_LABELS: dict[int, str] = {0: "validated", 1: "transferred", 2: "modified"}
+
+
+@router.get("/stats", response_model=FlightStatsResponse)
+async def flight_stats(
+    db: AsyncSession = Depends(get_db),
+    _: User = flights_guard,
+):
+    """Return aggregated KPI stats for the flight dashboard."""
+    # Total count
+    total_q = await db.execute(select(func.count(ValidatedFlight.uuid)))
+    total_flights = total_q.scalar() or 0
+
+    # By status
+    status_rows = await db.execute(
+        select(ValidatedFlight.erp_status, func.count(ValidatedFlight.uuid))
+        .group_by(ValidatedFlight.erp_status)
+    )
+    by_status: dict[str, int] = {"validated": 0, "transferred": 0, "modified": 0}
+    for row in status_rows.all():
+        label = STATUS_LABELS.get(int(row[0]), "unknown")
+        by_status[label] = int(row[1])
+
+    # By flight type
+    type_rows = await db.execute(
+        select(ValidatedFlight.type_of_flight, func.count(ValidatedFlight.uuid))
+        .group_by(ValidatedFlight.type_of_flight)
+    )
+    by_type: dict[str, int] = {}
+    for row in type_rows.all():
+        label = TYPE_OF_FLIGHT_LABELS.get(int(row[0]), f"type_{row[0]}")
+        by_type[label] = int(row[1])
+
+    # By launch method
+    launch_rows = await db.execute(
+        select(ValidatedFlight.launch_method, func.count(ValidatedFlight.uuid))
+        .group_by(ValidatedFlight.launch_method)
+    )
+    by_launch_method: dict[str, int] = {}
+    for row in launch_rows.all():
+        label = LAUNCH_METHOD_LABELS.get(int(row[0]), f"method_{row[0]}")
+        by_launch_method[label] = int(row[1])
+
+    # Unbilled flights
+    unbilled_q = await db.execute(
+        select(func.count(ValidatedFlight.uuid)).where(ValidatedFlight.accounting_entry_uuid.is_(None))
+    )
+    unbilled_count = unbilled_q.scalar() or 0
+
+    # Instruction splits
+    split_q = await db.execute(
+        select(func.count(ValidatedFlight.uuid)).where(ValidatedFlight.instruction_split > 0)
+    )
+    instruction_split_count = split_q.scalar() or 0
+
+    # Modified after transfer
+    modified_q = await db.execute(
+        select(func.count(ValidatedFlight.uuid)).where(ValidatedFlight.erp_status == 2)
+    )
+    modified_after_transfer_count = modified_q.scalar() or 0
+
+    # Settings (cursor + last_fetch_at) and Planche pending count
+    last_fetch_at: str | None = None
+    cursor: str | None = None
+    pending_planche_count: int | None = None
+    try:
+        setting = await get_system_setting(db, PLANCHE_SETTINGS_MODULE)
+        s = setting.settings if isinstance(setting.settings, dict) else {}
+        last_fetch_at = s.get("last_fetch_at")
+        cursor = s.get("sync_cursor_flights")
+
+        # Lightweight Planche counters and KPI
+        try:
+            service = await _get_planche_service(db)
+            pending = await service.get_pending_flights_count(db, cursor=cursor)
+            pending_planche_count = pending
+        except Exception:
+            pending_planche_count = None
+    except (HTTPException, Exception):
+        pass
+
+    return FlightStatsResponse(
+        total_flights=total_flights,
+        by_status=by_status,
+        by_type=by_type,
+        by_launch_method=by_launch_method,
+        unbilled_count=unbilled_count,
+        instruction_split_count=instruction_split_count,
+        modified_after_transfer_count=modified_after_transfer_count,
+        last_fetch_at=last_fetch_at,
+        cursor=cursor,
+        pending_planche_count=pending_planche_count,
     )
 
 
