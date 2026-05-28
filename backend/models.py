@@ -1233,7 +1233,6 @@ class ValidatedFlight(Base):
     transferred_at = Column(DateTime(timezone=True), nullable=True)  # When transferred to accounting
     transferred_by = Column(String, nullable=True)  # User/device who transferred
     last_export_hash = Column(String, nullable=True)  # Change marker for modification detection
-    last_updated = Column(DateTime(timezone=True), nullable=True)  # Planche lastUpdated timestamp
     revision = Column(Integer, nullable=False, default=1)  # Planche revision counter
     source_status = Column(String(32), nullable=False, default="active")  # active/updated/deleted from Planche changes API
     corrected_at = Column(DateTime(timezone=True), nullable=True)

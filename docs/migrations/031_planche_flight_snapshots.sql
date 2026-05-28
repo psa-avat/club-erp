@@ -34,7 +34,6 @@ ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS aero VARCHAR;
 ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS pilot_compta_id VARCHAR;
 ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS second_pilot_id VARCHAR;
 ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS charge_to_compta_id VARCHAR;
-ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ;
 ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS source_status VARCHAR(32) NOT NULL DEFAULT 'active';
 ALTER TABLE validated_flights ADD COLUMN IF NOT EXISTS corrected_at TIMESTAMPTZ;

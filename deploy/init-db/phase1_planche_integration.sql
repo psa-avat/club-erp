@@ -72,7 +72,6 @@ CREATE TABLE validated_flights (
     transferred_at TIMESTAMP WITH TIME ZONE,
     transferred_by VARCHAR,
     last_export_hash VARCHAR,
-    last_updated TIMESTAMP WITH TIME ZONE,
     revision INTEGER DEFAULT 1 NOT NULL,
     source_status VARCHAR(32) DEFAULT 'active' NOT NULL,
     corrected_at TIMESTAMP WITH TIME ZONE,

@@ -70,7 +70,6 @@ CREATE TABLE validated_flights (
     transferred_at   TIMESTAMPTZ,
     transferred_by   VARCHAR,
     last_export_hash VARCHAR,
-    last_updated     TIMESTAMPTZ,
     revision         INTEGER NOT NULL DEFAULT 1,
     source_status    VARCHAR(32) NOT NULL DEFAULT 'active',
     corrected_at     TIMESTAMPTZ,

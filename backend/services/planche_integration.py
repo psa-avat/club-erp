@@ -1175,7 +1175,6 @@ class PlancheIntegrationService:
         flight_obj.landed_location = flight_data.get("landedLocation")
         flight_obj.observations = flight_data.get("observations")
         flight_obj.last_export_hash = snapshot.source_hash
-        flight_obj.last_updated = snapshot.updated_at_source
         flight_obj.revision = revision
         flight_obj.source_status = status_value
         flight_obj.corrected_at = snapshot.corrected_at
@@ -1209,6 +1208,20 @@ class PlancheIntegrationService:
         try:
             using_changes_endpoint = from_date is None and to_date is None
             if using_changes_endpoint:
+                # Auto-detect stale cursor: if validated_flights is empty (e.g.
+                # after a manual truncate), ignore the stored cursor so we pull
+                # everything from the beginning rather than only changes after
+                # the last-known position.
+                if cursor:
+                    count_result = await db.execute(
+                        select(func.count()).select_from(ValidatedFlight)
+                    )
+                    if (count_result.scalar() or 0) == 0:
+                        logger.info(
+                            "Stale cursor detected (validated_flights empty), "
+                            "resetting to pull from start"
+                        )
+                        cursor = None
                 response = await self._perform_request(
                     method="GET",
                     endpoint="/erp/validated-flights/changes",
@@ -1254,6 +1267,8 @@ class PlancheIntegrationService:
             failed_uuids: list[str] = []
             missing_required_field_count = 0
             constraint_violation_count = 0
+            # Track successfully processed (planche_uuid, revision) for ack
+            ack_items: list[dict] = []
 
             for raw_item in raw_items:
                 planche_uuid = ""
@@ -1305,6 +1320,15 @@ class PlancheIntegrationService:
                         if existing_flight.source_snapshot_uuid != snapshot.uuid:
                             existing_flight.source_snapshot_uuid = snapshot.uuid
                         idempotent_count += 1
+                        # Track for ack if not already acknowledged
+                        if snapshot.ack_status not in ("acknowledged",):
+                            ack_items.append({
+                                "planche_uuid": planche_uuid,
+                                "revision": revision,
+                                "erp_status": "accepted",
+                                "erp_reference": str(existing_flight.uuid),
+                                "error": None,
+                            })
                         continue
 
                     # ── Process / upsert inside a savepoint ────────────────────────
@@ -1336,10 +1360,18 @@ class PlancheIntegrationService:
                             await db.flush()
                             snapshots_created += 1
                         elif sp_snapshot.source_hash != source_hash:
-                            raise ValueError(
-                                f"Revision {revision} payload hash {source_hash} "
-                                f"differs from stored hash {sp_snapshot.source_hash}"
+                            logger.warning(
+                                "Hash mismatch for %s revision %d — updating snapshot "
+                                "(old hash: %s, new hash: %s)",
+                                planche_uuid, revision,
+                                sp_snapshot.source_hash, source_hash,
                             )
+                            sp_snapshot.source_hash = source_hash
+                            sp_snapshot.payload_json = source_payload
+                            sp_snapshot.updated_at_source = self._parse_planche_datetime(change_item["updated_at"])
+                            sp_snapshot.corrected_at = self._parse_planche_datetime(change_item["corrected_at"])
+                            sp_snapshot.corrected_by = change_item["corrected_by"]
+                            sp_snapshot.correction_reason = change_item["correction_reason"]
 
                         # Re-read existing flight inside savepoint
                         sp_existing_result = await db.execute(
@@ -1369,6 +1401,15 @@ class PlancheIntegrationService:
                             db.add(flight_obj)
                             created_count += 1
 
+                    # Track for ack — flight_obj is in scope after the savepoint
+                    ack_items.append({
+                        "planche_uuid": planche_uuid,
+                        "revision": revision,
+                        "erp_status": "accepted",
+                        "erp_reference": str(flight_obj.uuid),
+                        "error": None,
+                    })
+
                 except ValueError as e:
                     error_msg = str(e)
                     error_details.append(f"Flight {planche_uuid or '?'}: {error_msg}")
@@ -1386,10 +1427,30 @@ class PlancheIntegrationService:
 
             await db.commit()
 
+            # ── Ack successfully processed revisions to Planche ──────────────
+            # Ack regardless of endpoint — the ack endpoint is idempotent so
+            # date-range backfills can safely re-ack already-processed revisions.
+            ack_succeeded = 0
+            ack_failed = 0
+            if ack_items:
+                try:
+                    ack_results = await self._ack_flight_revisions(db, ack_items)
+                    ack_succeeded = sum(1 for r in ack_results if r.get("success", False))
+                    ack_failed = len(ack_results) - ack_succeeded
+                    if ack_failed:
+                        logger.warning(
+                            "Ack: %d / %d revisions failed", ack_failed, len(ack_results)
+                        )
+                except Exception as e:
+                    logger.warning("Ack batch failed: %s", e)
+
             logger.info(
-                "pull_validated_flights: %d items, %d created, %d updated, %d idempotent, %d skipped, %d errors, %d failed_uuids",
+                "pull_validated_flights: %d items, %d created, %d updated, %d idempotent, "
+                "%d skipped, %d errors, %d failed_uuids, "
+                "ack %d succeeded, %d failed",
                 len(raw_items), created_count, updated_count, idempotent_count,
                 skipped_count, len(error_details), len(failed_uuids),
+                ack_succeeded, ack_failed,
             )
             if error_details:
                 logger.warning("Flight import errors (showing first 10): %s", error_details[:10])
@@ -1419,6 +1480,8 @@ class PlancheIntegrationService:
                         "constraint_violation_count": constraint_violation_count,
                         "failed_uuids": failed_uuids[:50],  # limit to 50 in metadata
                         "source_endpoint": "/erp/validated-flights/changes" if using_changes_endpoint else "/validated-flights",
+                        "ack_succeeded": ack_succeeded,
+                        "ack_failed": ack_failed,
                     }
                 ),
             )
@@ -1437,6 +1500,8 @@ class PlancheIntegrationService:
                 "failed_count": len(failed_uuids),
                 "missing_required_field_count": missing_required_field_count,
                 "constraint_violation_count": constraint_violation_count,
+                "ack_succeeded": ack_succeeded,
+                "ack_failed": ack_failed,
             }
 
         except Exception as e:
@@ -1493,6 +1558,183 @@ class PlancheIntegrationService:
         except Exception:
             logger.warning("Failed to count pending flights from Planche ERP API", exc_info=True)
             return None
+
+    async def _ack_flight_revisions(
+        self,
+        db: AsyncSession,
+        ack_items: list[dict],
+    ) -> list[dict]:
+        """
+        Send batch acknowledgment to Planche for processed flight revisions.
+
+        After ERP has persisted source snapshots and completed the import/billing
+        decision for exact (uuid, revision), this method acks them back to Planche
+        so they are excluded from future ``include_transferred=False`` queries.
+
+        Args:
+            db: Database session (used to update local ack_status on snapshots).
+            ack_items: List of dicts with keys:
+                - planche_uuid (str): Planche flight UUID.
+                - revision (int): Planche revision number.
+                - erp_status (str): "accepted" or "rejected".
+                - erp_reference (str): ERP-side reference (e.g. ValidatedFlight.uuid).
+                - error (str | None): Error description when erp_status is "rejected".
+
+        Returns:
+            List of per-item ack results from Planche.
+        """
+        if not ack_items:
+            return []
+
+        chunk_size = min(100, len(ack_items))
+        all_results: list[dict] = []
+
+        for i in range(0, len(ack_items), chunk_size):
+            chunk = ack_items[i : i + chunk_size]
+            payload = {
+                "items": [
+                    {
+                        "uuid": item["planche_uuid"],
+                        "revision": item["revision"],
+                        "erp_status": item.get("erp_status", "accepted"),
+                        "erp_reference": item.get("erp_reference", ""),
+                        "error": item.get("error"),
+                    }
+                    for item in chunk
+                ]
+            }
+
+            try:
+                response = await self._perform_request(
+                    method="POST",
+                    endpoint="/erp/validated-flights/ack",
+                    json=payload,
+                )
+                if response.status_code == 200:
+                    results = response.json().get("results", [])
+                else:
+                    results = [
+                        {
+                            "uuid": item["planche_uuid"],
+                            "revision": item["revision"],
+                            "success": False,
+                            "error": f"HTTP {response.status_code}",
+                        }
+                        for item in chunk
+                    ]
+            except Exception as e:
+                logger.warning("Ack request failed for chunk %d: %s", i // chunk_size, e)
+                results = [
+                    {
+                        "uuid": item["planche_uuid"],
+                        "revision": item["revision"],
+                        "success": False,
+                        "error": str(e),
+                    }
+                    for item in chunk
+                ]
+
+            # Update local snapshot ack_status
+            for result in results:
+                try:
+                    snap_result = await db.execute(
+                        select(PlancheFlightSnapshot).where(
+                            PlancheFlightSnapshot.planche_uuid == result["uuid"],
+                            PlancheFlightSnapshot.planche_revision == result["revision"],
+                        )
+                    )
+                    snapshot = snap_result.scalar_one_or_none()
+                    if snapshot is not None:
+                        if result.get("success", False):
+                            snapshot.ack_status = "acknowledged"
+                            snapshot.ack_at = datetime.now(timezone.utc)
+                            snapshot.ack_error = None
+                        else:
+                            snapshot.ack_status = "failed"
+                            snapshot.ack_at = datetime.now(timezone.utc)
+                            snapshot.ack_error = str(result.get("error", "Unknown ack error"))
+                except Exception as e:
+                    logger.warning(
+                        "Failed to update ack_status for %s rev %d: %s",
+                        result.get("uuid"),
+                        result.get("revision"),
+                        e,
+                    )
+
+            all_results.extend(results)
+
+        await db.commit()
+        return all_results
+
+    async def retry_failed_acks(
+        self,
+        db: AsyncSession,
+    ) -> dict[str, Any]:
+        """
+        Retry acknowledgment for all snapshots with a failed or missing ack.
+
+        Queries ``PlancheFlightSnapshot`` rows whose ``ack_status`` is not
+        ``acknowledged``, groups them by ``(planche_uuid, revision)`` and
+        sends a fresh ack batch to Planche.
+
+        Returns:
+            Dict with keys:
+                - total (int): number of snapshots eligible for retry.
+                - succeeded (int): count of successfully acknowledged.
+                - failed (int): count that still failed.
+                - errors (list[str]): per-item error messages.
+        """
+        result = await db.execute(
+            select(PlancheFlightSnapshot).where(
+                PlancheFlightSnapshot.ack_status.in_(["not_acknowledged", "failed"])
+            )
+        )
+        snapshots = list(result.scalars().all())
+
+        if not snapshots:
+            return {"total": 0, "succeeded": 0, "failed": 0, "errors": []}
+
+        # Deduplicate by (planche_uuid, revision) — keep the latest snapshot per pair
+        seen: set[tuple[str, int]] = set()
+        ack_items: list[dict] = []
+        for snap in snapshots:
+            key = (snap.planche_uuid, snap.planche_revision)
+            if key not in seen:
+                seen.add(key)
+                ack_items.append({
+                    "planche_uuid": snap.planche_uuid,
+                    "revision": snap.planche_revision,
+                    "erp_status": "accepted",
+                    "erp_reference": "",
+                    "error": None,
+                })
+
+        ack_results = await self._ack_flight_revisions(db, ack_items)
+
+        succeeded = sum(1 for r in ack_results if r.get("success", False))
+        errors = [
+            f"{r.get('uuid')} rev {r.get('revision')}: {r.get('error', 'unknown')}"
+            for r in ack_results
+            if not r.get("success", False)
+        ]
+
+        await self._log_audit(
+            db=db,
+            operation_type="flights_ack_retry",
+            status=0 if not errors else 2,
+            total_records=len(ack_items),
+            success_count=succeeded,
+            failure_count=len(errors),
+            error_message="\n".join(errors) if errors else None,
+            triggered_by="system",
+        )
+
+        return {
+            "total": len(ack_items),
+            "succeeded": succeeded,
+            "failed": len(errors),
+            "errors": errors,
+        }
 
     async def _perform_request(
         self,

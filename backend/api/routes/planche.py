@@ -268,6 +268,23 @@ async def reconcile_vi_from_validated_flights(
     return JSONResponse(result)
 
 
+@router.post("/flights/ack/retry")
+async def retry_failed_flight_acks(
+    db: AsyncSession = Depends(get_db),
+    _: User = planche_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Retry acknowledgment for all Planche flight snapshots that have a failed or missing ack.
+
+    Queries snapshots with ``ack_status`` in ``('not_acknowledged', 'failed')``,
+    deduplicates by ``(planche_uuid, revision)``, and sends a fresh ack batch
+    to Planche's ``/erp/validated-flights/ack`` endpoint.
+    """
+    service = await _get_planche_service(db)
+    result = await service.retry_failed_acks(db)
+    return JSONResponse(result)
+
+
 DEFAULT_PLANCHE_SETTINGS: dict[str, Any] = {
     "base_url": "",
     "connection_id": "",
