@@ -581,7 +581,7 @@ class PricingItem(Base):
 
     __tablename__ = "pricing_items"
     __table_args__ = (
-        CheckConstraint("unit IN (1, 2, 3, 4, 5, 6)", name="chk_pricing_items_unit"),
+        CheckConstraint("unit IN (1, 2, 3, 4, 5, 6, 7)", name="chk_pricing_items_unit"),
         CheckConstraint("base_price >= 0", name="chk_pricing_items_base_price"),
         CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_items_pack_price"),
         CheckConstraint(
@@ -599,9 +599,11 @@ class PricingItem(Base):
         UUID(as_uuid=True), ForeignKey("asset_flight_types.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
     name = Column(String(120), nullable=False)
-    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed
+    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed, 7=FixedDurationTranche
     unit = Column(SmallInteger, nullable=False)
     base_price = Column(Numeric(10, 4), nullable=False)
+    # When True, tiers are applied progressively (each bracket priced at its own rate)
+    is_progressive = Column(Boolean, nullable=False, default=False)
     # Price per unit when pilot has an active pack subscription
     pack_price = Column(Numeric(10, 4), nullable=True)
     # Percentage discount applied to this item when the member is under-25 eligible (0 = no discount)
@@ -637,12 +639,17 @@ class PricingItem(Base):
 
 
 class PricingItemTier(Base):
-    """Progressive pricing bracket for a pricing item.
+    """Pricing bracket for a pricing item.
 
-    Tiers are evaluated ascending by from_qty: the flight module applies the
-    price of the last bracket whose from_qty <= cumulated consumption.
-    The base price is the implicit bracket at 0.
-    Example: base=18€, then [(3, 9€), (5, 0€)] => free after 5 units.
+    Two modes controlled by ``PricingItem.is_progressive``:
+
+    * **Non-progressive** (default): the last bracket whose ``from_qty <=``
+      cumulative consumption sets the unit price for **all** units.
+      Example: base=18€, tiers [(3, 9€), (5, 0€)] => free after 5 units.
+
+    * **Progressive**: each bracket contributes its own portion.
+      Example: base=18€, tiers [(12, 10€)] => first 12 units at 18€,
+      remaining units at 10€.
     """
 
     __tablename__ = "pricing_item_tiers"

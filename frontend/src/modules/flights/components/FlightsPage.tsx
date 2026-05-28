@@ -18,6 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState } from 'react'
+import { Calculator } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
@@ -26,7 +27,9 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 
 import {
+  useFlightBillingPreviewMutation,
   useFlightListQuery,
+  type FlightBillingPreviewResponse,
   type FlightListFilters,
   type ValidatedFlightItem,
 } from '../api'
@@ -88,6 +91,151 @@ function formatLaunchMethod(flight: ValidatedFlightItem): string {
   return flight.launch_asset_code ? `${label} ${flight.launch_asset_code}` : label
 }
 
+
+function formatDecimal(value: string | number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || value === '') return '-'
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return String(value)
+  return numeric.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+}
+
+function formatMoney(value: string | number | null | undefined): string {
+  const formatted = formatDecimal(value, 2)
+  return formatted === '-' ? formatted : `${formatted} EUR`
+}
+
+function shortHash(value: string | null): string {
+  return value ? value.slice(0, 12) : '-'
+}
+
+function BillingPreviewPanel({ preview }: { preview: FlightBillingPreviewResponse }) {
+  const { t } = useTranslation('flights')
+  const blockingErrors = preview.errors.filter((error) => error.blocking)
+
+  return (
+    <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('billing.title')}</p>
+          <h2 className="text-lg font-semibold text-slate-900">
+            {preview.flight_date ?? '-'} · {preview.type_label ?? preview.type_of_flight ?? '-'}
+          </h2>
+          <p className="text-xs text-slate-500">{t('billing.hash')}: {shortHash(preview.billing_hash)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('billing.total')}</p>
+          <p className="text-2xl font-semibold text-slate-900">{formatMoney(preview.total_amount)}</p>
+          <p className={preview.can_apply ? 'text-xs text-emerald-700' : 'text-xs text-amber-700'}>
+            {preview.can_apply ? t('billing.ready') : t('billing.blocked')}
+          </p>
+        </div>
+      </div>
+
+      {(blockingErrors.length > 0 || preview.warnings.length > 0) && (
+        <div className="mt-4 grid gap-2 md:grid-cols-2">
+          {blockingErrors.length > 0 && (
+            <Alert>
+              <span className="font-semibold">{t('billing.errors')}</span>
+              <ul className="mt-1 space-y-1">
+                {blockingErrors.map((error) => (
+                  <li key={`${error.scope}-${error.code}-${error.message}`}>{error.message}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+          {preview.warnings.length > 0 && (
+            <Alert>
+              <span className="font-semibold">{t('billing.warnings')}</span>
+              <ul className="mt-1 space-y-1">
+                {preview.warnings.map((warning) => (
+                  <li key={`${warning.scope}-${warning.code}-${warning.message}`}>{warning.message}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <h3 className="text-sm font-semibold text-slate-900">{t('billing.payers')}</h3>
+          <div className="mt-2 space-y-2">
+            {preview.payers.length === 0 ? (
+              <p className="text-sm text-slate-500">{t('billing.empty')}</p>
+            ) : preview.payers.map((payer) => (
+              <div key={`${payer.role}-${payer.member_uuid}`} className="flex items-center justify-between gap-3 text-sm">
+                <div>
+                  <p className="font-medium text-slate-800">{payer.member_name ?? payer.member_account_id ?? '-'}</p>
+                  <p className="text-xs text-slate-500">{payer.role} · {payer.reason}</p>
+                </div>
+                <span className="text-slate-700">{formatDecimal(Number(payer.share) * 100, 0)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="min-w-full divide-y divide-slate-200 text-xs">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('billing.item')}</th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('billing.payer')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('billing.quantity')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('billing.unitPrice')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('billing.pack')}</th>
+                <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('billing.amount')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {preview.applied_lines.map((line, index) => (
+                <tr key={`${line.pricing_item_uuid}-${line.payer_member_uuid}-${index}`}>
+                  <td className="px-3 py-2 text-slate-800">{line.pricing_item_name ?? '-'}<br /><span className="text-slate-500">{line.source} · {line.asset_code ?? '-'}</span></td>
+                  <td className="px-3 py-2 text-slate-700">{line.payer_member_account_id ?? line.payer_role}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{formatDecimal(line.quantity, 4)}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{formatMoney(line.applied_unit_price)}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{line.discount_reason ? formatDecimal(line.pack_hours_used, 2) : '-'}</td>
+                  <td className="px-3 py-2 text-right font-medium text-slate-900">{formatMoney(line.amount)}</td>
+                </tr>
+              ))}
+              {preview.applied_lines.length === 0 && (
+                <tr><td className="px-3 py-5 text-center text-slate-500" colSpan={6}>{t('billing.empty')}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-full divide-y divide-slate-200 text-xs">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('billing.account')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('billing.member')}</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('billing.description')}</th>
+              <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('billing.debit')}</th>
+              <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('billing.credit')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {preview.accounting_lines.map((line, index) => (
+              <tr key={`${line.side}-${line.account_code}-${index}`}>
+                <td className="px-3 py-2 text-slate-800">{line.account_code ?? '-'}</td>
+                <td className="px-3 py-2 text-slate-700">{line.member_account_id_snapshot ?? '-'}</td>
+                <td className="px-3 py-2 text-slate-700">{line.description ?? '-'}</td>
+                <td className="px-3 py-2 text-right text-slate-700">{Number(line.debit) > 0 ? formatMoney(line.debit) : '-'}</td>
+                <td className="px-3 py-2 text-right text-slate-700">{Number(line.credit) > 0 ? formatMoney(line.credit) : '-'}</td>
+              </tr>
+            ))}
+            {preview.accounting_lines.length === 0 && (
+              <tr><td className="px-3 py-5 text-center text-slate-500" colSpan={5}>{t('billing.empty')}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function highlightType(flight: ValidatedFlightItem): boolean {
   const hasSplit = (flight.instruction_split ?? 0) > 0
   const hasChargeTo = !!flight.charge_to_erp_id && flight.charge_to_erp_id !== flight.pilot_erp_id
@@ -140,6 +288,14 @@ export function FlightsPage() {
 
   const hasActiveFilters = Object.keys(filters).length > 0
   const flightsQuery = useFlightListQuery(flightPage, flightPageSize, filters)
+  const billingPreviewMutation = useFlightBillingPreviewMutation()
+  const [billingPreview, setBillingPreview] = useState<FlightBillingPreviewResponse | null>(null)
+
+  function previewBilling(flight: ValidatedFlightItem) {
+    billingPreviewMutation.mutate(flight.uuid, {
+      onSuccess: setBillingPreview,
+    })
+  }
 
   return (
     <section className="space-y-4">
@@ -278,6 +434,7 @@ export function FlightsPage() {
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('table.launch')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('table.launchPilot')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('table.chargeTo')}</th>
+                    <th className="px-3 py-2 text-right font-semibold text-slate-700">{t('table.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -298,11 +455,24 @@ export function FlightsPage() {
                       <td className="px-3 py-2 text-slate-800">{formatLaunchMethod(flight)}</td>
                       <td className="px-3 py-2 text-slate-800">{flight.launch_pilot_trigram ?? '-'}</td>
                       <td className="px-3 py-2 text-slate-800">{flight.charge_to_erp_id ?? '-'}</td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => previewBilling(flight)}
+                          disabled={billingPreviewMutation.isPending && billingPreviewMutation.variables === flight.uuid}
+                          title={t('billing.preview')}
+                          aria-label={t('billing.preview')}
+                        >
+                          <Calculator className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                   {(!flightsQuery.data || flightsQuery.data.items.length === 0) && (
                     <tr>
-                      <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={10}>
                         {t('table.empty')}
                       </td>
                     </tr>
@@ -310,6 +480,18 @@ export function FlightsPage() {
                 </tbody>
               </table>
             </div>
+
+            {billingPreviewMutation.error && (
+              <div className="mt-4">
+                <Alert>{t('billing.loadError')}</Alert>
+              </div>
+            )}
+
+            {billingPreview && (
+              <div className="mt-4">
+                <BillingPreviewPanel preview={billingPreview} />
+              </div>
+            )}
 
             {/* Pagination */}
             {flightsQuery.data && flightsQuery.data.total_pages > 1 && (

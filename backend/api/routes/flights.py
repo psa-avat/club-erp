@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime
 from typing import Any, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -35,6 +36,9 @@ from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE
 from models import Member, User, ValidatedFlight
 from schemas.flights import (
     FlightFetchRequest,
+    FlightBillingBatchPreviewResponse,
+    FlightBillingPreviewRequest,
+    FlightBillingPreviewResponse,
     FlightFetchResponse,
     FlightStatsResponse,
     ValidatedFlightItem,
@@ -43,6 +47,7 @@ from schemas.flights import (
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import PLANCHE_SETTINGS_MODULE, PlancheSettingsPayload
 from services.accounting import get_system_setting, upsert_system_setting
+from services.flight_billing import FlightBillingPreviewService
 from services.planche_integration import PlancheIntegrationService
 
 router = APIRouter(prefix="/api/v1/flights", tags=["flights"])
@@ -228,6 +233,31 @@ async def list_validated_flights(
         page_size=page_size,
         total_pages=total_pages,
     )
+
+
+@router.post("/{flight_uuid}/billing-preview", response_model=FlightBillingPreviewResponse)
+async def preview_flight_billing(
+    flight_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = flights_guard,
+):
+    """Calculate one imported flight billing preview without applying it."""
+    service = FlightBillingPreviewService(db)
+    try:
+        return await service.preview_flight(flight_uuid)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/billing-preview", response_model=FlightBillingBatchPreviewResponse)
+async def preview_flights_billing(
+    request: FlightBillingPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = flights_guard,
+):
+    """Calculate imported flight billing previews without applying accounting."""
+    service = FlightBillingPreviewService(db)
+    return await service.preview_batch(request)
 
 
 TYPE_OF_FLIGHT_LABELS: dict[int, str] = {

@@ -77,6 +77,7 @@ function unitLabel(unit: number): string {
     4: 'FlightDuration',
     5: 'PerFlight',
     6: 'Fixed',
+    7: 'FixedDurationTranche',
   }
   return map[unit] ?? `#${unit}`
 }

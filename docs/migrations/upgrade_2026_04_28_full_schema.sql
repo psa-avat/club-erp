@@ -480,13 +480,14 @@ CREATE TABLE IF NOT EXISTS pricing_items (
     name VARCHAR(120) NOT NULL,
     unit SMALLINT NOT NULL,
     base_price NUMERIC(10,4) NOT NULL,
+    is_progressive BOOLEAN NOT NULL DEFAULT FALSE,
     pack_price NUMERIC(10,4) NULL,
     age_discount_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
     gl_account_credit_uuid UUID NULL REFERENCES accounting_accounts(uuid) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT chk_pricing_items_unit CHECK (unit IN (1, 2, 3, 4, 5, 6)),
+    CONSTRAINT chk_pricing_items_unit CHECK (unit IN (1, 2, 3, 4, 5, 6, 7)),
     CONSTRAINT chk_pricing_items_base_price CHECK (base_price >= 0),
     CONSTRAINT chk_pricing_items_pack_price CHECK (pack_price IS NULL OR pack_price >= 0),
     CONSTRAINT chk_pricing_items_age_discount CHECK (age_discount_percent >= 0 AND age_discount_percent <= 100)

@@ -20,7 +20,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -98,3 +99,88 @@ class FlightStatsResponse(BaseModel):
     last_fetch_at: str | None = None
     cursor: str | None = None
     pending_planche_count: int | None = None
+
+
+class FlightBillingPreviewRequest(BaseModel):
+    """Filters for calculating billing previews without applying accounting."""
+
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    flight_uuids: list[str] = Field(default_factory=list)
+    include_already_billed: bool = False
+
+
+class FlightBillingError(BaseModel):
+    code: str
+    message: str
+    scope: str = "flight"
+    blocking: bool = True
+
+
+class FlightBillingPayerPreview(BaseModel):
+    member_uuid: str | None = None
+    member_account_id: str | None = None
+    member_name: str | None = None
+    role: str
+    share: Decimal
+    reason: str
+
+
+class FlightBillingAppliedLinePreview(BaseModel):
+    source: str
+    payer_member_uuid: str | None = None
+    payer_member_account_id: str | None = None
+    payer_role: str
+    pricing_version_uuid: str | None = None
+    pricing_item_uuid: str | None = None
+    pricing_item_name: str | None = None
+    asset_uuid: str | None = None
+    asset_code: str | None = None
+    quantity: Decimal
+    normal_unit_price: Decimal
+    applied_unit_price: Decimal
+    discount_reason: str | None = None
+    amount: Decimal
+    debit_account_uuid: str | None = None
+    debit_account_code: str | None = None
+    credit_account_uuid: str | None = None
+    credit_account_code: str | None = None
+    pack_hours_before: Decimal | None = None
+    pack_hours_used: Decimal = Decimal("0")
+    pack_hours_after: Decimal | None = None
+
+
+class FlightAccountingLinePreview(BaseModel):
+    side: str
+    account_uuid: str | None = None
+    account_code: str | None = None
+    member_uuid: str | None = None
+    member_account_id_snapshot: str | None = None
+    analytical_asset_uuid: str | None = None
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    description: str | None = None
+
+
+class FlightBillingPreviewResponse(BaseModel):
+    flight_uuid: str
+    planche_uuid: str | None = None
+    flight_date: date | None = None
+    type_of_flight: int | None = None
+    type_label: str | None = None
+    total_amount: Decimal = Decimal("0")
+    billing_hash: str | None = None
+    payers: list[FlightBillingPayerPreview] = Field(default_factory=list)
+    applied_lines: list[FlightBillingAppliedLinePreview] = Field(default_factory=list)
+    accounting_lines: list[FlightAccountingLinePreview] = Field(default_factory=list)
+    errors: list[FlightBillingError] = Field(default_factory=list)
+    warnings: list[FlightBillingError] = Field(default_factory=list)
+    can_apply: bool = False
+
+
+class FlightBillingBatchPreviewResponse(BaseModel):
+    items: list[FlightBillingPreviewResponse] = Field(default_factory=list)
+    total: int = 0
+    billable_count: int = 0
+    error_count: int = 0
+    total_amount: Decimal = Decimal("0")

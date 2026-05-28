@@ -188,9 +188,11 @@ export type PricingItem = {
   pricing_version_uuid: string
   flight_type_uuid: string | null
   name: string
-  /** 1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed */
+  /** 1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed, 7=FixedDurationTranche */
   unit: number
   base_price: string
+  /** When true, tiers are applied progressively (each bracket at its own rate) */
+  is_progressive: boolean
   /** Price per unit when the pilot has an active pack subscription */
   pack_price: string | null
   /** Percentage discount applied when member is under-25 eligible (0 = no discount) */
@@ -203,11 +205,14 @@ export type PricingItem = {
   updated_at: string
 }
 
+
 export type CreatePricingItemPayload = {
   flight_type_uuid?: string | null
   name: string
   unit: number
   base_price: string
+  /** When true, tiers are applied progressively (each bracket at its own rate) */
+  is_progressive?: boolean
   pack_price?: string | null
   /** Percentage discount for under-25 members; omit or send "0" for no discount */
   age_discount_percent?: string

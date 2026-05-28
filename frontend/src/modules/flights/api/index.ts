@@ -27,6 +27,7 @@ export const flightsQueryKeys = {
   list: (page: number, pageSize: number, filters: FlightListFilters) =>
     ['flights', 'list', { page, pageSize, ...filters }] as const,
   fetch: ['flights', 'fetch'] as const,
+  billingPreview: (flightUuid: string) => ['flights', 'billing-preview', flightUuid] as const,
 }
 
 export type FlightListFilters = {
@@ -90,6 +91,74 @@ export type ValidatedFlightListResponse = {
   page: number
   page_size: number
   total_pages: number
+}
+
+
+
+export type FlightBillingError = {
+  code: string
+  message: string
+  scope: string
+  blocking: boolean
+}
+
+export type FlightBillingPayerPreview = {
+  member_uuid: string | null
+  member_account_id: string | null
+  member_name: string | null
+  role: string
+  share: string
+  reason: string
+}
+
+export type FlightBillingAppliedLinePreview = {
+  source: string
+  payer_member_uuid: string | null
+  payer_member_account_id: string | null
+  payer_role: string
+  pricing_version_uuid: string | null
+  pricing_item_uuid: string | null
+  pricing_item_name: string | null
+  asset_uuid: string | null
+  asset_code: string | null
+  quantity: string
+  normal_unit_price: string
+  applied_unit_price: string
+  discount_reason: string | null
+  amount: string
+  debit_account_code: string | null
+  credit_account_code: string | null
+  pack_hours_before: string | null
+  pack_hours_used: string
+  pack_hours_after: string | null
+}
+
+export type FlightAccountingLinePreview = {
+  side: 'debit' | 'credit' | string
+  account_uuid: string | null
+  account_code: string | null
+  member_uuid: string | null
+  member_account_id_snapshot: string | null
+  analytical_asset_uuid: string | null
+  debit: string
+  credit: string
+  description: string | null
+}
+
+export type FlightBillingPreviewResponse = {
+  flight_uuid: string
+  planche_uuid: string | null
+  flight_date: string | null
+  type_of_flight: number | null
+  type_label: string | null
+  total_amount: string
+  billing_hash: string | null
+  payers: FlightBillingPayerPreview[]
+  applied_lines: FlightBillingAppliedLinePreview[]
+  accounting_lines: FlightAccountingLinePreview[]
+  errors: FlightBillingError[]
+  warnings: FlightBillingError[]
+  can_apply: boolean
 }
 
 export type FlightStats = {
@@ -165,6 +234,20 @@ export function useFlightsFetchMutation() {
       await queryClient.invalidateQueries({ queryKey: ['flights', 'list'] })
       await queryClient.invalidateQueries({ queryKey: ['planche', 'settings'] })
       await queryClient.invalidateQueries({ queryKey: flightStatsQueryKey })
+    },
+  })
+}
+
+
+export function useFlightBillingPreviewMutation() {
+  return useMutation({
+    mutationFn: async (flightUuid: string) => {
+      const { data } = await apiClient.post<FlightBillingPreviewResponse>(
+        `/api/v1/flights/${flightUuid}/billing-preview`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
     },
   })
 }

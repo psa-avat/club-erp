@@ -1,0 +1,725 @@
+"""
+    ERP-CLUB - ERP pour Club de vol a voile
+    - flight_billing: side-effect-free billing preview for imported Planche flights
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from uuid import UUID
+
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from models import (
+    AccountingAccount,
+    Asset,
+    FlightType,
+    Member,
+    MemberSheet,
+    PricingItem,
+    PricingItemTier,
+    PricingVersion,
+    ValidatedFlight,
+)
+from schemas.flights import (
+    FlightAccountingLinePreview,
+    FlightBillingAppliedLinePreview,
+    FlightBillingBatchPreviewResponse,
+    FlightBillingError,
+    FlightBillingPayerPreview,
+    FlightBillingPreviewRequest,
+    FlightBillingPreviewResponse,
+)
+
+
+PRICING_STATUS_ACTIVE = 2
+UNIT_FLIGHT_TIME_HOURS = 1
+UNIT_ENGINE_TIME_MINUTE = 2
+UNIT_ENGINE_TIME_1_100H = 3
+UNIT_FLIGHT_DURATION = 4
+UNIT_PER_FLIGHT = 5
+UNIT_FIXED = 6
+UNIT_FIXED_DURATION_TRANCHE = 7  # Fixed price per duration bracket (e.g. TREUIL)
+
+FLIGHT_TYPE_LABELS: dict[int, str] = {
+    0: "instruction",
+    1: "solo",
+    2: "initiation",
+    3: "partage",
+    4: "passager",
+    5: "lacher",
+    6: "supervise",
+    7: "essai",
+}
+
+PACK_CONSUMING_UNITS = {UNIT_FLIGHT_TIME_HOURS, UNIT_ENGINE_TIME_1_100H, UNIT_FLIGHT_DURATION}
+
+
+@dataclass
+class _Payer:
+    member: Member | None
+    role: str
+    share: Decimal
+    reason: str
+
+
+@dataclass
+class _PricedMachine:
+    source: str
+    asset: Asset | None
+    version: PricingVersion | None
+    items: list[PricingItem]
+
+
+def _dec(value: object, default: str = "0") -> Decimal:
+    if value is None:
+        return Decimal(default)
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
+def _parse_uuid(value: str | UUID | None) -> UUID | None:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _full_name(member: Member | None) -> str | None:
+    if member is None:
+        return None
+    return " ".join(part for part in [member.first_name, member.last_name] if part) or None
+
+
+def _flight_duration_hours(flight: ValidatedFlight) -> Decimal | None:
+    if not flight.takeoff_time or not flight.landing_time:
+        return None
+    try:
+        takeoff = datetime.strptime(flight.takeoff_time[:5], "%H:%M")
+        landing = datetime.strptime(flight.landing_time[:5], "%H:%M")
+    except ValueError:
+        return None
+    if landing < takeoff:
+        landing += timedelta(days=1)
+    minutes = Decimal(str(int((landing - takeoff).total_seconds() // 60)))
+    return (minutes / Decimal("60")).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
+def _flight_duration_minutes(flight: ValidatedFlight) -> Decimal | None:
+    """Return flight duration in whole minutes."""
+    if not flight.takeoff_time or not flight.landing_time:
+        return None
+    try:
+        takeoff = datetime.strptime(flight.takeoff_time[:5], "%H:%M")
+        landing = datetime.strptime(flight.landing_time[:5], "%H:%M")
+    except ValueError:
+        return None
+    if landing < takeoff:
+        landing += timedelta(days=1)
+    return Decimal(str(int((landing - takeoff).total_seconds() // 60)))
+
+
+def _quantity_for_item(item: PricingItem, flight: ValidatedFlight) -> Decimal | None:
+    if item.unit in {UNIT_FLIGHT_TIME_HOURS, UNIT_FLIGHT_DURATION}:
+        return _flight_duration_hours(flight)
+    if item.unit == UNIT_FIXED_DURATION_TRANCHE:
+        return _flight_duration_minutes(flight)
+    if item.unit == UNIT_ENGINE_TIME_MINUTE:
+        if flight.engine_time is None:
+            return None
+        return (_dec(flight.engine_time) * Decimal("100") * Decimal("60")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    if item.unit == UNIT_ENGINE_TIME_1_100H:
+        if flight.engine_time is None:
+            return None
+        return (_dec(flight.engine_time)* Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    if item.unit in {UNIT_PER_FLIGHT, UNIT_FIXED}:
+        return Decimal("1")
+    return None
+
+
+def _select_tier(item: PricingItem, quantity: Decimal) -> PricingItemTier | None:
+    selected: PricingItemTier | None = None
+    for tier in sorted(item.tiers or [], key=lambda t: (_dec(t.from_qty), t.sort_order or 0)):
+        if _dec(tier.from_qty) <= quantity:
+            selected = tier
+        else:
+            break
+    return selected
+
+
+def _progressive_split(
+    item: PricingItem, quantity: Decimal
+) -> list[tuple[Decimal, Decimal]]:
+    """Split *quantity* across progressive brackets and return ``(qty_in_bracket, rate)`` pairs.
+
+    The implicit bracket at 0 uses ``item.base_price``.  Explicit tiers are
+    sorted by ``from_qty`` and each covers ``[from_qty, next_from_qty)``.
+    Any remainder beyond the last tier uses the last tier's price.
+    """
+    if not item.tiers:
+        return [(quantity, _dec(item.base_price))]
+
+    sorted_tiers = sorted(item.tiers, key=lambda t: (_dec(t.from_qty), t.sort_order or 0))
+    # Calculate bracket boundaries
+    boundaries: list[Decimal] = [Decimal("0")]
+    for t in sorted_tiers:
+        boundaries.append(_dec(t.from_qty))
+    # Pair each bracket with its rate (base_price for [0, first_tier.from_qty), then each tier)
+    prices: list[Decimal] = [_dec(item.base_price)]
+    for t in sorted_tiers:
+        prices.append(_dec(t.price))
+
+    result: list[tuple[Decimal, Decimal]] = []
+    remaining = quantity
+    for i in range(len(boundaries)):
+        bracket_start = boundaries[i]
+        bracket_end = boundaries[i + 1] if i + 1 < len(boundaries) else None
+        bracket_size = (bracket_end - bracket_start) if bracket_end is not None else remaining
+        if bracket_size <= 0:
+            continue
+        used = min(remaining, bracket_size)
+        if used <= 0:
+            break
+        result.append((used, prices[i]))
+        remaining -= used
+        if remaining <= 0:
+            break
+
+    # Any remaining (beyond last explicit tier) uses the last tier's price
+    if remaining > 0 and prices:
+        result.append((remaining, prices[-1]))
+
+    return result
+
+
+def _error(code: str, message: str, *, scope: str = "flight", blocking: bool = True) -> FlightBillingError:
+    return FlightBillingError(code=code, message=message, scope=scope, blocking=blocking)
+
+
+class FlightBillingPreviewService:
+    """Calculate flight billing previews without mutating accounting or packs."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def preview_flight(self, flight_uuid: UUID | str) -> FlightBillingPreviewResponse:
+        flight = await self._get_flight(flight_uuid)
+        pack_balances = await self._initial_pack_balances([flight])
+        return await self._preview_one(flight, pack_balances)
+
+    async def preview_batch(self, request: FlightBillingPreviewRequest) -> FlightBillingBatchPreviewResponse:
+        flights = await self._list_flights(request)
+        pack_balances = await self._initial_pack_balances(flights)
+        previews: list[FlightBillingPreviewResponse] = []
+        for flight in sorted(flights, key=lambda f: (f.jour, f.takeoff_time or "", str(f.uuid))):
+            previews.append(await self._preview_one(flight, pack_balances))
+        total_amount = sum((p.total_amount for p in previews), Decimal("0"))
+        return FlightBillingBatchPreviewResponse(
+            items=previews,
+            total=len(previews),
+            billable_count=sum(1 for p in previews if p.can_apply),
+            error_count=sum(1 for p in previews if p.errors),
+            total_amount=_money(total_amount),
+        )
+
+    async def _get_flight(self, flight_uuid: UUID | str) -> ValidatedFlight:
+        parsed = _parse_uuid(flight_uuid)
+        filters = [ValidatedFlight.uuid == parsed] if parsed else [ValidatedFlight.planche_uuid == str(flight_uuid)]
+        result = await self.db.execute(select(ValidatedFlight).where(or_(*filters)))
+        flight = result.scalars().first()
+        if flight is None:
+            raise ValueError(f"Flight {flight_uuid} not found")
+        return flight
+
+    async def _list_flights(self, request: FlightBillingPreviewRequest) -> list[ValidatedFlight]:
+        filters = []
+        if request.flight_uuids:
+            parsed = [_parse_uuid(value) for value in request.flight_uuids]
+            uuid_values = [value for value in parsed if value is not None]
+            planche_values = [value for value in request.flight_uuids if _parse_uuid(value) is None]
+            parts = []
+            if uuid_values:
+                parts.append(ValidatedFlight.uuid.in_(uuid_values))
+            if planche_values:
+                parts.append(ValidatedFlight.planche_uuid.in_(planche_values))
+            filters.append(or_(*parts))
+        if request.date_from is not None:
+            filters.append(ValidatedFlight.jour >= request.date_from)
+        if request.date_to is not None:
+            filters.append(ValidatedFlight.jour <= request.date_to)
+        if not request.include_already_billed:
+            filters.append(ValidatedFlight.accounting_entry_uuid.is_(None))
+        stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc(), ValidatedFlight.takeoff_time.asc())
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def _preview_one(
+        self,
+        flight: ValidatedFlight,
+        pack_balances: dict[tuple[UUID, int], Decimal],
+    ) -> FlightBillingPreviewResponse:
+        errors: list[FlightBillingError] = []
+        warnings: list[FlightBillingError] = []
+        debit_account = await self._get_receivable_account()
+        if debit_account is None:
+            errors.append(_error("receivable_account_missing", "Posting account 411 is not configured."))
+
+        payers = await self._resolve_payers(flight, errors)
+        machines = [await self._resolve_machine("flight", flight.asset_code or flight.glider_erp_id, flight, errors, warnings)]
+        if flight.launch_asset_code or flight.launch_machine_erp_id:
+            machines.append(await self._resolve_machine("launch", flight.launch_asset_code or flight.launch_machine_erp_id, flight, errors, warnings))
+
+        applied_lines: list[FlightBillingAppliedLinePreview] = []
+        accounting_lines: list[FlightAccountingLinePreview] = []
+        for machine in machines:
+            if machine.asset is None or machine.version is None:
+                continue
+            for item in machine.items:
+                quantity = _quantity_for_item(item, flight)
+                if quantity is None:
+                    errors.append(_error("quantity_missing", f"Quantity cannot be calculated for price item {item.name}.", scope=machine.source))
+                    continue
+                if item.gl_account_credit is None:
+                    errors.append(_error("pricing_item_account_missing", f"Price item {item.name} has no credit account.", scope=machine.source))
+                    continue
+                if not payers:
+                    continue
+
+                # ── Fixed price per duration bracket (e.g. TREUIL) ──────────────
+                # Tier selection uses flight duration (minutes); the selected tier's
+                # price is the TOTAL for the bracket, split by payer share.
+                if item.unit == UNIT_FIXED_DURATION_TRANCHE:
+                    fixed_tier = _select_tier(item, quantity)
+                    fixed_price = _money(_dec(fixed_tier.price if fixed_tier else item.base_price))
+                    for payer in payers:
+                        if payer.share <= 0:
+                            continue
+                        amount = _money(fixed_price * payer.share)
+                        preview_line = FlightBillingAppliedLinePreview(
+                            source=machine.source,
+                            payer_member_uuid=str(payer.member.uuid) if payer.member else None,
+                            payer_member_account_id=payer.member.account_id if payer.member else None,
+                            payer_role=payer.role,
+                            pricing_version_uuid=str(machine.version.uuid),
+                            pricing_item_uuid=str(item.uuid),
+                            pricing_item_name=item.name,
+                            asset_uuid=str(machine.asset.uuid),
+                            asset_code=machine.asset.code,
+                            quantity=payer.share,
+                            normal_unit_price=fixed_price,
+                            applied_unit_price=fixed_price,
+                            discount_reason=None,
+                            amount=amount,
+                            debit_account_uuid=str(debit_account.uuid) if debit_account else None,
+                            debit_account_code=debit_account.code if debit_account else None,
+                            credit_account_uuid=str(item.gl_account_credit.uuid),
+                            credit_account_code=item.gl_account_credit.code,
+                            pack_hours_before=Decimal("0"),
+                            pack_hours_used=Decimal("0"),
+                            pack_hours_after=Decimal("0"),
+                        )
+                        applied_lines.append(preview_line)
+                        accounting_lines.extend(self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item))
+                    continue
+
+                # ── Per-unit pricing (existing logic) ────────────────────────────
+                for payer in payers:
+                    payer_quantity = (quantity * payer.share).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                    if payer_quantity <= 0:
+                        continue
+                    split_lines = self._price_for_payer(
+                        item=item,
+                        version=machine.version,
+                        quantity=payer_quantity,
+                        flight=flight,
+                        payer=payer,
+                        pack_balances=pack_balances,
+                    )
+                    for line_quantity, normal_unit_price, applied_unit_price, discount_reason, before, used, after in split_lines:
+                        amount = _money(line_quantity * applied_unit_price)
+                        preview_line = FlightBillingAppliedLinePreview(
+                            source=machine.source,
+                            payer_member_uuid=str(payer.member.uuid) if payer.member else None,
+                            payer_member_account_id=payer.member.account_id if payer.member else None,
+                            payer_role=payer.role,
+                            pricing_version_uuid=str(machine.version.uuid),
+                            pricing_item_uuid=str(item.uuid),
+                            pricing_item_name=item.name,
+                            asset_uuid=str(machine.asset.uuid),
+                            asset_code=machine.asset.code,
+                            quantity=line_quantity,
+                            normal_unit_price=normal_unit_price,
+                            applied_unit_price=applied_unit_price,
+                            discount_reason=discount_reason,
+                            amount=amount,
+                            debit_account_uuid=str(debit_account.uuid) if debit_account else None,
+                            debit_account_code=debit_account.code if debit_account else None,
+                            credit_account_uuid=str(item.gl_account_credit.uuid),
+                            credit_account_code=item.gl_account_credit.code,
+                            pack_hours_before=before,
+                            pack_hours_used=used,
+                            pack_hours_after=after,
+                        )
+                        applied_lines.append(preview_line)
+                        accounting_lines.extend(self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item))
+
+        total_amount = _money(sum((line.amount for line in applied_lines), Decimal("0")))
+        billing_hash = self._billing_hash(applied_lines) if applied_lines else None
+        return FlightBillingPreviewResponse(
+            flight_uuid=str(flight.uuid),
+            planche_uuid=flight.planche_uuid,
+            flight_date=flight.jour,
+            type_of_flight=flight.type_of_flight,
+            type_label=FLIGHT_TYPE_LABELS.get(flight.type_of_flight),
+            total_amount=total_amount,
+            billing_hash=billing_hash,
+            payers=[
+                FlightBillingPayerPreview(
+                    member_uuid=str(p.member.uuid) if p.member else None,
+                    member_account_id=p.member.account_id if p.member else None,
+                    member_name=_full_name(p.member),
+                    role=p.role,
+                    share=p.share,
+                    reason=p.reason,
+                )
+                for p in payers
+            ],
+            applied_lines=applied_lines,
+            accounting_lines=accounting_lines,
+            errors=errors,
+            warnings=warnings,
+            can_apply=bool(applied_lines) and not any(error.blocking for error in errors),
+        )
+
+    async def _get_receivable_account(self) -> AccountingAccount | None:
+        result = await self.db.execute(
+            select(AccountingAccount).where(
+                AccountingAccount.code == "411",
+                AccountingAccount.is_active.is_(True),
+                AccountingAccount.is_posting_allowed.is_(True),
+            )
+        )
+        account = result.scalars().first()
+        if account is not None:
+            return account
+        result = await self.db.execute(
+            select(AccountingAccount)
+            .where(
+                AccountingAccount.code.like("411%"),
+                AccountingAccount.is_active.is_(True),
+                AccountingAccount.is_posting_allowed.is_(True),
+            )
+            .order_by(AccountingAccount.code.asc())
+        )
+        return result.scalars().first()
+
+    async def _resolve_member(self, value: str | None) -> Member | None:
+        if not value:
+            return None
+        parsed = _parse_uuid(value)
+        clauses = [Member.account_id == value, Member.legacy_account_id == value]
+        if parsed is not None:
+            clauses.append(Member.uuid == parsed)
+        result = await self.db.execute(select(Member).where(or_(*clauses)))
+        return result.scalars().first()
+
+    async def _resolve_payers(self, flight: ValidatedFlight, errors: list[FlightBillingError]) -> list[_Payer]:
+        pilot = await self._resolve_member(flight.pilot_erp_id)
+        second = await self._resolve_member(flight.second_pilot_erp_id or flight.second_pilot_id)
+        charge_to = await self._resolve_member(flight.charge_to_erp_id or flight.charge_to_compta_id)
+        flight_type = FLIGHT_TYPE_LABELS.get(flight.type_of_flight, "unknown")
+
+        if flight_type in {"solo", "supervise", "lacher", "essai"}:
+            if pilot is None:
+                errors.append(_error("member_not_found", "Pilot payer cannot be resolved."))
+                return []
+            return [_Payer(pilot, "pilot", Decimal("1"), flight_type)]
+        if flight_type == "instruction":
+            if pilot is None:
+                errors.append(_error("member_not_found", "Instruction pilot payer cannot be resolved."))
+                return []
+            if flight.instruction_split:
+                if second is None:
+                    errors.append(_error("payer_rule_missing_second_pilot", "Instruction split requires a second pilot."))
+                    return []
+                return [
+                    _Payer(pilot, "pilot", Decimal("0.5"), "instruction_split"),
+                    _Payer(second, "second", Decimal("0.5"), "instruction_split"),
+                ]
+            return [_Payer(pilot, "pilot", Decimal("1"), "instruction")]
+        if flight_type == "partage":
+            if pilot is None or second is None:
+                errors.append(_error("payer_rule_missing_second_pilot", "Shared flight requires pilot and second pilot."))
+                return []
+            return [
+                _Payer(pilot, "pilot", Decimal("0.5"), "partage"),
+                _Payer(second, "second", Decimal("0.5"), "partage"),
+            ]
+        if flight_type == "passager":
+            payer = charge_to or pilot
+            if payer is None:
+                errors.append(_error("member_not_found", "Passenger flight payer cannot be resolved."))
+                return []
+            role = "charge_to" if charge_to is not None else "pilot"
+            return [_Payer(payer, role, Decimal("1"), "passager")]
+        if flight_type == "initiation":
+            errors.append(_error("club_billing_target_missing", "Initiation/VI club billing target is not configured."))
+            return []
+
+        if pilot is None:
+            errors.append(_error("member_not_found", f"Payer cannot be resolved for flight type {flight.type_of_flight}."))
+            return []
+        return [_Payer(pilot, "pilot", Decimal("1"), "fallback_pilot")]
+
+    async def _resolve_asset(self, value: str | None) -> Asset | None:
+        if not value:
+            return None
+        parsed = _parse_uuid(value)
+        clauses = [Asset.registration == value, Asset.code == value]
+        if parsed is not None:
+            clauses.append(Asset.uuid == parsed)
+        result = await self.db.execute(select(Asset).where(or_(*clauses)))
+        return result.scalars().first()
+
+    def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight) -> set[str]:
+        if source == "launch" and flight.launch_method == 2:
+            launch_type = flight.launch_type
+            if launch_type is None or str(launch_type).strip() in {"", "0"}:
+                return {"RMQ", "rmq", "remorque", "REMORQUE"}
+            return {str(launch_type), str(launch_type).strip()}
+
+        label = FLIGHT_TYPE_LABELS.get(flight.type_of_flight)
+        if label is None:
+            return {str(flight.type_of_flight)}
+        return {label, label.upper(), str(flight.type_of_flight)}
+
+    async def _flight_type_uuid_for_machine(self, source: str, flight: ValidatedFlight) -> UUID | None:
+        candidates = self._flight_type_codes_for_machine(source, flight)
+        result = await self.db.execute(select(FlightType).where(FlightType.code.in_(candidates)))
+        flight_type = result.scalars().first()
+        return flight_type.uuid if flight_type else None
+
+    async def _resolve_machine(
+        self,
+        source: str,
+        asset_value: str | None,
+        flight: ValidatedFlight,
+        errors: list[FlightBillingError],
+        warnings: list[FlightBillingError],
+    ) -> _PricedMachine:
+        asset = await self._resolve_asset(asset_value)
+        if asset is None:
+            errors.append(_error("asset_not_found", f"{source.capitalize()} asset cannot be resolved from {asset_value!r}.", scope=source))
+            return _PricedMachine(source, None, None, [])
+
+        versions_result = await self.db.execute(
+            select(PricingVersion)
+            .where(
+                PricingVersion.status == PRICING_STATUS_ACTIVE,
+                PricingVersion.from_date <= flight.jour,
+                or_(PricingVersion.to_date.is_(None), PricingVersion.to_date >= flight.jour),
+                PricingVersion.asset_type_uuid == asset.asset_type_uuid,
+            )
+            .options(selectinload(PricingVersion.items).selectinload(PricingItem.tiers), selectinload(PricingVersion.items).selectinload(PricingItem.gl_account_credit))
+        )
+        versions = list(versions_result.scalars().unique().all())
+        if not versions:
+            versions_result = await self.db.execute(
+                select(PricingVersion)
+                .where(
+                    PricingVersion.status == PRICING_STATUS_ACTIVE,
+                    PricingVersion.from_date <= flight.jour,
+                    or_(PricingVersion.to_date.is_(None), PricingVersion.to_date >= flight.jour),
+                    PricingVersion.asset_type_uuid.is_(None),
+                )
+                .options(selectinload(PricingVersion.items).selectinload(PricingItem.tiers), selectinload(PricingVersion.items).selectinload(PricingItem.gl_account_credit))
+            )
+            versions = list(versions_result.scalars().unique().all())
+            if versions:
+                warnings.append(_error("pricing_global_fallback", f"Using global pricing for {asset.code}.", scope=source, blocking=False))
+        if not versions:
+            errors.append(_error("pricing_version_missing", f"No active pricing version for {asset.code} on {flight.jour}.", scope=source))
+            return _PricedMachine(source, asset, None, [])
+        if len(versions) > 1:
+            errors.append(_error("pricing_version_overlap", f"Multiple active pricing versions for {asset.code} on {flight.jour}.", scope=source))
+            return _PricedMachine(source, asset, None, [])
+
+        version = versions[0]
+        flight_type_uuid = await self._flight_type_uuid_for_machine(source, flight)
+        items = [item for item in version.items if item.flight_type_uuid is None or item.flight_type_uuid == flight_type_uuid]
+        if not items:
+            warnings.append(_error("pricing_item_missing", f"No price item applies to {asset.code}.", scope=source, blocking=False))
+        return _PricedMachine(source, asset, version, items)
+
+    async def _initial_pack_balances(self, flights: list[ValidatedFlight]) -> dict[tuple[UUID, int], Decimal]:
+        member_values: set[str] = set()
+        years: set[int] = set()
+        for flight in flights:
+            if flight.jour is not None:
+                years.add(flight.jour.year)
+            for value in [flight.pilot_erp_id, flight.second_pilot_erp_id, flight.charge_to_erp_id]:
+                if value:
+                    member_values.add(value)
+        members: list[Member] = []
+        for value in member_values:
+            member = await self._resolve_member(value)
+            if member:
+                members.append(member)
+        if not members or not years:
+            return {}
+        result = await self.db.execute(
+            select(MemberSheet).where(
+                MemberSheet.member_uuid.in_([m.uuid for m in members]),
+                MemberSheet.year.in_(years),
+            )
+        )
+        return {(sheet.member_uuid, int(sheet.year)): _dec(sheet.remaining_hours_in_pack) for sheet in result.scalars().all()}
+
+    def _price_for_payer(
+        self,
+        *,
+        item: PricingItem,
+        version: PricingVersion,
+        quantity: Decimal,
+        flight: ValidatedFlight,
+        payer: _Payer,
+        pack_balances: dict[tuple[UUID, int], Decimal],
+    ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
+        # ── Progressive mode: each bracket contributes its own portion ──────
+        if item.is_progressive:
+            return self._progressive_price_for_payer(
+                item=item, version=version, quantity=quantity,
+                flight=flight, payer=payer, pack_balances=pack_balances,
+            )
+
+        # ── Non-progressive (default): last applicable tier sets price for all ──
+        tier = _select_tier(item, quantity)
+        normal_price = _money(_dec(tier.price if tier else item.base_price))
+        pack_price_value = tier.pack_price if tier and tier.pack_price is not None else item.pack_price
+        pack_price = _money(_dec(pack_price_value)) if pack_price_value is not None else None
+        can_use_pack = bool(version.use_pack and pack_price is not None and item.unit in PACK_CONSUMING_UNITS and payer.member and flight.jour)
+        if not can_use_pack:
+            return [(quantity, normal_price, normal_price, None, None, Decimal("0"), None)]
+
+        key = (payer.member.uuid, flight.jour.year)
+        before = pack_balances.get(key, Decimal("0"))
+        if before <= 0:
+            return [(quantity, normal_price, normal_price, None, before, Decimal("0"), before)]
+        used = min(before, quantity)
+        after = before - used
+        pack_balances[key] = after
+        result: list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]] = []
+        if used > 0:
+            result.append((used, normal_price, pack_price, "pack", before, used, after))
+        remainder = quantity - used
+        if remainder > 0:
+            result.append((remainder, normal_price, normal_price, None, after, Decimal("0"), after))
+        return result
+
+    def _progressive_price_for_payer(
+        self,
+        *,
+        item: PricingItem,
+        version: PricingVersion,
+        quantity: Decimal,
+        flight: ValidatedFlight,
+        payer: _Payer,
+        pack_balances: dict[tuple[UUID, int], Decimal],
+    ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
+        """Progressive bracket pricing — each portion at its own rate."""
+        brackets = _progressive_split(item, quantity)
+        pack_price_value = item.pack_price
+        pack_price = _money(_dec(pack_price_value)) if pack_price_value is not None else None
+        can_use_pack = bool(
+            version.use_pack and pack_price is not None
+            and item.unit in PACK_CONSUMING_UNITS
+            and payer.member and flight.jour
+        )
+
+        result: list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]] = []
+        for bracket_qty, bracket_rate in brackets:
+            normal_price = _money(bracket_rate)
+            if can_use_pack:
+                key = (payer.member.uuid, flight.jour.year)
+                before = pack_balances.get(key, Decimal("0"))
+                if before > 0:
+                    used = min(before, bracket_qty)
+                    after = before - used
+                    pack_balances[key] = after
+                    result.append((used, normal_price, pack_price, "pack", before, used, after))
+                    remainder = bracket_qty - used
+                    if remainder > 0:
+                        result.append((remainder, normal_price, normal_price, None, after, Decimal("0"), after))
+                    continue
+            result.append((bracket_qty, normal_price, normal_price, None, None, Decimal("0"), None))
+        return result
+
+    def _accounting_lines_for(
+        self,
+        line: FlightBillingAppliedLinePreview,
+        payer: _Payer,
+        asset: Asset,
+        debit_account: AccountingAccount | None,
+        item: PricingItem,
+    ) -> list[FlightAccountingLinePreview]:
+        description = f"{line.pricing_item_name} {line.asset_code}"
+        return [
+            FlightAccountingLinePreview(
+                side="debit",
+                account_uuid=str(debit_account.uuid) if debit_account else None,
+                account_code=debit_account.code if debit_account else None,
+                member_uuid=str(payer.member.uuid) if payer.member else None,
+                member_account_id_snapshot=payer.member.account_id if payer.member else None,
+                analytical_asset_uuid=str(asset.uuid),
+                debit=line.amount,
+                credit=Decimal("0"),
+                description=description,
+            ),
+            FlightAccountingLinePreview(
+                side="credit",
+                account_uuid=str(item.gl_account_credit.uuid) if item.gl_account_credit else None,
+                account_code=item.gl_account_credit.code if item.gl_account_credit else None,
+                member_uuid=None,
+                member_account_id_snapshot=None,
+                analytical_asset_uuid=str(asset.uuid),
+                debit=Decimal("0"),
+                credit=line.amount,
+                description=description,
+            ),
+        ]
+
+    def _billing_hash(self, lines: list[FlightBillingAppliedLinePreview]) -> str:
+        payload = [
+            {
+                "source": line.source,
+                "payer": line.payer_member_uuid,
+                "item": line.pricing_item_uuid,
+                "asset": line.asset_uuid,
+                "quantity": str(line.quantity),
+                "unit_price": str(line.applied_unit_price),
+                "amount": str(line.amount),
+                "debit": line.debit_account_uuid,
+                "credit": line.credit_account_uuid,
+                "discount": line.discount_reason,
+                "pack_hours_used": str(line.pack_hours_used),
+            }
+            for line in lines
+        ]
+        payload.sort(key=lambda item: json.dumps(item, sort_keys=True))
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

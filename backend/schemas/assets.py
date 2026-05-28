@@ -211,8 +211,8 @@ class PricingItemCreateRequest(BaseModel):
     # NULL = applies to all flight types within the version's asset type
     flight_type_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=120)
-    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed
-    unit: int = Field(ge=1, le=6)
+    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed, 7=FixedDurationTranche
+    unit: int = Field(ge=1, le=7)
     base_price: Decimal = Field(ge=0, decimal_places=2)
     # Threshold pricing: price per unit drops after threshold_unit_count units
     threshold_unit_count: Optional[int] = Field(default=None, ge=1)

@@ -219,6 +219,7 @@ type ItemFormState = {
   name: string
   unit: number
   base_price: string
+  is_progressive: boolean
   pack_price: string
   age_discount_percent: string
   gl_account_credit_uuid: string
@@ -230,6 +231,7 @@ const EMPTY_ITEM: ItemFormState = {
   name: '',
   unit: 1,
   base_price: '',
+  is_progressive: false,
   pack_price: '',
   age_discount_percent: '0.00',
   gl_account_credit_uuid: '',
@@ -242,6 +244,7 @@ function itemToForm(item: PricingItem): ItemFormState {
     name: item.name,
     unit: item.unit,
     base_price: parseFloat(item.base_price).toFixed(2),
+    is_progressive: item.is_progressive,
     pack_price: item.pack_price != null ? parseFloat(item.pack_price).toFixed(2) : '',
     age_discount_percent: parseFloat(item.age_discount_percent).toFixed(2),
     gl_account_credit_uuid: item.gl_account_credit_uuid ?? '',
@@ -259,6 +262,7 @@ function buildItemPayload(form: ItemFormState): CreatePricingItemPayload {
     name: form.name.trim(),
     unit: form.unit,
     base_price: form.base_price.trim(),
+    is_progressive: form.is_progressive,
     pack_price: form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
     age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
     gl_account_credit_uuid: form.gl_account_credit_uuid || null,
@@ -400,6 +404,18 @@ function PricingItemForm({
             ))}
           </select>
         </div>
+        {form.unit !== 6 && form.unit !== 7 && (
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              id="is-progressive"
+              type="checkbox"
+              checked={form.is_progressive}
+              onChange={(e) => set('is_progressive', e.target.checked)}
+              className="h-4 w-4 rounded border-outline text-primary focus:ring-primary"
+            />
+            <Label htmlFor="is-progressive" className="text-xs cursor-pointer">{t('pricing.isProgressive')}</Label>
+          </div>
+        )}
       </div>
 
       {/* Progressive price tiers */}

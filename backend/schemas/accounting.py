@@ -458,9 +458,11 @@ class PricingItemCreateRequest(BaseModel):
     """Create request for a pricing item within a pricing version."""
     flight_type_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=120)
-    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed
-    unit: int = Field(ge=1, le=6)
+    # 1=FlightTime(h), 2=EngineTimeMinute, 3=EngineTime1_100h, 4=FlightDuration, 5=PerFlight, 6=Fixed, 7=FixedDurationTranche
+    unit: int = Field(ge=1, le=7)
     base_price: Decimal = Field(ge=0, decimal_places=2)
+    # When True, tiers are applied progressively (each bracket at its own rate)
+    is_progressive: bool = False
     # Price per unit when the pilot has an active pack subscription
     pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # Percentage discount applied when the member is under-25 eligible (0 = no discount)
@@ -475,8 +477,9 @@ class PricingItemUpdateRequest(BaseModel):
     """Partial update request for a pricing item."""
     flight_type_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    unit: Optional[int] = Field(default=None, ge=1, le=6)
+    unit: Optional[int] = Field(default=None, ge=1, le=7)
     base_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    is_progressive: Optional[bool] = None
     pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # When provided, overrides the existing age discount percentage
     age_discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100, decimal_places=2)
@@ -496,6 +499,7 @@ class PricingItemResponse(BaseModel):
     name: str
     unit: int
     base_price: Decimal
+    is_progressive: bool = False
     pack_price: Optional[Decimal] = None
     age_discount_percent: Decimal
     gl_account_credit_uuid: Optional[UUID] = None
