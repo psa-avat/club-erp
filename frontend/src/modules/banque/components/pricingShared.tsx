@@ -92,11 +92,15 @@ export function addDaysIsoDate(value: string, days: number): string {
 }
 
 export function getFromQtyStep(unit: number): string {
-  return unit === 1 ? '0.1' : '1'
+  if (unit === 7) return '1'
+  if (unit === 1 || unit === 4) return '0.01'
+  return '1'
 }
 
 export function getFromQtyPlaceholder(unit: number): string {
-  return unit === 1 ? '0.0' : '0'
+  if (unit === 7) return '0'
+  if (unit === 1 || unit === 4) return '0.00'
+  return '0'
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -105,6 +109,7 @@ export type ItemFormState = {
   name: string
   unit: number
   base_price: string
+  is_progressive: boolean
   pack_price: string
   age_discount_percent: string
   gl_account_credit_uuid: string
@@ -113,7 +118,7 @@ export type ItemFormState = {
 }
 
 export const EMPTY_ITEM: ItemFormState = {
-  name: '', unit: 1, base_price: '', pack_price: '',
+  name: '', unit: 1, base_price: '', is_progressive: false, pack_price: '',
   age_discount_percent: '0.00', gl_account_credit_uuid: '', tiers: [], flight_type_uuid: '',
 }
 
@@ -131,6 +136,7 @@ export function itemToForm(item: PricingItem): ItemFormState {
     name: item.name,
     unit: item.unit,
     base_price: parseFloat(item.base_price).toFixed(2),
+    is_progressive: item.is_progressive,
     pack_price: item.pack_price != null ? parseFloat(item.pack_price).toFixed(2) : '',
     age_discount_percent: parseFloat(item.age_discount_percent).toFixed(2),
     tiers: item.tiers.map((t) => ({
@@ -152,6 +158,7 @@ export function buildItemPayload(
       name: form.name.trim(),
       unit: form.unit,
       base_price: form.base_price.trim(),
+      is_progressive: form.is_progressive,
       pack_price: options.usePack && form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
       age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
       gl_account_credit_uuid: form.gl_account_credit_uuid || null,
@@ -172,6 +179,7 @@ export function buildItemPayload(
     name: form.name.trim(),
     unit: 6,
     base_price: form.base_price.trim(),
+    is_progressive: false,
     pack_price: null,
     age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
     gl_account_credit_uuid: form.gl_account_credit_uuid || null,
@@ -375,6 +383,7 @@ export function PricingItemForm({
   }
 
   const valid = form.name.trim() !== '' && form.base_price !== ''
+  const progressiveDisabled = !isAssetScoped || form.unit === 6 || form.unit === 7
 
   return (
     <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
@@ -473,6 +482,24 @@ export function PricingItemForm({
                 </option>
               ))}
             </select>
+          </div>
+        )}
+        {isAssetScoped && (
+          <div className="col-span-full rounded-shape-sm border border-outline-variant bg-white px-3 py-2">
+            <label className={`flex items-center gap-2 text-xs ${progressiveDisabled ? 'cursor-not-allowed text-on-surface-variant' : 'cursor-pointer text-on-surface'}`}>
+              <input
+                id="is-progressive"
+                type="checkbox"
+                checked={form.is_progressive}
+                disabled={progressiveDisabled}
+                onChange={(e) => set('is_progressive', e.target.checked)}
+                className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary disabled:cursor-not-allowed"
+              />
+              <span>{t('pricing.isProgressive')}</span>
+            </label>
+            {progressiveDisabled && (
+              <p className="mt-1 text-[11px] text-on-surface-variant">{t('pricing.isProgressiveHelp')}</p>
+            )}
           </div>
         )}
       </div>

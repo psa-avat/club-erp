@@ -159,6 +159,7 @@ export type FlightBillingPreviewResponse = {
   errors: FlightBillingError[]
   warnings: FlightBillingError[]
   can_apply: boolean
+  no_bill: boolean
 }
 
 export type FlightStats = {

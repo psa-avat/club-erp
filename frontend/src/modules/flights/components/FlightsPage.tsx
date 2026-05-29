@@ -126,7 +126,7 @@ function BillingPreviewPanel({ preview }: { preview: FlightBillingPreviewRespons
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('billing.total')}</p>
           <p className="text-2xl font-semibold text-slate-900">{formatMoney(preview.total_amount)}</p>
           <p className={preview.can_apply ? 'text-xs text-emerald-700' : 'text-xs text-amber-700'}>
-            {preview.can_apply ? t('billing.ready') : t('billing.blocked')}
+            {preview.no_bill ? t('billing.noBill') : preview.can_apply ? t('billing.ready') : t('billing.blocked')}
           </p>
         </div>
       </div>

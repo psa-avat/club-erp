@@ -176,6 +176,7 @@ class FlightBillingPreviewResponse(BaseModel):
     errors: list[FlightBillingError] = Field(default_factory=list)
     warnings: list[FlightBillingError] = Field(default_factory=list)
     can_apply: bool = False
+    no_bill: bool = False
 
 
 class FlightBillingBatchPreviewResponse(BaseModel):

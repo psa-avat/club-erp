@@ -1878,6 +1878,7 @@ export const fr = {
       unitPerFlight: 'Par vol',
       unitFixed: 'Forfait',
       unitFixedDurationTranche: 'Tranche de durée',
+      isProgressiveHelp: 'La tarification progressive n\'est pas disponible pour cette unité.',
       error: {
         saveFailed: 'Échec de l\'enregistrement.',
         deleteFailed: 'Échec de la suppression.',
@@ -1938,6 +1939,7 @@ export const fr = {
       total: 'Total',
       ready: 'Prêt pour application ultérieure',
       blocked: 'Bloqué par des erreurs de paramétrage',
+      noBill: 'Aucun frais à facturer',
       hash: 'Hash',
       errors: 'Erreurs bloquantes',
       warnings: 'Avertissements',

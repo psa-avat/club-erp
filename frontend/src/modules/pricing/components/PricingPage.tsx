@@ -92,11 +92,15 @@ function formatPrice(value: string | null | undefined): string {
 }
 
 function getFromQtyStep(unit: number): string {
-  return unit === 1 ? '0.1' : '1'
+  if (unit === 7) return '1'     // Duration bracket → whole minutes
+  if (unit === 1 || unit === 4) return '0.01'  // Flight time / Duration → decimal hours
+  return '1'
 }
 
 function getFromQtyPlaceholder(unit: number): string {
-  return unit === 1 ? '0.0' : '0'
+  if (unit === 7) return '0'     // minutes
+  if (unit === 1 || unit === 4) return '0.00'  // hours
+  return '0'
 }
 
 function versionStatusClass(status: number): string {
@@ -347,6 +351,7 @@ function PricingItemForm({
     setForm((prev) => ({ ...prev, tiers: prev.tiers.filter((_, i) => i !== index) }))
   }
   const valid = form.name.trim() !== '' && form.base_price !== ''
+  const progressiveDisabled = form.unit === 6 || form.unit === 7
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -437,18 +442,22 @@ function PricingItemForm({
             </select>
           </div>
         )}
-        {form.unit !== 6 && form.unit !== 7 && (
-          <div className="flex items-center gap-2 pt-1">
+        <div className="col-span-full rounded-md border border-slate-200 bg-white px-3 py-2">
+          <label className={`flex items-center gap-2 text-xs ${progressiveDisabled ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-slate-700'}`}>
             <input
               id="is-progressive"
               type="checkbox"
               checked={form.is_progressive}
+              disabled={progressiveDisabled}
               onChange={(e) => set('is_progressive', e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400"
+              className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400 disabled:cursor-not-allowed"
             />
-            <Label htmlFor="is-progressive" className="text-xs cursor-pointer">{t('pricing.isProgressive')}</Label>
-          </div>
-        )}
+            <span>{t('pricing.isProgressive')}</span>
+          </label>
+          {progressiveDisabled && (
+            <p className="mt-1 text-[11px] text-slate-400">{t('pricing.isProgressiveHelp')}</p>
+          )}
+        </div>
       </div>
       <div className="space-y-2">
         <Label className="text-xs">{t('pricing.tiers')}</Label>

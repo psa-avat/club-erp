@@ -1864,6 +1864,7 @@ export const en = {
       unitFixed: 'Fixed',
       unitFixedDurationTranche: 'Duration bracket',
       isProgressive: 'Progressive brackets',
+      isProgressiveHelp: 'Progressive pricing is unavailable for this unit.',
       error: {
         saveFailed: 'Failed to save.',
         deleteFailed: 'Failed to delete.',
@@ -1924,6 +1925,7 @@ export const en = {
       total: 'Total',
       ready: 'Ready to apply later',
       blocked: 'Blocked by setup errors',
+      noBill: 'No fees due',
       hash: 'Hash',
       errors: 'Blocking errors',
       warnings: 'Warnings',

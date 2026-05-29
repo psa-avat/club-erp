@@ -403,7 +403,8 @@ class FlightBillingPreviewService:
             accounting_lines=accounting_lines,
             errors=errors,
             warnings=warnings,
-            can_apply=bool(applied_lines) and not any(error.blocking for error in errors),
+            can_apply=not any(error.blocking for error in errors),
+            no_bill=bool(applied_lines) is False and not any(error.blocking for error in errors),
         )
 
     async def _get_receivable_account(self) -> AccountingAccount | None:
@@ -553,7 +554,11 @@ class FlightBillingPreviewService:
             if versions:
                 warnings.append(_error("pricing_global_fallback", f"Using global pricing for {asset.code}.", scope=source, blocking=False))
         if not versions:
-            errors.append(_error("pricing_version_missing", f"No active pricing version for {asset.code} on {flight.jour}.", scope=source))
+            if asset.ownership == 2:
+                # Private aircraft may have no club pricing — non-blocking
+                warnings.append(_error("pricing_version_missing", f"No active pricing version for private asset {asset.code} on {flight.jour}.", scope=source, blocking=False))
+            else:
+                errors.append(_error("pricing_version_missing", f"No active pricing version for {asset.code} on {flight.jour}.", scope=source))
             return _PricedMachine(source, asset, None, [])
         if len(versions) > 1:
             errors.append(_error("pricing_version_overlap", f"Multiple active pricing versions for {asset.code} on {flight.jour}.", scope=source))
@@ -641,7 +646,7 @@ class FlightBillingPreviewService:
         payer: _Payer,
         pack_balances: dict[tuple[UUID, int], Decimal],
     ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
-        """Progressive bracket pricing — each portion at its own rate."""
+        """Progressive bracket pricing — merged into a single consolidated line."""
         brackets = _progressive_split(item, quantity)
         pack_price_value = item.pack_price
         pack_price = _money(_dec(pack_price_value)) if pack_price_value is not None else None
@@ -651,7 +656,8 @@ class FlightBillingPreviewService:
             and payer.member and flight.jour
         )
 
-        result: list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]] = []
+        # Process brackets (handles pack consumption correctly per bracket)
+        raw_lines: list[tuple[Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal, Decimal | None]] = []
         for bracket_qty, bracket_rate in brackets:
             normal_price = _money(bracket_rate)
             if can_use_pack:
@@ -661,13 +667,34 @@ class FlightBillingPreviewService:
                     used = min(before, bracket_qty)
                     after = before - used
                     pack_balances[key] = after
-                    result.append((used, normal_price, pack_price, "pack", before, used, after))
+                    raw_lines.append((used, pack_price if pack_price is not None else normal_price, "pack", before, used, after, normal_price))
                     remainder = bracket_qty - used
                     if remainder > 0:
-                        result.append((remainder, normal_price, normal_price, None, after, Decimal("0"), after))
+                        raw_lines.append((remainder, normal_price, None, after, Decimal("0"), after, normal_price))
                     continue
-            result.append((bracket_qty, normal_price, normal_price, None, None, Decimal("0"), None))
-        return result
+            raw_lines.append((bracket_qty, normal_price, None, None, Decimal("0"), None, normal_price))
+
+        # Merge into a single line: weighted-average unit price
+        if not raw_lines:
+            return []
+        total_qty = sum(line[0] for line in raw_lines)
+        total_amount = sum(line[0] * line[1] for line in raw_lines)
+        avg_price = _money(total_amount / total_qty) if total_qty > 0 else Decimal("0")
+
+        # Consolidate pack fields: initial balance, total used, final balance
+        initial_before = None
+        total_used = Decimal("0")
+        final_after = None
+        discount_reason = None
+        for qty, price, reason, p_before, p_used, p_after, _ in raw_lines:
+            if reason == "pack":
+                discount_reason = "pack"
+                if initial_before is None:
+                    initial_before = p_before
+                total_used += p_used or Decimal("0")
+                final_after = p_after
+
+        return [(total_qty, avg_price, avg_price, discount_reason, initial_before, total_used, final_after)]
 
     def _accounting_lines_for(
         self,
