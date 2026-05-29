@@ -207,6 +207,19 @@ def _progressive_split(
     return result
 
 
+def _split_progressive_brackets_by_share(
+    brackets: list[tuple[Decimal, Decimal]],
+    share: Decimal,
+) -> list[tuple[Decimal, Decimal]]:
+    """Allocate full-flight progressive brackets to a payer share."""
+    allocated: list[tuple[Decimal, Decimal]] = []
+    for bracket_qty, bracket_rate in brackets:
+        payer_qty = (bracket_qty * share).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        if payer_qty > 0:
+            allocated.append((payer_qty, bracket_rate))
+    return allocated
+
+
 def _error(code: str, message: str, *, scope: str = "flight", blocking: bool = True) -> FlightBillingError:
     return FlightBillingError(code=code, message=message, scope=scope, blocking=blocking)
 
@@ -338,10 +351,16 @@ class FlightBillingPreviewService:
                     continue
 
                 # ── Per-unit pricing (existing logic) ────────────────────────────
+                full_progressive_brackets = _progressive_split(item, quantity) if item.is_progressive else None
                 for payer in payers:
                     payer_quantity = (quantity * payer.share).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
                     if payer_quantity <= 0:
                         continue
+                    bracket_allocations = (
+                        _split_progressive_brackets_by_share(full_progressive_brackets, payer.share)
+                        if full_progressive_brackets is not None
+                        else None
+                    )
                     split_lines = self._price_for_payer(
                         item=item,
                         version=machine.version,
@@ -349,6 +368,7 @@ class FlightBillingPreviewService:
                         flight=flight,
                         payer=payer,
                         pack_balances=pack_balances,
+                        bracket_allocations=bracket_allocations,
                     )
                     for line_quantity, normal_unit_price, applied_unit_price, discount_reason, before, used, after in split_lines:
                         amount = _money(line_quantity * applied_unit_price)
@@ -604,12 +624,14 @@ class FlightBillingPreviewService:
         flight: ValidatedFlight,
         payer: _Payer,
         pack_balances: dict[tuple[UUID, int], Decimal],
+        bracket_allocations: list[tuple[Decimal, Decimal]] | None = None,
     ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
         # ── Progressive mode: each bracket contributes its own portion ──────
         if item.is_progressive:
             return self._progressive_price_for_payer(
                 item=item, version=version, quantity=quantity,
                 flight=flight, payer=payer, pack_balances=pack_balances,
+                bracket_allocations=bracket_allocations,
             )
 
         # ── Non-progressive (default): last applicable tier sets price for all ──
@@ -645,9 +667,10 @@ class FlightBillingPreviewService:
         flight: ValidatedFlight,
         payer: _Payer,
         pack_balances: dict[tuple[UUID, int], Decimal],
+        bracket_allocations: list[tuple[Decimal, Decimal]] | None = None,
     ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
         """Progressive bracket pricing — merged into a single consolidated line."""
-        brackets = _progressive_split(item, quantity)
+        brackets = bracket_allocations if bracket_allocations is not None else _progressive_split(item, quantity)
         pack_price_value = item.pack_price
         pack_price = _money(_dec(pack_price_value)) if pack_price_value is not None else None
         can_use_pack = bool(

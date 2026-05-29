@@ -25,7 +25,7 @@ if "aioboto3" not in sys.modules:
 
 
 from api.routes.flights import router
-from models import AccountingAccount, Asset, Member, PricingItem, PricingVersion, ValidatedFlight
+from models import AccountingAccount, Asset, Member, PricingItem, PricingItemTier, PricingVersion, ValidatedFlight
 from services.flight_billing import FlightBillingPreviewService, _Payer, _PricedMachine
 
 
@@ -131,6 +131,42 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(preview.applied_lines[1].quantity, Decimal("0.5000"))
         self.assertIsNone(preview.applied_lines[1].discount_reason)
         self.assertEqual(pack_balances[(member.uuid, 2026)], Decimal("0.00"))
+
+    async def test_progressive_shared_flight_uses_full_quantity_before_split(self):
+        member, asset, debit, credit, version, item, flight = self._objects(pack_price=None)
+        second_member = Member(
+            uuid=uuid4(),
+            first_name="Claire",
+            last_name="Martin",
+            account_id="M002",
+            member_category=1,
+        )
+        item.base_price = Decimal("100.0000")
+        item.is_progressive = True
+        item.tiers = [
+            PricingItemTier(from_qty=Decimal("0.7500"), price=Decimal("50.0000"), pack_price=None, sort_order=1),
+        ]
+        item.gl_account_credit = credit
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._get_receivable_account = AsyncMock(return_value=debit)
+        service._resolve_payers = AsyncMock(
+            return_value=[
+                _Payer(member, "pilot", Decimal("0.5"), "shared"),
+                _Payer(second_member, "second_pilot", Decimal("0.5"), "shared"),
+            ]
+        )
+        service._resolve_machine = AsyncMock(return_value=_PricedMachine("flight", asset, version, [item]))
+
+        preview = await service._preview_one(flight, {})
+
+        self.assertTrue(preview.can_apply)
+        self.assertEqual(preview.total_amount, Decimal("87.5000"))
+        self.assertEqual(len(preview.applied_lines), 2)
+        self.assertEqual(preview.applied_lines[0].quantity, Decimal("0.5000"))
+        self.assertEqual(preview.applied_lines[0].amount, Decimal("43.7500"))
+        self.assertEqual(preview.applied_lines[1].quantity, Decimal("0.5000"))
+        self.assertEqual(preview.applied_lines[1].amount, Decimal("43.7500"))
 
     def test_launch_tow_without_launch_type_uses_rmq_code(self):
         service = FlightBillingPreviewService(AsyncMock())
