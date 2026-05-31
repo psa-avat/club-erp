@@ -33,11 +33,9 @@ flowchart LR
     E --> F[User reviews preview]
     F --> G[Apply clicked]
     G --> H[Draft accounting entry created<br/>FL journal]
-    H --> I{Draft or auto-post?}
-    I -- Draft --> J[Accountant reviews & posts]
-    I -- Auto-post --> K[Entry posted immediately]
+    H --> I[Member reviews via portal]
+    I --> J[Accountant reviews & posts]
     J --> L[Entry posted]
-    K --> L
     L --> M{Correction needed?}
     M -- Post-purchase pack --> N[Recalculate billing]
     M -- Freeze discount --> N
@@ -247,13 +245,20 @@ Pack discount contra (The Reduction Line):
 | Pack discount (80%) | | €80.00 |
 | **Net due** | **€31.00** | |
 
-### 6.4 Posting
+### 6.4 Posting (Manual — After Member Review)
+
+Posting is a **separate, explicit step** that happens **after** members have reviewed their charges via the member portal. No entry is posted automatically at apply time.
 
 `post_flight_billing()` calls the existing `post_accounting_entry()`:
 - Validates balance still holds
 - Assigns sequence number (`FY2026-042`)
 - Sets `state = Posted` (2), records `posted_at` and `entry_hash`
 - After posting, the entry is immutable
+
+**Posting prerequisites**:
+1. The flight billing must be in `applied` state (Draft entry exists)
+2. Members must have had reasonable time to review (no hard deadline — at the accountant's discretion)
+3. Any dispute flagged by a member must be resolved before posting
 
 ### 6.5 Batch Apply
 
@@ -386,7 +391,7 @@ Each `flight_pack_consumptions` row has an `is_frozen` boolean.
 | `fiscal_year_uuid` | UUID | FK → accounting_fiscal_years, unique |
 | `discount_account_uuid` | UUID | FK → accounting_accounts (e.g. 7066) |
 | `flights_journal_uuid` | UUID | FK → accounting_journals (default = FL) |
-| `post_automatically` | boolean | Default false |
+| `post_automatically` | boolean | **Removed** — posting is always manual, after member review |
 | `updated_at` | timestamptz | |
 | `updated_by` | int? | FK → users |
 

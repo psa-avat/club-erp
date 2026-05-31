@@ -44,8 +44,8 @@ Add the billing **apply** step that turns previews into posted accounting entrie
    - `uuid`, `fiscal_year_uuid` (FK, unique)
    - `discount_account_uuid` (FK → accounting_accounts, e.g. 7066) — the account credited for pack discounts
    - `flights_journal_uuid` (FK → accounting_journals, default = FL journal)
-   - `post_automatically` (boolean, default false) — if true, newly applied entries are posted immediately
    - `updated_at`, `updated_by`
+   - *Note: no `post_automatically` flag — posting is always manual after member review*
 4. Add `billing_quote_uuid` to `validated_flights` (nullable FK → new flight_billing_quotes table)
 5. Create `flight_billing_quotes` table (persists preview results)
    - `uuid`, `flight_uuid` (FK), `billing_hash`, `total_amount`, `fiscal_year_uuid` (FK)
@@ -63,7 +63,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 **Steps** (depends on Phase 1, can be parallelised):
 1. Create billing configuration CRUD in `backend/services/accounting.py` (or new `flight_billing_configs.py`):
    - `get_or_create_flight_billing_config(db, fiscal_year_uuid)` — return existing or create with defaults
-   - `update_flight_billing_config(db, config_uuid, updates)` — update discount account, auto-post flag, etc.
+   - `update_flight_billing_config(db, config_uuid, updates)` — update discount account, journal, etc.
    - `GET/PUT /api/v1/accounting/fiscal-years/{fiscal_year_uuid}/flight-billing-config` — API endpoints
 2. Create `backend/services/flight_packs.py` with:
    - `create_member_pack(db, member_uuid, pack_type, price, discount_percent, purchase_entry_uuid, user_id)` — creates a subscription pass
