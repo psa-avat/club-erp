@@ -560,20 +560,6 @@ class FlightBillingPreviewService:
         )
         versions = list(versions_result.scalars().unique().all())
         if not versions:
-            versions_result = await self.db.execute(
-                select(PricingVersion)
-                .where(
-                    PricingVersion.status == PRICING_STATUS_ACTIVE,
-                    PricingVersion.from_date <= flight.jour,
-                    or_(PricingVersion.to_date.is_(None), PricingVersion.to_date >= flight.jour),
-                    PricingVersion.asset_type_uuid.is_(None),
-                )
-                .options(selectinload(PricingVersion.items).selectinload(PricingItem.tiers), selectinload(PricingVersion.items).selectinload(PricingItem.gl_account_credit))
-            )
-            versions = list(versions_result.scalars().unique().all())
-            if versions:
-                warnings.append(_error("pricing_global_fallback", f"Using global pricing for {asset.code}.", scope=source, blocking=False))
-        if not versions:
             if asset.ownership == 2:
                 # Private aircraft may have no club pricing — non-blocking
                 warnings.append(_error("pricing_version_missing", f"No active pricing version for private asset {asset.code} on {flight.jour}.", scope=source, blocking=False))

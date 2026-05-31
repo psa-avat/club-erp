@@ -29,6 +29,25 @@ from models import AccountingAccount, Asset, Member, PricingItem, PricingItemTie
 from services.flight_billing import FlightBillingPreviewService, _Payer, _PricedMachine
 
 
+class _FakeScalarResult:
+    def __init__(self, values):
+        self._values = values
+
+    def unique(self):
+        return self
+
+    def all(self):
+        return self._values
+
+
+class _FakeExecuteResult:
+    def __init__(self, values):
+        self._values = values
+
+    def scalars(self):
+        return _FakeScalarResult(self._values)
+
+
 class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
     def _objects(self, *, pack_price=Decimal("50.0000")):
         member = Member(
@@ -211,6 +230,24 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
 
         self.assertIn("partage", codes)
         self.assertNotIn("RMQ", codes)
+
+    async def test_resolve_machine_does_not_fallback_to_global_pricing_for_flight(self):
+        _member, asset, _debit, _credit, _version, _item, flight = self._objects()
+        asset.ownership = 1
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._resolve_asset = AsyncMock(return_value=asset)
+        service.db.execute = AsyncMock(return_value=_FakeExecuteResult([]))
+
+        errors = []
+        warnings = []
+        machine = await service._resolve_machine("flight", asset.code, flight, errors, warnings)
+
+        self.assertIsNone(machine.version)
+        self.assertEqual(len(machine.items), 0)
+        self.assertTrue(any(err.code == "pricing_version_missing" for err in errors))
+        self.assertFalse(any(warn.code == "pricing_global_fallback" for warn in warnings))
+        service.db.execute.assert_awaited_once()
 
 
 
