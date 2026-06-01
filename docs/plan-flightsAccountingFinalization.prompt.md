@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-Add the billing **apply** step that turns previews into posted accounting entries, introduce a proper **member pack** system with per-flight discount tracking, separate the discount as a contra accounting line, and build the **flights tab** in Daily Operations as the central UI cockpit.
+Add the billing **apply** step that turns previews into **Draft** accounting entries (with explicit manual posting after review), introduce a proper **member pack** system with per-flight discount tracking, separate the discount as a contra accounting line, and build the **flights tab** in Daily Operations as the central UI cockpit.
 
 ---
 
@@ -15,9 +15,11 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 | **Pack tracking** | New `member_packs` table stores price, discount_percent, pack_type. `flight_pack_consumptions` tracks which flight benefited from which pack |
 | **Pack scope** | Packs have a `pack_type` — `flight_hours`, `winch_launches` or `tow_launches`. Each scope discounts the corresponding pricing item |
 | **Fiscal year boundary** | Packs are scoped to one fiscal year and expire at year-end. No carry-over |
-| **Billing configurability** | Billing configuration (discount account, posting settings) is scoped **per fiscal year** via a new `flight_billing_configs` table, not global system_settings |
+| **Billing configurability** | Billing configuration is scoped **per fiscal year** via a new `flight_billing_configs` table, not global system_settings |
 | **Post-purchase** | Allowed — system recalculates when a pack is bought after the flight date, including launch packs |
 | **Freeze/exclude** | `is_frozen` flag on `flight_pack_consumptions`; frozen consumptions excluded from balance and discount calculation |
+| **Posting policy** | Posting is always a separate explicit action (manual), after member review; no automatic posting at apply time |
+| **Billing hash & alerts** | Hash and alert logic must include gross lines **and** discount contra lines; alerts evaluate 411 net impact only |
 
 ---
 
@@ -42,7 +44,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
    - `created_at`
 3. Create `flight_billing_configs` table (configuration **per fiscal year**)
    - `uuid`, `fiscal_year_uuid` (FK, unique)
-   - `discount_account_uuid` (FK → accounting_accounts, e.g. 7066) — the account credited for pack discounts
+   - `discount_account_uuid` (FK → accounting_accounts, e.g. 7066) — account used for pack accounting (credited on pack purchase, debited on flight discount contra)
    - `flights_journal_uuid` (FK → accounting_journals, default = FL journal)
    - `updated_at`, `updated_by`
    - *Note: no `post_automatically` flag — posting is always manual after member review*
@@ -73,7 +75,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
    - `freeze_consumption(db, consumption_uuid, reason)` / `unfreeze_consumption(db, consumption_uuid)`
 3. Refactor `FlightBillingPreviewService` to query active packs for each payer and compute discount as `base_amount × (best_discount_percent / 100)` instead of the old hours-based consumption logic
 4. Add pack purchase accounting entry creation helper:
-   - `create_pack_purchase_entry(db, member, pack_uuid, units, unit_price, discount_account_uuid, fiscal_year_uuid, user_id)` → creates Draft entry:
+   - `create_pack_purchase_entry(db, member, pack_uuid, price, discount_account_uuid, fiscal_year_uuid, user_id)` → creates Draft entry:
      - Debit `411` (member dimension) for total amount
      - Credit `discount_account_uuid` (from billing config, or pack override if set)
 
@@ -100,11 +102,13 @@ Add the billing **apply** step that turns previews into posted accounting entrie
      6. Links the accounting entry to the flight (`accounting_entry_uuid`)
      7. Marks the quote as `applied`
    - `post_flight_billing(flight_uuid, fiscal_year_uuid, user_id)` — Posts the Draft entry (calls existing `post_accounting_entry`)
-   - `batch_apply(flight_uuids, fiscal_year_uuid, user_id)` — Apply + post multiple flights in a transaction
+   - `batch_apply(flight_uuids, fiscal_year_uuid, user_id)` — Apply multiple flights in a transaction (creates Draft entries only)
+   - `batch_post(flight_uuids, fiscal_year_uuid, user_id)` — Posts already applied Draft entries in batch
 2. Add API endpoints in `backend/api/routes/flights.py`:
    - `POST /{flight_uuid}/billing-apply` — Apply (create Draft entry, link to flight)
    - `POST /{flight_uuid}/billing-post` — Apply + Post in one step
-   - `POST /billing-batch-apply` — Batch apply + post
+   - `POST /billing-batch-apply` — Batch apply (Draft only by default; optional explicit mode to post)
+   - `POST /billing-batch-post` — Batch post already applied Draft entries
 3. New schemas in `backend/schemas/flights.py`:
    - `FlightBillingApplyRequest`, `FlightBillingApplyResponse`
 
@@ -120,9 +124,10 @@ Add the billing **apply** step that turns previews into posted accounting entrie
    - `GET /pending-billing-summary` — aggregate stats (count, total, warnings) for a date range
 2. Add pack purchase endpoint:
    - `POST /members/{member_uuid}/packs` — buy a pack (creates pack + Draft accounting entry)
-   - `GET /members/{member_uuid}/packs` — list packs with balances
+   - `GET /members/{member_uuid}/packs` — list packs with effective discount %, scope, and usage audit summary
 3. Add endpoint to freeze/exclude a flight from discount:
    - `POST /flight-pack-consumptions/{consumption_uuid}/freeze`
+   - `POST /flight-pack-consumptions/{consumption_uuid}/unfreeze`
 
 **Verification**: API responses return correct data shapes; tests for each endpoint.
 
@@ -154,20 +159,20 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 
 **Steps** (depends on Phase 3, parallel with Phase 4-5):
 1. Backend: `recalculate_billing(flight_uuid, fiscal_year_uuid, user_id)`:
-   - Only possible if flight has a quote in `applied` or `superseded` state
+   - Only possible if flight has an existing quote/entry from a prior apply cycle
    - Unlinks old accounting entry (deletes it if Draft, or creates reversal if Posted)
    - Supersedes the old quote (state → `superseded`)
-   - Runs fresh preview with updated pack balances → creates new quote + new Draft entry
+   - Runs fresh preview with current active packs and freeze state → creates new quote + new Draft entry
 2. Backend: `batch_recalculate(flight_uuids, fiscal_year_uuid, user_id)`:
    - Same logic as single recalc but in a transaction for consistency
-3. Backend: `handle_post_purchase_pack(flight_uuid, member_uuid, pack_uuid)`:
-   - After a pack is purchased, identifies all flights for that member in the same fiscal year that could benefit (flights with excess hours not covered by a pack)
+3. Backend: `handle_post_purchase_pack(member_uuid, pack_uuid, fiscal_year_uuid, user_id)`:
+   - After a pack is purchased, identifies all already-billed flights for that member in the same fiscal year that are eligible for this `pack_type`
    - Triggers recalculation for each eligible flight
    - If a flight was already posted, creates a reversal + replacement entry pair
 4. **Launch pack support**: The recalc engine respects `pack_type` — a winch-launch pack only applies to `source='launch'` lines with the winch asset type, not to flight hours
 5. UI: 
    - "Recalculate" button on flight detail panel
-   - "Buy pack to cover" quick action when a flight has excess hours at full price
+   - "Buy pack" quick action when a flight has eligible lines billed at full price
    - "Recalculate all flights for member" after pack purchase (batch recalc button)
 
 **Verification**: 
@@ -182,7 +187,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 ### Phase 7 — Freeze/Exclude & Manual Overrides
 
 **Steps** (depends on Phase 2):
-1. Backend: `freeze_flight_discount(flight_uuid, reason)` — sets `is_frozen=true` on the consumption record, which re-excludes those hours from pack balance
+1. Backend: `freeze_flight_discount(consumption_uuid, reason)` — sets `is_frozen=true` on the consumption record so discount is excluded from billing recalculation
 2. Backend: `unfreeze_flight_discount(consumption_uuid)` — re-includes
 3. Backend: Recalculate when freeze state changes (same logic as Phase 6)
 4. UI: Toggle switch in flight detail panel to freeze/unfreeze discount
@@ -202,7 +207,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
    - `POST /api/v1/member-portal/login` — Accepts a member identifier + expense access token, returns a short-lived JWT
    - `GET /api/v1/member-portal/flights` — List the member's flights with billing status and amounts (date, glider, type, total charged, discount applied)
    - `GET /api/v1/member-portal/flights/{flight_uuid}/billing` — Detail of one flight billing (applied lines, discount lines)
-   - `GET /api/v1/member-portal/account` — Account summary (current balance, pack balances per type, pending/posted entries)
+   - `GET /api/v1/member-portal/account` — Account summary (current balance, active packs per type, pending/posted entries)
    - `GET /api/v1/member-portal/account/entries` — List accounting entries where the member appears (filterable by year, state)
 2. **Backend — Expense access token management** (enhance existing `expense_access`):
    - Add `member_portal_enabled` flag alongside `expense_access_enabled` (or reuse the existing one)
@@ -210,7 +215,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 3. **Frontend — Standalone member portal app** (new route group outside the shell, no auth guard):
    - `frontend/src/modules/member-portal/` — new module
    - Login page: member identifier + token input → obtain JWT → store in session-only storage
-   - Dashboard view: pack balances, last 5 flights, account balance
+   - Dashboard view: active packs and discount rates, last 5 flights, account balance
    - Flights list: paginated table with billing detail expand
    - Account entries: ledger view of posted entries affecting the member
    - Uses the same `decimal.js` and formatting utilities as the main app
@@ -220,6 +225,9 @@ Add the billing **apply** step that turns previews into posted accounting entrie
    - JWT expires in 2 hours; refresh requires re-login
    - Read-only: no mutation endpoints in the portal
    - Rate-limited: max 30 requests/minute per token
+
+**Accounting visibility rule**:
+- Member portal must display each billed flight with gross lines, consolidated discount contra, and net amount together (no isolated gross-only interpretation)
 
 **Verification**:
 - Enable expense access for a member → generate token → log in via portal → see flights, billing, account
@@ -273,9 +281,9 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 | File | What to do |
 |---|---|
 | `backend/models.py` | Add `MemberPack`, `FlightPackConsumption`, `FlightBillingQuote`, `FlightBillingConfig` models |
-| `backend/services/flight_packs.py` | **NEW** — Pack CRUD, balance queries, freeze logic (respects pack_type) |
+| `backend/services/flight_packs.py` | **NEW** — Pack CRUD, active discount lookup, freeze logic (respects pack_type) |
 | `backend/services/flight_billing_configs.py` | **NEW** — Per-fiscal-year billing configuration CRUD |
-| `backend/services/flight_billing.py` | Refactor `_initial_pack_balances()` to use new pack models, keyed by (member, year, pack_type) |
+| `backend/services/flight_billing.py` | Refactor pack discount resolution to use active pack model keyed by (member, fiscal_year, pack_type) |
 | `backend/services/flight_billing_apply.py` | **NEW** — Apply preview → create entry, discount separation, post, persist consumptions |
 | `backend/services/accounting.py` | Minor: expose `get_account` for config lookup |
 | `backend/api/routes/flights.py` | Add apply/post/batch + pack + freeze + recalculate endpoints |
@@ -303,11 +311,12 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 ## Verification Plan
 
 1. **Unit tests**: pack CRUD, balance calculation, preview → apply entry creation, discount line separation, freeze/unfreeze recalc
-2. **Integration test**: full cycle — Planche sync → preview → apply → post → verify accounting entry exists with correct lines (including discount contra) → verify member pack balance updated
+2. **Integration test**: full cycle — Planche sync → preview → apply (Draft) → member review window → post → verify accounting entry exists with correct lines (including discount contra) and that `flight_pack_consumptions` audit rows are persisted
 3. **UI manual test — Daily Ops**: Flights tab → select flights → preview → apply → post → check Journal FL for the entry → buy pack → recalculate → verify updated
 4. **UI manual test — Machine dashboard**: After billing flights for multiple machines, dashboard shows correct aggregates → drill-down → entries match
 5. **UI manual test — Member portal**: Enable expense access → login with token → see own flights, billing, account → cannot see other members' data
-6. **Edge cases**: shared flight (partage) with pack for one pilot only; post-purchase covering an already-posted flight; freeze then unfreeze; multiple packs with partial consumption; year-end rollover (unconsumed pack hours lost)
+6. **Edge cases**: shared flight (partage) with pack for one pilot only; post-purchase covering an already-posted flight; freeze then unfreeze; multiple packs of same type (highest discount wins); fiscal year rollover (pack validity expires, no carry-over)
+7. **Hash/alert safety test**: billing hash changes when either gross lines or discount contra changes; minimum-balance alerts evaluate net 411 impact only after full entry apply
 
 ---
 
@@ -317,7 +326,7 @@ Add the billing **apply** step that turns previews into posted accounting entrie
 - Pack purchase accounting (411 → discount_account), with configurable discount account per fiscal year (or per-pack override)
 - Per-flight/per-launch pack discount as contra entry within the same flight journal entry
 - Launch method packs: winch launches and tow launches tracked separately from flight hours
-- Fiscal year scoping: packs belong to one FY, unconsumed units lost at year-end
+- Fiscal year scoping: packs belong to one FY and expire at year-end (no carry-over)
 - Post-purchase recalculation (pack bought after flight)
 - Batch recalculation (multiple flights affected by a single pack purchase)
 - Freeze/exclude individual flight line from discount
