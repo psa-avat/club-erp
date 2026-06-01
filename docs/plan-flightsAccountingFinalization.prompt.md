@@ -10,13 +10,13 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 | Decision | Choice |
 |---|---|
-| **Discount realization** | Discounts are carried by **pricing items** (standard item vs pack item), not by `discount_percent` stored on member packs |
+| **Discount realization** | Discounts are embedded in the **pack pricing item** itself via `pack_applicability` which links a pack to a `pricing_item` with a `discounted_unit_price`. The flight billing uses that resolved price directly — no separate discount contra line |
 | **Pack model** | **Catalog + consumable member holdings** — define reusable pack templates (ex: `PACK_25H`) and let members buy multiple packs; each billed flight consumes eligible quantity |
-| **Pack definition pricing** | `pack_definitions` owns a list of (`asset_type_uuid`, `unit_price`) couples via `pack_definition_prices` |
+| **Pack definition pricing** | `pack_applicability` links a pack definition to an existing `pricing_item` with a `discounted_unit_price`. One pack can cover multiple pricing items, one pricing item can be covered by multiple packs |
 | **Pack tracking** | Single `member_pack_events` ledger tracks purchase and consumption events; consumption is still one row per flight/line for audit |
 | **Pack scope** | Packs are scoped by `pack_type` and eligible asset types; each scope selects the matching discounted pricing items |
 | **Fiscal year boundary** | Packs are scoped to one fiscal year and expire at year-end. No carry-over |
-| **Billing configurability** | Billing configuration is scoped **per fiscal year** via `flight_billing_configs`, with optional pack-level overrides on `pack_definitions` |
+| **Billing configurability** | Stored in `system_settings` (module `flight_billing`): sales account, consumption strategy, post-purchase tolerance. No dedicated table. Pack definitions may override the sales account |
 | **Post-purchase** | Allowed — system recalculates when a pack is bought after the flight date, including launch packs |
 | **Freeze/exclude** | `is_frozen` flag on `member_pack_events` consume rows; frozen consumptions excluded from quantity consumption calculation |
 | **Posting policy** | Posting is always a separate explicit action (manual), after member review; no automatic posting at apply time |
@@ -33,46 +33,43 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `uuid`, `code` (unique), `name`
    - `fiscal_year_uuid` (FK)
    - `pack_type` (varchar: `flight_hours`|`winch_launches`|`tow_launches`)
-   - `quantity_allowance` (Numeric(10,4)) — ex: `25.0000` hours for a 25h pack
+   - `quantity_allowance` (Numeric(10,2)) — ex: `25.0000` hours for a 25h pack
    - `quantity_unit` (varchar: `hours`|`launches`)
-   - `eligible_asset_type_uuid` (FK, nullable when definition is generic)
-   - `pack_sales_account_uuid` (FK → accounting_accounts, nullable override)
+   - `eligible_asset_type_uuid` (FK → asset_types, nullable — restricts which asset types this pack applies to)
+   - `pack_sales_account_uuid` (FK → accounting_accounts, nullable override of FY default)
    - `flights_journal_uuid` (FK → accounting_journals, nullable override)
-   - `pack_consumption_strategy` (`fifo`|`lifo`, nullable override)
    - `priority` (int, optional tie-breaker when multiple pack definitions match)
    - `created_at`
-2. Create `pack_definition_prices` table (asset-type price matrix per pack definition)
+2. Create `pack_applicability` table (link pack → pricing_item with discounted price)
    - `uuid`, `pack_definition_uuid` (FK)
-   - `asset_type_uuid` (FK)
-   - `price` (Numeric(10,4))
-   - unique constraint (`pack_definition_uuid`, `asset_type_uuid`)
+   - `pricing_item_uuid` (FK → pricing_items)
+   - `discounted_unit_price` (Numeric(10,4)) — the unit price with discount (e.g. €20 instead of €100)
+   - unique constraint (`pack_definition_uuid`, `pricing_item_uuid`)
    - `created_at`
-3. Create `member_pack_events` table (single ledger for purchases and consumptions)
+3. Create `member_packs` table (one row per pack purchased by a member)
    - `uuid`, `member_uuid` (FK), `fiscal_year_uuid` (FK), `pack_definition_uuid` (FK)
-   - `event_type` (`purchase`|`consume`|`freeze`|`unfreeze`|`adjust`)
-   - `quantity_delta` (Numeric(10,4)) — positive for purchase, negative for consumption
-   - `flight_uuid` (FK → validated_flights, nullable; required for `consume`)
-   - `source` (`flight`|`launch`, nullable)
-   - `applied_pricing_item_uuid` (FK → pricing_items, nullable)
+   - `quantity_initial` (Numeric(10,2)) — e.g. 25.00 for a 25h pack
+   - `quantity_remaining` (Numeric(10,2)) — decremented on each consumption
+   - `state` (varchar: `active`|`exhausted`|`frozen`|`expired`)
+   - `purchase_date` (date)
    - `purchase_entry_uuid` (FK → accounting_entries, nullable)
-   - `billed_amount` (Numeric(10,4), nullable)
+   - `created_at`
+4. Create `member_pack_consumptions` table (one row per flight/line consumption)
+   - `uuid`, `member_pack_uuid` (FK → member_packs)
+   - `flight_uuid` (FK → validated_flights), `source` (`flight`|`launch`)
+   - `pricing_item_uuid` (FK → pricing_items)
+   - `quantity_consumed` (Numeric(10,2))
+   - `billed_amount` (Numeric(10,4)) — resolved_price × quantity_consumed
    - `is_frozen` (Boolean, default false), `frozen_at`, `frozen_reason`
    - `created_at`
-4. Create `flight_billing_configs` table (configuration **per fiscal year**)
-   - `uuid`, `fiscal_year_uuid` (FK, unique)
-   - `flights_journal_uuid` (FK → accounting_journals, default = FL journal)
-   - `pack_sales_account_uuid` (FK → accounting_accounts) — account used for pack purchase entries
-   - `pack_consumption_strategy` (`fifo` by default)
-   - `allow_post_purchase_recalculation` (Boolean, default true)
-   - `updated_at`, `updated_by`
-   - *Note: this is the fiscal-year default; `pack_definitions` may override select fields*
-5. Add `billing_quote_uuid` to `validated_flights` (nullable FK → new flight_billing_quotes table)
-6. Create `flight_billing_quotes` table (persists preview results)
-   - `uuid`, `flight_uuid` (FK), `billing_hash`, `total_amount`, `fiscal_year_uuid` (FK)
-   - `state`: `quoted`, `applied`, `superseded`, `corrected`
-   - `applied_lines_json` (JSONB), `accounting_lines_json` (JSONB), `pack_consumptions_json` (JSONB)
-   - `accounting_entry_uuid` (FK → accounting_entries, nullable)
-   - `created_at`
+5. Add `accounting_entry_uuid` to `validated_flights` (nullable FK → accounting_entries)
+   - *No separate billing_quotes table — the accounting entry is the source of truth*
+6. Store billing configuration in `system_settings` (module `flight_billing`):
+   - `pack_sales_account_uuid` — default account for pack purchase revenue (e.g. 7066)
+   - `pack_consumption_strategy` — `fifo` (default)
+   - `allow_post_purchase_recalculation` — true by default
+   - `max_days_for_post_purchase_discount` — 7
+   - `require_approval_for_late_discount` — true
 
 **Verification**: Migration SQL runs cleanly; new tables are empty; existing flights table migration adds nullable columns.
 
@@ -81,24 +78,26 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 ### Phase 2 — Backend Billing Configuration & Pack Management Service
 
 **Steps** (depends on Phase 1, can be parallelised):
-1. Create billing configuration CRUD in `backend/services/accounting.py` (or new `flight_billing_configs.py`):
-   - `get_or_create_flight_billing_config(db, fiscal_year_uuid)` — return existing or create with defaults
-   - `update_flight_billing_config(db, config_uuid, updates)` — update pack sales account, journal, consumption strategy, etc.
-   - `GET/PUT /api/v1/accounting/fiscal-years/{fiscal_year_uuid}/flight-billing-config` — API endpoints
+1. Add helpers to read flight billing settings from `system_settings`:
+   - `get_flight_billing_setting(db, key)` → returns value with fallback to default
+   - `update_flight_billing_setting(db, key, value)` — upserts into `system_settings` module `flight_billing`
+   - `GET/PUT /api/v1/settings/flight-billing` — API endpoints for settings CRUD
+   - *No dedicated `flight_billing_configs` table — settings live in `system_settings`*
 2. Create `backend/services/flight_packs.py` with:
    - `create_pack_definition(db, payload, user_id)` — defines catalog packs (ex: 25h glider)
-   - `upsert_pack_definition_prices(db, pack_definition_uuid, price_rows, user_id)`
+   - `manage_pack_applicability(db, pack_definition_uuid, applicable_items: list[(pricing_item_uuid, discounted_unit_price)], user_id)` — links pricing items with their pack-discounted price
    - `buy_member_pack(db, member_uuid, pack_definition_uuid, quantity_multiplier, purchase_entry_uuid, user_id)` — inserts a `purchase` event
-   - `list_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — derives balances from events
+   - `get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — derives remaining quantity from purchase and consume events (FIFO order)
+   - `find_applicable_pack_pricing(db, member_uuid, pricing_item_uuid, fiscal_year_uuid)` — returns the best matching `(pack_definition, discounted_unit_price)` for a given pricing item, or None if no eligible pack with remaining quantity
    - `consume_pack_quantity(db, pack_definition_uuid, member_uuid, flight_uuid, consumed_quantity, source, pricing_item_uuid)` — inserts one `consume` event per flight/line
    - `freeze_consumption(db, event_uuid, reason)` / `unfreeze_consumption(db, event_uuid)`
-3. Refactor `FlightBillingPreviewService` to select the pricing item from pack-aware rules (standard vs pack pricing item), then consume quantity from eligible member packs (FIFO default)
+3. Refactor `FlightBillingPreviewService` to call `find_applicable_pack_pricing()` for each pricing item. If a match is found, use `discounted_unit_price` instead of `base_price` and create a `consume` event. If remaining pack quantity is insufficient, split the line (partial pack, partial standard rate)
 4. Add pack purchase accounting entry creation helper:
     - `create_pack_purchase_entry(db, member, purchase_event_uuid, amount, pack_sales_account_uuid, fiscal_year_uuid, user_id)` → creates Draft entry:
      - Debit `411` (member dimension) for total amount
        - Credit `pack_sales_account_uuid` (pack override if set, else billing config default)
 
-**Verification**: Unit tests for billing config CRUD, pack definition CRUD, member purchase CRUD, FIFO consumption resolution, and pack purchase entry creation.
+**Verification**: Unit tests for billing config CRUD, pack definition CRUD, pack_applicability link CRUD, member purchase CRUD, FIFO consumption resolution across multiple purchases, and pack purchase entry creation.
 
 ---
 
@@ -109,7 +108,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `apply_preview(flight_uuid, fiscal_year_uuid, user_id)`:
    1. Loads billing config for the fiscal year (pack sales account, journal UUID, strategy) + pack-level overrides
      2. Runs preview (reuses `_preview_one`)
-     3. Persists the quote to `flight_billing_quotes`
+     3. Creates `member_pack_consumptions` rows for each line using pack pricing, and links `accounting_entry_uuid` on the flight
      4. Creates a **single Draft accounting entry** in the configured flights journal (FL, type=7):
         - **Debit lines**: one per applied line (411+member) using the resolved pricing item amount
         - **Credit lines**: one per applied line (revenue accounts 7062/7063/…) using the same resolved amount
@@ -296,9 +295,9 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 | File | What to do |
 |---|---|
-| `backend/models.py` | Add `PackDefinition`, `PackDefinitionPrice`, `MemberPackEvent`, `FlightBillingQuote`, `FlightBillingConfig` models |
-| `backend/services/flight_packs.py` | **NEW** — Pack definition + price-matrix CRUD, events ledger, balance projection, freeze logic |
-| `backend/services/flight_billing_configs.py` | **NEW** — Per-fiscal-year billing configuration CRUD |
+| `backend/models.py` | Add `PackDefinition`, `PackApplicability`, `MemberPackEvent`, `FlightBillingQuote`, `FlightBillingConfig` models |
+| `backend/services/flight_packs.py` | **NEW** — Pack definition + pack_applicability CRUD, events ledger, balance projection, FIFO resolution, freeze logic |
+| `backend/services/accounting.py` | Add flight billing settings helpers in `system_settings` module |
 | `backend/services/flight_billing.py` | Refactor pack-aware pricing resolution to use consumable pack purchases keyed by (member, fiscal_year, pack_type, asset_type) |
 | `backend/services/flight_billing_apply.py` | **NEW** — Apply preview → create entry, post, persist consumptions |
 | `backend/services/accounting.py` | Minor: expose `get_account` for config lookup |
@@ -326,13 +325,13 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 ## Verification Plan
 
-1. **Unit tests**: pack definition CRUD, pack-definition price matrix CRUD, member pack events (purchase/consume), preview → apply entry creation, freeze/unfreeze recalc
+1. **Unit tests**: pack definition CRUD, pack_applicability link CRUD, member pack events (purchase/consume), FIFO consumption resolution across multiple packs, preview → apply entry creation, freeze/unfreeze recalc
 2. **Integration test**: full cycle — Planche sync → preview → apply (Draft) → member review window → post → verify accounting entry exists with correct lines and that `member_pack_events` consume rows are persisted
 3. **UI manual test — Daily Ops**: Flights tab → select flights → preview → apply → post → check Journal FL for the entry → buy pack → recalculate → verify updated
 4. **UI manual test — Machine dashboard**: After billing flights for multiple machines, dashboard shows correct aggregates → drill-down → entries match
 5. **UI manual test — Member portal**: Enable expense access → login with token → see own flights, billing, account → cannot see other members' data
 6. **Edge cases**: shared flight (partage) with pack for one pilot only; post-purchase covering an already-posted flight; freeze then unfreeze; multiple packs of same type consumed by FIFO; fiscal year rollover (pack validity expires, no carry-over)
-7. **Hash/alert safety test**: billing hash changes when selected pricing items or pack-event consumption rows change; minimum-balance alerts evaluate net 411 impact only after full entry apply
+7. **Hash/alert safety test**: billing hash changes when selected pricing items or pack-applicability discounted prices change; minimum-balance alerts evaluate net 411 impact only after full entry apply
 
 ---
 

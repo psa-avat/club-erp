@@ -39,7 +39,7 @@ flowchart LR
     L --> M{Correction needed?}
     M -- Post-purchase pack --> N[Recalculate billing]
     M -- Freeze pack consumption --> N
-    N --> O[Supersede old quote<br/>Create reversal if posted<br/>Create new quote + entry]
+    N --> O[Delete old Draft entry or<br/>create reversal if posted<br/>Run fresh preview → new Draft entry]
     O --> L
 ```
 
@@ -131,20 +131,23 @@ A pack is a reusable **catalog definition** (for example a 25h pack) that a memb
 
 A member can hold multiple purchases of the same pack type simultaneously.
 
-### 5.3 Pack Definition Price Matrix
+### 5.3 Pack Applicability (Link to Pricing Items)
 
-Each pack definition carries a list of couples:
+Each pack definition links to existing `pricing_items` via `pack_applicability` with a `discounted_unit_price`.
 
-1. `asset_type_uuid`
-2. `unit_price`
-
-Example: a `PACK_25H_GLIDER` can define one price per glider asset type family.
+| Concept | Detail |
+|---|---|
+| Link target | `pricing_items` (existing pricing catalog) |
+| Resolution key | `pricing_item_uuid` |
+| Resolved price | `discounted_unit_price` (e.g. €20 instead of €100) |
+| Scope | One pack can cover multiple pricing items; one pricing item can be covered by multiple packs |
 
 Resolution rule:
 
-- Match billed line asset type to `pack_definition_prices.asset_type_uuid`
-- Use matching `unit_price` as the resolved pack price
-- If no match exists, pack is not applicable for that line
+- Match billed line's `pricing_item_uuid` to `pack_applicability.pricing_item_uuid`
+- If the member has an eligible pack with remaining quantity, use `discounted_unit_price`
+- If multiple packs apply, use FIFO order (by purchase date)
+- If no match or no remaining quantity, use standard `base_price` from the pricing item
 
 ### 5.4 Pack Purchase
 
@@ -184,15 +187,23 @@ remaining_pack_quantity = purchased_quantity - consumed_quantity_total
 - At fiscal year close, remaining quantities do not carry over.
 - Members buy new pack purchases for the new fiscal year.
 
-### 5.8 Single Table vs Split Tables
+### 5.8 Member Pack Events (Single Ledger)
 
-Yes, one table can track both purchases and consumptions. The recommended approach is a single ledger table (`member_pack_events`) with `event_type`.
+Purchases and consumptions are tracked in a **single ledger table** `member_pack_events` with `event_type`:
 
-- `purchase` events add quantity
-- `consume` events subtract quantity
-- `freeze`/`unfreeze`/`adjust` events control recalculation and corrections
+| Event type | `quantity_delta` | When |
+|---|---|---|
+| `purchase` | Positive (e.g. +25.0000) | Member buys a pack |
+| `consume` | Negative (e.g. −1.0000) | Flight line billed under pack pricing |
+| `freeze` / `unfreeze` | 0 | Control flag on existing consume rows |
+| `adjust` | Any | Manual correction by accountant |
 
-Even with one table, consumption must still be recorded **one row per billed flight line** (with `flight_uuid`, `source`, and pricing context) for deterministic recalculation and auditability.
+**Why a single table?**
+
+- A `purchase` row is the **first-class object**: it carries the member, pack definition, fiscal year, and accounting link
+- Remaining quantity is derived as `SUM(quantity_delta)` grouped by `(member, pack_definition, fiscal_year)` — always consistent because every consumption is a negative delta
+- Each `consume` row links to a specific flight/line via `flight_uuid`, `source`, and `applied_pricing_item_uuid`
+- A member can buy **multiple packs** of the same type — each `purchase` row is a separate lot, consumed in FIFO order
 
 ---
 
@@ -313,16 +324,16 @@ Posting is a **separate, explicit step** that happens **after** members have rev
 
 ```
 recalculate_billing(flight_uuid, fy_uuid, user_id):
-  1. Load existing quote for this flight
-  2. If quote state = 'applied' and entry is Draft:
-     - Delete the Draft entry
-     - Supersede the old quote
-  3. If quote state = 'applied' and entry is Posted:
+  1. Check existing accounting_entry_uuid on the flight
+  2. If entry exists and is Draft:
+     - Delete the Draft entry and its consumption rows
+     - Nullify accounting_entry_uuid on the flight
+  3. If entry exists and is Posted:
      - Create reversal of the posted entry (new Draft)
-     - Supersede the old quote
   4. Run fresh preview with current pack quantities and freeze state
-  5. Create new quote + new Draft entry
-  6. If original entry was Posted, post the new entry + post the reversal
+  5. Create new Draft entry + new consumption rows
+  6. Link accounting_entry_uuid on the flight
+  7. If original entry was Posted, post the new entry + post the reversal
 ```
 
 ### 7.3 Post-Purchase Flow
@@ -364,25 +375,27 @@ Each `member_pack_events` `consume` row has an `is_frozen` boolean.
 | `pack_type` | varchar | `flight_hours` / `winch_launches` / `tow_launches` |
 | `quantity_allowance` | Numeric(10,4) | Base quantity included in one pack purchase |
 | `quantity_unit` | varchar | `hours` / `launches` |
-| `eligible_asset_type_uuid` | UUID? | Optional FK → asset_types |
-| `pack_sales_account_uuid` | UUID? | Optional FK → accounting_accounts (override) |
-| `flights_journal_uuid` | UUID? | Optional FK → accounting_journals (override) |
-| `pack_consumption_strategy` | varchar? | Optional override: `fifo` / `lifo` |
-| `priority` | int? | Optional tie-breaker |
+| `eligible_asset_type_uuid` | UUID? | Optional FK → asset_types (restricts eligible asset types) |
+| `pack_sales_account_uuid` | UUID? | Optional FK → accounting_accounts (overrides FY default) |
+| `flights_journal_uuid` | UUID? | Optional FK → accounting_journals (overrides FY default) |
+| `priority` | int? | Optional tie-breaker when multiple pack definitions match |
 | `created_at` | timestamptz | |
 
-### 9.2 `pack_definition_prices`
+### 9.2 `pack_applicability`
 
 | Column | Type | Notes |
 |---|---|---|
 | `uuid` | UUID | PK |
 | `pack_definition_uuid` | UUID | FK → pack_definitions |
-| `asset_type_uuid` | UUID | FK → asset_types |
-| `unit_price` | Numeric(10,4) | Pack unit price for this asset type |
-| `currency` | varchar(3) | ISO currency, default EUR |
+| `pricing_item_uuid` | UUID | FK → pricing_items |
+| `discounted_unit_price` | Numeric(10,4) | Unit price when billed under this pack (e.g. €20 instead of €100) |
 | `created_at` | timestamptz | |
 
-Unique: (`pack_definition_uuid`, `asset_type_uuid`)
+Unique: (`pack_definition_uuid`, `pricing_item_uuid`)
+
+Business rules:
+- One pack can cover multiple pricing_items (e.g. 25h pack valid on ASK21 and LS8)
+- One pricing_item can be covered by multiple packs (e.g. standard rate → 25h pack, 50h pack)
 
 ### 9.3 `member_pack_events`
 
@@ -432,6 +445,17 @@ Unique: (`pack_definition_uuid`, `asset_type_uuid`)
 | `allow_post_purchase_recalculation` | boolean | Default true |
 | `updated_at` | timestamptz | |
 | `updated_by` | int? | FK → users |
+
+### 9.6 Tolerance Parameters
+
+Stored in `system_settings` (module `flight_billing`):
+
+```json
+{
+  "max_days_for_post_purchase_discount": 7,
+  "require_approval_for_late_discount": true
+}
+```
 
 ---
 

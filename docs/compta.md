@@ -1,290 +1,688 @@
-Voici une spécification de synthèse qui organise les flux comptables découverts dans les documents en un modèle cohérent, orienté développement et validation métier.
+# Accounting Flows Specification – Gliding Club ERP
 
-Spécification des Flux Comptables – Club de Vol à Voile
-
-# 1. Vue d’ensemble du système
-
-L’ERP gère la comptabilité en partie double pour une association loi 1901. Le périmètre couvre : l’adhésion des membres, la facturation des vols, les ventes boutique/bar, les achats fournisseurs, les encaissements, les remboursements, la paie, les provisions techniques, les amortissements, les subventions et les droits à remise (packs).
-
-## 1.1 Principes transverses
-
-Règle Application
-
-Partie double Somme des débits = somme des crédits par écriture
-Immutabilité post-validation Une écriture state = posted ne peut plus être modifiée
-Correction = extourne Une écriture postée est corrigée par une écriture d’extourne + une nouvelle écriture
-Brouillon → Posté Séquence manuelle explicite (sauf imports paramétrés)
-Ancrage fiscal Chaque écriture appartient à un exercice comptable (fiscal_year)
-Traçabilité membre Les lignes 411 (membres) portent member_uuid et member_account_id_snapshot
-Traçabilité analytique Les lignes de vol portent analytical_asset_uuid (aéronef / machine)
-
-## 1.2 Journaux utilisés
-
-Code Usage Type
-
-VT Facturation membres (cotisations, ventes boutique différées, packs) Vente
-HA Factures fournisseurs Achat
-BQ Banque (virements, chèques, remboursements) Banque
-CS Caisse (espèces, CB immédiate) Caisse
-OD Opérations diverses (régularisations, provisions, paie, subventions) Général
-FL Facturation des vols (généré automatiquement) Vols
-AN À-nouveaux (ouverture d’exercice) Ouverture
+## Version 3.0 – Packs with Link Table (Hybrid Approach)
 
 ---
 
-# 2. Macro-cycle comptable
+## 1. System Overview
+
+The ERP manages double-entry accounting for a French non-profit association (law 1901). The scope covers: member subscriptions, flight billing, shop/bar sales, supplier purchases, payments, reimbursements, payroll, technical provisions, depreciation, subsidies, and pack-based discounts.
+
+### 1.1 Cross-cutting Principles
+
+| Rule | Application |
+|------|-------------|
+| Double-entry | Sum of debits = sum of credits per entry |
+| Post-validation immutability | A `state = posted` entry cannot be modified |
+| Correction = reversal | A posted entry is corrected by a reversal entry + a new entry |
+| Draft → Posted | Explicit manual sequence (except parameterized imports) |
+| Fiscal anchoring | Each entry belongs to a `fiscal_year` |
+| Member traceability | Account 411 lines carry `member_uuid` and `member_account_id_snapshot` |
+| Analytical traceability | Flight lines carry `analytical_asset_uuid` (aircraft / machine) |
+
+### 1.2 Journals Used
+
+| Code | Usage | Type |
+|------|-------|------|
+| VT | Member billing (subscriptions, deferred shop sales, packs) | Sale |
+| HA | Supplier invoices | Purchase |
+| BQ | Bank (transfers, checks, refunds) | Bank |
+| CS | Cash (cash, immediate card) | Cash |
+| OD | Miscellaneous operations (adjustments, provisions, payroll, subsidies) | General |
+| FL | Flight billing (automatically generated) | Flights |
+| AN | Opening carry-forward | Opening |
+
+---
+
+## 2. High-Level Accounting Cycle
 
 ```mermaid
 flowchart TD
-    A[Adhésion / Vente pack] --> VT
-    B[Vol importé + tarif] --> FL
-    C[Achat fournisseur] --> HA
-    D[Paiement / Encaissement] --> BQ
+    A[Subscription / Pack purchase] --> VT
+    B[Imported flight + pricing] --> FL
+    C[Supplier purchase] --> HA
+    D[Payment / Receipt] --> BQ
+
     VT --> Draft[Draft entry]
     FL --> Draft
     HA --> Draft
     BQ --> Draft
+
     Draft -->|POST| Posted[Posted entry]
-    Posted -->|Extourne si erreur| Rev[Reversal entry + new entry]
+
+    Posted -->|Post-purchase pack| Recalc[Recalculation]
+    Recalc -->|New entry if needed| Draft
 ```
----
-
-# 3. Flux détaillés – Entrées
-
-## 3.1 Adhésion et inscription
-
-Principe : Une facture VT est créée à l’inscription (plusieurs lignes possibles).
-
-Ligne Débit Crédit Condition
-Cotisation 411 (membre) 7561
-Frais de fonctionnement 411 (membre) 7065
-Assurance FFVP (option) 411 (membre) 706x configurable
-⚠️ Remise jeune (-25 ans) : appliquée dans le prix (pas d’écriture de remise séparée).
-
-Validation métier :
-
-· Un membre ne peut être enregistré sans au moins une ligne de produit.
-· Le compte 411 doit être lettrable et dimensionné member_uuid.
-
-## 3.2 Vente boutique / bar / cartes
-
-Cas Débit Crédit Journal
-Paiement immédiat espèces 530 7071 (boutique) / 7072 (bar) CS
-Paiement différé (compte membre) 411 7071 VT
-Achat porté au compte pilote 411 7071 VT
-
-Validation métier :
-
-· La vente immédiate ne passe pas par le compte 411.
-· Un achat différé est lettrable lors du paiement ultérieur.
-
-## 3.3 Recharge compte pilote (411 créditeur)
-
-Le membre verse un acompte (avance de trésorerie).
-
-Mode Débit Crédit
-Virement 512 411 (créditeur)
-Espèces 530 411 (créditeur)
-Chèque remis en banque 512 411 (créditeur)
-
-⚠️ Le compte 411 passe créditeur (dette du club envers le membre).
-
-Un badge UI “Crédit disponible” est affiché sur le profil du membre.
-
-## 3.4 Facturation des vols (journal FL)
-
-Chaque vol produit une écriture FL qui peut contenir :
-
-Composant Débit Crédit
-Heures cellule (brut) 411 7062
-Lancement treuil (brut) 411 7063
-Remorquage (brut) 411 7063
-Temps moteur TMG (brut) 411 7064
-Remise pack (contre-écriture) 7066 411
-
-⚠️ La remise pack est une contre-écriture dans la même écriture FL (pas d’écriture séparée).
-
-Solde net 411 = brut − remise.
-
-Règle métier :
-
-Les alertes de seuil minimum sur compte 411 doivent porter sur le net (brut − remise).
-
-## 3.5 Achat d’un pack de remise (abonnement)
-
-Le membre achète un droit à remise pour l’année (ex: 200 € → 80% de remise sur les heures cellule).
-Étape Débit Crédit Journal
-Achat du pack 411 7066 VT
-
-7066 – Packs et réductions est un compte de produit qui peut avoir un solde débiteur après application des remises (contre-écritures FL).
-
-Le pack est attaché à un exercice fiscal et un pack_type (flight_hours / winch_launches / tow_launches).
-
-## 3.6 VI (Vol d’Initiation) – Tiers non-membre
-
-Cas Débit Crédit Journal
-
-Paiement immédiat (espèces) 530 706 CS
-HelloAsso (net frais) 512 706 BQ
-Frais de plateforme HelloAsso 627  BQ
-Constatation à la réalisation (entitlement consommé) 467 706 VT
-
-⚠️ Ne pas utiliser le compte 411 pour les tiers (utiliser 467).
-
-Choix de politique : constatation à l’encaissement (HelloAsso) ou à la réalisation (vol effectué).
 
 ---
 
-# 4. Flux détaillés – Sorties et tiers
+## 3. Detailed Flows – Income
 
-## 4.1 Achats fournisseurs
+### 3.1 Subscription and Registration
 
-Étape Débit Crédit Journal
-Facture (entretien, carburant, location, assurance) 615 / 6063 / 613 / 616 401 HA
-Paiement fournisseur 401 512 BQ
-Association non assujettie à TVA → TVA incluse dans la charge (pas de compte 44566).
+Principle: A VT invoice is created at registration (multiple lines possible).
 
-## 4.2 Remboursement de frais avancés par un membre
+Line	Debit	Credit	Condition
+Membership fee	411 (member)	7561	
+Operating fee	411 (member)	7065	
+FFVP insurance (optional)	411 (member)	706x	configurable
+⚠️ Youth discount (<25 years): applied within the price (no separate discount entry).
 
-### Étape 1 – Constatation de la dette (HA, car facture fournisseur tiers)
+Business validation:
 
-Débit Crédit
-Charge (6063 carburant, 625 déplacement, …) 411 (créditeur)
+A member cannot be registered without at least one product line.
 
-### Étape 2 – Arbitrage trésorier
+Account 411 must be reconcilable and dimensioned with member_uuid.
 
-Décision Écriture
+Example: Flying member, membership €180 + operating fee €40
 
-Remboursement bancaire (grosse somme) Débit 411 / Crédit 512 (BQ)
-Provision sur compte pilote (petite somme) Pas d’écriture, solde créditeur 411 consommé par vols futurs
-Seuil de basculement paramétrable (ex: < 50 € → provision, ≥ 50 € → remboursement).
+Label	Debit	Credit	Journal
+Annual membership	411	7561	VT
+Operating fee	411	7065	VT
 
-## 4.3 Encaissements membres (apurement 411)
+### 3.2 Shop / Bar / Map Sales
+Case	Debit	Credit	Journal
+Immediate cash payment	530	7071 (shop) / 7072 (bar)	CS
+Deferred payment (member account)	411	7071	VT
+Purchase charged to pilot account	411	7071	VT
+Business validation:
 
-Mode Débit Crédit Journal
-Virement / CB 512 411 BQ
-Espèces 530 411 CS
-Lettrage obligatoire entre le paiement et la facture d’origine (ou multiple factures).
+Immediate sales do not go through account 411.
+
+A deferred purchase is reconcilable upon subsequent payment.
+
+Example shop sale (cash): SIA map + equipment €45
+
+Label	Debit	Credit	Journal
+Cash receipt	530	707	CS
+
+### 3.3 Pilot Account Top-up (411 credit balance)
+The member makes a prepayment (cash advance to the club).
+
+Method	Debit	Credit
+Bank transfer	512	411 (credit)
+Cash	530	411 (credit)
+Check deposited	512	411 (credit)
+⚠️ Account 411 becomes credit (club's debt to the member).
+A "Credit available" UI badge is displayed on the member profile.
+
+Example bank transfer: Pilot tops up €500
+
+Label	Debit	Credit	Journal
+Bank transfer receipt	512	411 (credit)	BQ
+
+### 3.4 Flight Billing (FL journal) – Without discount
+⚠️ Key change: the flight is billed at the full (gross) rate.
+Any discount will be applied later via a separate OD entry or pack consumption.
+
+Component	Debit	Credit
+Cell hours (gross)	411	7062
+Winch launch (gross)	411	7063
+Tow launch (gross)	411	7063
+TMG engine time (gross)	411	7064
+Account 411 balance after flight = total gross amount.
+
+Business validation:
+
+Minimum balance alerts on account 411 must not be triggered before discount application.
+
+Each flight line carries analytical_asset_uuid (concerned aircraft or machine).
+
+The entry is automatically generated by the ERP in the FL journal.
+
+Example glider winch flight: 1h10, standard rate
+
+Label	Debit	Credit	Journal
+Cell hours	411	7062	FL
+Winch launch	411	7063	FL
+Example TMG flight: 0h45 cell + 0.52 engine hours
+
+Label	Debit	Credit	Journal
+TMG cell hours	411	7062	FL
+Engine time	411	7064	FL
+
+### 3.5 Pack Purchase (subscription)
+The member buys a discount entitlement for the year.
+
+Step	Debit	Credit	Journal
+Pack purchase	411	7066	VT
+7066 – Packs and reductions is a revenue account.
+The pack is attached to a fiscal year and a pack_type (flight_hours / winch_launches / tow_launches / engine_time).
+
+Example: Purchase of season winch pack at €200
+
+Label	Debit	Credit	Journal
+Pack purchase	411	7066	VT
+
+### 3.6 Discovery Flight (VI) – Non-member third party
+Case	Debit	Credit	Journal
+Immediate payment (cash)	530	706	CS
+HelloAsso (net fees)	512	706	BQ
+HelloAsso platform fees	627		BQ
+Recognition upon realization (entitlement consumed)	467	706	VT
+⚠️ Do not use account 411 for third parties (use 467).
+Policy choice: recognition upon receipt (HelloAsso) or upon realization (flight completed).
+
+Example direct VI (cash): €80
+
+Label	Debit	Credit	Journal
+VI cash receipt	530	706	CS
+Example HelloAsso VI: €80, platform fees €3
+
+Label	Debit	Credit	Journal
+HelloAsso funds receipt	512	706	BQ
+Platform fees	627		BQ
+
+## 4. Pack Catalog & Consumable Member Packs
+
+### 4.1 General Principle
+
+A pack is a catalog definition (e.g., PACK_25H_GLIDER) that a member can purchase one or more times.
+The discount is applied via a link table between a pack and an existing pricing_item.
+
+Concept	Meaning
+Pack definition	Template defining type, quantity allowance, and eligible pricing_items
+Pack applicability	Link between a pack and a pricing_item with a discounted price
+Member pack events	Ledger of member purchases and consumptions
+Consumption	Quantity deducted from pack stock for a given flight
+
+### 4.2 Pack Types
+pack_type	Scope	Unit	Example
+flight_hours	Flight hours (glider or TMG)	hours	25h glider pack
+winch_launches	Winch launches	launches	20 winch pack
+tow_launches	Tow launches	launches	10 tow pack
+engine_time	Engine time (centihours)	hours	10h engine pack
+
+### 4.3 Link Table: pack_applicability
+This is the core of the system. It links a pack to an existing pricing_item and defines the discounted unit price.
+
+Column	Type	Notes
+uuid	UUID	PK
+pack_definition_uuid	UUID	FK → pack_definitions
+pricing_item_uuid	UUID	FK → pricing_items
+discounted_unit_price	Numeric(10,4)	Unit price with discount (e.g., €20 instead of €100)
+created_at	timestamptz	
+Constraint: (pack_definition_uuid, pricing_item_uuid) is unique.
+
+Business rules:
+
+One pack can cover multiple pricing_items (e.g., 25h pack valid on ASK21 and LS8)
+
+One pricing_item can be covered by multiple packs (e.g., standard rate → 25h pack, 50h pack, season pack)
+
+The table stores only the discounted price. The standard price is in pricing_items.base_price.
+
+### 4.4 Concrete Example
+Existing pricing item: HEURE_CELLULE_ASK21 → base_price = €100
+
+Pack definition: PACK_25H_GLIDER → quantity_allowance = 25, pack_type = flight_hours
+
+Link in pack_applicability:
+
+pack_definition_uuid	pricing_item_uuid	discounted_unit_price
+PACK_25H_GLIDER	HEURE_CELLULE_ASK21	20.00
+Result: A member with this pack pays €20/h instead of €100/h.
+
+### 4.5 Member Pack Purchase
+
+```sql
+INSERT INTO member_pack_events (member_uuid, fiscal_year_uuid, pack_definition_uuid, event_type, quantity_delta, purchase_entry_uuid)
+VALUES (member_x, fiscal_year_2026, PACK_25H_GLIDER, 'purchase', +25, accounting_entry_uuid);
+```
+
+Associated accounting entry (VT journal):
+
+Debit	Credit	Amount
+411 (member)	Pack sales account (config)	Pack purchase price
+
+### 4.6 Consumption During Flight Billing
+When a flight is billed:
+
+Identify the applicable standard pricing_item (e.g., HEURE_CELLULE_ASK21)
+
+Query pack_applicability to see if the member has an active pack (same fiscal_year, matching pack_type, remaining quantity > 0)
+
+If yes, use discounted_unit_price and consume the quantity
+
+Record a consume event in member_pack_events
+
+```sql
+INSERT INTO member_pack_events (member_uuid, fiscal_year_uuid, pack_definition_uuid, event_type, quantity_delta, flight_uuid, source, applied_pricing_item_uuid, billed_amount)
+VALUES (member_x, fiscal_year_2026, PACK_25H_GLIDER, 'consume', -1.0, flight_uuid, 'flight', HEURE_CELLULE_ASK21, 20.00);
+```
+
+### 4.7 Consumption Rules
+Rule	Application
+FIFO by default	Consume packs in purchase order
+Multiple packs of same type	Consume sequentially (FIFO)
+Insufficient pack quantity	Consume remaining, rest billed at standard rate
+Fiscal year expiration	No carry-over of unused quantities
+
+### 4.8 Corresponding UI
+Pack edition screen (admin):
+
+"Applicable rates" tab
+
+List of pricing_items (filtered by corresponding asset_type_uuid)
+
+For each line, a field "Unit price with pack" (empty = not applicable)
+
+Billing resolution:
+
+Automatic, invisible to the user
+
+The invoice line displays the actually applied unit price
+
+## 5. Detailed Flows – Expenses and Third Parties
+
+### 5.1 Supplier Purchases
+Step	Debit	Credit	Journal
+Invoice (maintenance, fuel, rental, insurance)	615 / 6063 / 613 / 616	401	HA
+Supplier payment	401	512	BQ
+Non-VAT registered association → VAT included in expense (no account 44566).
+
+Example maintenance invoice: Glider overhaul €2,400
+
+Label	Debit	Credit	Journal
+Aircraft maintenance	615	401	HA
+Example supplier payment: Transfer €2,400
+
+Label	Debit	Credit	Journal
+Supplier debt clearance	401	512	BQ
+Example fuel: Invoice €850
+
+Label	Debit	Credit	Journal
+Aircraft fuel	6063	401	HA
+Example insurance: Annual fleet premium €4,200
+
+Label	Debit	Credit	Journal
+Insurance premium	616	401	HA
+If the premium covers two fiscal years, the N+1 portion is recorded in 487 (Deferred income).
+
+### 5.2 Member Expense Reimbursement
+Step 1 – Debt recognition (HA, as third-party supplier invoice)
+
+Debit	Credit
+Expense (6063 fuel, 625 travel, …)	411 (credit)
+Step 2 – Treasurer arbitration
+
+Decision	Entry
+Bank refund (large amount)	Debit 411 / Credit 512 (BQ)
+Provision on pilot account (small amount)	No entry, credit balance on 411 consumed by future flights
+Configurable threshold (e.g., < €50 → provision, ≥ €50 → refund).
+
+Example: Pilot advances €340 for fuel
+
+Step	Label	Debit	Credit	Journal
+1	Debt recognition	6063	411	HA
+2	Bank refund	411	512	BQ
+
+### 5.3 Member Receipts (411 clearing)
+Method	Debit	Credit	Journal
+Bank transfer / card	512	411	BQ
+Cash	530	411	CS
+Reconciliation required between payment and original invoice (or multiple invoices).
+
+Example: Pilot pays €220 invoice by transfer
+
+Label	Debit	Credit	Journal
+Bank transfer receipt	512	411	BQ
+
+## 6. Adjustment and Provision Flows
+
+### 6.1 Maintenance Provisions (actual cost)
+Automatically generated by rule (CostProvisionRule): metric_name (engine_hours, winch_launches…), unit cost, method (RealTime / BatchDaily).
+
+Provision entry	Debit	Credit
+Provision (engine / winch maintenance)	681 (or 605)	281 / 288
+When actual maintenance invoice is received:
+
+Step	Debit	Credit
+Actual invoice	615	401
+Provision reversal	281/288	781
+The reversal clears the provision. Any excess remains as provision.
+
+Example provision: 10 engine hours at €10/h = €100 provisioned
+
+Label	Debit	Credit	Journal
+Maintenance provision	681	281	OD
+Example reversal on actual invoice: Repair €3,000
+
+Label	Debit	Credit	Journal
+Actual invoice	615	401	HA
+Provision reversal	281	781	OD
+
+### 6.2 Asset Depreciation (Aircraft)
+Entry	Debit	Credit	Frequency
+Depreciation allocation	681	281	annual
+Example: Glider acquired for €60,000, straight-line 15 years = €4,000/year
+
+Label	Debit	Credit	Journal
+Depreciation allocation	681	281	OD
+
+### 6.3 Subsidies
+Subsidy	Debit	Credit
+Equipment received	512	131
+Annual portion transferred to income	139	777
+Operating	512	742
+Example equipment subsidy: Regional grant €20,000 for glider purchase
+
+Step	Label	Debit	Credit	Journal
+1	Subsidy receipt	512	131	BQ
+2	Annual portion (€1,333)	139	777	OD
+Example operating subsidy: Municipal aid €5,000
+
+Label	Debit	Credit	Journal
+Subsidy receipt	512	742	BQ
+
+## 7. Payroll and Social Charges
+Step	Debit	Credit	Journal
+Gross recognition	641 (gross)	428 (net payable) + 431 (employee social charges)	OD
+Employer charges	645	431	OD
+Net salary payment	428	512	BQ
+URSSAF payment	431	512	BQ
+Example: Employee, gross €2,000, employee charges €400, net payable €1,600, employer charges €800
+
+Step	Label	Debit	Credit	Journal
+1	Gross recognition	641	428 + 431	OD
+2	Employer charges	645	431	OD
+3	Net payment	428	512	BQ
+4	URSSAF payment	431	512	BQ
+
+## 8. Version Differences and Corrections
+
+### 8.1 Flight Modification After Billing
+Case	Action
+Entry still in Draft state	Update lines (no reversal)
+Entry Posted	Create reversal + new corrected entry
+
+### 8.2 Pack Purchase After Flight Date
+Automatic recalculation within tolerance window.
+
+If flight already posted → reversal + new entry.
+
+If flight already discounted → no action.
+
+Outside tolerance window → blocking (unless exception).
+
+### 8.3 Reversal
+A reversal is an entry that cancels a posted entry. It is created in the same journal as the original entry, with inverted amounts (debit ↔ credit).
+
+Example: Flight mistakenly billed €111 instead of €100
+
+Original entry	Debit	Credit
+Cell hours	411	7062
+Reversal entry	Debit	Credit
+Cell hours cancellation	7062	411
+
+## 9. Key Reports and Controls
+9.1 Mandatory Reports
+Report	Purpose
+General ledger by account	Audit
+Aged trial balance of account 411 (members)	Collection
+Supplier aging (401)	Cash flow
+Analytical detail by aircraft (analytical_asset_uuid)	Machine cost
+Account 7066 balance (debit/credit)	Discount tracking
+OD discount entries	Post-flight discount traceability
+List of discounted flights	Double-discount prevention
+Depreciation journal	Allocation tracking
+Subsidy statement	Annual portion tracking
+
+### 9.2 Blocking Rules
+Condition	Block
+Unbalanced entry	Prevent posting
+Entry date outside fiscal year	Refuse creation
+Closed fiscal year (state = closed)	Refuse posting (unless explicit reopening)
+Use of account without is_posting_allowed	Refuse
+Post-flight discount outside tolerance window	Refuse (unless explicit exception)
+Second discount on same flight	Refuse
+
+## 10. Complete Data Models
+10.1 pack_definitions
+Column	Type	Notes
+uuid	UUID	PK
+fiscal_year_uuid	UUID	FK → accounting_fiscal_years
+code	varchar	Unique business key (e.g., PACK_25H_GLIDER)
+name	varchar	Display name
+pack_type	varchar	flight_hours / winch_launches / tow_launches / engine_time
+quantity_allowance	Numeric(10,4)	Included quantity (e.g., 25.0000 hours)
+quantity_unit	varchar	hours / launches / centihours
+eligible_asset_type_uuid	UUID	FK → asset_types (nullable, restricts eligible items)
+pack_sales_account_uuid	UUID	FK → accounting_accounts (override, nullable)
+flights_journal_uuid	UUID	FK → accounting_journals (override, nullable)
+priority	int	Tie-breaker when multiple packs apply (default 0)
+created_at	timestamptz	
+
+### 10.2 pack_applicability (link table)
+Column	Type	Notes
+uuid	UUID	PK
+pack_definition_uuid	UUID	FK → pack_definitions
+pricing_item_uuid	UUID	FK → pricing_items
+discounted_unit_price	Numeric(10,4)	Unit price with discount
+created_at	timestamptz	
+Unique constraint: (pack_definition_uuid, pricing_item_uuid)
+
+### 10.3 member_pack_events
+Column	Type	Notes
+uuid	UUID	PK
+member_uuid	UUID	FK → members
+fiscal_year_uuid	UUID	FK → accounting_fiscal_years
+pack_definition_uuid	UUID	FK → pack_definitions
+event_type	varchar	purchase / consume / freeze / unfreeze / adjust
+quantity_delta	Numeric(10,4)	Positive for purchase, negative for consumption
+flight_uuid	UUID	FK → validated_flights (required for consume)
+source	varchar	flight / launch
+applied_pricing_item_uuid	UUID	FK → pricing_items (the item used)
+billed_amount	Numeric(10,4)	Amount billed with this pricing item
+purchase_entry_uuid	UUID	FK → accounting_entries (for purchase)
+is_frozen	boolean	If true, this consumption is ignored
+frozen_at	timestamptz	
+frozen_reason	text	
+created_at	timestamptz	
+
+### 10.4 flight_billing_configs
+Column	Type	Notes
+uuid	UUID	PK
+fiscal_year_uuid	UUID	FK → accounting_fiscal_years, unique
+flights_journal_uuid	UUID	FK → accounting_journals
+pack_sales_account_uuid	UUID	FK → accounting_accounts (default pack sales account)
+pack_consumption_strategy	varchar	fifo (default)
+allow_post_purchase_recalculation	boolean	true by default
+updated_at	timestamptz	
+updated_by	int	FK → users
+
+### 10.5 flight_billing_quotes
+Column	Type	Notes
+uuid	UUID	PK
+flight_uuid	UUID	FK → validated_flights
+fiscal_year_uuid	UUID	FK → accounting_fiscal_years
+billing_hash	varchar(64)	SHA-256
+total_amount	Numeric(10,4)	
+state	varchar	quoted / applied / superseded / corrected
+applied_lines_json	JSONB	Snapshot of applied lines
+accounting_lines_json	JSONB	Snapshot of accounting lines
+pack_consumptions_json	JSONB	Snapshot of pack consumptions
+accounting_entry_uuid	UUID	FK → accounting_entries, nullable
+created_at	timestamptz	
+
+### 10.6 Tolerance Parameters
+Stored in system_settings (module flight_billing):
+
+```json
+{
+  "max_days_for_post_purchase_discount": 7,
+  "require_approval_for_late_discount": true
+}
+```
+
+## 11. API Surface
+
+### 11.1 Flight Billing
+Method	Path	Purpose
+POST	/api/v1/flights/{flight_uuid}/billing-preview	Preview single flight
+POST	/api/v1/flights/billing-preview	Preview batch by date range
+POST	/api/v1/flights/{flight_uuid}/billing-apply	Apply preview → create Draft entry
+POST	/api/v1/flights/{flight_uuid}/billing-post	Apply + Post in one step
+POST	/api/v1/flights/billing-batch-apply	Batch apply + post
+GET	/api/v1/flights/billable-flights	List flights ready for billing
+GET	/api/v1/flights/pending-billing-summary	Aggregate stats
+POST	/api/v1/flights/{flight_uuid}/recalculate	Recalculate single flight billing
+POST	/api/v1/flights/recalculate-batch	Batch recalculate
+
+### 11.2 Pack Definitions
+Method	Path	Purpose
+GET	/api/v1/pack-definitions	List pack definitions
+POST	/api/v1/pack-definitions	Create pack definition
+GET	/api/v1/pack-definitions/{uuid}	Get pack definition details
+PUT	/api/v1/pack-definitions/{uuid}	Update pack definition
+DELETE	/api/v1/pack-definitions/{uuid}	Delete (soft delete)
+
+### 11.3 Pack Applicability (Link to Pricing Items)
+Method	Path	Purpose
+GET	/api/v1/pack-definitions/{uuid}/applicable-items	List linked pricing items with discounted price
+POST	/api/v1/pack-definitions/{uuid}/applicable-items	Add link (pricing_item + discounted_price)
+PUT	/api/v1/pack-applicability/{uuid}	Update discounted_unit_price
+DELETE	/api/v1/pack-applicability/{uuid}	Remove link
+
+### 11.4 Member Pack Purchases
+Method	Path	Purpose
+POST	/api/v1/members/{member_uuid}/packs	Buy a pack (creates pack + Draft entry)
+GET	/api/v1/members/{member_uuid}/packs	List member packs with balances
+GET	/api/v1/members/{member_uuid}/packs/{pack_uuid}/balance	Remaining balance
+POST	/api/v1/members/{member_uuid}/packs/{pack_uuid}/apply-to-flights	Apply newly purchased pack to eligible flights
+
+### 11.5 Pack Event Management (Freeze)
+Method	Path	Purpose
+POST	/api/v1/pack-events/{event_uuid}/freeze	Freeze a consumption event
+POST	/api/v1/pack-events/{event_uuid}/unfreeze	Unfreeze a consumption event
+
+### 11.6 Billing Configuration
+Method	Path	Purpose
+GET	/api/v1/accounting/fiscal-years/{fy_uuid}/flight-billing-config	Get billing config
+PUT	/api/v1/accounting/fiscal-years/{fy_uuid}/flight-billing-config	Update billing config
+GET	/api/v1/settings/flight-billing/delay	Get tolerance delay
+PUT	/api/v1/settings/flight-billing/delay	Update tolerance delay
+
+## 12. Accounting Impact Summary
+Transaction	Debit	Credit	Amount
+Flight charge (standard or pack-priced item)	411 (member)	706x (revenue)	resolved_price × qty
+Pack purchase	411 (member)	pack_sales_account (config)	purchase_amount
+The 411 account always carries the member dimension (member_uuid, member_account_id_snapshot).
+
+The analytical dimension (analytical_asset_uuid) is set to the machine UUID on every line, enabling per-machine financial reporting.
+
+## 13. Permissions & Capabilities
+Capability	Operations
+VIEW_FINANCIALS	View previews, quotes, billing config, machine dashboard
+POST_ACCOUNTING_ENTRIES	Apply, post, recalculate, freeze/unfreeze
+MANAGE_PRICES	Configure billing config (pack sales account, journals, strategy), manage pack definitions
+MANAGE_USERS	Enable expense access tokens for members
+The member portal uses token-based auth (not capabilities) — a valid expense access token grants read-only access to the member's own data.
+
+## 14. Summary of PCG Accounts Used (extract)
+Account	Name	Type	Postable
+411	Members – Receivables	Asset	Yes
+512	Bank	Asset	Yes
+530	Cash	Asset	Yes
+401	Suppliers	Liability	Yes
+467	Other debtors/creditors	Asset	Yes
+706	Services provided	Revenue	Yes
+7061	Memberships and subscriptions	Revenue	Yes
+7062	Flight activity (cell hours)	Revenue	Yes
+7063	Launch revenue	Revenue	Yes
+7064	Engine revenue	Revenue	Yes
+7065	Operating fees	Revenue	Yes
+7066	Packs and reductions	Revenue	Yes
+707	Merchandise sales	Revenue	Yes
+7071	Shop sales	Revenue	Yes
+7072	Bar and meal sales	Revenue	Yes
+7561	Member subscriptions	Revenue	Yes
 
 ---
 
-# 5. Flux de régularisation et provisions
+## 15. Workflow Validation Matrix
+6063	Fuel	Expense	Yes
+615	Maintenance and repairs	Expense	Yes
+616	Insurance premiums	Expense	Yes
+613	Rentals	Expense	Yes
+625	Travel	Expense	Yes
+627	Banking services	Expense	Yes
+641	Personnel remuneration	Expense	Yes
+645	Social security charges	Expense	Yes
+681	Depreciation allocations	Expense	Yes
+781	Reversals of provisions	Revenue	Yes
+131	Equipment subsidies	Liability	Yes
+139	Subsidies recognized in income	Liability	Yes
+742	Operating subsidies	Revenue	Yes
+777	Portion of equipment subsidies transferred to income	Revenue	Yes
+428	Personnel – accrued charges	Liability	Yes
+431	Social security	Liability	Yes
+281	Depreciation of tangible assets	Liability	Yes
+288	Depreciation of other tangible assets	Liability	Yes
 
-5.1 Provisions pour maintenance (coût au réel)
+## 15. Workflow Validation Matrix
+Workflow	Control points
+Subscription	✅ VT generation, ✅ youth discount integrated, ✅ member_uuid dimension
+Flights (FL)	✅ Gross billing only, ✅ analytical_asset_uuid, ✅ automatic generation
+Pack purchase (VT)	✅ 411/7066 entry, ✅ pack_type, ✅ fiscal_year
+Pack consumption (link table)	✅ pricing_item link, ✅ discounted_unit_price, ✅ FIFO consumption
+Post-purchase recalculation	✅ eligible flights identified, ✅ consume events created, ✅ traceability
+Member reimbursement	✅ HA entry, ✅ threshold arbitration, ✅ 411 reconciliation
+Maintenance provision	✅ metric rule, ✅ reversal on actual invoice, ✅ RealTime/BatchDaily method
+Depreciation	✅ annual allocation, ✅ asset link
+Subsidies	✅ receipt, ✅ annual portion transfer
+Payroll	✅ OD recognition, ✅ BQ payments
+Posted flight correction	✅ reversal + rewrite
+Bank reconciliation	✅ semi-automatic reconciliation
+Legend: ✅ clear / to implement
 
-Générées automatiquement par règle (CostProvisionRule) : metric_name (engine_hours, winch_launches…), coût unitaire, méthode (RealTime / BatchDaily).
-Écriture de dotation Débit Crédit
-Provision (entretien moteur / treuil) 681 (ou 605) 281 / 288
-Lors de la facture réelle de maintenance :
-Étape Débit Crédit
-Facture réelle 615 401
-Reprise de provision 281/288 781
-La reprise solde la provision constituée. L’excédent reste en provision.
+## 16. Architecture Decision Summary
+Decision	Choice
+Where is the discount defined?	In pack_applicability (link between pack and pricing item)
+Automatic pricing item creation?	No – pricing items exist independently
+Multiple packs per pricing item?	Yes
+Multiple pricing items per pack?	Yes
+Discount management UI	From the pack screen ("Applicable rates" tab)
+Billing resolution	Query pack_applicability + pack balances
+Consumption strategy	FIFO by default
+Fiscal year boundary	No carry-over of unused quantities
+Posting policy	Always manual, after member review
 
-## 5.2 Amortissements des immobilisations (aéronefs)
+## 17. Functional Questions to Validate with the Club
+Point	Proposed decision	To validate
+Tolerance window for post-flight pack purchase	7 days	☐
+Can a discount be applied multiple times to the same flight?	No	☐
+Multiple packs of same type behavior	FIFO consumption	☐
+Can a post-flight discount be manually refused?	Yes (requires explicit approval)	☐
+Is explicit exception required for late discounts?	Yes, with traceability	☐
+VI treatment: receipt or realization?	To be defined	☐
+Bank reconciliation: semi-automatic or fully manual?	To be defined	☐
+Youth discount: only on subscription or also on flight hours?	To be defined	☐
 
-Écriture Débit Crédit Fréquence
-Dotation aux amortissements 681 281 annuelle
+<!-- Mermaid diagram for Pack → Applicability → Consumption flow -->
 
-## 5.3 Subventions
+```mermaid
+flowchart LR
+    subgraph "Pack Definition"
+        PD[Pack Definition<br/>PACK_25H_GLIDER]
+        PA[Pack Applicability<br/>pricing_item + discounted_price]
+    end
 
-Subvention Débit Crédit
-Équipement reçue 512 131
-Quote-part virée au résultat (annuelle) 139 777
-Exploitation 512 742
+    subgraph "Member"
+        M[Member]
+        PE[Pack Events<br/>purchase +25h]
+    end
 
----
+    subgraph "Flight Billing"
+        F[Flight]
+        PI[Pricing Item<br/>HEURE_CELLULE_ASK21]
+        C[Consumption event<br/>-1.0h, €20]
+    end
 
-# 6. Flux de paie et charges sociales
-
-Étape Débit Crédit Journal
-Constatation brute 641 (brut) 428 (net à payer) + 431 (charges salariales) OD
-Charges patronales 645 431 OD
-Paiement net salarié 428 512 BQ
-Paiement URSSAF 431 512 BQ
-
----
-
-# 7. Écarts de version et corrections
-
-## 7.1 Modification d’un vol après facturation
-
-Cas Action
-
-Écriture toujours à l’état Draft Mise à jour des lignes (pas d’extourne)
-Écriture Posted Création d’une extourne (réversal) + nouvelle écriture corrigée
-
-## 7.2 Achat de pack après la date d’un vol
-
-· Recalcul automatique de la facturation des vols éligibles (même exercice).
-· Si vol déjà posté → extourne + nouvelle écriture.
-
----
-
-# 8. États et contrôles clés
-
-## 8.1 États obligatoires
-
-État Utilité
-Grand livre par compte Audit
-Balance âgée des comptes 411 (membres) Recouvrement
-Échéances fournisseurs (401) Trésorerie
-Détail analytique par aéronef (analytical_asset_uuid) Coût machine
-Solde des packs et réductions (7066) Suivi des remises
-
-## 8.2 Règles de blocage
-
-Condition Blocage
-Écriture non équilibrée Empêcher le postage
-Date d’écriture hors exercice Refus de création
-Exercice clos (state = closed) Refus de postage (sauf réouverture explicite)
-Utilisation d’un compte sans is_posting_allowed Refus
-
----
-
-# 9. Vérifications fonctionnelles (à valider avec le club)
-
-10. Choix politique : seuil de remboursement vs provision (ex: 50 €).
-11. Traitement VI : constatation à l’encaissement ou à la réalisation ?
-12. Provision maintenance : méthode RealTime ou BatchDaily ?
-13. Packs : application de la remise sur quelle assiette (brut) ?
-14. Remise jeune : appliquée uniquement sur cotisation ou aussi sur heure de vol ?
-15. Rapprochement bancaire : lettrage semi-automatique ou entièrement manuel ?
-
----
-
-# 10. Synthèse des comptes PCG utilisés (extrait)
-
-Compte Intitulé Type Postable
-
-411 Membres – Créances Actif Oui
-512 Banque Actif Oui
-530 Caisse Actif Oui
-401 Fournisseurs Passif Oui
-467 Autres comptes débiteurs/créditeurs Actif Oui
-7061 Cotisations et adhésions Produit Oui
-7062 Activité vol (heures cellule) Produit Oui
-7063 Produit des lancements Produit Oui
-7064 Produit des moteurs Produit Oui
-7065 Frais de fonctionnement Produit Oui
-7066 Packs et réductions Produit Oui
-7071 Ventes boutique Produit Oui
-7072 Ventes bar et repas Produit Oui
-7561 Cotisations membres Produit Oui
-6063 Carburants Charge Oui
-615 Entretien et réparations Charge Oui
-681 Dotations aux amortissements Charge Oui
-781 Reprises sur provisions Produit Oui
-
----
-
-# 11. Matrice de validation des workflows
-
-Workflow Points de contrôle à valider
-Adhésion ✅ génération VT, ✅ remise jeune intégrée, ❌ reprise sur erreur
-Vols ✅ calcul brut + remise, ✅ analytical_asset_uuid, ❌ post-achat pack
-Packs ✅ écriture VT à l’achat, ✅ contre-écriture FL, ✅ scope fiscal
-Remboursement membre ✅ écriture HA, ✅ arbitrage seuil, ✅ lettrage 411
-Provision maintenance ✅ règle metric, ✅ reprise sur facture
-Correction vol posté ✅ extourne + ré-écriture
-Légende : ✅ clair / à implémenter / ❌ à arbitrer
+    PD --> PA
+    PA --> PI
+    M --> PE
+    PE -->|FIFO| C
+    PI --> C
+    C -->|billed_amount| Entry[Accounting Entry FL]
+```
