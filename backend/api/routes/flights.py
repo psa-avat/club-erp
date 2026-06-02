@@ -400,3 +400,96 @@ async def fetch_validated_flights_from_planche(
         pass
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Billable Flights (Phase 4)
+# ---------------------------------------------------------------------------
+
+class BillableFlightItem(BaseModel):
+    uuid: str
+    planche_uuid: str | None
+    jour: date | None
+    pilot_erp_id: str | None
+    pilot_name: str | None
+    asset_code: str | None
+    type_of_flight: int | None
+    type_label: str | None
+    total_preview: str | None
+    status: str  # pending | applied | posted
+    errors: list[str] = []
+    warnings: list[str] = []
+
+
+class BillableFlightListResponse(BaseModel):
+    items: list[BillableFlightItem]
+    total: int
+
+
+class PendingBillingSummaryResponse(BaseModel):
+    total_flights: int
+    total_amount: str
+    pending_count: int
+    error_count: int
+
+
+@router.get("/billable", response_model=BillableFlightListResponse)
+async def list_billable_flights(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = flights_guard,
+):
+    """List flights ready for billing (not yet applied) within a date range."""
+    filters = [ValidatedFlight.accounting_entry_uuid.is_(None)]
+    if date_from is not None:
+        filters.append(ValidatedFlight.jour >= date_from)
+    if date_to is not None:
+        filters.append(ValidatedFlight.jour <= date_to)
+
+    stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc())
+    result = await db.execute(stmt)
+    flights = result.scalars().all()
+
+    items: list[BillableFlightItem] = []
+    for f in flights:
+        items.append(BillableFlightItem(
+            uuid=str(f.uuid),
+            planche_uuid=f.planche_uuid,
+            jour=f.jour,
+            pilot_erp_id=f.pilot_erp_id,
+            pilot_name=None,
+            asset_code=f.asset_code or f.glider_erp_id,
+            type_of_flight=f.type_of_flight,
+            type_label=None,
+            total_preview=None,
+            status="pending",
+        ))
+
+    return BillableFlightListResponse(items=items, total=len(items))
+
+
+@router.get("/billing-summary", response_model=PendingBillingSummaryResponse)
+async def pending_billing_summary(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = flights_guard,
+):
+    """Aggregate stats for flights pending billing."""
+    filters = [ValidatedFlight.accounting_entry_uuid.is_(None)]
+    if date_from is not None:
+        filters.append(ValidatedFlight.jour >= date_from)
+    if date_to is not None:
+        filters.append(ValidatedFlight.jour <= date_to)
+
+    count_stmt = select(func.count()).select_from(ValidatedFlight).where(*filters)
+    count_result = await db.execute(count_stmt)
+    total = count_result.scalar() or 0
+
+    return PendingBillingSummaryResponse(
+        total_flights=total,
+        total_amount="0",
+        pending_count=total,
+        error_count=0,
+    )

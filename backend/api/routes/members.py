@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import require_capability
-from constants import CAP_MANAGE_USERS
+from constants import CAP_MANAGE_PRICES, CAP_MANAGE_USERS
 from models import User
 from schemas.members import (
     AnonymizationResultResponse,
@@ -496,3 +496,42 @@ async def disable_member_sheet_expense_access_endpoint(
         year=year,
         updated_by_user_id=current_user.id,
     )
+
+
+# ── Member Pack Purchase (Phase 4) ─────────────────────────────────────────
+
+@router.post("/{member_uuid:uuid}/packs")
+async def buy_pack_for_member(
+    member_uuid: UUID,
+    pack_uuid: UUID = Query(...),
+    quantity: int = Query(default=1, ge=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_capability(CAP_MANAGE_PRICES)),
+):
+    """Buy a pack for a member — creates a posted VT entry."""
+    from services.flight_packs import create_pack_purchase_entry, get_pack_definition
+
+    pack = await get_pack_definition(db, pack_uuid)
+    total = pack.quantity_allowance * quantity
+    entry = await create_pack_purchase_entry(
+        db=db,
+        member_uuid=member_uuid,
+        pack_definition=pack,
+        amount=total,
+        user_id=current_user.id,
+    )
+    return {"entry_uuid": str(entry.uuid), "total": str(total)}
+
+
+@router.get("/{member_uuid:uuid}/packs")
+async def list_member_packs(
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_capability(CAP_MANAGE_PRICES)),
+):
+    """List pack balances and consumption detail for a member."""
+    from services.flight_packs import get_member_pack_balance, list_consumptions_for_member
+
+    balances = await get_member_pack_balance(db, member_uuid, fiscal_year_uuid)
+    return {"balances": balances}

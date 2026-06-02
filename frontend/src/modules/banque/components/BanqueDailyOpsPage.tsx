@@ -23,6 +23,7 @@ import { useCapability } from '../../../auth/hooks/useCapability'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { OpsSupplierTab } from './OpsSupplierTab'
 import { OpsSalesTab } from './OpsSalesTab'
+import { OpsFlightsTab } from './OpsFlightsTab'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,6 +102,8 @@ export function BanqueDailyOpsPage() {
               <OpsSupplierTab fiscalYearUuid={activeFiscalYearUuid} />
             ) : tab === 'sales' && activeFiscalYearUuid ? (
               <OpsSalesTab fiscalYearUuid={activeFiscalYearUuid} />
+            ) : tab === 'flights' ? (
+              <OpsFlightsTab />
             ) : (
               <OpsTabPlaceholder tab={tab} t={t} />
             )}
