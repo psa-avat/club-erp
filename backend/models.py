@@ -1458,3 +1458,129 @@ class HelloAssoViStaging(Base):
 
     def __repr__(self):
         return f"<HelloAssoViStaging item={self.item_id}>"
+
+
+# ---------------------------------------------------------------------------
+# Pack management (catalog, applicability, consumption)
+# ---------------------------------------------------------------------------
+
+
+class PackDefinition(Base):
+    """Pack catalog template: defines type, quantity allowance, and accounts."""
+
+    __tablename__ = "pack_definitions"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_pack_definitions_code"),
+        CheckConstraint(
+            "pack_type IN ('flight_hours','winch_launches','tow_launches','engine_time')",
+            name="chk_pack_definitions_type",
+        ),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code = Column(String(32), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    fiscal_year_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pack_type = Column(String(32), nullable=False)
+    quantity_allowance = Column(Numeric(10, 2), nullable=False)
+    quantity_unit = Column(String(32), nullable=False, default="hours")
+    eligible_asset_type_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("asset_types.uuid", ondelete="SET NULL"), nullable=True, index=True
+    )
+    pack_sales_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
+    )
+    rem_discount_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
+    )
+    priority = Column(Integer, nullable=False, default=0)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    fiscal_year = relationship("AccountingFiscalYear")
+    eligible_asset_type = relationship("AssetType")
+    pack_sales_account = relationship("AccountingAccount", foreign_keys=[pack_sales_account_uuid])
+    rem_discount_account = relationship("AccountingAccount", foreign_keys=[rem_discount_account_uuid])
+    applicability = relationship("PackApplicability", back_populates="pack_definition", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<PackDefinition code={self.code} type={self.pack_type}>"
+
+
+class PackApplicability(Base):
+    """Links a pack definition to a pricing item with a discounted unit price."""
+
+    __tablename__ = "pack_applicability"
+    __table_args__ = (
+        UniqueConstraint("pack_definition_uuid", "pricing_item_uuid", name="uq_pack_applicability_item"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    pack_definition_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("pack_definitions.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pricing_item_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("pricing_items.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    discounted_unit_price = Column(Numeric(10, 4), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    pack_definition = relationship("PackDefinition", back_populates="applicability")
+    pricing_item = relationship("PricingItem")
+
+    def __repr__(self):
+        return f"<PackApplicability pack={self.pack_definition_uuid} item={self.pricing_item_uuid}>"
+
+
+class MemberPackConsumption(Base):
+    """
+    Operational discount tracking: one row per flight line consuming pack units.
+    This is NOT an accounting table — it tracks discount eligibility for REM adjustment.
+    """
+
+    __tablename__ = "member_pack_consumptions"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    member_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    flight_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("validated_flights.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pack_type = Column(String(32), nullable=False)
+    quantity_consumed = Column(Numeric(10, 2), nullable=False)
+    discount_unit_price = Column(Numeric(10, 2), nullable=False)
+    total_discount_amount = Column(Numeric(10, 2), nullable=False)
+    accounting_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True, index=True  # Link to GL entry (app-level integrity, no FK)
+    )
+    is_frozen = Column(Boolean, nullable=False, default=False)
+    frozen_at = Column(DateTime(timezone=True), nullable=True)
+    frozen_reason = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    member = relationship("Member")
+    flight = relationship("ValidatedFlight")
+    accounting_entry = relationship("AccountingEntry")
+
+    def __repr__(self):
+        return f"<MemberPackConsumption member={self.member_uuid} flight={self.flight_uuid} type={self.pack_type}>"

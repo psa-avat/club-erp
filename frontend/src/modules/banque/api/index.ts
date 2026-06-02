@@ -967,3 +967,189 @@ export function useApplyAccountingImportMutation() {
     },
   })
 }
+
+// ── Packs ─────────────────────────────────────────────────────────────────────
+
+import type {
+  PackDefinition,
+  PackDefinitionCreate,
+  PackDefinitionUpdate,
+  MemberPackConsumption,
+  MemberPackConsumptionCreate,
+  MemberPackBalance,
+} from '../types/packs'
+
+export const banquePackKeys = {
+  definitions: (filters?: Record<string, unknown>) => ['banque', 'packs', 'definitions', filters] as const,
+  definition: (uuid: string) => ['banque', 'packs', 'definitions', uuid] as const,
+  applicableItems: (packUuid: string) => ['banque', 'packs', 'applicable-items', packUuid] as const,
+  consumptionsByFlight: (flightUuid: string) => ['banque', 'packs', 'consumptions', 'flight', flightUuid] as const,
+  consumptionsByMember: (memberUuid: string) => ['banque', 'packs', 'consumptions', 'member', memberUuid] as const,
+  balances: (memberUuid: string, fyUuid: string) => ['banque', 'packs', 'balances', memberUuid, fyUuid] as const,
+}
+
+export function usePackDefinitionsQuery(fiscalYearUuid?: string, packType?: string, enabled = true) {
+  return useQuery({
+    queryKey: banquePackKeys.definitions({ fiscalYearUuid, packType }),
+    enabled,
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (fiscalYearUuid) params.set('fiscal_year_uuid', fiscalYearUuid)
+      if (packType) params.set('pack_type', packType)
+      const qs = params.toString()
+      const { data } = await apiClient.get<PackDefinition[]>(
+        `/api/v1/packs/definitions${qs ? `?${qs}` : ''}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function usePackDefinitionQuery(packUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: banquePackKeys.definition(packUuid ?? 'none'),
+    enabled: enabled && Boolean(packUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<PackDefinition>(
+        `/api/v1/packs/definitions/${packUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useCreatePackDefinitionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: PackDefinitionCreate) => {
+      const { data } = await apiClient.post<PackDefinition>(
+        '/api/v1/packs/definitions',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+    },
+  })
+}
+
+export function useUpdatePackDefinitionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ packUuid, payload }: { packUuid: string; payload: PackDefinitionUpdate }) => {
+      const { data } = await apiClient.put<PackDefinition>(
+        `/api/v1/packs/definitions/${packUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+    },
+  })
+}
+
+export function useDeletePackDefinitionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (packUuid: string) => {
+      await apiClient.delete(`/api/v1/packs/definitions/${packUuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+    },
+  })
+}
+
+export function useRecordPackConsumptionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: MemberPackConsumptionCreate) => {
+      const { data } = await apiClient.post<MemberPackConsumption>(
+        '/api/v1/packs/consumptions',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+    },
+  })
+}
+
+export function useMemberPackConsumptionsQuery(flightUuid?: string, memberUuid?: string, enabled = true) {
+  const baseQuery = flightUuid
+    ? `/api/v1/packs/consumptions/by-flight/${flightUuid}`
+    : memberUuid
+      ? `/api/v1/packs/consumptions/by-member/${memberUuid}`
+      : null
+  return useQuery({
+    queryKey: flightUuid
+      ? banquePackKeys.consumptionsByFlight(flightUuid)
+      : banquePackKeys.consumptionsByMember(memberUuid ?? 'none'),
+    enabled: enabled && Boolean(baseQuery),
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberPackConsumption[]>(
+        baseQuery!,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useMemberPackBalancesQuery(memberUuid: string | null, fiscalYearUuid: string | null, packType?: string, enabled = true) {
+  return useQuery({
+    queryKey: banquePackKeys.balances(memberUuid ?? 'none', fiscalYearUuid ?? 'none'),
+    enabled: enabled && Boolean(memberUuid && fiscalYearUuid),
+    queryFn: async () => {
+      const params = new URLSearchParams({ fiscal_year_uuid: fiscalYearUuid! })
+      if (packType) params.set('pack_type', packType)
+      const { data } = await apiClient.get<MemberPackBalance[]>(
+        `/api/v1/packs/balances/${memberUuid}?${params.toString()}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useFreezePackConsumptionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ consumptionUuid, reason }: { consumptionUuid: string; reason?: string }) => {
+      const { data } = await apiClient.post<MemberPackConsumption>(
+        `/api/v1/packs/consumptions/${consumptionUuid}/freeze`,
+        reason ? { reason } : {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+    },
+  })
+}
+
+export function useUnfreezePackConsumptionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (consumptionUuid: string) => {
+      const { data } = await apiClient.post<MemberPackConsumption>(
+        `/api/v1/packs/consumptions/${consumptionUuid}/unfreeze`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+    },
+  })
+}

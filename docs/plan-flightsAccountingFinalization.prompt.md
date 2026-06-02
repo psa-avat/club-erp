@@ -10,17 +10,18 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 | Decision | Choice |
 |---|---|
-| **Discount realization** | Discounts are embedded in the **pack pricing item** itself via `pack_applicability` which links a pack to a `pricing_item` with a `discounted_unit_price`. The flight billing uses that resolved price directly — no separate discount contra line |
-| **Pack model** | **Catalog + consumable member holdings** — define reusable pack templates (ex: `PACK_25H`) and let members buy multiple packs; each billed flight consumes eligible quantity |
-| **Pack definition pricing** | `pack_applicability` links a pack definition to an existing `pricing_item` with a `discounted_unit_price`. One pack can cover multiple pricing items, one pricing item can be covered by multiple packs |
-| **Pack tracking** | Single `member_pack_events` ledger tracks purchase and consumption events; consumption is still one row per flight/line for audit |
-| **Pack scope** | Packs are scoped by `pack_type` and eligible asset types; each scope selects the matching discounted pricing items |
-| **Fiscal year boundary** | Packs are scoped to one fiscal year and expire at year-end. No carry-over |
-| **Billing configurability** | Stored in `system_settings` (module `flight_billing`): sales account, consumption strategy, post-purchase tolerance. No dedicated table. Pack definitions may override the sales account |
-| **Post-purchase** | Allowed — system recalculates when a pack is bought after the flight date, including launch packs |
-| **Freeze/exclude** | `is_frozen` flag on `member_pack_events` consume rows; frozen consumptions excluded from quantity consumption calculation |
-| **Posting policy** | Posting is always a separate explicit action (manual), after member review; no automatic posting at apply time |
-| **Billing hash & alerts** | Hash and alert logic must include selected pricing items and pack-consumption rows; alerts evaluate 411 net impact only |
+| **Discount realization** | Discounts are **decoupled from flight billing**. Flights are billed at gross price in FL journal. Discounts are tracked in `member_pack_consumptions` and applied via periodic REM adjustment entries |
+| **Pack model** | **Catalog + consumable packs** — define reusable pack templates (ex: `PACK_25H`) linked to pricing items via `pack_applicability` with `discounted_unit_price`. Pack purchases tracked natively in GL |
+| **Pack pricing** | `pack_applicability` links a pack definition to a `pricing_item` with a `discounted_unit_price`. Discount = `base_price − discounted_unit_price` |
+| **Pack tracking** | `member_pack_consumptions` operational table — one row per flight line consuming pack units. Balance computed via `vw_member_pack_balances` view crossing GL purchases with consumptions |
+| **Pack scope** | Packs scoped by `pack_type` (`flight_hours` / `winch_launches` / `tow_launches` / `engine_time`); each scope discounts matching pricing items |
+| **Fiscal year boundary** | Packs scoped to one fiscal year. Remaining quantities reset to 0 at year-end — no carry-over |
+| **REM journal** | Dedicated journal (code `REM` / `DISC`, type = General) for discount adjustments. One Draft entry per pilot per period, updated as discounts accumulate |
+| **Billing configurability** | Each pack definition carries its own sales account (`pack_sales_account_uuid`) and discount contra account (`rem_discount_account_uuid`). Operational settings (period, tolerance) live in `system_settings`. Journals FL/REM are hardcoded — no dedicated table |
+| **Post-purchase** | Allowed — system recalculates `member_pack_consumptions` and updates the REM Draft entry |
+| **Freeze/exclude** | `is_frozen` flag on `member_pack_consumptions` rows; frozen consumptions excluded from REM calculation |
+| **Posting policy** | FL entries can be posted independently. REM entries remain Draft until period close (monthly/quarterly) |
+| **Alerts** | Evaluate combined net of gross FL entry + REM adjustment — never gross alone |
 
 ---
 
@@ -36,7 +37,8 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `quantity_allowance` (Numeric(10,2)) — ex: `25.0000` hours for a 25h pack
    - `quantity_unit` (varchar: `hours`|`launches`)
    - `eligible_asset_type_uuid` (FK → asset_types, nullable — restricts which asset types this pack applies to)
-   - `pack_sales_account_uuid` (FK → accounting_accounts, nullable override of FY default)
+   - `pack_sales_account_uuid` (FK → accounting_accounts, nullable — override of default; credit side for pack purchase revenue)
+   - `rem_discount_account_uuid` (FK → accounting_accounts, nullable — override of default; debit side for discount adjustments)
    - `flights_journal_uuid` (FK → accounting_journals, nullable override)
    - `priority` (int, optional tie-breaker when multiple pack definitions match)
    - `created_at`
@@ -46,30 +48,28 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `discounted_unit_price` (Numeric(10,4)) — the unit price with discount (e.g. €20 instead of €100)
    - unique constraint (`pack_definition_uuid`, `pricing_item_uuid`)
    - `created_at`
-3. Create `member_packs` table (one row per pack purchased by a member)
-   - `uuid`, `member_uuid` (FK), `fiscal_year_uuid` (FK), `pack_definition_uuid` (FK)
-   - `quantity_initial` (Numeric(10,2)) — e.g. 25.00 for a 25h pack
-   - `quantity_remaining` (Numeric(10,2)) — decremented on each consumption
-   - `state` (varchar: `active`|`exhausted`|`frozen`|`expired`)
-   - `purchase_date` (date)
-   - `purchase_entry_uuid` (FK → accounting_entries, nullable)
-   - `created_at`
-4. Create `member_pack_consumptions` table (one row per flight/line consumption)
-   - `uuid`, `member_pack_uuid` (FK → member_packs)
-   - `flight_uuid` (FK → validated_flights), `source` (`flight`|`launch`)
-   - `pricing_item_uuid` (FK → pricing_items)
-   - `quantity_consumed` (Numeric(10,2))
-   - `billed_amount` (Numeric(10,4)) — resolved_price × quantity_consumed
+3. Create `member_pack_consumptions` table (operational discount tracking)
+   - `uuid`, `member_uuid` (FK), `flight_uuid` (FK → validated_flights)
+   - `pack_type` (varchar: `flight_hours`|`winch_launches`|`tow_launches`|`engine_time`)
+   - `quantity_consumed` (Numeric(5,2)) — qty consumed from pack for this flight
+   - `discount_unit_price` (Numeric(10,2)) — `base_price − pack_price`
+   - `total_discount_amount` (Numeric(10,2)) — `qty × discount_unit_price`
+   - `accounting_entry_uuid` (FK → accounting_entries, nullable — REM entry link)
    - `is_frozen` (Boolean, default false), `frozen_at`, `frozen_reason`
-   - `created_at`
-5. Add `accounting_entry_uuid` to `validated_flights` (nullable FK → accounting_entries)
-   - *No separate billing_quotes table — the accounting entry is the source of truth*
-6. Store billing configuration in `system_settings` (module `flight_billing`):
-   - `pack_sales_account_uuid` — default account for pack purchase revenue (e.g. 7066)
-   - `pack_consumption_strategy` — `fifo` (default)
+   - `created_at`, `updated_at`
+   - Index: `(member_uuid, pack_type)`
+4. Create `vw_member_pack_balances` view (not a table)
+   - Crosses GL pack purchases (`accounting_lines` × `pack_definitions.pack_sales_account_uuid`) with `member_pack_consumptions`
+   - Returns: `member_uuid, pack_type, total_purchased, total_consumed, units_remaining`
+   - See SPEC §5.5 for the full SQL definition
+5. Add `accounting_entry_uuid` to `validated_flights` (nullable FK → accounting_entries — FL entry link)
+6. Ensure REM journal exists in `accounting_journals` (code `REM` or `DISC`, type = General)
+7. Store operational settings in `system_settings` (module `flight_billing`):
+   - `discount_period_days` — period length for REM adjustment (default 30 for monthly)
    - `allow_post_purchase_recalculation` — true by default
    - `max_days_for_post_purchase_discount` — 7
    - `require_approval_for_late_discount` — true
+   - *Accounts (`pack_sales_account_uuid`, `rem_discount_account_uuid`) live on each `pack_definitions` row — no redundant global settings*
 
 **Verification**: Migration SQL runs cleanly; new tables are empty; existing flights table migration adds nullable columns.
 
@@ -78,56 +78,57 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 ### Phase 2 — Backend Billing Configuration & Pack Management Service
 
 **Steps** (depends on Phase 1, can be parallelised):
-1. Add helpers to read flight billing settings from `system_settings`:
-   - `get_flight_billing_setting(db, key)` → returns value with fallback to default
+1. Add helpers to read/write flight billing settings from `system_settings`:
+   - `get_flight_billing_setting(db, key)` → returns value with fallback
    - `update_flight_billing_setting(db, key, value)` — upserts into `system_settings` module `flight_billing`
    - `GET/PUT /api/v1/settings/flight-billing` — API endpoints for settings CRUD
-   - *No dedicated `flight_billing_configs` table — settings live in `system_settings`*
+   - *No dedicated table — settings live in `system_settings`*
 2. Create `backend/services/flight_packs.py` with:
    - `create_pack_definition(db, payload, user_id)` — defines catalog packs (ex: 25h glider)
-   - `manage_pack_applicability(db, pack_definition_uuid, applicable_items: list[(pricing_item_uuid, discounted_unit_price)], user_id)` — links pricing items with their pack-discounted price
-   - `buy_member_pack(db, member_uuid, pack_definition_uuid, quantity_multiplier, purchase_entry_uuid, user_id)` — inserts a `purchase` event
-   - `get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — derives remaining quantity from purchase and consume events (FIFO order)
-   - `find_applicable_pack_pricing(db, member_uuid, pricing_item_uuid, fiscal_year_uuid)` — returns the best matching `(pack_definition, discounted_unit_price)` for a given pricing item, or None if no eligible pack with remaining quantity
-   - `consume_pack_quantity(db, pack_definition_uuid, member_uuid, flight_uuid, consumed_quantity, source, pricing_item_uuid)` — inserts one `consume` event per flight/line
-   - `freeze_consumption(db, event_uuid, reason)` / `unfreeze_consumption(db, event_uuid)`
-3. Refactor `FlightBillingPreviewService` to call `find_applicable_pack_pricing()` for each pricing item. If a match is found, use `discounted_unit_price` instead of `base_price` and create a `consume` event. If remaining pack quantity is insufficient, split the line (partial pack, partial standard rate)
+   - `manage_pack_applicability(db, pack_definition_uuid, applicable_items, user_id)` — links pricing items with their pack-discounted price
+   - `record_pack_consumption(db, member_uuid, flight_uuid, pack_type, quantity_consumed, discount_unit_price, total_discount_amount)` — inserts a row in `member_pack_consumptions`
+   - `get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — queries `vw_member_pack_balances` view
+   - `compute_rem_adjustment(db, member_uuid, fiscal_year_uuid, period_start, period_end)` — sums `total_discount_amount` for non-frozen consumptions in period
+   - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, rem_discount_account_uuid, total_discount, period_start, period_end)` — creates or updates the single Draft REM entry for this pilot/period (the `rem_discount_account_uuid` is read from the applicable pack definition)
+   - `freeze_consumption(db, consumption_uuid, reason)` / `unfreeze_consumption(db, consumption_uuid)`
+3. Refactor `FlightBillingPreviewService` to compute `member_pack_consumptions` as a **post-billing step**: the FL entry is created at gross price; then eligible lines are checked against `pack_applicability` and `vw_member_pack_balances` to compute discount amounts. The GL is not modified at this stage
 4. Add pack purchase accounting entry creation helper:
-    - `create_pack_purchase_entry(db, member, purchase_event_uuid, amount, pack_sales_account_uuid, fiscal_year_uuid, user_id)` → creates Draft entry:
+   - `create_pack_purchase_entry(db, member, amount, pack_sales_account_uuid, user_id)` → creates **posted** entry (VT journal):
      - Debit `411` (member dimension) for total amount
-       - Credit `pack_sales_account_uuid` (pack override if set, else billing config default)
+     - Credit `pack_sales_account_uuid` (from the pack definition)
+   - *Pack purchases are posted immediately — the GL is the source of truth for pack balances*
 
-**Verification**: Unit tests for billing config CRUD, pack definition CRUD, pack_applicability link CRUD, member purchase CRUD, FIFO consumption resolution across multiple purchases, and pack purchase entry creation.
+**Verification**: Unit tests for billing config CRUD, pack definition + applicability CRUD, consumption recording, REM adjustment computation and upsert, pack purchase entry creation (posted).
 
 ---
 
-### Phase 3 — Backend Billing Apply & Pack-Aware Pricing
+### Phase 3 — Backend Billing Apply & REM Adjustment
 
 **Steps** (depends on Phase 1 & 2):
 1. Extend `FlightBillingPreviewService` → new `FlightBillingApplyService` in `backend/services/flight_billing_apply.py`:
-   - `apply_preview(flight_uuid, fiscal_year_uuid, user_id)`:
-   1. Loads billing config for the fiscal year (pack sales account, journal UUID, strategy) + pack-level overrides
-     2. Runs preview (reuses `_preview_one`)
-     3. Creates `member_pack_consumptions` rows for each line using pack pricing, and links `accounting_entry_uuid` on the flight
-     4. Creates a **single Draft accounting entry** in the configured flights journal (FL, type=7):
-        - **Debit lines**: one per applied line (411+member) using the resolved pricing item amount
-        - **Credit lines**: one per applied line (revenue accounts 7062/7063/…) using the same resolved amount
-        - No dedicated pack-adjustment contra line when pack pricing item is applied
-   5. Persists one `member_pack_events` `consume` row per flight/line that uses pack quantity
-     6. Links the accounting entry to the flight (`accounting_entry_uuid`)
-     7. Marks the quote as `applied`
-   - `post_flight_billing(flight_uuid, fiscal_year_uuid, user_id)` — Posts the Draft entry (calls existing `post_accounting_entry`)
-   - `batch_apply(flight_uuids, fiscal_year_uuid, user_id)` — Apply multiple flights in a transaction (creates Draft entries only)
-   - `batch_post(flight_uuids, fiscal_year_uuid, user_id)` — Posts already applied Draft entries in batch
+   - `apply_flight_billing(flight_uuid, fiscal_year_uuid, user_id)`:
+     1. Loads billing settings from `system_settings`
+     2. Runs preview at **gross price** (reuses `_preview_one` with `base_price` — no pack adjustment in the FL entry)
+     3. Creates a **Draft accounting entry in FL journal** with gross amounts:
+        - Debit `411` (member) for `qty × base_price`
+        - Credit `706x` (revenue) for `qty × base_price`
+     4. Links the FL entry to the flight (`accounting_entry_uuid`)
+     5. Computes eligible pack discounts and inserts rows in `member_pack_consumptions`
+     6. Calls `upsert_rem_entry()` to create or update the single Draft REM entry for this pilot/period
+   - `post_flight_billing(flight_uuid, fiscal_year_uuid, user_id)` — Posts the **FL** Draft entry (calls existing `post_accounting_entry`)
+   - `batch_apply(flight_uuids, fiscal_year_uuid, user_id)` — Apply multiple flights in a transaction (FL Draft + consumptions + REM upsert)
+   - `close_rem_period(fiscal_year_uuid, period_end, user_id)` — Posts all REM Draft entries for the period, opens new Drafts for the next period
 2. Add API endpoints in `backend/api/routes/flights.py`:
-   - `POST /{flight_uuid}/billing-apply` — Apply (create Draft entry, link to flight)
-   - `POST /{flight_uuid}/billing-post` — Apply + Post in one step
-   - `POST /billing-batch-apply` — Batch apply (Draft only by default; optional explicit mode to post)
-   - `POST /billing-batch-post` — Batch post already applied Draft entries
-3. New schemas in `backend/schemas/flights.py`:
-   - `FlightBillingApplyRequest`, `FlightBillingApplyResponse`
+   - `POST /{flight_uuid}/billing-apply` — Apply (gross FL Draft + consumption + REM upsert)
+   - `POST /{flight_uuid}/billing-post` — Apply + Post FL entry
+   - `POST /billing-batch-apply` — Batch apply
+   - `POST /billing-batch-post` — Batch post FL entries
+3. Add REM adjustment endpoints in `backend/api/routes/accounting.py`:
+   - `POST /accounting/rem-adjustments/preview` — Preview REM adjustment for a pilot/period
+   - `POST /accounting/rem-adjustments/apply` — Create or update the REM Draft entry
+   - `POST /accounting/rem-adjustments/close-period` — Post all REM Drafts, open new ones
 
-**Verification**: Integration test: preview → apply → verify entry exists with correct lines → post → verify entry is posted. Assert pack-consumption rows are persisted and quantities decremented.
+**Verification**: Integration test: preview → apply → verify FL entry at gross price → verify `member_pack_consumptions` rows created → verify REM Draft entry upserted with correct total discount.
 
 ---
 
@@ -138,11 +139,11 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `GET /billable-flights` — list flights ready for billing (not yet applied) within a date range
    - `GET /pending-billing-summary` — aggregate stats (count, total, warnings) for a date range
 2. Add pack purchase endpoint:
-   - `POST /members/{member_uuid}/packs` — buy a pack (creates pack + Draft accounting entry)
-   - `GET /members/{member_uuid}/packs` — list pack balances (derived from events) and usage audit summary
-3. Add endpoint to freeze/exclude a pack consumption from flight recalculation:
-   - `POST /pack-events/{event_uuid}/freeze`
-   - `POST /pack-events/{event_uuid}/unfreeze`
+   - `POST /members/{member_uuid}/packs` — buy a pack (creates posted VT entry + updates GL)
+   - `GET /members/{member_uuid}/packs` — list pack balances (from `vw_member_pack_balances`) and consumption detail
+3. Add endpoint to freeze/exclude a pack consumption from REM calculation:
+   - `POST /pack-consumptions/{consumption_uuid}/freeze`
+   - `POST /pack-consumptions/{consumption_uuid}/unfreeze`
 
 **Verification**: API responses return correct data shapes; tests for each endpoint.
 
@@ -157,58 +158,59 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - **Row expand**: click to see detail — payers, applied lines, accounting lines, and pack consumptions
    - **Bulk actions**: select flights → "Preview" → "Apply" → "Post"
    - **Warnings/errors**: color-coded badges for each flight (e.g., pricing missing = red, pack applied = blue)
-   - **Net display**: each flight row always shows the billed net from resolved pricing items. The expanded view shows gross-equivalent context and consumed pack quantities.
+   - **Net display**: each flight row shows the gross amount. A separate "Discounts" panel shows the current period's REM adjustment per pilot, with link to `member_pack_consumptions` detail.
 2. Integrate component into `BanqueDailyOpsPage.tsx` — replace `flights` tab placeholder with `<OpsFlightsTab />`
 3. Add pack purchase form (modal/dialog) for quick pack purchase:
-   - Member selector, pack definition selector (includes 25h packs), quantity multiplier, "Create Pack" → creates Draft entry for the purchase
-4. Add translations in `frontend/src/modules/banque/i18n/` (French + English)
-5. Add API client calls in `frontend/src/modules/banque/api/`
+   - Member selector, pack definition selector (includes 25h packs), quantity multiplier, "Buy Pack" → creates posted VT entry
+4. Add REM period management panel: view current period Drafts, close period, open new period
+5. Add translations in `frontend/src/modules/banque/i18n/` (French + English)
+6. Add API client calls in `frontend/src/modules/banque/api/`
 
-**Alert trigger safety**: The frontend and backend must ensure that balance checks (e.g., minimum balance alerts) evaluate the final posted member net after pack-aware pricing resolution for the same journal entry.
+**Alert trigger safety**: Balance checks must evaluate the **combined** net of the gross FL entry + the current REM Draft adjustment — never the gross alone.
 
-**Verification**: UI renders in Daily Ops flights tab; can select flights, preview, apply, post; pack purchase dialog works with pack definition + quantity selector; expanded view shows consumed pack quantities.
+**Verification**: UI renders; can select flights, preview at gross, apply; REM panel shows per-pilot adjustment; can close period.
 
 ---
 
 ### Phase 6 — Post-Purchase & Recalculation
 
 **Steps** (depends on Phase 3, parallel with Phase 4-5):
-1. Backend: `recalculate_billing(flight_uuid, fiscal_year_uuid, user_id)`:
-   - Only possible if flight has an existing quote/entry from a prior apply cycle
-   - Unlinks old accounting entry (deletes it if Draft, or creates reversal if Posted)
-   - Supersedes the old quote (state → `superseded`)
-   - Runs fresh preview with current remaining pack quantities and freeze state → creates new quote + new Draft entry
+1. Backend: `recalculate_pack_consumptions(flight_uuid, fiscal_year_uuid, user_id)`:
+   - Deletes existing `member_pack_consumptions` rows for this flight (if any)
+   - Re-runs discount eligibility against current `vw_member_pack_balances`
+   - Inserts new `member_pack_consumptions` rows
+   - Calls `upsert_rem_entry()` to update the pilot's REM Draft entry with the new total
+   - *The FL entry is untouched — only the REM adjustment is updated*
 2. Backend: `batch_recalculate(flight_uuids, fiscal_year_uuid, user_id)`:
-   - Same logic as single recalc but in a transaction for consistency
-3. Backend: `handle_post_purchase_pack(member_uuid, pack_uuid, fiscal_year_uuid, user_id)`:
-   - After a pack is purchased, identifies all already-billed flights for that member in the same fiscal year that are eligible for this `pack_type`
-   - Triggers recalculation for each eligible flight
-   - If a flight was already posted, creates a reversal + replacement entry pair
-4. **Launch pack support**: The recalc engine respects `pack_type` — a winch-launch pack only applies to `source='launch'` lines with the winch asset type, not to flight hours
+   - Same logic as single recalc but in a transaction
+3. Backend: `handle_post_purchase_pack(member_uuid, pack_type, fiscal_year_uuid, user_id)`:
+   - After a pack purchase is recorded in the GL, identifies all already-billed flights for that member in the same FY eligible for this `pack_type`
+   - Calls `recalculate_pack_consumptions()` for each eligible flight
+   - Updates the REM Draft entry for the pilot
+4. **Launch pack support**: The recalc engine respects `pack_type` — a winch-launch pack only discounts launch lines
 5. UI: 
-   - "Recalculate" button on flight detail panel
-   - "Buy pack" quick action when a flight has eligible lines billed at full price
-   - "Recalculate all flights for member" after pack purchase (batch recalc button)
+   - "Recalculate discounts" button on flight detail panel
+   - "Buy pack" quick action when a flight has eligible lines at full price
+   - "Refresh REM adjustment" after pack purchase (recalculates consumptions + updates REM Draft)
 
 **Verification**: 
-- Flight with 1h glider billed with pack-priced item, member buys one 25h pack → recalculate → verify `consumed_quantity=1.0h` and remaining quantity decremented
-- Flight with winch launch, member buys winch-launch pack → recalculate → verify consumption applies on launch line only, not on glider line
-- Multiple packs of same type → FIFO consumption across purchases
-- Test reversal + replacement for posted entries
-- Test batch recalculation after bulk pack purchase
+- Flight with 1h glider at gross €100, member buys 25h pack → recalculate → verify `member_pack_consumptions` row with `discount_unit_price=80`
+- Flight with winch launch, member buys winch pack → recalculate → verify consumption on launch line only
+- REM Draft entry updated correctly after batch recalculate
+- Multiple packs of same type consumed FIFO, verified via `vw_member_pack_balances`
 
 ---
 
 ### Phase 7 — Freeze/Exclude & Manual Overrides
 
 **Steps** (depends on Phase 2):
-1. Backend: `freeze_pack_event(event_uuid, reason)` — sets `is_frozen=true` on a `consume` event so that consumption is excluded from billing recalculation
-2. Backend: `unfreeze_pack_event(event_uuid)` — re-includes
-3. Backend: Recalculate when freeze state changes (same logic as Phase 6)
-4. UI: Toggle switch in flight detail panel to freeze/unfreeze pack consumption
-5. UI: When frozen, show "Pack consumption excluded — standard pricing applied" with reason tooltip
+1. Backend: `freeze_pack_consumption(consumption_uuid, reason)` — sets `is_frozen=true` on a `member_pack_consumptions` row; triggers REM Draft update
+2. Backend: `unfreeze_pack_consumption(consumption_uuid)` — re-includes; triggers REM Draft update
+3. Backend: `update_rem_after_freeze(member_uuid, fiscal_year_uuid)` — recomputes the pilot's total discount and upserts the REM Draft entry
+4. UI: Toggle switch in flight detail panel to freeze/unfreeze a consumption row
+5. UI: When frozen, show "Consumption excluded — discount removed from REM" with reason tooltip
 
-**Verification**: Freeze a consumption → verify balance recalculated → verify flight billing is updated.
+**Verification**: Freeze a consumption → verify it's excluded from REM total → unfreeze → verify reincluded.
 
 ---
 
@@ -242,7 +244,9 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - Rate-limited: max 30 requests/minute per token
 
 **Accounting visibility rule**:
-- Member portal must display each billed flight with billed lines and the associated pack-consumption rows so the member can reconcile consumed quantity and net amount.
+- Member portal must display each billed flight with its **gross** FL entry and the associated `member_pack_consumptions` rows.
+- A separate "Discounts" section shows the current period's REM adjustment and the net balance after discounts.
+- `vw_member_pack_balances` is exposed so members can see remaining pack units per type.
 
 **Verification**:
 - Enable expense access for a member → generate token → log in via portal → see flights, billing, account
@@ -295,60 +299,56 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 | File | What to do |
 |---|---|
-| `backend/models.py` | Add `PackDefinition`, `PackApplicability`, `MemberPackEvent`, `FlightBillingQuote`, `FlightBillingConfig` models |
-| `backend/services/flight_packs.py` | **NEW** — Pack definition + pack_applicability CRUD, events ledger, balance projection, FIFO resolution, freeze logic |
-| `backend/services/accounting.py` | Add flight billing settings helpers in `system_settings` module |
-| `backend/services/flight_billing.py` | Refactor pack-aware pricing resolution to use consumable pack purchases keyed by (member, fiscal_year, pack_type, asset_type) |
-| `backend/services/flight_billing_apply.py` | **NEW** — Apply preview → create entry, post, persist consumptions |
-| `backend/services/accounting.py` | Minor: expose `get_account` for config lookup |
-| `backend/api/routes/flights.py` | Add apply/post/batch + pack + freeze + recalculate endpoints |
-| `backend/api/routes/accounting.py` | Add flight billing config GET/PUT endpoint |
-| `backend/schemas/flights.py` | Add `FlightBillingApplyRequest/Response`, pack schemas, billing config schemas |
-| `backend/schemas/members.py` | Add pack-related Pydantic models |
+| `backend/models.py` | Add `PackDefinition`, `PackApplicability`, `MemberPackConsumption` models. Add `vw_member_pack_balances` migration |
+| `backend/services/flight_packs.py` | **NEW** — Pack definition + applicability CRUD, consumption recording, REM adjustment computation, upsert, freeze logic |
+| `backend/services/flight_billing.py` | Refactor preview to compute gross amounts; add eligibility check for `member_pack_consumptions` as post-billing step |
+| `backend/services/flight_billing_apply.py` | **NEW** — Gross FL entry creation + consumption recording + REM upsert |
+| `backend/services/accounting.py` | Add flight billing settings helpers in `system_settings` module + REM entry helpers |
+| `backend/api/routes/flights.py` | Add apply/post/batch + consumption + freeze + recalculate + REM adjustment endpoints |
+| `backend/api/routes/accounting.py` | Add REM preview/apply/close-period endpoints |
+| `backend/api/routes/settings.py` | Add flight billing settings GET/PUT (or reuse existing system_settings routes) |
+| `backend/schemas/flights.py` | Add `FlightBillingApplyRequest/Response`, consumption schemas, billing config schemas |
 | `frontend/src/modules/banque/components/BanqueDailyOpsPage.tsx` | Wire `flights` tab to real component |
-| `frontend/src/modules/banque/components/OpsFlightsTab.tsx` | **NEW** — Full flights billing cockpit |
-| `frontend/src/modules/banque/components/PackPurchaseDialog.tsx` | **NEW** — Modal for quick pack purchase with pack-definition selector |
-| `frontend/src/modules/banque/components/FlightBillingConfigPanel.tsx` | **NEW** — Billing config editor within Daily Ops settings |
-| `frontend/src/modules/banque/api/` | Add flight billing API calls |
-| `frontend/src/modules/banque/i18n/` | Add translations for flights ops |
-| `backend/services/flight_billing.py` | Add `recalculate_billing()`, `batch_recalculate()`, `handle_post_purchase_pack()` |
+| `frontend/src/modules/banque/components/OpsFlightsTab.tsx` | **NEW** — Full flights billing cockpit with gross display + REM panel |
+| `frontend/src/modules/banque/components/PackPurchaseDialog.tsx` | **NEW** — Modal for quick pack purchase |
+| `frontend/src/modules/banque/components/RemPeriodPanel.tsx` | **NEW** — REM period management (view Drafts, close period) |
+| `frontend/src/modules/banque/api/` | Add flight billing + REM + config API calls |
+| `frontend/src/modules/banque/i18n/` | Add translations for flights ops + REM |
+| `backend/services/flight_billing.py` | Add `recalculate_pack_consumptions()`, `batch_recalculate()`, `handle_post_purchase_pack()` |
 | `backend/api/routes/member_portal.py` | **NEW** — Public token-authenticated endpoints for member self-service |
-| `backend/services/members.py` | Extend expense access token management (regenerate, validate, portal flag) |
-| `backend/api/routes/assets.py` | Add financial-summary and financial-detail endpoints |
-| `backend/services/assets.py` | Add financial aggregation queries (debit/credit by analytical_asset, pack purchases, consumed quantities) |
-| `frontend/src/modules/member-portal/` | **NEW** — Standalone member self-service module (login, flights, account) |
+| `backend/services/members.py` | Extend expense access token management |
+| `frontend/src/modules/member-portal/` | **NEW** — Standalone member self-service module |
 | `frontend/src/modules/banque/components/MachineFinancialDashboard.tsx` | **NEW** — Per-machine financial summary with drill-down |
-| `frontend/src/modules/banque/components/BanqueDashboardPage.tsx` | Optionally link to machine financial dashboard |
-| `frontend/src/modules/banque/api/` | Add machine financial summary API calls |
 
 ---
 
 ## Verification Plan
 
-1. **Unit tests**: pack definition CRUD, pack_applicability link CRUD, member pack events (purchase/consume), FIFO consumption resolution across multiple packs, preview → apply entry creation, freeze/unfreeze recalc
-2. **Integration test**: full cycle — Planche sync → preview → apply (Draft) → member review window → post → verify accounting entry exists with correct lines and that `member_pack_events` consume rows are persisted
-3. **UI manual test — Daily Ops**: Flights tab → select flights → preview → apply → post → check Journal FL for the entry → buy pack → recalculate → verify updated
+1. **Unit tests**: pack definition CRUD, pack_applicability CRUD, consumption recording, REM adjustment computation, REM upsert, freeze/unfreeze
+2. **Integration test**: full cycle — Planche sync → preview (gross) → apply → verify FL entry at gross price → verify `member_pack_consumptions` rows → verify REM Draft entry upserted → close period → verify REM entry posted
+3. **UI manual test — Daily Ops**: Flights tab → select flights → preview (gross) → apply → verify REM panel updates → buy pack → recalculate → verify REM adjustment updated → close REM period
 4. **UI manual test — Machine dashboard**: After billing flights for multiple machines, dashboard shows correct aggregates → drill-down → entries match
-5. **UI manual test — Member portal**: Enable expense access → login with token → see own flights, billing, account → cannot see other members' data
-6. **Edge cases**: shared flight (partage) with pack for one pilot only; post-purchase covering an already-posted flight; freeze then unfreeze; multiple packs of same type consumed by FIFO; fiscal year rollover (pack validity expires, no carry-over)
-7. **Hash/alert safety test**: billing hash changes when selected pricing items or pack-applicability discounted prices change; minimum-balance alerts evaluate net 411 impact only after full entry apply
+5. **UI manual test — Member portal**: Enable expense access → login with token → see own gross flights + discount detail + pack balances
+6. **Edge cases**: shared flight (partage) with pack for one pilot only; post-purchase covering an already-billed flight; freeze then unfreeze; fiscal year rollover (pack balances reset to 0)
+7. **REM period boundary**: close period → verify entries posted → new period opens with zero balance → new flights create new Draft REM entries
 
 ---
 
 ## Scope Boundaries
 
 **Included**:
-- Pack catalog with consumable quantity (including 25h packs), per-asset-type price matrix, and member ability to buy multiple packs
-- Pack purchase accounting (411 → pack sales account), configured in fiscal-year billing config
-- Pack-aware pricing resolution through pack-definition prices/pricing items, with consumption audit per flight/launch
-- Launch method packs: winch launches and tow launches tracked separately from flight hours
-- Fiscal year scoping: packs belong to one FY and expire at year-end (no carry-over)
-- Post-purchase recalculation (pack bought after flight)
-- Batch recalculation (multiple flights affected by a single pack purchase)
-- Freeze/exclude individual pack-consumption event line
-- Daily ops flights tab as the central UI hub
+- Pack catalog with `pack_definitions` + `pack_applicability` (link to pricing items with discounted price)
+- Pack purchase accounting (411 → pack_sales_account) and discount contra (706 → rem_discount_account) — both configured per pack definition
+- Gross billing in FL journal, discount tracked via `member_pack_consumptions` operational table
+- REM journal for periodic discount adjustment entries (one Draft per pilot per period, upserted)
+- `vw_member_pack_balances` view for live pack balance computation
+- Launch method packs: winch and tow launches tracked separately from flight hours
+- Fiscal year scoping: packs expire at year-end, balances reset to 0
+- Post-purchase recalculation and batch recalculation
+- Freeze/exclude individual consumption rows
+- Daily ops flights tab as central UI hub (gross entries + REM panel)
 - Billing configuration UI per fiscal year
-- Member self-service portal (token-based, read-only: flights, billing, account)
+- Member self-service portal (token-based, read-only: flights, discounts, account)
 - Machine financial dashboard (credit/debit per asset, pack purchases, consumed quantities, drill-down)
 
 **Excluded** (future):

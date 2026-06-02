@@ -18,6 +18,8 @@ import {
   BanqueDailyOpsPage,
   MemberBulkBillingPage,
   SupplierInvoicePage,
+  PackDefinitionsPage,
+  PackDefinitionEditPage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage } from './modules/members'
@@ -81,6 +83,9 @@ function App() {
           <Route path="/banque/journal/entry/:entryUuid" element={<BanqueJournalEntryWorkspacePage />} />
           <Route path="/banque/journal/templates" element={<BanqueJournalTemplatesPage />} />
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
+          <Route path="/banque/packs" element={<PackDefinitionsPage />} />
+          <Route path="/banque/packs/new" element={<PackDefinitionEditPage />} />
+          <Route path="/banque/packs/:packUuid" element={<PackDefinitionEditPage />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
           <Route path="/banque/fiscal-years" element={<BanqueFiscalYearsPage />} />
