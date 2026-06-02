@@ -87,7 +87,6 @@ async def create_pack_definition(
         pack_type=request.pack_type,
         quantity_allowance=request.quantity_allowance,
         quantity_unit=request.quantity_unit,
-        eligible_asset_type_uuid=request.eligible_asset_type_uuid,
         pack_sales_account_uuid=request.pack_sales_account_uuid,
         rem_discount_account_uuid=request.rem_discount_account_uuid,
         priority=request.priority,

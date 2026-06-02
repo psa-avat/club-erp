@@ -1482,9 +1482,6 @@ class PackDefinition(Base):
     pack_type = Column(String(32), nullable=False)
     quantity_allowance = Column(Numeric(10, 2), nullable=False)
     quantity_unit = Column(String(32), nullable=False, default="hours")
-    eligible_asset_type_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("asset_types.uuid", ondelete="SET NULL"), nullable=True, index=True
-    )
     pack_sales_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -1500,7 +1497,6 @@ class PackDefinition(Base):
     )
 
     fiscal_year = relationship("AccountingFiscalYear")
-    eligible_asset_type = relationship("AssetType")
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[pack_sales_account_uuid])
     rem_discount_account = relationship("AccountingAccount", foreign_keys=[rem_discount_account_uuid])
     applicability = relationship("PackApplicability", back_populates="pack_definition", cascade="all, delete-orphan")

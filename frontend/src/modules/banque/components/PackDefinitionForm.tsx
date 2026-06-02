@@ -33,7 +33,6 @@ export type PackFormState = {
   pack_type: string
   quantity_allowance: string
   quantity_unit: string
-  eligible_asset_type_uuid: string | null
   pack_sales_account_uuid: string | null
   rem_discount_account_uuid: string | null
   priority: number
@@ -51,7 +50,6 @@ type Props = {
   fiscalYears: { uuid: string; code: string }[]
   pricingItems: PricingItemWithVersion[]
   accounts: { uuid: string; code: string; name: string }[]
-  assetTypes: { uuid: string; code: string; name: string }[]
   saving: boolean
   onSave: (form: PackFormState, items: ApplicableItemFormEntry[]) => Promise<void>
   onCancel: () => void
@@ -69,7 +67,6 @@ export function PackDefinitionForm({
   fiscalYears,
   pricingItems,
   accounts,
-  assetTypes,
   saving,
   onSave,
   onCancel,
@@ -151,17 +148,7 @@ export function PackDefinitionForm({
               <option value="centihours">Centihours</option>
             </select>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="asset_type">{t('packs.form.eligibleAssetType')}</Label>
-            <select id="asset_type" value={form.eligible_asset_type_uuid ?? ''}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleSelectChange('eligible_asset_type_uuid', e.target.value || '')}
-              className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-              <option value="">{t('common.all')}</option>
-              {assetTypes.map((at) => (
-                <option key={at.uuid} value={at.uuid}>{at.code} — {at.name}</option>
-              ))}
-            </select>
-          </div>
+
           <div className="space-y-1">
             <Label htmlFor="sales_acct">{t('packs.form.salesAccount')}</Label>
             <select id="sales_acct" value={form.pack_sales_account_uuid ?? ''}
@@ -194,7 +181,7 @@ export function PackDefinitionForm({
 
       {/* ── Applicability Section ──────────────────────────────────────────── */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-900">{t('packs.form.applicableRates')}</h3>
           <Button type="button" variant="secondary" size="sm" onClick={addItem}>
             <Plus className="mr-1 h-4 w-4" /> {t('common.add')}
@@ -203,14 +190,13 @@ export function PackDefinitionForm({
         {items.length === 0 && (
           <p className="py-4 text-center text-sm text-slate-400">{t('packs.form.noRates')}</p>
         )}
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {items.map((item) => (
-            <div key={item._key} className="flex items-end gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs">{t('packs.form.pricingItem')}</Label>
+            <div key={item._key} className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5">
+              <div className="flex-1">
                 <select value={item.pricing_item_uuid}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateItem(item._key, 'pricing_item_uuid', e.target.value)}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                  className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400">
                   <option value="">{t('common.select')}</option>
                   {pricingItems.map((pi) => (
                     <option key={`${pi.version_uuid}_${pi.uuid}`} value={pi.uuid}>
@@ -219,14 +205,18 @@ export function PackDefinitionForm({
                   ))}
                 </select>
               </div>
-              <div className="w-40 space-y-1">
-                <Label className="text-xs">{t('packs.form.discountedPrice')}</Label>
-                <Input type="number" step="0.0001" min="0" value={item.discounted_unit_price}
-                  onChange={(e) => updateItem(item._key, 'discounted_unit_price', e.target.value)} />
+              <div className="w-32 shrink-0">
+                <div className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1">
+                  <span className="text-xs text-slate-500">€</span>
+                  <input type="number" step="0.0001" min="0" value={item.discounted_unit_price}
+                    onChange={(e) => updateItem(item._key, 'discounted_unit_price', e.target.value)}
+                    className="w-full text-xs font-mono outline-none" />
+                </div>
               </div>
-              <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(item._key)} className="mb-0.5">
-                <Trash2 className="h-4 w-4 text-red-500" />
-              </Button>
+              <button type="button" onClick={() => removeItem(item._key)}
+                className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           ))}
         </div>

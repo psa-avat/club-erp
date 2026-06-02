@@ -61,7 +61,6 @@ class PackDefinitionCreate(BaseModel):
     pack_type: str = Field(pattern=r"^(flight_hours|winch_launches|tow_launches|engine_time)$")
     quantity_allowance: Decimal = Field(gt=0, decimal_places=2)
     quantity_unit: str = Field(default="hours", pattern=r"^(hours|launches|centihours)$")
-    eligible_asset_type_uuid: Optional[UUID] = None
     pack_sales_account_uuid: Optional[UUID] = None
     rem_discount_account_uuid: Optional[UUID] = None
     priority: int = Field(default=0, ge=0)
@@ -72,7 +71,6 @@ class PackDefinitionUpdate(BaseModel):
     """Update an existing pack definition."""
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     quantity_allowance: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
-    eligible_asset_type_uuid: Optional[UUID] = None
     pack_sales_account_uuid: Optional[UUID] = None
     rem_discount_account_uuid: Optional[UUID] = None
     priority: Optional[int] = Field(default=None, ge=0)
@@ -90,7 +88,6 @@ class PackDefinitionResponse(BaseModel):
     pack_type: str
     quantity_allowance: Decimal
     quantity_unit: str
-    eligible_asset_type_uuid: Optional[UUID] = None
     pack_sales_account_uuid: Optional[UUID] = None
     rem_discount_account_uuid: Optional[UUID] = None
     priority: int

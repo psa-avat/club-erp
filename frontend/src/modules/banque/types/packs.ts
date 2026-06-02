@@ -16,7 +16,6 @@ export type PackDefinition = {
   pack_type: 'flight_hours' | 'winch_launches' | 'tow_launches' | 'engine_time'
   quantity_allowance: string
   quantity_unit: string
-  eligible_asset_type_uuid: string | null
   pack_sales_account_uuid: string | null
   rem_discount_account_uuid: string | null
   priority: number
@@ -31,7 +30,6 @@ export type PackDefinitionCreate = {
   pack_type: string
   quantity_allowance: string
   quantity_unit?: string
-  eligible_asset_type_uuid?: string | null
   pack_sales_account_uuid?: string | null
   rem_discount_account_uuid?: string | null
   priority?: number

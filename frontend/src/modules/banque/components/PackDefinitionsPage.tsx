@@ -36,7 +36,6 @@ import {
   useAccountsQuery,
   useAllActivePricingItemsQuery,
 } from '../api'
-import { useAssetTypesQuery } from '../../assets/api'
 import {
   PackDefinitionForm,
   type PackFormState,
@@ -262,7 +261,6 @@ export function PackDefinitionEditPage() {
         pack_type: pack.pack_type,
         quantity_allowance: pack.quantity_allowance,
         quantity_unit: pack.quantity_unit,
-        eligible_asset_type_uuid: pack.eligible_asset_type_uuid,
         pack_sales_account_uuid: pack.pack_sales_account_uuid,
         rem_discount_account_uuid: pack.rem_discount_account_uuid,
         priority: pack.priority,
@@ -274,7 +272,6 @@ export function PackDefinitionEditPage() {
         pack_type: 'flight_hours',
         quantity_allowance: '25.00',
         quantity_unit: 'hours',
-        eligible_asset_type_uuid: null,
         pack_sales_account_uuid: null,
         rem_discount_account_uuid: null,
         priority: 0,
@@ -326,9 +323,6 @@ export function PackDefinitionEditPage() {
   const fiscalYears = fiscalYearsQuery.data ?? []
   const accounts = accountsQuery.data ?? []
 
-  const assetTypesQuery = useAssetTypesQuery(true)
-  const assetTypes = assetTypesQuery.data ?? []
-
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -350,7 +344,6 @@ export function PackDefinitionEditPage() {
           fiscalYears={fiscalYears}
           pricingItems={pricingItems}
           accounts={accounts}
-          assetTypes={assetTypes}
           saving={saving}
           onSave={handleSave}
           onCancel={() => navigate('/banque/packs')}
