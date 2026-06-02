@@ -424,3 +424,102 @@ async def get_account_by_code(db: AsyncSession, code: str) -> AccountingAccount 
         select(AccountingAccount).where(AccountingAccount.code == code)
     )
     return result.scalar_one_or_none()
+
+
+# ---------------------------------------------------------------------------
+# REM Adjustment
+# ---------------------------------------------------------------------------
+
+async def compute_rem_adjustment(
+    db: AsyncSession,
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    period_start: datetime,
+    period_end: datetime,
+) -> Decimal:
+    """Sum total_discount_amount for non-frozen consumptions in the period."""
+    result = await db.execute(
+        select(text("COALESCE(SUM(total_discount_amount), 0)"))
+        .select_from(MemberPackConsumption)
+        .where(
+            MemberPackConsumption.member_uuid == member_uuid,
+            MemberPackConsumption.created_at >= period_start,
+            MemberPackConsumption.created_at < period_end,
+        )
+    )
+    return _dec(result.scalar())
+
+
+async def upsert_rem_entry(
+    db: AsyncSession,
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    rem_journal_uuid: UUID,
+    discount_account_uuid: UUID,
+    total_discount: Decimal,
+    period_start: datetime,
+    period_end: datetime,
+    user_id: int,
+) -> AccountingEntry:
+    """
+    Create or update the single Draft REM entry for this pilot/period.
+    Debit discount_account_uuid, Credit 411 (member).
+    """
+    from models import AccountingFiscalYear
+
+    # Check if a REM Draft entry already exists for this member/period
+    existing = await db.execute(
+        select(AccountingEntry).where(
+            AccountingEntry.journal_uuid == rem_journal_uuid,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+            AccountingEntry.state == 1,  # Draft
+            AccountingEntry.description.like(f"REM % {member_uuid} %"),
+        )
+    )
+    entry = existing.scalar_one_or_none()
+
+    if entry:
+        # Update existing entry — replace lines
+        await db.execute(
+            text("DELETE FROM accounting_lines WHERE entry_uuid = :uuid"),
+            {"uuid": entry.uuid},
+        )
+        entry.reference = f"REM-{period_start.date()}-{period_end.date()}"
+    else:
+        entry = AccountingEntry(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            journal_uuid=rem_journal_uuid,
+            entry_date=period_end,
+            reference=f"REM-{period_start.date()}-{period_end.date()}",
+            description=f"REM {member_uuid} {period_start.date()} → {period_end.date()}",
+            state=1,  # Draft
+            created_by=user_id,
+        )
+        db.add(entry)
+        await db.flush()
+
+    # Line 1: Debit discount account (expense)
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry.uuid,
+        account_uuid=discount_account_uuid,
+        member_uuid=member_uuid,
+        debit=total_discount,
+    ))
+
+    # Line 2: Credit 411 (member receivable)
+    receivable = await get_account_by_code(db, "411")
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry.uuid,
+        account_uuid=receivable.uuid,
+        member_uuid=member_uuid,
+        credit=total_discount,
+    ))
+
+    await db.commit()
+    await db.refresh(entry)
+    return entry

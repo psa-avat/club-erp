@@ -30,8 +30,8 @@ from constants import CAP_MANAGE_PRICES, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_F
 from models import User
 from schemas.flight_packs import (
     ApplicableItemResponse,
-    FreezeConsumptionRequest,
     MemberPackBalanceResponse,
+    MemberPackConsumptionCreate,
     MemberPackConsumptionResponse,
     PackDefinitionCreate,
     PackDefinitionResponse,
