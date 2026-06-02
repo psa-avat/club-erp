@@ -17,10 +17,10 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 import { Button } from '../../../components/ui/button'
@@ -62,6 +62,11 @@ export function PackDefinitionsPage() {
   const packs = packsQuery.data ?? []
   const deleteMutation = useDeletePackDefinitionMutation()
   const [deleteUuid, setDeleteUuid] = useState<string | null>(null)
+  const [expandedPackUuid, setExpandedPackUuid] = useState<string | null>(null)
+
+  const allItemsQuery = useAllActivePricingItemsQuery(true)
+  const allItems = allItemsQuery.data ?? []
+  const itemNameLookup = new Map(allItems.map((i) => [i.uuid, `${i.version_name} — ${i.name}`]))
 
   if (!canView) {
     return (
@@ -101,6 +106,7 @@ export function PackDefinitionsPage() {
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
+              <th className="w-8 px-2 py-3"></th>
               <th className="px-4 py-3 font-medium text-slate-600">{t('packs.definitions.code')}</th>
               <th className="px-4 py-3 font-medium text-slate-600">{t('packs.definitions.name')}</th>
               <th className="px-4 py-3 font-medium text-slate-600">{t('packs.definitions.type')}</th>
@@ -112,43 +118,88 @@ export function PackDefinitionsPage() {
           <tbody>
             {packs.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
                   {t('packs.definitions.empty')}
                 </td>
               </tr>
             )}
             {packs.map((pack) => (
-              <tr key={pack.uuid} className="border-b border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-3 font-medium text-slate-900">{pack.code}</td>
-                <td className="px-4 py-3 text-slate-700">{pack.name}</td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                    {pack.pack_type}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-700">{pack.quantity_allowance} {pack.quantity_unit}</td>
-                <td className="px-4 py-3 text-slate-700">{pack.applicability?.length ?? 0}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+              <React.Fragment key={pack.uuid}>
+                <tr
+                  className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
+                  onClick={() => setExpandedPackUuid(expandedPackUuid === pack.uuid ? null : pack.uuid)}
+                >
+                  <td className="px-4 py-3">
                     <button
-                      onClick={() => navigate(`/banque/packs/${pack.uuid}`)}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                      title={t('common.edit')}
+                      type="button"
+                      className="rounded p-0.5 text-slate-400 hover:text-slate-700"
+                      onClick={(e) => { e.stopPropagation(); setExpandedPackUuid(expandedPackUuid === pack.uuid ? null : pack.uuid); }}
                     >
-                      <Pencil className="h-4 w-4" />
+                      {expandedPackUuid === pack.uuid ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
                     </button>
-                    {canManage && (
+                  </td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{pack.code}</td>
+                  <td className="px-4 py-3 text-slate-700">{pack.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {pack.pack_type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{pack.quantity_allowance} {pack.quantity_unit}</td>
+                  <td className="px-4 py-3 text-slate-700">{pack.applicability?.length ?? 0}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setDeleteUuid(pack.uuid)}
-                        className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        title={t('common.delete')}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/banque/packs/${pack.uuid}`); }}
+                        className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        title={t('common.edit')}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" />
                       </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
+                      {canManage && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteUuid(pack.uuid); }}
+                          className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          title={t('common.delete')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {expandedPackUuid === pack.uuid && (
+                  <tr key={`${pack.uuid}-items`}>
+                    <td colSpan={7} className="border-b border-slate-100 bg-slate-50 px-6 py-4">
+                      {pack.applicability && pack.applicability.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {pack.applicability.map((app) => (
+                            <div
+                              key={app.uuid}
+                              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                            >
+                              <span className="font-medium text-slate-900">
+                                {itemNameLookup.get(app.pricing_item_uuid) ?? app.pricing_item_uuid.slice(0, 8)}
+                              </span>
+                              <span className="ml-auto text-slate-600">
+                                {t('packs.definitions.discountedPrice')}: {app.discounted_unit_price} €
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-center text-sm text-slate-400">
+                          {t('packs.definitions.noRatesLinked')}
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -213,7 +264,7 @@ export function PackDefinitionEditPage() {
         quantity_unit: pack.quantity_unit,
         eligible_asset_type_uuid: pack.eligible_asset_type_uuid,
         pack_sales_account_uuid: pack.pack_sales_account_uuid,
-        pack_discount_expense_account_uuid: pack.pack_discount_expense_account_uuid,
+        rem_discount_account_uuid: pack.rem_discount_account_uuid,
         priority: pack.priority,
       }
     : {
@@ -225,7 +276,7 @@ export function PackDefinitionEditPage() {
         quantity_unit: 'hours',
         eligible_asset_type_uuid: null,
         pack_sales_account_uuid: null,
-        pack_discount_expense_account_uuid: null,
+        rem_discount_account_uuid: null,
         priority: 0,
       }
 

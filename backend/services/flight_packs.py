@@ -28,6 +28,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, status
 from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from models import (
     AccountingAccount,
@@ -88,7 +89,7 @@ async def create_pack_definition(
         quantity_unit=request.quantity_unit,
         eligible_asset_type_uuid=request.eligible_asset_type_uuid,
         pack_sales_account_uuid=request.pack_sales_account_uuid,
-        pack_discount_expense_account_uuid=request.pack_discount_expense_account_uuid,
+        rem_discount_account_uuid=request.rem_discount_account_uuid,
         priority=request.priority,
     )
     db.add(pack)
@@ -98,7 +99,13 @@ async def create_pack_definition(
         await _add_applicability(db, pack.uuid, item)
 
     await db.commit()
-    await db.refresh(pack)
+    # Re-fetch with eager-loaded applicability for serialization
+    result = await db.execute(
+        select(PackDefinition)
+        .where(PackDefinition.uuid == pack.uuid)
+        .options(selectinload(PackDefinition.applicability))
+    )
+    pack = result.scalar_one()
     logger.info("Created pack definition code=%s uuid=%s", pack.code, pack.uuid)
     return pack
 
@@ -108,6 +115,7 @@ async def get_pack_definition(db: AsyncSession, pack_uuid: UUID) -> PackDefiniti
     result = await db.execute(
         select(PackDefinition)
         .where(PackDefinition.uuid == pack_uuid)
+        .options(selectinload(PackDefinition.applicability))
     )
     pack = result.scalar_one_or_none()
     if pack is None:
@@ -124,7 +132,7 @@ async def list_pack_definitions(
     pack_type: str | None = None,
 ) -> list[PackDefinition]:
     """List pack definitions, optionally filtered."""
-    stmt = select(PackDefinition)
+    stmt = select(PackDefinition).options(selectinload(PackDefinition.applicability))
     if fiscal_year_uuid is not None:
         stmt = stmt.where(PackDefinition.fiscal_year_uuid == fiscal_year_uuid)
     if pack_type is not None:
@@ -167,7 +175,13 @@ async def update_pack_definition(
             await _add_applicability(db, pack_uuid, item)
 
     await db.commit()
-    await db.refresh(pack)
+    # Re-fetch with eager-loaded applicability for serialization
+    result = await db.execute(
+        select(PackDefinition)
+        .where(PackDefinition.uuid == pack.uuid)
+        .options(selectinload(PackDefinition.applicability))
+    )
+    pack = result.scalar_one()
     logger.info("Updated pack definition uuid=%s", pack.uuid)
     return pack
 

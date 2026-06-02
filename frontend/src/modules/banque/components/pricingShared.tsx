@@ -110,7 +110,6 @@ export type ItemFormState = {
   unit: number
   base_price: string
   is_progressive: boolean
-  pack_price: string
   age_discount_percent: string
   gl_account_credit_uuid: string
   tiers: TierPayload[]
@@ -118,7 +117,7 @@ export type ItemFormState = {
 }
 
 export const EMPTY_ITEM: ItemFormState = {
-  name: '', unit: 1, base_price: '', is_progressive: false, pack_price: '',
+  name: '', unit: 1, base_price: '', is_progressive: false,
   age_discount_percent: '0.00', gl_account_credit_uuid: '', tiers: [], flight_type_uuid: '',
 }
 
@@ -137,12 +136,10 @@ export function itemToForm(item: PricingItem): ItemFormState {
     unit: item.unit,
     base_price: parseFloat(item.base_price).toFixed(2),
     is_progressive: item.is_progressive,
-    pack_price: item.pack_price != null ? parseFloat(item.pack_price).toFixed(2) : '',
     age_discount_percent: parseFloat(item.age_discount_percent).toFixed(2),
     tiers: item.tiers.map((t) => ({
       from_qty: t.from_qty,
       price: parseFloat(t.price).toFixed(2),
-      pack_price: t.pack_price != null ? parseFloat(t.pack_price).toFixed(2) : '',
     })),
     gl_account_credit_uuid: item.gl_account_credit_uuid ?? '',
     flight_type_uuid: item.flight_type_uuid ?? '',
@@ -151,7 +148,7 @@ export function itemToForm(item: PricingItem): ItemFormState {
 
 export function buildItemPayload(
   form: ItemFormState,
-  options: { isAssetScoped: boolean; usePack: boolean },
+  options: { isAssetScoped: boolean },
 ): CreatePricingItemPayload {
   if (options.isAssetScoped) {
     return {
@@ -159,7 +156,6 @@ export function buildItemPayload(
       unit: form.unit,
       base_price: form.base_price.trim(),
       is_progressive: form.is_progressive,
-      pack_price: options.usePack && form.pack_price.trim() !== '' ? form.pack_price.trim() : null,
       age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
       gl_account_credit_uuid: form.gl_account_credit_uuid || null,
       flight_type_uuid: form.flight_type_uuid || null,
@@ -168,10 +164,6 @@ export function buildItemPayload(
         .map((tier) => ({
           from_qty: tier.from_qty,
           price: tier.price,
-          pack_price:
-            options.usePack && tier.pack_price && tier.pack_price.trim() !== ''
-              ? tier.pack_price.trim()
-              : undefined,
         })),
     }
   }
@@ -180,7 +172,6 @@ export function buildItemPayload(
     unit: 6,
     base_price: form.base_price.trim(),
     is_progressive: false,
-    pack_price: null,
     age_discount_percent: form.age_discount_percent.trim() !== '' ? form.age_discount_percent.trim() : '0',
     gl_account_credit_uuid: form.gl_account_credit_uuid || null,
     flight_type_uuid: null,
@@ -347,7 +338,6 @@ export function PricingItemForm({
   flightTypes,
   revenueAccounts,
   isAssetScoped,
-  usePack,
   onSave,
   onCancel,
   saving,
@@ -356,7 +346,6 @@ export function PricingItemForm({
   flightTypes: Array<{ uuid: string; name: string }>
   revenueAccounts: Array<{ uuid: string; code: string; name: string }>
   isAssetScoped: boolean
-  usePack: boolean
   onSave: (f: ItemFormState) => void
   onCancel: () => void
   saving: boolean
@@ -368,7 +357,7 @@ export function PricingItemForm({
   }
 
   function addTier() {
-    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '', pack_price: '' }] }))
+    setForm((prev) => ({ ...prev, tiers: [...prev.tiers, { from_qty: '', price: '' }] }))
   }
 
   function updateTier(index: number, field: keyof TierPayload, value: string) {
@@ -429,19 +418,7 @@ export function PricingItemForm({
           />
           <p className="text-[11px] text-on-surface-variant">{t('pricing.basePriceHelp')}</p>
         </div>
-        {isAssetScoped && usePack && (
-          <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.packPrice')}</Label>
-            <Input
-              type="number" min="0" step="0.01"
-              value={form.pack_price}
-              onChange={(e) => set('pack_price', e.target.value)}
-              placeholder="0.00"
-              className="h-8 text-sm font-mono"
-            />
-            <p className="text-[11px] text-on-surface-variant">{t('pricing.packPriceHelp')}</p>
-          </div>
-        )}
+
         <div className="space-y-1">
           <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
           <Input
@@ -513,23 +490,13 @@ export function PricingItemForm({
           )}
           {form.tiers.length > 0 && (
             <div className="space-y-1">
-              <div
-                className={`grid gap-2 text-xs font-medium text-on-surface-variant ${
-                  usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'
-                }`}
-              >
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-on-surface-variant">
                 <span>{t('pricing.tierFrom')}</span>
                 <span>{t('pricing.tierPrice')}</span>
-                {usePack && <span>{t('pricing.tierPackPrice')}</span>}
                 <span />
               </div>
               {form.tiers.map((tier, index) => (
-                <div
-                  key={index}
-                  className={`grid items-center gap-2 ${
-                    usePack ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'
-                  }`}
-                >
+                <div key={index} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
                   <Input
                     type="number"
                     min={getFromQtyStep(form.unit)}
@@ -546,15 +513,6 @@ export function PricingItemForm({
                     placeholder="0.00"
                     className="h-7 text-sm font-mono"
                   />
-                  {usePack && (
-                    <Input
-                      type="number" min="0" step="0.01"
-                      value={tier.pack_price ?? ''}
-                      onChange={(e) => updateTier(index, 'pack_price', e.target.value)}
-                      placeholder="0.00"
-                      className="h-7 text-sm font-mono"
-                    />
-                  )}
                   <button
                     type="button"
                     className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
@@ -621,7 +579,7 @@ export function PricingItemsPanel({
 
   async function handleCreate(form: ItemFormState) {
     try {
-      await createMutation.mutateAsync(buildItemPayload(form, { isAssetScoped, usePack: version.use_pack }))
+      await createMutation.mutateAsync(buildItemPayload(form, { isAssetScoped }))
       setShowForm(false)
       setItemError(null)
     } catch (e) { setItemError(extractItemError(e)) }
@@ -632,7 +590,7 @@ export function PricingItemsPanel({
     try {
       await updateMutation.mutateAsync({
         uuid: editingItem.uuid,
-        ...buildItemPayload(form, { isAssetScoped, usePack: version.use_pack }),
+        ...buildItemPayload(form, { isAssetScoped }),
       })
       setEditingItem(null)
       setItemError(null)
@@ -672,7 +630,6 @@ export function PricingItemsPanel({
           flightTypes={flightTypes}
           revenueAccounts={revenueAccounts}
           isAssetScoped={isAssetScoped}
-          usePack={version.use_pack}
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
           saving={createMutation.isPending}
@@ -695,7 +652,6 @@ export function PricingItemsPanel({
                 flightTypes={flightTypes}
                 revenueAccounts={revenueAccounts}
                 isAssetScoped={isAssetScoped}
-                usePack={version.use_pack}
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
                 saving={updateMutation.isPending}
@@ -712,7 +668,6 @@ export function PricingItemsPanel({
                       <>
                         {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
                         {formatPrice(item.base_price)}
-                        {version.use_pack && item.pack_price && ` · Pack: ${formatPrice(item.pack_price)}`}
                         {item.tiers.length > 0 &&
                           ` · ${item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}`).join(' · ')}`}
                       </>

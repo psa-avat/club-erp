@@ -173,14 +173,12 @@ export type PricingItemTier = {
   uuid: string
   from_qty: string
   price: string
-  pack_price: string | null
   sort_order: number
 }
 
 export type TierPayload = {
   from_qty: string
   price: string
-  pack_price?: string
 }
 
 export type PricingItem = {
@@ -193,8 +191,6 @@ export type PricingItem = {
   base_price: string
   /** When true, tiers are applied progressively (each bracket at its own rate) */
   is_progressive: boolean
-  /** Price per unit when the pilot has an active pack subscription */
-  pack_price: string | null
   /** Percentage discount applied when member is under-25 eligible (0 = no discount) */
   age_discount_percent: string
   /** Revenue account credited at billing time (null until configured) */
@@ -213,7 +209,6 @@ export type CreatePricingItemPayload = {
   base_price: string
   /** When true, tiers are applied progressively (each bracket at its own rate) */
   is_progressive?: boolean
-  pack_price?: string | null
   /** Percentage discount for under-25 members; omit or send "0" for no discount */
   age_discount_percent?: string
   /** Revenue account UUID (class 7) to credit at billing time */

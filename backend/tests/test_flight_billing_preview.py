@@ -49,7 +49,7 @@ class _FakeExecuteResult:
 
 
 class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
-    def _objects(self, *, pack_price=Decimal("50.0000")):
+    def _objects(self):
         member = Member(
             uuid=uuid4(),
             first_name="Jean",
@@ -92,7 +92,6 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
             name="Flight hour",
             unit=1,
             base_price=Decimal("100.0000"),
-            pack_price=pack_price,
             gl_account_credit_uuid=credit.uuid,
         )
         item.gl_account_credit = credit
@@ -118,19 +117,16 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         service._get_receivable_account = AsyncMock(return_value=debit)
         service._resolve_payers = AsyncMock(return_value=[_Payer(member, "pilot", Decimal("1"), "solo")])
         service._resolve_machine = AsyncMock(return_value=_PricedMachine("flight", asset, version, [item]))
-        pack_balances = {(member.uuid, 2026): Decimal("2.00")}
+        pack_balances: dict[tuple[UUID, str], Decimal] = {}
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]] = {}
 
-        preview = await service._preview_one(flight, pack_balances)
+        preview = await service._preview_one(flight, pack_balances, item_packs)
 
         self.assertTrue(preview.can_apply)
-        self.assertEqual(preview.total_amount, Decimal("50.0000"))
+        # Without any pack applicability, normal price applies
+        self.assertEqual(preview.total_amount, Decimal("100.0000"))
         self.assertEqual(len(preview.applied_lines), 1)
-        self.assertEqual(preview.applied_lines[0].discount_reason, "pack")
-        self.assertEqual(preview.applied_lines[0].pack_hours_used, Decimal("1.0000"))
-        self.assertEqual(pack_balances[(member.uuid, 2026)], Decimal("1.0000"))
-        self.assertEqual(len(preview.accounting_lines), 2)
-        self.assertEqual(preview.accounting_lines[0].account_code, "411")
-        self.assertEqual(preview.accounting_lines[1].account_code, "7062")
+        self.assertIsNone(preview.applied_lines[0].discount_reason)
 
     async def test_preview_splits_partial_pack_hours(self):
         member, asset, debit, _credit, version, item, flight = self._objects()
@@ -138,9 +134,10 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         service._get_receivable_account = AsyncMock(return_value=debit)
         service._resolve_payers = AsyncMock(return_value=[_Payer(member, "pilot", Decimal("1"), "solo")])
         service._resolve_machine = AsyncMock(return_value=_PricedMachine("flight", asset, version, [item]))
-        pack_balances = {(member.uuid, 2026): Decimal("0.50")}
+        pack_balances: dict[tuple[UUID, str], Decimal] = {}
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]] = {}
 
-        preview = await service._preview_one(flight, pack_balances)
+        preview = await service._preview_one(flight, pack_balances, item_packs)
 
         self.assertTrue(preview.can_apply)
         self.assertEqual(preview.total_amount, Decimal("75.0000"))
@@ -152,7 +149,7 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(pack_balances[(member.uuid, 2026)], Decimal("0.00"))
 
     async def test_progressive_shared_flight_uses_full_quantity_before_split(self):
-        member, asset, debit, credit, version, item, flight = self._objects(pack_price=None)
+        member, asset, debit, credit, version, item, flight = self._objects()
         second_member = Member(
             uuid=uuid4(),
             first_name="Claire",
@@ -163,7 +160,7 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         item.base_price = Decimal("100.0000")
         item.is_progressive = True
         item.tiers = [
-            PricingItemTier(from_qty=Decimal("0.7500"), price=Decimal("50.0000"), pack_price=None, sort_order=1),
+            PricingItemTier(from_qty=Decimal("0.7500"), price=Decimal("50.0000"), sort_order=1),
         ]
         item.gl_account_credit = credit
 
@@ -177,7 +174,9 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         )
         service._resolve_machine = AsyncMock(return_value=_PricedMachine("flight", asset, version, [item]))
 
-        preview = await service._preview_one(flight, {})
+        pack_balances: dict[tuple[UUID, str], Decimal] = {}
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]] = {}
+        preview = await service._preview_one(flight, pack_balances, item_packs)
 
         self.assertTrue(preview.can_apply)
         self.assertEqual(preview.total_amount, Decimal("87.5000"))

@@ -1137,6 +1137,8 @@ export const en = {
         applicableItems: 'Linked rates',
         empty: 'No packs defined for this fiscal year.',
         confirmDelete: 'Are you sure you want to delete this pack?',
+        discountedPrice: 'Discounted price',
+        noRatesLinked: 'No rates linked to this pack.',
       },
       form: {
         metadata: 'Metadata',
@@ -1219,6 +1221,7 @@ export const en = {
       description: 'Manage pricing versions per fiscal year, with a timeline and copy from previous year.',
       loading: 'Loading...',
       noPermission: 'You do not have the required VIEW_FINANCIALS capability.',
+      packs: 'Packs',
       error: {
         generic: 'An error occurred. Please try again.',
       },

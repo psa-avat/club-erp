@@ -18,9 +18,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, Copy, Trash2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Copy, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 import { Button } from '../../../components/ui/button'
@@ -33,6 +33,7 @@ import {
   useFiscalYearsQuery,
   useCreateFiscalYearMutation,
   usePricingVersionsQuery,
+  usePricingItemsQuery,
   useCreatePricingVersionMutation,
   useUpdatePricingVersionMutation,
   useDeletePricingVersionMutation,
@@ -145,13 +146,15 @@ function NewFyForm({
 // ── Sub-component: Version Timeline (list view, no inline edit) ───────────────
 
 function VersionTimeline({
-  fy, versions, canEdit, activationDisabled, t,
+  fy, versions, canEdit, activationDisabled, expandedUuid, onToggleExpand, t,
   onDelete, onEdit, onActivate, onRevertToDraft, onArchive, onClone,
 }: {
   fy: FiscalYear
   versions: PricingVersion[]
   canEdit: boolean
   activationDisabled: boolean
+  expandedUuid: string | null
+  onToggleExpand: (uuid: string) => void
   t: (k: string, opts?: Record<string, unknown>) => string
   onDelete: (v: PricingVersion) => void
   onEdit: (v: PricingVersion) => void
@@ -191,76 +194,135 @@ function VersionTimeline({
         {versions.map((v) => {
           const scope = versionScopeLabel(v, t)
           return (
-            <div
-              key={v.uuid}
-              className="flex items-center gap-3 rounded-lg border border-outline-variant bg-white px-4 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-on-surface">{v.name}</p>
-                <p className="text-xs text-on-surface-variant">
-                  {v.from_date} → {v.to_date ?? t('pricing.version.openEnd')}
-                </p>
-              </div>
-              <span className={`rounded-full px-2 py-0.5 text-xs ${scope.className}`}>{scope.label}</span>
-              <VersionBadge status={v.status} t={t} />
-              {v.is_locked && (
-                <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
-                  {t('pricing.version.locked')}
-                </span>
-              )}
-              {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
-                <div className="flex shrink-0 items-start gap-1">
-                  <ActivateVersionButton version={v} onActivate={onActivate} disabled={activationDisabled} t={t} />
-                  <button
-                    type="button"
-                    className="rounded p-1 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
-                    title={t('pricing.version.editTitle')}
-                    onClick={() => onEdit(v)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
-                    title={t('pricing.version.deleteTitle')}
-                    onClick={() => onDelete(v)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+            <div key={v.uuid}>
+              <div
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-outline-variant bg-white px-4 py-2"
+                onClick={() => onToggleExpand(v.uuid)}
+              >
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-0.5 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
+                  onClick={(e) => { e.stopPropagation(); onToggleExpand(v.uuid); }}
+                >
+                  {expandedUuid === v.uuid ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-on-surface">{v.name}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {v.from_date} → {v.to_date ?? t('pricing.version.openEnd')}
+                  </p>
                 </div>
-              )}
-              {canEdit && !v.is_locked && v.status === VERSION_STATUS_ACTIVE && fy.state !== FY_STATE_CLOSED && (
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest"
-                    title={t('pricing.version.cloneTitle')}
-                    onClick={() => onClone(v)}
-                  >
-                    {t('pricing.version.clone')}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded px-2 py-1 text-xs text-on-warning-container hover:bg-warning-container"
-                    title={t('pricing.version.archiveTitle')}
-                    onClick={() => onArchive(v)}
-                  >
-                    {t('pricing.version.archive')}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest"
-                    title={t('pricing.version.revertTitle')}
-                    onClick={() => onRevertToDraft(v)}
-                  >
-                    {t('pricing.version.revert')}
-                  </button>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${scope.className}`}>{scope.label}</span>
+                <VersionBadge status={v.status} t={t} />
+                {v.is_locked && (
+                  <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
+                    {t('pricing.version.locked')}
+                  </span>
+                )}
+                {canEdit && !v.is_locked && v.status === VERSION_STATUS_DRAFT && fy.state !== FY_STATE_CLOSED && (
+                  <div className="flex shrink-0 items-start gap-1" onClick={(e) => e.stopPropagation()}>
+                    <ActivateVersionButton version={v} onActivate={onActivate} disabled={activationDisabled} t={t} />
+                    <button
+                      type="button"
+                      className="rounded p-1 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
+                      title={t('pricing.version.editTitle')}
+                      onClick={() => onEdit(v)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                      title={t('pricing.version.deleteTitle')}
+                      onClick={() => onDelete(v)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+                {canEdit && !v.is_locked && v.status === VERSION_STATUS_ACTIVE && fy.state !== FY_STATE_CLOSED && (
+                  <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest"
+                      title={t('pricing.version.cloneTitle')}
+                      onClick={() => onClone(v)}
+                    >
+                      {t('pricing.version.clone')}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-on-warning-container hover:bg-warning-container"
+                      title={t('pricing.version.archiveTitle')}
+                      onClick={() => onArchive(v)}
+                    >
+                      {t('pricing.version.archive')}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest"
+                      title={t('pricing.version.revertTitle')}
+                      onClick={() => onRevertToDraft(v)}
+                    >
+                      {t('pricing.version.revert')}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {expandedUuid === v.uuid && (
+                <div className="border-x border-b border-outline-variant rounded-b-lg bg-surface-container-lowest px-6 py-3">
+                  <VersionItemsList versionUuid={v.uuid} />
                 </div>
               )}
             </div>
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ── Sub-component: Expanded version items list ────────────────────────────────
+
+function VersionItemsList({ versionUuid }: { versionUuid: string }) {
+  const { t } = useTranslation('assets')
+  const itemsQuery = usePricingItemsQuery(versionUuid, true)
+  const items = itemsQuery.data ?? []
+
+  if (itemsQuery.isLoading) {
+    return <p className="text-xs text-on-surface-variant">{t('states.loading')}</p>
+  }
+
+  if (items.length === 0) {
+    return (
+      <p className="rounded border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
+        {t('pricing.noItems')}
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      {items.map((item) => (
+        <div
+          key={item.uuid}
+          className="flex items-center gap-3 rounded-shape-sm border border-outline-variant bg-white px-3 py-1.5"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
+            <p className="mt-0.5 text-xs text-on-surface-variant">
+              {item.base_price} €
+              {item.gl_account_credit_uuid && (
+                <> · Compte: {item.gl_account_credit_uuid.slice(0, 8)}…</>
+              )}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -325,6 +387,7 @@ export function BankPricingPage() {
   const [cloneFromDate, setCloneFromDate] = useState(todayIsoDate())
   const [cloneToDate, setCloneToDate] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [expandedVersionUuid, setExpandedVersionUuid] = useState<string | null>(null)
 
   const prevFy = selectedFy
     ? sortedFiscalYears.find((fy) => fy.year === selectedFy.year - 1) ?? null
@@ -334,6 +397,10 @@ export function BankPricingPage() {
     setSelectedFyUuid(uuid)
     setShowNewVersionForm(false)
     setError(null)
+  }
+
+  function handleToggleExpandVersion(uuid: string) {
+    setExpandedVersionUuid((prev) => (prev === uuid ? null : uuid))
   }
 
   async function handleCreateFy(payload: {
@@ -474,12 +541,21 @@ export function BankPricingPage() {
             <h1 className="text-2xl font-semibold text-on-surface">{t('pricing.title')}</h1>
             <p className="text-sm text-on-surface-variant">{t('pricing.description')}</p>
           </div>
-          {canManagePrices && !showNewFyForm && (
-            <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>
-              <Plus className="mr-1 h-4 w-4" />
-              {t('pricing.fy.new')}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            <Link
+              to="/banque/packs"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-shape-sm text-sm font-medium transition-all h-8 rounded-md px-3 text-xs text-on-surface-variant hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-outline"
+            >
+              <Package className="mr-1 h-4 w-4" />
+              {t('pricing.packs')}
+            </Link>
+            {canManagePrices && !showNewFyForm && (
+              <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>
+                <Plus className="mr-1 h-4 w-4" />
+                {t('pricing.fy.new')}
+              </Button>
+            )}
+          </div>
         </div>
         {showNewFyForm && (
           <div className="mt-4">
@@ -621,6 +697,8 @@ export function BankPricingPage() {
                   versions={versions}
                   canEdit={canEditVersions}
                   activationDisabled={updateVersionMutation.isPending}
+                  expandedUuid={expandedVersionUuid}
+                  onToggleExpand={handleToggleExpandVersion}
                   t={t}
                   onDelete={(v) => setConfirmDeleteVersion(v)}
                   onEdit={(v) => navigate(`/banque/pricing/versions/${selectedFy.uuid}/${v.uuid}/edit`)}

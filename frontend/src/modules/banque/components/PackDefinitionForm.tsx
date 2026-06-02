@@ -35,7 +35,7 @@ export type PackFormState = {
   quantity_unit: string
   eligible_asset_type_uuid: string | null
   pack_sales_account_uuid: string | null
-  pack_discount_expense_account_uuid: string | null
+  rem_discount_account_uuid: string | null
   priority: number
 }
 
@@ -175,8 +175,8 @@ export function PackDefinitionForm({
           </div>
           <div className="space-y-1">
             <Label htmlFor="disc_acct">{t('packs.form.discountAccount')}</Label>
-            <select id="disc_acct" value={form.pack_discount_expense_account_uuid ?? ''}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleSelectChange('pack_discount_expense_account_uuid', e.target.value || '')}
+            <select id="disc_acct" value={form.rem_discount_account_uuid ?? ''}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleSelectChange('rem_discount_account_uuid', e.target.value || '')}
               className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
               <option value="">{t('common.default')}</option>
               {accounts.map((a) => (

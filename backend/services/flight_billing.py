@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +21,8 @@ from models import (
     Asset,
     FlightType,
     Member,
-    MemberSheet,
+    PackApplicability,
+    PackDefinition,
     PricingItem,
     PricingItemTier,
     PricingVersion,
@@ -233,14 +234,16 @@ class FlightBillingPreviewService:
     async def preview_flight(self, flight_uuid: UUID | str) -> FlightBillingPreviewResponse:
         flight = await self._get_flight(flight_uuid)
         pack_balances = await self._initial_pack_balances([flight])
-        return await self._preview_one(flight, pack_balances)
+        item_packs = await self._build_item_packs_map()
+        return await self._preview_one(flight, pack_balances, item_packs)
 
     async def preview_batch(self, request: FlightBillingPreviewRequest) -> FlightBillingBatchPreviewResponse:
         flights = await self._list_flights(request)
         pack_balances = await self._initial_pack_balances(flights)
+        item_packs = await self._build_item_packs_map()
         previews: list[FlightBillingPreviewResponse] = []
         for flight in sorted(flights, key=lambda f: (f.jour, f.takeoff_time or "", str(f.uuid))):
-            previews.append(await self._preview_one(flight, pack_balances))
+            previews.append(await self._preview_one(flight, pack_balances, item_packs))
         total_amount = sum((p.total_amount for p in previews), Decimal("0"))
         return FlightBillingBatchPreviewResponse(
             items=previews,
@@ -284,7 +287,8 @@ class FlightBillingPreviewService:
     async def _preview_one(
         self,
         flight: ValidatedFlight,
-        pack_balances: dict[tuple[UUID, int], Decimal],
+        pack_balances: dict[tuple[UUID, str], Decimal],
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]],
     ) -> FlightBillingPreviewResponse:
         errors: list[FlightBillingError] = []
         warnings: list[FlightBillingError] = []
@@ -368,6 +372,7 @@ class FlightBillingPreviewService:
                         flight=flight,
                         payer=payer,
                         pack_balances=pack_balances,
+                        item_packs=item_packs,
                         bracket_allocations=bracket_allocations,
                     )
                     for line_quantity, normal_unit_price, applied_unit_price, discount_reason, before, used, after in split_lines:
@@ -577,29 +582,49 @@ class FlightBillingPreviewService:
             warnings.append(_error("pricing_item_missing", f"No price item applies to {asset.code}.", scope=source, blocking=False))
         return _PricedMachine(source, asset, version, items)
 
-    async def _initial_pack_balances(self, flights: list[ValidatedFlight]) -> dict[tuple[UUID, int], Decimal]:
-        member_values: set[str] = set()
-        years: set[int] = set()
+    async def _initial_pack_balances(self, flights: list[ValidatedFlight]) -> dict[tuple[UUID, str], Decimal]:
+        """
+        Load pack balances from vw_member_pack_balances for all members involved in the given flights.
+        Returns dict keyed by (member_uuid, pack_type).
+        """
+        member_uuids: set[UUID] = set()
         for flight in flights:
-            if flight.jour is not None:
-                years.add(flight.jour.year)
             for value in [flight.pilot_erp_id, flight.second_pilot_erp_id, flight.charge_to_erp_id]:
                 if value:
-                    member_values.add(value)
-        members: list[Member] = []
-        for value in member_values:
-            member = await self._resolve_member(value)
-            if member:
-                members.append(member)
-        if not members or not years:
+                    member = await self._resolve_member(value)
+                    if member:
+                        member_uuids.add(member.uuid)
+        if not member_uuids:
             return {}
         result = await self.db.execute(
-            select(MemberSheet).where(
-                MemberSheet.member_uuid.in_([m.uuid for m in members]),
-                MemberSheet.year.in_(years),
-            )
+            text("SELECT member_uuid, pack_type, units_remaining FROM vw_member_pack_balances "
+                 "WHERE member_uuid = ANY(:uuids) AND units_remaining > 0"),
+            {"uuids": list(member_uuids)},
         )
-        return {(sheet.member_uuid, int(sheet.year)): _dec(sheet.remaining_hours_in_pack) for sheet in result.scalars().all()}
+        rows = result.fetchall()
+        return {(row[0], row[1]): _dec(row[2]) for row in rows}
+
+    async def _build_item_packs_map(self) -> dict[UUID, list[tuple[str, Decimal, int]]]:
+        """
+        Pre-load all pack applicability data.
+        Returns item_uuid → [(pack_type, discounted_unit_price, priority)] sorted by priority ASC.
+        """
+        result = await self.db.execute(
+            select(PackApplicability)
+            .join(PackDefinition, PackDefinition.uuid == PackApplicability.pack_definition_uuid)
+            .options(selectinload(PackApplicability.pack_definition))
+        )
+        rows = result.scalars().all()
+        item_map: dict[UUID, list[tuple[str, Decimal, int]]] = {}
+        for app in rows:
+            pd = app.pack_definition
+            item_map.setdefault(app.pricing_item_uuid, []).append(
+                (pd.pack_type, app.discounted_unit_price, pd.priority)
+            )
+        # Sort by priority ASC so the first entry is the highest-priority pack
+        for u in item_map:
+            item_map[u].sort(key=lambda x: x[2])
+        return item_map
 
     def _price_for_payer(
         self,
@@ -609,7 +634,8 @@ class FlightBillingPreviewService:
         quantity: Decimal,
         flight: ValidatedFlight,
         payer: _Payer,
-        pack_balances: dict[tuple[UUID, int], Decimal],
+        pack_balances: dict[tuple[UUID, str], Decimal],
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]],
         bracket_allocations: list[tuple[Decimal, Decimal]] | None = None,
     ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
         # ── Progressive mode: each bracket contributes its own portion ──────
@@ -617,19 +643,31 @@ class FlightBillingPreviewService:
             return self._progressive_price_for_payer(
                 item=item, version=version, quantity=quantity,
                 flight=flight, payer=payer, pack_balances=pack_balances,
+                item_packs=item_packs,
                 bracket_allocations=bracket_allocations,
             )
 
         # ── Non-progressive (default): last applicable tier sets price for all ──
         tier = _select_tier(item, quantity)
         normal_price = _money(_dec(tier.price if tier else item.base_price))
-        pack_price_value = tier.pack_price if tier and tier.pack_price is not None else item.pack_price
-        pack_price = _money(_dec(pack_price_value)) if pack_price_value is not None else None
-        can_use_pack = bool(version.use_pack and pack_price is not None and item.unit in PACK_CONSUMING_UNITS and payer.member and flight.jour)
-        if not can_use_pack:
+
+        # ── Look up pack applicability for this item ──────────────────────────
+        pack_type: str | None = None
+        discounted_price: Decimal | None = None
+        applicable_packs = item_packs.get(item.uuid, [])
+        if version.use_pack and applicable_packs and payer.member and flight.jour and item.unit in PACK_CONSUMING_UNITS:
+            for ptype, disc_price, _priority in applicable_packs:
+                key = (payer.member.uuid, ptype)
+                remaining = pack_balances.get(key, Decimal("0"))
+                if remaining > 0:
+                    pack_type = ptype
+                    discounted_price = _money(disc_price)
+                    break
+
+        if pack_type is None or discounted_price is None:
             return [(quantity, normal_price, normal_price, None, None, Decimal("0"), None)]
 
-        key = (payer.member.uuid, flight.jour.year)
+        key = (payer.member.uuid, pack_type)
         before = pack_balances.get(key, Decimal("0"))
         if before <= 0:
             return [(quantity, normal_price, normal_price, None, before, Decimal("0"), before)]
@@ -638,7 +676,7 @@ class FlightBillingPreviewService:
         pack_balances[key] = after
         result: list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]] = []
         if used > 0:
-            result.append((used, normal_price, pack_price, "pack", before, used, after))
+            result.append((used, normal_price, discounted_price, "pack", before, used, after))
         remainder = quantity - used
         if remainder > 0:
             result.append((remainder, normal_price, normal_price, None, after, Decimal("0"), after))
@@ -652,31 +690,44 @@ class FlightBillingPreviewService:
         quantity: Decimal,
         flight: ValidatedFlight,
         payer: _Payer,
-        pack_balances: dict[tuple[UUID, int], Decimal],
+        pack_balances: dict[tuple[UUID, str], Decimal],
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]],
         bracket_allocations: list[tuple[Decimal, Decimal]] | None = None,
     ) -> list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]]:
         """Progressive bracket pricing — merged into a single consolidated line."""
         brackets = bracket_allocations if bracket_allocations is not None else _progressive_split(item, quantity)
-        pack_price_value = item.pack_price
-        pack_price = _money(_dec(pack_price_value)) if pack_price_value is not None else None
+
+        # ── Look up pack applicability for this item ──────────────────────────
+        pack_type: str | None = None
+        discounted_price: Decimal | None = None
+        applicable_packs = item_packs.get(item.uuid, [])
         can_use_pack = bool(
-            version.use_pack and pack_price is not None
+            version.use_pack and applicable_packs
             and item.unit in PACK_CONSUMING_UNITS
             and payer.member and flight.jour
         )
+        if can_use_pack:
+            for ptype, disc_price, _priority in applicable_packs:
+                key = (payer.member.uuid, ptype)
+                remaining = pack_balances.get(key, Decimal("0"))
+                if remaining > 0:
+                    pack_type = ptype
+                    discounted_price = _money(disc_price)
+                    break
+            can_use_pack = pack_type is not None and discounted_price is not None
 
         # Process brackets (handles pack consumption correctly per bracket)
         raw_lines: list[tuple[Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal, Decimal | None]] = []
         for bracket_qty, bracket_rate in brackets:
             normal_price = _money(bracket_rate)
             if can_use_pack:
-                key = (payer.member.uuid, flight.jour.year)
+                key = (payer.member.uuid, pack_type)
                 before = pack_balances.get(key, Decimal("0"))
                 if before > 0:
                     used = min(before, bracket_qty)
                     after = before - used
                     pack_balances[key] = after
-                    raw_lines.append((used, pack_price if pack_price is not None else normal_price, "pack", before, used, after, normal_price))
+                    raw_lines.append((used, discounted_price, "pack", before, used, after, normal_price))
                     remainder = bracket_qty - used
                     if remainder > 0:
                         raw_lines.append((remainder, normal_price, None, after, Decimal("0"), after, normal_price))

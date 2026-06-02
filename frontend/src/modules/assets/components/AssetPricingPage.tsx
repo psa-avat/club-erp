@@ -231,7 +231,7 @@ function PricingItemsPanel({
 
   async function handleCreate(form: ItemFormState) {
     try {
-      await createMutation.mutateAsync(buildItemPayload(form, { isAssetScoped: true, usePack: version.use_pack }))
+      await createMutation.mutateAsync(buildItemPayload(form, { isAssetScoped: true }))
       setShowForm(false)
       setItemError(null)
     } catch (e) {
@@ -244,7 +244,7 @@ function PricingItemsPanel({
     try {
       await updateMutation.mutateAsync({
         uuid: editingItem.uuid,
-        ...buildItemPayload(form, { isAssetScoped: true, usePack: version.use_pack }),
+        ...buildItemPayload(form, { isAssetScoped: true }),
       })
       setEditingItem(null)
       setItemError(null)
@@ -285,7 +285,6 @@ function PricingItemsPanel({
           flightTypes={flightTypes}
           revenueAccounts={revenueAccounts}
           isAssetScoped={true}
-          usePack={version.use_pack}
           onSave={handleCreate}
           onCancel={() => setShowForm(false)}
           saving={createMutation.isPending}
@@ -308,7 +307,6 @@ function PricingItemsPanel({
                 flightTypes={flightTypes}
                 revenueAccounts={revenueAccounts}
                 isAssetScoped={true}
-                usePack={version.use_pack}
                 onSave={handleUpdate}
                 onCancel={() => setEditingItem(null)}
                 saving={updateMutation.isPending}
@@ -323,7 +321,6 @@ function PricingItemsPanel({
                   <p className="text-xs text-on-surface-variant">
                     {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
                     {formatPrice(item.base_price)}
-                    {item.pack_price && ` · Pack: ${formatPrice(item.pack_price)}`}
                     {item.tiers.length > 0 && ` · ${item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}`).join(' · ')}`}
                   </p>
                 </div>

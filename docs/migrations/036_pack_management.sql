@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS pack_definitions (
     quantity_unit VARCHAR(32) NOT NULL DEFAULT 'hours',
     eligible_asset_type_uuid UUID NULL REFERENCES asset_types(uuid) ON DELETE SET NULL,
     pack_sales_account_uuid UUID NULL REFERENCES accounting_accounts(uuid) ON DELETE SET NULL,
-    pack_discount_expense_account_uuid UUID NULL REFERENCES accounting_accounts(uuid) ON DELETE SET NULL,
+    rem_discount_account_uuid UUID NULL REFERENCES accounting_accounts(uuid) ON DELETE SET NULL,
     priority INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -41,7 +41,7 @@ COMMENT ON COLUMN pack_definitions.pack_type IS 'flight_hours | winch_launches |
 COMMENT ON COLUMN pack_definitions.quantity_allowance IS 'Base quantity included in one pack purchase (e.g. 25.00 hours)';
 COMMENT ON COLUMN pack_definitions.quantity_unit IS 'hours | launches | centihours';
 COMMENT ON COLUMN pack_definitions.pack_sales_account_uuid IS 'Credit account for pack purchase revenue, normally class 7 (overrides default)';
-COMMENT ON COLUMN pack_definitions.pack_discount_expense_account_uuid IS 'Debit account for REM pack discount expense, normally class 6 (overrides default)';
+COMMENT ON COLUMN pack_definitions.rem_discount_account_uuid IS 'Debit account for REM pack discount expense, normally class 6 (overrides default)';
 
 -- -------------------------------------------------------------------------
 -- 2. pack_applicability : links a pack to a pricing_item with a discounted price

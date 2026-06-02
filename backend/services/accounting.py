@@ -738,14 +738,12 @@ async def clone_pricing_version(
             name=source_item.name,
             unit=source_item.unit,
             base_price=source_item.base_price,
-            pack_price=source_item.pack_price,
             age_discount_percent=source_item.age_discount_percent,
             gl_account_credit_uuid=source_item.gl_account_credit_uuid,
             tiers=[
                 PricingItemTierCreate(
                     from_qty=tier.from_qty,
                     price=tier.price,
-                    pack_price=tier.pack_price,
                 )
                 for tier in sorted(source_item.tiers, key=lambda t: t.sort_order)
             ],
@@ -832,7 +830,6 @@ def _validate_pricing_precision(
     *,
     unit: int,
     base_price: Decimal | None,
-    pack_price: Decimal | None,
     age_discount_percent: Decimal | None,
     tiers: list | None,
 ) -> None:
@@ -840,11 +837,6 @@ def _validate_pricing_precision(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="base_price must have at most 2 decimal places.",
-        )
-    if pack_price is not None and _decimal_places(pack_price) > 2:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="pack_price must have at most 2 decimal places.",
         )
     if age_discount_percent is not None:
         if _decimal_places(age_discount_percent) > 2:
@@ -867,11 +859,6 @@ def _validate_pricing_precision(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="tier.price must have at most 2 decimal places.",
-            )
-        if tier.pack_price is not None and _decimal_places(tier.pack_price) > 2:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="tier.pack_price must have at most 2 decimal places.",
             )
         if tier.from_qty <= 0:
             raise HTTPException(
@@ -897,7 +884,6 @@ async def _replace_pricing_item_tiers(
     _validate_pricing_precision(
         unit=item.unit,
         base_price=None,
-        pack_price=None,
         age_discount_percent=None,
         tiers=tier_payloads,
     )
@@ -912,7 +898,6 @@ async def _replace_pricing_item_tiers(
             pricing_item_uuid=item.uuid,
             from_qty=tier.from_qty,
             price=tier.price,
-            pack_price=getattr(tier, 'pack_price', None),
             sort_order=i,
         ))
 
@@ -929,7 +914,6 @@ async def create_pricing_item(
     _validate_pricing_precision(
         unit=request.unit,
         base_price=request.base_price,
-        pack_price=request.pack_price,
         age_discount_percent=request.age_discount_percent,
         tiers=tier_payloads,
     )
@@ -970,7 +954,6 @@ async def update_pricing_item(
     _validate_pricing_precision(
         unit=effective_unit,
         base_price=update_data.get('base_price'),
-        pack_price=update_data.get('pack_price'),
         age_discount_percent=update_data.get('age_discount_percent'),
         tiers=request.tiers if tier_payloads is not None else None,
     )
@@ -1101,7 +1084,6 @@ async def copy_pricing_versions_from_year(
                 name=si.name,
                 unit=si.unit,
                 base_price=si.base_price,
-                pack_price=si.pack_price,
                 age_discount_percent=si.age_discount_percent,
                 gl_account_credit_uuid=si.gl_account_credit_uuid,
                 created_by=user_id,

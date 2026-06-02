@@ -18,7 +18,7 @@ export type PackDefinition = {
   quantity_unit: string
   eligible_asset_type_uuid: string | null
   pack_sales_account_uuid: string | null
-  pack_discount_expense_account_uuid: string | null
+  rem_discount_account_uuid: string | null
   priority: number
   created_at: string
   applicability: ApplicableItem[]
@@ -33,7 +33,7 @@ export type PackDefinitionCreate = {
   quantity_unit?: string
   eligible_asset_type_uuid?: string | null
   pack_sales_account_uuid?: string | null
-  pack_discount_expense_account_uuid?: string | null
+  rem_discount_account_uuid?: string | null
   priority?: number
   applicable_items?: { pricing_item_uuid: string; discounted_unit_price: string }[]
 }
@@ -43,7 +43,7 @@ export type PackDefinitionUpdate = {
   quantity_allowance?: string
   eligible_asset_type_uuid?: string | null
   pack_sales_account_uuid?: string | null
-  pack_discount_expense_account_uuid?: string | null
+  rem_discount_account_uuid?: string | null
   priority?: number
   applicable_items?: { pricing_item_uuid: string; discounted_unit_price: string }[]
 }

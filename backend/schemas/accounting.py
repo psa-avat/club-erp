@@ -436,7 +436,6 @@ class PricingItemTierCreate(BaseModel):
     """One progressive pricing bracket: applies from from_qty units onward."""
     from_qty: Decimal = Field(gt=0, decimal_places=4)
     price: Decimal = Field(ge=0, decimal_places=2)
-    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
 
 
 class PricingItemTierResponse(BaseModel):
@@ -446,7 +445,6 @@ class PricingItemTierResponse(BaseModel):
     uuid: UUID
     from_qty: Decimal
     price: Decimal
-    pack_price: Optional[Decimal] = None
     sort_order: int
 
 
@@ -463,8 +461,6 @@ class PricingItemCreateRequest(BaseModel):
     base_price: Decimal = Field(ge=0, decimal_places=2)
     # When True, tiers are applied progressively (each bracket at its own rate)
     is_progressive: bool = False
-    # Price per unit when the pilot has an active pack subscription
-    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # Percentage discount applied when the member is under-25 eligible (0 = no discount)
     age_discount_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100, decimal_places=2)
     # Revenue account credited at billing time (NULL allowed during setup)
@@ -480,7 +476,6 @@ class PricingItemUpdateRequest(BaseModel):
     unit: Optional[int] = Field(default=None, ge=1, le=7)
     base_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     is_progressive: Optional[bool] = None
-    pack_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
     # When provided, overrides the existing age discount percentage
     age_discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100, decimal_places=2)
     # When provided, updates the revenue account linked to this item
@@ -500,7 +495,6 @@ class PricingItemResponse(BaseModel):
     unit: int
     base_price: Decimal
     is_progressive: bool = False
-    pack_price: Optional[Decimal] = None
     age_discount_percent: Decimal
     gl_account_credit_uuid: Optional[UUID] = None
     tiers: list[PricingItemTierResponse] = []

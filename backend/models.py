@@ -583,7 +583,6 @@ class PricingItem(Base):
     __table_args__ = (
         CheckConstraint("unit IN (1, 2, 3, 4, 5, 6, 7)", name="chk_pricing_items_unit"),
         CheckConstraint("base_price >= 0", name="chk_pricing_items_base_price"),
-        CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_items_pack_price"),
         CheckConstraint(
             "age_discount_percent >= 0 AND age_discount_percent <= 100",
             name="chk_pricing_items_age_discount",
@@ -604,8 +603,6 @@ class PricingItem(Base):
     base_price = Column(Numeric(10, 4), nullable=False)
     # When True, tiers are applied progressively (each bracket priced at its own rate)
     is_progressive = Column(Boolean, nullable=False, default=False)
-    # Price per unit when pilot has an active pack subscription
-    pack_price = Column(Numeric(10, 4), nullable=True)
     # Percentage discount applied to this item when the member is under-25 eligible (0 = no discount)
     age_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
     # Revenue account credited at billing time (NULL allowed during setup)
@@ -656,7 +653,7 @@ class PricingItemTier(Base):
     __table_args__ = (
         CheckConstraint("from_qty > 0", name="chk_pricing_item_tiers_from_qty"),
         CheckConstraint("price >= 0", name="chk_pricing_item_tiers_price"),
-        CheckConstraint("pack_price IS NULL OR pack_price >= 0", name="chk_pricing_item_tiers_pack_price"),
+
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -665,7 +662,6 @@ class PricingItemTier(Base):
     )
     from_qty = Column(Numeric(10, 4), nullable=False)
     price = Column(Numeric(10, 4), nullable=False)
-    pack_price = Column(Numeric(10, 4), nullable=True)
     sort_order = Column(SmallInteger, nullable=False, default=0)
 
     item = relationship("PricingItem", back_populates="tiers")
@@ -1492,8 +1488,9 @@ class PackDefinition(Base):
     pack_sales_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
-    pack_discount_expense_account_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
+    rem_discount_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True,
+        comment="Debit account for REM pack discount expense, normally class 6 (overrides default)",
     )
     priority = Column(Integer, nullable=False, default=0)
     created_at = Column(
@@ -1505,7 +1502,7 @@ class PackDefinition(Base):
     fiscal_year = relationship("AccountingFiscalYear")
     eligible_asset_type = relationship("AssetType")
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[pack_sales_account_uuid])
-    pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[pack_discount_expense_account_uuid])
+    rem_discount_account = relationship("AccountingAccount", foreign_keys=[rem_discount_account_uuid])
     applicability = relationship("PackApplicability", back_populates="pack_definition", cascade="all, delete-orphan")
 
     def __repr__(self):

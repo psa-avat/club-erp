@@ -1143,6 +1143,8 @@ export const fr = {
         applicableItems: 'Tarifs liés',
         empty: 'Aucun forfait défini pour cet exercice.',
         confirmDelete: 'Confirmez-vous la suppression de ce forfait ?',
+        discountedPrice: 'Prix remisé',
+        noRatesLinked: 'Aucun tarif lié à ce forfait.',
       },
       form: {
         metadata: 'Métadonnées',
@@ -1225,6 +1227,7 @@ export const fr = {
       description: "Gérez les versions de tarifs par exercice fiscal, avec une timeline et la copie depuis l'exercice précédent.",
       loading: 'Chargement...',
       noPermission: "Vous n'avez pas la capacité VIEW_FINANCIALS nécessaire.",
+      packs: 'Forfaits',
       error: {
         generic: 'Une erreur est survenue. Réessayez.',
       },
