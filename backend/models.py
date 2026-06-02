@@ -1492,7 +1492,7 @@ class PackDefinition(Base):
     pack_sales_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
-    rem_discount_account_uuid = Column(
+    pack_discount_expense_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
     priority = Column(Integer, nullable=False, default=0)
@@ -1505,7 +1505,7 @@ class PackDefinition(Base):
     fiscal_year = relationship("AccountingFiscalYear")
     eligible_asset_type = relationship("AssetType")
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[pack_sales_account_uuid])
-    rem_discount_account = relationship("AccountingAccount", foreign_keys=[rem_discount_account_uuid])
+    pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[pack_discount_expense_account_uuid])
     applicability = relationship("PackApplicability", back_populates="pack_definition", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -1580,7 +1580,11 @@ class MemberPackConsumption(Base):
 
     member = relationship("Member")
     flight = relationship("ValidatedFlight")
-    accounting_entry = relationship("AccountingEntry")
+    accounting_entry = relationship(
+        "AccountingEntry",
+        foreign_keys=[accounting_entry_uuid],
+        primaryjoin="MemberPackConsumption.accounting_entry_uuid == AccountingEntry.uuid",
+    )
 
     def __repr__(self):
         return f"<MemberPackConsumption member={self.member_uuid} flight={self.flight_uuid} type={self.pack_type}>"

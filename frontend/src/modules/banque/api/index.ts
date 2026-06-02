@@ -814,6 +814,48 @@ export function usePricingItemsQuery(versionUuid: string | null, enabled = true)
   })
 }
 
+/** A pricing item decorated with its parent version name for display. */
+export type PricingItemWithVersion = PricingItem & {
+  version_uuid: string
+  version_name: string
+}
+
+/**
+ * Fetch ALL pricing items across all versions, each annotated with its version name.
+ * Useful for pack applicability selectors where the user needs to see which version
+ * a rate belongs to.
+ */
+export function useAllActivePricingItemsQuery(enabled = true) {
+  const versionsQuery = usePricingVersionsQuery('', enabled)
+  const versionUuids = (versionsQuery.data ?? []).map((v) => v.uuid)
+
+  // Build a stable key from the sorted list of version UUIDs so the query key
+  // changes when available versions change (e.g. after a new version is created).
+  const stableKey = [...versionUuids].sort().join('::')
+
+  return useQuery({
+    queryKey: [...banqueQueryKeys.root, 'all-pricing-items', stableKey] as const,
+    enabled: enabled && versionUuids.length > 0,
+    queryFn: async () => {
+      const versionMap = new Map(
+        (versionsQuery.data ?? []).map((v) => [v.uuid, v.name]),
+      )
+      const results: PricingItemWithVersion[] = []
+      for (const vUuid of versionUuids) {
+        const { data } = await apiClient.get<PricingItem[]>(
+          `/api/v1/accounting/pricing/versions/${vUuid}/items`,
+          getAuthRequestConfig(),
+        )
+        const vName = versionMap.get(vUuid) ?? vUuid
+        for (const item of data) {
+          results.push({ ...item, version_uuid: vUuid, version_name: vName })
+        }
+      }
+      return results
+    },
+  })
+}
+
 // ── PCG Seed ──────────────────────────────────────────────────────────────────
 
 export function usePcgSeedQuery() {

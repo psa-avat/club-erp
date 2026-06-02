@@ -84,7 +84,6 @@ function App() {
           <Route path="/banque/journal/templates" element={<BanqueJournalTemplatesPage />} />
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/banque/packs" element={<PackDefinitionsPage />} />
-          <Route path="/banque/packs/new" element={<PackDefinitionEditPage />} />
           <Route path="/banque/packs/:packUuid" element={<PackDefinitionEditPage />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />

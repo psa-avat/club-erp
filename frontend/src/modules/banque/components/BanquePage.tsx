@@ -60,6 +60,21 @@ export function BanquePage() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <header className="space-y-2">
+          <h2 className="text-xl font-semibold text-slate-900">{t('packs.title')}</h2>
+          <p className="text-sm text-slate-600">{t('packs.description')}</p>
+        </header>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 transition-colors hover:bg-slate-100"
+            to="/banque/packs"
+          >
+            <span className="font-semibold">{t('packs.menu.definitions')}</span>
+          </Link>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <header className="space-y-2">
           <h2 className="text-xl font-semibold text-slate-900">{t('pcg.title')}</h2>
           <p className="text-sm text-slate-600">{t('pcg.description')}</p>
         </header>

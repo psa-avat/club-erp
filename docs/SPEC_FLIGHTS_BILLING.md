@@ -146,7 +146,8 @@ Accounting entry for pack purchase (VT journal, posted):
   Credit  pack_sales_account (7066)    purchase_amount
 ```
 
-- The sales account is stored on `pack_definitions.pack_sales_account_uuid` (default: 7066).
+- The sales account is stored on `pack_definitions.pack_sales_account_uuid` (default: 7066 / class 7).
+- The REM discount debit account is stored on `pack_definitions.pack_discount_expense_account_uuid` and should normally be a class 6 expense account. This separates pack revenue from the cost of granted discounts.
 - The purchase is posted immediately (the member has paid).
 - The GL entry is the source of truth for "how many units were bought".
 - The purchase quantity is inferred from the accounting line quantity or from the pack definition's `quantity_allowance`.
@@ -264,7 +265,7 @@ For each pilot in the period:
                   AND flight date IN current period
 
   One Draft entry in journal REM:
-    Debit   706 (Revenue attenuation / Discounts granted)   total_discount
+    Debit   6xx (Pack discount expense / Discounts granted)   total_discount
     Credit  411 (member dimension)                          total_discount
 
   If a Draft entry already exists for this pilot + period:
@@ -278,7 +279,7 @@ For each pilot in the period:
 | Entry | Debit | Credit | Net on 411 |
 |---|---|---|---|
 | FL journal | 411 (gross flight) | 706x (revenue) | +gross |
-| REM journal | 706 (discount) | 411 (discount) | −discount |
+| REM journal | 6xx (pack discount expense) | 411 (discount) | −discount |
 | **Combined** | | | **gross − discount = net due** |
 
 ### 6.4 Concrete Example
@@ -301,7 +302,7 @@ For each pilot in the period:
 
 **Step 3 — REM adjustment entry (for this pilot's period):**
 ```
-  Debit  706              80.00   Discounts granted
+  Debit  6xx              80.00   Pack discount expense
   Credit 411/Member        80.00   Pack discount adjustment
 ```
 
@@ -459,7 +460,7 @@ Not a table — a live SQL view crossing GL pack purchases with operational cons
 | `flights_journal_uuid` | UUID | FK → accounting_journals (default = FL) |
 | `rem_journal_uuid` | UUID | FK → accounting_journals (default = REM/DISC) |
 | `pack_sales_account_uuid` | UUID | FK → accounting_accounts (pack sales account) |
-| `rem_discount_account_uuid` | UUID | FK → accounting_accounts (debit side for discounts, e.g. 706) |
+| `pack_discount_expense_account_uuid` | UUID | FK → accounting_accounts (debit side for pack discounts, normally class 6) |
 | `discount_period_days` | int | Period length for REM adjustment (default 30 = monthly) |
 | `allow_post_purchase_recalculation` | boolean | Default true |
 | `updated_at` | timestamptz | |
@@ -532,17 +533,21 @@ Stored in `system_settings` (module `flight_billing`):
 |---|---|---|---|---|
 | Flight charge (gross) | 411 (member) | 706x (revenue) | base_price × qty | FL |
 | Pack purchase | 411 (member) | pack_sales_account | purchase_amount | VT |
-| Discount adjustment (periodic) | 706 (discount account) | 411 (member) | total_discount_amount | REM |
+| Discount adjustment (periodic) | 6xx (pack discount expense account) | 411 (member) | total_discount_amount | REM |
 
 The **411 account** always carries the member dimension (`member_uuid`, `member_account_id_snapshot`).
 
 The analytical dimension (`analytical_asset_uuid`) is set to the machine UUID on every flight line, enabling per-machine financial reporting.
 
-The **706 discount account** is configured in `flight_billing_configs.rem_discount_account_uuid`.
+The pack discount debit account is normally a **class 6 expense account** and is configured as `pack_discount_expense_account_uuid` on the pack definition or billing config. Pack sales remain credited to class 7, so class 7 pack revenue minus class 6 pack discount expense gives the operating result of pack activity.
 
 ---
 
-## 12. Permissions & Capabilities
+## 12. Member Expense Reimbursement Control
+
+Costs advanced by members must be reimbursed through the expense-report (`note de frais`) workflow. Direct bank reimbursement is not allowed for supplier invoices that are not issued to the club, and should not be used as a bypass when the invoice is not clearly issued to either the club or the reimbursed member.
+
+## 13. Permissions & Capabilities
 
 | Capability | Operations |
 |---|---|

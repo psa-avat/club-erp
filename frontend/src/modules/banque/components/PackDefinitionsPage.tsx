@@ -34,9 +34,9 @@ import {
   useDeletePackDefinitionMutation,
   useFiscalYearsQuery,
   useAccountsQuery,
-  usePricingVersionsQuery,
-  usePricingItemsQuery,
+  useAllActivePricingItemsQuery,
 } from '../api'
+import { useAssetTypesQuery } from '../../assets/api'
 import {
   PackDefinitionForm,
   type PackFormState,
@@ -48,7 +48,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export function PackDefinitionsPage() {
-  const { t } = useTranslation('banque')
+  const { t } = useTranslation(['banque', 'common'])
   const canView = useCapability('VIEW_FINANCIALS')
   const canManage = useCapability('MANAGE_PRICES')
   const navigate = useNavigate()
@@ -174,7 +174,7 @@ export function PackDefinitionsPage() {
 // ---------------------------------------------------------------------------
 
 export function PackDefinitionEditPage() {
-  const { t } = useTranslation('banque')
+  const { t } = useTranslation(['banque', 'common'])
   const { packUuid } = useParams<{ packUuid: string }>()
   const navigate = useNavigate()
   const isNew = packUuid === 'new'
@@ -182,13 +182,8 @@ export function PackDefinitionEditPage() {
 
   const fiscalYearsQuery = useFiscalYearsQuery(true)
   const accountsQuery = useAccountsQuery(true)
-  const pricingVersionsQuery = usePricingVersionsQuery(null, true)
-  const pricingVersions = pricingVersionsQuery.data ?? []
-
-  // Use first pricing version to find items, or let user pick
-  const [selectedVersionUuid, setSelectedVersionUuid] = useState<string>('')
-  const pricingItemsQuery = usePricingItemsQuery(selectedVersionUuid || (pricingVersions[0]?.uuid ?? ''), true)
-  const pricingItems = pricingItemsQuery.data ?? []
+  const allItemsQuery = useAllActivePricingItemsQuery(true)
+  const pricingItems = allItemsQuery.data ?? []
 
   // Pack data if editing
   const packQuery = usePackDefinitionQuery(isNew ? null : packUuid ?? null, !isNew)
@@ -218,7 +213,7 @@ export function PackDefinitionEditPage() {
         quantity_unit: pack.quantity_unit,
         eligible_asset_type_uuid: pack.eligible_asset_type_uuid,
         pack_sales_account_uuid: pack.pack_sales_account_uuid,
-        rem_discount_account_uuid: pack.rem_discount_account_uuid,
+        pack_discount_expense_account_uuid: pack.pack_discount_expense_account_uuid,
         priority: pack.priority,
       }
     : {
@@ -230,7 +225,7 @@ export function PackDefinitionEditPage() {
         quantity_unit: 'hours',
         eligible_asset_type_uuid: null,
         pack_sales_account_uuid: null,
-        rem_discount_account_uuid: null,
+        pack_discount_expense_account_uuid: null,
         priority: 0,
       }
 
@@ -280,8 +275,8 @@ export function PackDefinitionEditPage() {
   const fiscalYears = fiscalYearsQuery.data ?? []
   const accounts = accountsQuery.data ?? []
 
-  // Gather unique asset types from pricing items for the filter dropdown
-  const assetTypes: { uuid: string; code: string; name: string }[] = []
+  const assetTypesQuery = useAssetTypesQuery(true)
+  const assetTypes = assetTypesQuery.data ?? []
 
   return (
     <div className="space-y-4">

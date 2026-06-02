@@ -63,7 +63,7 @@ class PackDefinitionCreate(BaseModel):
     quantity_unit: str = Field(default="hours", pattern=r"^(hours|launches|centihours)$")
     eligible_asset_type_uuid: Optional[UUID] = None
     pack_sales_account_uuid: Optional[UUID] = None
-    rem_discount_account_uuid: Optional[UUID] = None
+    pack_discount_expense_account_uuid: Optional[UUID] = None
     priority: int = Field(default=0, ge=0)
     applicable_items: list[ApplicableItemCreate] = []
 
@@ -74,7 +74,7 @@ class PackDefinitionUpdate(BaseModel):
     quantity_allowance: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     eligible_asset_type_uuid: Optional[UUID] = None
     pack_sales_account_uuid: Optional[UUID] = None
-    rem_discount_account_uuid: Optional[UUID] = None
+    pack_discount_expense_account_uuid: Optional[UUID] = None
     priority: Optional[int] = Field(default=None, ge=0)
     applicable_items: Optional[list[ApplicableItemCreate]] = None
 
@@ -92,7 +92,7 @@ class PackDefinitionResponse(BaseModel):
     quantity_unit: str
     eligible_asset_type_uuid: Optional[UUID] = None
     pack_sales_account_uuid: Optional[UUID] = None
-    rem_discount_account_uuid: Optional[UUID] = None
+    pack_discount_expense_account_uuid: Optional[UUID] = None
     priority: int
     created_at: datetime
     applicability: list[ApplicableItemResponse] = []

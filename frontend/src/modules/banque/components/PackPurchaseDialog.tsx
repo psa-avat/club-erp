@@ -24,9 +24,8 @@ import { Button } from '../../../components/ui/button'
 import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
-import { Select } from '../../../components/ui/select'
 import { usePackDefinitionsQuery } from '../api'
-import type { MemberOption } from '../../members/api'
+import type { MemberOption } from '../../members/types'
 
 type Props = {
   open: boolean
@@ -37,7 +36,7 @@ type Props = {
 }
 
 export function PackPurchaseDialog({ open, members, onClose, onConfirm, isSubmitting }: Props) {
-  const { t } = useTranslation('banque')
+  const { t } = useTranslation(['banque', 'common'])
   const [selectedMemberUuid, setSelectedMemberUuid] = useState('')
   const [selectedPackUuid, setSelectedPackUuid] = useState('')
   const [quantity, setQuantity] = useState(1)
@@ -67,11 +66,11 @@ export function PackPurchaseDialog({ open, members, onClose, onConfirm, isSubmit
 
         <div className="space-y-2">
           <Label htmlFor="member">{t('packs.purchase.member')}</Label>
-          <Select
+          <select
             id="member"
             value={selectedMemberUuid}
-            onChange={(e) => setSelectedMemberUuid(e.target.value)}
-            placeholder={t('packs.purchase.selectMember')}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMemberUuid(e.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
           >
             <option value="" disabled>{t('packs.purchase.selectMember')}</option>
             {members.map((m) => (
@@ -79,16 +78,16 @@ export function PackPurchaseDialog({ open, members, onClose, onConfirm, isSubmit
                 {`${m.first_name} ${m.last_name}`} ({m.account_id})
               </option>
             ))}
-          </Select>
+          </select>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="pack">{t('packs.purchase.pack')}</Label>
-          <Select
+          <select
             id="pack"
             value={selectedPackUuid}
-            onChange={(e) => setSelectedPackUuid(e.target.value)}
-            placeholder={t('packs.purchase.selectPack')}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedPackUuid(e.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
           >
             <option value="" disabled>{t('packs.purchase.selectPack')}</option>
             {packDefinitions.map((p) => (
@@ -96,7 +95,7 @@ export function PackPurchaseDialog({ open, members, onClose, onConfirm, isSubmit
                 {p.code} — {p.name} ({p.quantity_allowance} {p.quantity_unit})
               </option>
             ))}
-          </Select>
+          </select>
         </div>
 
         <div className="space-y-2">
@@ -121,7 +120,7 @@ export function PackPurchaseDialog({ open, members, onClose, onConfirm, isSubmit
         )}
 
         <div className="flex justify-end gap-3 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
             {t('common.cancel')}
           </Button>
           <Button onClick={handleConfirm} disabled={!canSubmit || isSubmitting}>

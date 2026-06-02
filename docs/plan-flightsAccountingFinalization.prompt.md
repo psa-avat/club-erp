@@ -17,7 +17,8 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 | **Pack scope** | Packs scoped by `pack_type` (`flight_hours` / `winch_launches` / `tow_launches` / `engine_time`); each scope discounts matching pricing items |
 | **Fiscal year boundary** | Packs scoped to one fiscal year. Remaining quantities reset to 0 at year-end — no carry-over |
 | **REM journal** | Dedicated journal (code `REM` / `DISC`, type = General) for discount adjustments. One Draft entry per pilot per period, updated as discounts accumulate |
-| **Billing configurability** | Each pack definition carries its own sales account (`pack_sales_account_uuid`) and discount contra account (`rem_discount_account_uuid`). Operational settings (period, tolerance) live in `system_settings`. Journals FL/REM are hardcoded — no dedicated table |
+| **Pack discount accounting** | Pack sale revenue stays in class 7 via `pack_sales_account_uuid`; REM discounts debit a class 6 expense account via `pack_discount_expense_account_uuid`. The pack operating result is read as class 7 pack sales minus class 6 pack discount expenses |
+| **Billing configurability** | Each pack definition carries its own sales account (`pack_sales_account_uuid`) and discount expense account (`pack_discount_expense_account_uuid`, normally class 6). Operational settings (period, tolerance) live in `system_settings`. Journals FL/REM are hardcoded — no dedicated table |
 | **Post-purchase** | Allowed — system recalculates `member_pack_consumptions` and updates the REM Draft entry |
 | **Freeze/exclude** | `is_frozen` flag on `member_pack_consumptions` rows; frozen consumptions excluded from REM calculation |
 | **Posting policy** | FL entries can be posted independently. REM entries remain Draft until period close (monthly/quarterly) |
@@ -38,7 +39,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `quantity_unit` (varchar: `hours`|`launches`)
    - `eligible_asset_type_uuid` (FK → asset_types, nullable — restricts which asset types this pack applies to)
    - `pack_sales_account_uuid` (FK → accounting_accounts, nullable — override of default; credit side for pack purchase revenue)
-   - `rem_discount_account_uuid` (FK → accounting_accounts, nullable — override of default; debit side for discount adjustments)
+   - `pack_discount_expense_account_uuid` (FK → accounting_accounts, nullable — override of default; debit side for REM pack discount expense, normally class 6)
    - `flights_journal_uuid` (FK → accounting_journals, nullable override)
    - `priority` (int, optional tie-breaker when multiple pack definitions match)
    - `created_at`
@@ -69,7 +70,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `allow_post_purchase_recalculation` — true by default
    - `max_days_for_post_purchase_discount` — 7
    - `require_approval_for_late_discount` — true
-   - *Accounts (`pack_sales_account_uuid`, `rem_discount_account_uuid`) live on each `pack_definitions` row — no redundant global settings*
+   - *Accounts (`pack_sales_account_uuid`, `pack_discount_expense_account_uuid`) live on each `pack_definitions` row — no redundant global settings*
 
 **Verification**: Migration SQL runs cleanly; new tables are empty; existing flights table migration adds nullable columns.
 
@@ -89,7 +90,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `record_pack_consumption(db, member_uuid, flight_uuid, pack_type, quantity_consumed, discount_unit_price, total_discount_amount)` — inserts a row in `member_pack_consumptions`
    - `get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — queries `vw_member_pack_balances` view
    - `compute_rem_adjustment(db, member_uuid, fiscal_year_uuid, period_start, period_end)` — sums `total_discount_amount` for non-frozen consumptions in period
-   - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, rem_discount_account_uuid, total_discount, period_start, period_end)` — creates or updates the single Draft REM entry for this pilot/period (the `rem_discount_account_uuid` is read from the applicable pack definition)
+   - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, pack_discount_expense_account_uuid, total_discount, period_start, period_end)` — creates or updates the single Draft REM entry for this pilot/period (the `pack_discount_expense_account_uuid` is read from the applicable pack definition)
    - `freeze_consumption(db, consumption_uuid, reason)` / `unfreeze_consumption(db, consumption_uuid)`
 3. Refactor `FlightBillingPreviewService` to compute `member_pack_consumptions` as a **post-billing step**: the FL entry is created at gross price; then eligible lines are checked against `pack_applicability` and `vw_member_pack_balances` to compute discount amounts. The GL is not modified at this stage
 4. Add pack purchase accounting entry creation helper:
@@ -97,6 +98,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
      - Debit `411` (member dimension) for total amount
      - Credit `pack_sales_account_uuid` (from the pack definition)
    - *Pack purchases are posted immediately — the GL is the source of truth for pack balances*
+   - Pack purchases credit a class 7 revenue account; later REM discounts debit a class 6 expense account so pack margin is visible as 7 minus 6.
 
 **Verification**: Unit tests for billing config CRUD, pack definition + applicability CRUD, consumption recording, REM adjustment computation and upsert, pack purchase entry creation (posted).
 
@@ -336,9 +338,12 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 ## Scope Boundaries
 
+**Accounting Control Note**:
+- Costs advanced by members must go through the expense-report (`note de frais`) workflow before reimbursement. Direct bank reimbursement is out of scope and should be refused, especially when the supplier invoice is not issued to the club or clearly to the reimbursed member.
+
 **Included**:
 - Pack catalog with `pack_definitions` + `pack_applicability` (link to pricing items with discounted price)
-- Pack purchase accounting (411 → pack_sales_account) and discount contra (706 → rem_discount_account) — both configured per pack definition
+- Pack purchase accounting (411 → pack_sales_account) and discount expense (6xx → pack_discount_expense_account) — both configured per pack definition
 - Gross billing in FL journal, discount tracked via `member_pack_consumptions` operational table
 - REM journal for periodic discount adjustment entries (one Draft per pilot per period, upserted)
 - `vw_member_pack_balances` view for live pack balance computation
