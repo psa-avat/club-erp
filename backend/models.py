@@ -1550,15 +1550,13 @@ class MemberPackConsumption(Base):
         UUID(as_uuid=True), ForeignKey("validated_flights.uuid", ondelete="CASCADE"), nullable=False, index=True
     )
     pack_type = Column(String(32), nullable=False)
+    valid_from = Column(DateTime(timezone=True), nullable=False, comment="Pack is applicable only to flights on or after this date")
     quantity_consumed = Column(Numeric(10, 2), nullable=False)
     discount_unit_price = Column(Numeric(10, 2), nullable=False)
     total_discount_amount = Column(Numeric(10, 2), nullable=False)
     accounting_entry_uuid = Column(
         UUID(as_uuid=True), nullable=True, index=True  # Link to GL entry (app-level integrity, no FK)
     )
-    is_frozen = Column(Boolean, nullable=False, default=False)
-    frozen_at = Column(DateTime(timezone=True), nullable=True)
-    frozen_reason = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

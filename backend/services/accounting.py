@@ -190,6 +190,12 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, dict] = {
             "enabled": False,
         },
     },
+    "flight_billing": {
+        "discount_period_days": 30,
+        "allow_post_purchase_recalculation": True,
+        "max_days_for_post_purchase_discount": 30,
+        "require_approval_for_late_discount": True,
+    },
 }
 
 

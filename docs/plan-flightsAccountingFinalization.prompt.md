@@ -68,7 +68,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 7. Store operational settings in `system_settings` (module `flight_billing`):
    - `discount_period_days` — period length for REM adjustment (default 30 for monthly)
    - `allow_post_purchase_recalculation` — true by default
-   - `max_days_for_post_purchase_discount` — 7
+   - `max_days_for_post_purchase_discount` — 30
    - `require_approval_for_late_discount` — true
    - *Accounts (`pack_sales_account_uuid`, `pack_discount_expense_account_uuid`) live on each `pack_definitions` row — no redundant global settings*
 

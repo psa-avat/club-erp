@@ -32,7 +32,6 @@ from schemas.flight_packs import (
     ApplicableItemResponse,
     FreezeConsumptionRequest,
     MemberPackBalanceResponse,
-    MemberPackConsumptionCreate,
     MemberPackConsumptionResponse,
     PackDefinitionCreate,
     PackDefinitionResponse,
@@ -40,17 +39,15 @@ from schemas.flight_packs import (
 )
 from services.flight_packs import (
     create_pack_definition,
-    delete_pack_definition,
-    freeze_consumption,
-    get_member_pack_balance,
     get_pack_definition,
     list_applicable_items,
     list_consumptions_for_flight,
     list_consumptions_for_member,
     list_pack_definitions,
+    get_member_pack_balance,
     record_consumption,
-    unfreeze_consumption,
     update_pack_definition,
+    delete_pack_definition,
 )
 
 router = APIRouter(prefix="/api/v1/packs", tags=["flight_packs"])
@@ -194,34 +191,3 @@ async def get_member_pack_balance_endpoint(
 ):
     """Get remaining pack balances for a member from vw_member_pack_balances."""
     return await get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=pack_type)
-
-
-# ---------------------------------------------------------------------------
-# Freeze / Unfreeze
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/consumptions/{consumption_uuid}/freeze",
-    response_model=MemberPackConsumptionResponse,
-)
-async def freeze_consumption_endpoint(
-    consumption_uuid: UUID,
-    request: FreezeConsumptionRequest = FreezeConsumptionRequest(),
-    db: AsyncSession = Depends(get_db),
-    _: User = post_guard,
-):
-    """Freeze a pack consumption row (exclude from discount calculation)."""
-    return await freeze_consumption(db, consumption_uuid, reason=request.reason)
-
-
-@router.post(
-    "/consumptions/{consumption_uuid}/unfreeze",
-    response_model=MemberPackConsumptionResponse,
-)
-async def unfreeze_consumption_endpoint(
-    consumption_uuid: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = post_guard,
-):
-    """Unfreeze a pack consumption row (re-include in discount calculation)."""
-    return await unfreeze_consumption(db, consumption_uuid)

@@ -104,6 +104,7 @@ class MemberPackConsumptionCreate(BaseModel):
     member_uuid: UUID
     flight_uuid: UUID
     pack_type: str
+    valid_from: datetime = Field(description="Pack is applicable only to flights on or after this date")
     quantity_consumed: Decimal = Field(gt=0, decimal_places=2)
     discount_unit_price: Decimal = Field(ge=0, decimal_places=2)
     total_discount_amount: Decimal = Field(ge=0, decimal_places=2)
@@ -118,13 +119,11 @@ class MemberPackConsumptionResponse(BaseModel):
     member_uuid: UUID
     flight_uuid: UUID
     pack_type: str
+    valid_from: datetime
     quantity_consumed: Decimal
     discount_unit_price: Decimal
     total_discount_amount: Decimal
     accounting_entry_uuid: Optional[UUID] = None
-    is_frozen: bool
-    frozen_at: Optional[datetime] = None
-    frozen_reason: Optional[str] = None
     created_at: datetime
 
 
@@ -148,3 +147,6 @@ class MemberPackBalanceResponse(BaseModel):
 class FreezeConsumptionRequest(BaseModel):
     """Request to freeze or unfreeze a pack consumption."""
     reason: Optional[str] = None
+
+
+# Kept for backward compatibility — always succeeds

@@ -53,13 +53,11 @@ export type MemberPackConsumption = {
   member_uuid: string
   flight_uuid: string
   pack_type: string
+  valid_from: string
   quantity_consumed: string
   discount_unit_price: string
   total_discount_amount: string
   accounting_entry_uuid: string | null
-  is_frozen: boolean
-  frozen_at: string | null
-  frozen_reason: string | null
   created_at: string
 }
 
@@ -67,6 +65,7 @@ export type MemberPackConsumptionCreate = {
   member_uuid: string
   flight_uuid: string
   pack_type: string
+  valid_from: string
   quantity_consumed: string
   discount_unit_price: string
   total_discount_amount: string

@@ -48,6 +48,7 @@ from schemas.flight_packs import (
     PackDefinitionUpdate,
     MemberPackConsumptionCreate,
 )
+from schemas.accounting import AccountingLineCreateRequest, AccountingEntryCreateRequest
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,7 @@ async def record_consumption(
         member_uuid=request.member_uuid,
         flight_uuid=request.flight_uuid,
         pack_type=request.pack_type,
+        valid_from=request.valid_from,
         quantity_consumed=request.quantity_consumed,
         discount_unit_price=request.discount_unit_price,
         total_discount_amount=request.total_discount_amount,
@@ -334,49 +336,91 @@ async def get_member_pack_balance(
 
 
 # ---------------------------------------------------------------------------
-# Freeze / Unfreeze
+# Pack Purchase Accounting
 # ---------------------------------------------------------------------------
 
-async def freeze_consumption(
+async def create_pack_purchase_entry(
     db: AsyncSession,
-    consumption_uuid: UUID,
-    reason: str | None = None,
-) -> MemberPackConsumption:
-    """Freeze a pack consumption row (exclude from REM calculation)."""
+    member_uuid: UUID,
+    pack_definition: PackDefinition,
+    amount: Decimal,
+    user_id: int,
+) -> AccountingEntry:
+    """
+    Create a **posted** accounting entry for a pack purchase.
+
+    Debit 411 (member receivable) for the total amount,
+    Credit the pack's sales account.
+
+    The entry is posted immediately — the GL is the source of truth
+    for pack balances.
+    """
+    from services.accounting import get_journal, get_account
+
+    # Find VT journal
     result = await db.execute(
-        select(MemberPackConsumption).where(MemberPackConsumption.uuid == consumption_uuid)
+        select(AccountingJournal).where(AccountingJournal.code == "VT")
     )
-    consumption = result.scalar_one_or_none()
-    if consumption is None:
+    vt_journal = result.scalar_one_or_none()
+    if vt_journal is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Pack consumption {consumption_uuid} not found",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="VT journal (Ventes) not found. Check journal configuration.",
         )
-    consumption.is_frozen = True
-    consumption.frozen_at = datetime.now(timezone.utc)
-    consumption.frozen_reason = reason
+
+    # Find 411 receivable account
+    receivable = await get_account_by_code(db, "411")
+    if receivable is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Receivable account 411 not found.",
+        )
+
+    # Find the pack sales account
+    sales_account = await get_account(db, pack_definition.pack_sales_account_uuid)
+
+    entry_uuid = uuid4()
+    entry = AccountingEntry(
+        uuid=entry_uuid,
+        fiscal_year_uuid=pack_definition.fiscal_year_uuid,
+        journal_uuid=vt_journal.uuid,
+        entry_date=datetime.now(timezone.utc),
+        reference=f"PACK-{pack_definition.code}",
+        description=f"Achat forfait {pack_definition.code} — {pack_definition.name}",
+        state=2,  # Posted
+        created_by=user_id,
+    )
+    db.add(entry)
+    await db.flush()
+
+    # Line 1: Debit 411
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=pack_definition.fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=receivable.uuid,
+        member_uuid=member_uuid,
+        debit=amount,
+    ))
+
+    # Line 2: Credit sales account
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=pack_definition.fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=sales_account.uuid,
+        member_uuid=member_uuid,
+        credit=amount,
+    ))
+
     await db.commit()
-    await db.refresh(consumption)
-    return consumption
+    await db.refresh(entry)
+    return entry
 
 
-async def unfreeze_consumption(
-    db: AsyncSession,
-    consumption_uuid: UUID,
-) -> MemberPackConsumption:
-    """Unfreeze a pack consumption row (re-include in REM calculation)."""
+async def get_account_by_code(db: AsyncSession, code: str) -> AccountingAccount | None:
+    """Look up an accounting account by its code."""
     result = await db.execute(
-        select(MemberPackConsumption).where(MemberPackConsumption.uuid == consumption_uuid)
+        select(AccountingAccount).where(AccountingAccount.code == code)
     )
-    consumption = result.scalar_one_or_none()
-    if consumption is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Pack consumption {consumption_uuid} not found",
-        )
-    consumption.is_frozen = False
-    consumption.frozen_at = None
-    consumption.frozen_reason = None
-    await db.commit()
-    await db.refresh(consumption)
-    return consumption
+    return result.scalar_one_or_none()

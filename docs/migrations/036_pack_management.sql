@@ -114,7 +114,6 @@ pack_consumptions AS (
         pack_type,
         SUM(quantity_consumed) AS total_consumed_units
     FROM member_pack_consumptions
-    WHERE is_frozen = FALSE
     GROUP BY member_uuid, pack_type
 )
 SELECT
