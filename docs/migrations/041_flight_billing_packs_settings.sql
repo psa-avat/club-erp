@@ -216,39 +216,111 @@ BEGIN
 END $$;
 
 -- =========================================================================
--- G. CREATE flight_billing_settings — typed config (one row per FY)
+-- G. ALTER flight_billing_settings — add columns that may be missing
+--    Table already exists. Only add/alter columns that differ.
 -- =========================================================================
-CREATE TABLE IF NOT EXISTS flight_billing_settings (
-    id              SERIAL PRIMARY KEY,
 
-    -- Fiscal year scope
-    fiscal_year_uuid UUID NOT NULL UNIQUE REFERENCES accounting_fiscal_years(uuid) ON DELETE CASCADE,
+-- default_initiation_charge_account_uuid (club billing fallback)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'default_initiation_charge_account_uuid'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN default_initiation_charge_account_uuid UUID REFERENCES accounting_accounts(uuid);
+    END IF;
+END $$;
 
-    -- FL journal → receivable account
-    fl_journal_uuid           UUID NOT NULL REFERENCES accounting_journals(uuid),
-    receivable_account_uuid   UUID NOT NULL REFERENCES accounting_accounts(uuid),
+-- rem_period_days (may be missing in legacy schema)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'rem_period_days'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN rem_period_days INTEGER NOT NULL DEFAULT 30;
+    END IF;
+END $$;
 
-    -- VT journal → pack sales account
-    vt_journal_uuid                    UUID NOT NULL REFERENCES accounting_journals(uuid),
-    default_pack_sales_account_uuid    UUID REFERENCES accounting_accounts(uuid),
+-- allow_post_purchase_recalculation
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'allow_post_purchase_recalculation'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN allow_post_purchase_recalculation BOOLEAN NOT NULL DEFAULT TRUE;
+    END IF;
+END $$;
 
-    -- REM journal → pack discount expense account
-    rem_journal_uuid                         UUID NOT NULL REFERENCES accounting_journals(uuid),
-    default_pack_discount_expense_account_uuid UUID REFERENCES accounting_accounts(uuid),
+-- max_days_for_post_purchase_discount
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'max_days_for_post_purchase_discount'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN max_days_for_post_purchase_discount INTEGER DEFAULT 30;
+    END IF;
+END $$;
 
-    -- Operational settings
-    rem_period_days                   INTEGER NOT NULL DEFAULT 30 CHECK (rem_period_days > 0),
-    allow_post_purchase_recalculation BOOLEAN NOT NULL DEFAULT TRUE,
-    max_days_for_post_purchase_discount INTEGER DEFAULT 30,
-    require_approval_for_late_discount BOOLEAN NOT NULL DEFAULT TRUE,
+-- require_approval_for_late_discount
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'require_approval_for_late_discount'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN require_approval_for_late_discount BOOLEAN NOT NULL DEFAULT TRUE;
+    END IF;
+END $$;
 
-    -- Metadata
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL
-);
+-- updated_by (may be missing in legacy schema)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'updated_by'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_fbs_fiscal_year ON flight_billing_settings(fiscal_year_uuid);
+
+-- =========================================================================
+-- H. Add charge_account_uuid to vi_type_catalog
+-- =========================================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'vi_type_catalog' AND column_name = 'charge_account_uuid'
+    ) THEN
+        ALTER TABLE vi_type_catalog
+            ADD COLUMN charge_account_uuid UUID REFERENCES accounting_accounts(uuid) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+-- =========================================================================
+-- I. Add charge_comment to validated_flights
+-- =========================================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'validated_flights' AND column_name = 'charge_comment'
+    ) THEN
+        ALTER TABLE validated_flights
+            ADD COLUMN charge_comment TEXT;
+    END IF;
+END $$;
 
 -- =========================================================================
 -- Comments

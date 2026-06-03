@@ -233,6 +233,9 @@ class FlightBillingSettings(Base):
     rem_journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False)
     default_pack_discount_expense_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
 
+    # Club billing (default charge account for initiation/VI flights)
+    default_initiation_charge_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+
     # Operational settings
     rem_period_days = Column(Integer, nullable=False, default=30)
     allow_post_purchase_recalculation = Column(Boolean, nullable=False, default=True)
@@ -1254,8 +1257,9 @@ class ValidatedFlight(Base):
     pilot_compta_id = Column(String, nullable=True)  # Planche/legacy accounting ID
     second_pilot_erp_id = Column(String, nullable=True)  # Second pilot/instructor
     second_pilot_id = Column(String, nullable=True)  # Planche/legacy second pilot ID
-    charge_to_erp_id = Column(String, nullable=True)  # Billing member
+    charge_to_erp_id = Column(String, nullable=True)  # Billing member (editable, can be CLUB sentinel)
     charge_to_compta_id = Column(String, nullable=True)  # Planche/legacy billing ID
+    charge_comment = Column(Text, nullable=True)  # User comment for charge_to selection
     instruction_split = Column(Integer, nullable=False, default=0)  # Instruction split
 
     vi_erp_id = Column(String, nullable=True)  # VI assignment (ERP identifier)
@@ -1394,6 +1398,10 @@ class ViTypeCatalog(Base):
     name = Column(String(100), nullable=False)
     description = Column(String(255), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
+    charge_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Charge account for club-billed flights (initiation VI). Overrides flight_billing_settings.default_initiation_charge_account_uuid",
+    )
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -1409,6 +1417,7 @@ class ViTypeCatalog(Base):
 
     updated_by_user = relationship("User")
     entitlements = relationship("ViEntitlement", back_populates="vi_type")
+    charge_account = relationship("AccountingAccount", foreign_keys=[charge_account_uuid])
 
     def __repr__(self):
         return f"<ViTypeCatalog code={self.code} active={self.is_active}>"

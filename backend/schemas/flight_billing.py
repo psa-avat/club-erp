@@ -41,6 +41,9 @@ class FlightBillingSettingsResponse(BaseModel):
     rem_journal_uuid: UUID
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
 
+    # Club billing
+    default_club_contra_account_uuid: Optional[UUID] = None
+
     # Operational settings
     rem_period_days: int = 30
     allow_post_purchase_recalculation: bool = True
@@ -69,6 +72,9 @@ class FlightBillingSettingsUpdate(BaseModel):
     rem_journal_uuid: UUID
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
 
+    # Club billing
+    default_initiation_charge_account_uuid: Optional[UUID] = None
+
     # Operational settings
     rem_period_days: int = Field(default=30, ge=1)
     allow_post_purchase_recalculation: bool = True
@@ -86,8 +92,11 @@ class FlightBillingSettingsDefaults(BaseModel):
     default_pack_sales_account_uuid: Optional[UUID] = None
     rem_journal_uuid: Optional[UUID] = None
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
+    default_initiation_charge_account_uuid: Optional[UUID] = None
 
     rem_period_days: int = 30
     allow_post_purchase_recalculation: bool = True
     max_days_for_post_purchase_discount: int = 30
     require_approval_for_late_discount: bool = True
+
+

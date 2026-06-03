@@ -22,6 +22,8 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 | **Post-purchase** | Allowed — system recalculates `member_pack_consumptions` and updates the REM Draft entry |
 | **Freeze/exclude** | `is_frozen` flag on `member_pack_consumptions` rows; frozen consumptions excluded from REM calculation |
 | **Posting policy** | FL entries can be posted independently. REM entries remain Draft until period close (monthly/quarterly) |
+
+| **Club member** | A dedicated member record with `account_id = 'CLUB'` (or similar reserved value) represents the club entity for billing. When a flight's `charge_to_erp_id` equals this reserved account ID, the flight is club-billed. The club member is created via the regular member management UI (one-time setup). Initiation VI flights use `vi_type_catalog.charge_account_uuid` as the debit account, falling back to `flight_billing_settings.default_initiation_charge_account_uuid` |
 | **Alerts** | Evaluate combined net of gross FL entry + REM adjustment — never gross alone |
 
 ---
@@ -85,6 +87,9 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `default_pack_discount_expense_account_uuid` UUID REFERENCES accounting_accounts(uuid)
      — *Pack discount expense account (class 6) posted via the REM journal*
 
+   - `default_initiation_charge_account_uuid` UUID REFERENCES accounting_accounts(uuid)
+     — *Default charge account for initiation/VI club-billed flights (class 6 expense, e.g. 658). Used when no matching `vi_type_catalog.charge_account_uuid` is found*
+
    **Operational settings:**
    - `rem_period_days` INTEGER NOT NULL DEFAULT 30 CHECK (rem_period_days > 0)
    - `allow_post_purchase_recalculation` BOOLEAN NOT NULL DEFAULT true
@@ -94,6 +99,19 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    **Metadata:**
    - `created_at`, `updated_at`, `updated_by` (FK → users)
    - *Per-pack accounts (`pack_sales_account_uuid`, `pack_discount_expense_account_uuid`) on `pack_definitions` override the defaults above*
+
+8. Add `charge_account_uuid` to `vi_type_catalog`:
+   - `charge_account_uuid` UUID REFERENCES accounting_accounts(uuid), nullable
+   - *Each VI type (VI, JD, STAGE...) can define its own charge account for club billing*
+
+9. **Billing resolution order** (journal is always FL):
+   1. Club-billed (charge_to_erp_id matches the club member's account_id, e.g. 'CLUB'):
+      - Debit `vi_type_catalog.charge_account_uuid` if flight has a matching VI type → else `flight_billing_settings.default_initiation_charge_account_uuid`
+      - Credit `receivable_account_uuid` for the revenue account
+      - No member dimension on debit
+   2. Member-billed:
+      - Debit `receivable_account_uuid` (member dimension)
+      - Credit `receivable_account_uuid` for the revenue account
 
 **Verification**: Migration SQL runs cleanly; new tables are empty; existing flights table migration adds nullable columns.
 
@@ -125,6 +143,10 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
       - `<Combobox>` for REM journal
       - `<ComboboxAccount>` for default pack discount expense account (class 6)
       - Helper text: *"Les remises de forfaits seront postées dans ce journal au débit du compte de charge"*
+
+   **Club billing section:**
+   - `<ComboboxAccount>` for default initiation charge account (class 6 expense, e.g. 658)
+   - Helper text: *"Compte de charge par défaut pour les vols facturés au club (initiations VI). Utilisé quand le type VI n'a pas de compte défini."*
 
    **Operational settings section:**
    - **REM period** — `<Input type="number">` with min=1, step=1, suffix "jours"
@@ -167,7 +189,10 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - `compute_rem_adjustment(db, member_uuid, fiscal_year_uuid, period_start, period_end)` — sums `total_discount_amount` for non-frozen consumptions in period
    - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, pack_discount_expense_account_uuid, total_discount, period_start, period_end, user_id)` — creates or updates the single Draft REM entry for this pilot/period in the configured REM journal; the `pack_discount_expense_account_uuid` is read from the applicable pack definition (or from `flight_billing_settings.default_pack_discount_expense_account_uuid` as fallback)
    - `freeze_consumption(db, consumption_uuid, reason)` / `unfreeze_consumption(db, consumption_uuid)`
-3. Refactor `FlightBillingPreviewService` to compute `member_pack_consumptions` as a **post-billing step**: the FL entry is created at gross price; then eligible lines are checked against `pack_applicability` and `vw_member_pack_balances` to compute discount amounts. The GL is not modified at this stage
+3. Refactor `FlightBillingPreviewService`:
+   - **Club billing detection**: Update `_resolve_payers` to check if `charge_to_erp_id` equals the club member's `account_id` (e.g. 'CLUB'). If club-billed, return an empty payer list (no member dimension). Resolve the charge account from `vi_type_catalog.charge_account_uuid` (by `vi_erp_id`) or fallback to `flight_billing_settings.default_initiation_charge_account_uuid`. The club member record is created once via the member management UI (regular member with a reserved `account_id`)
+   - **ValidatedFlight** : Add `charge_comment` field for audit trail; make `charge_to_erp_id` editable on the flight detail UI (not just Planche import)
+   - Compute `member_pack_consumptions` as a **post-billing step**: the FL entry is created at gross price; then eligible lines are checked against `pack_applicability` and `vw_member_pack_balances` to compute discount amounts. The GL is not modified at this stage
 4. Add pack purchase accounting entry creation helper:
    - `create_pack_purchase_entry(db, member, amount, pack_sales_account_uuid, vt_journal_uuid, receivable_account_uuid, user_id)` → creates **posted** entry in the configured VT journal:
      - Debit `receivable_account_uuid` (member dimension) for total amount
@@ -185,10 +210,17 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 1. Extend `FlightBillingPreviewService` → new `FlightBillingApplyService` in `backend/services/flight_billing_apply.py`:
    - `apply_flight_billing(flight_uuid, fiscal_year_uuid, user_id)`:
      1. Loads billing settings from `flight_billing_settings` (gets `fl_journal_uuid`, `receivable_account_uuid`, `rem_journal_uuid`, etc.)
-     2. Runs preview at **gross price** (reuses `_preview_one` with `base_price` — no pack adjustment in the FL entry)
-     3. Creates a **Draft accounting entry in the configured FL journal** with gross amounts:
-        - Debit `receivable_account_uuid` (member dimension) for `qty × base_price`
-        - Credit `706x` (revenue) for `qty × base_price`
+     2. Determine billing target:
+        - If `flight.charge_to_erp_id` equals the club member's `account_id` (e.g. 'CLUB') → **club-billed**
+        - Otherwise → **member-billed**
+     3. For club-billed flights, resolve the charge account:
+        - If flight has a `vi_erp_id`, look up `vi_type_catalog.charge_account_uuid` for that VI type
+        - Fallback to `flight_billing_settings.default_initiation_charge_account_uuid`
+     4. Runs preview at **gross price** (reuses `_preview_one` with `base_price` — no pack adjustment)
+     5. Creates a **Draft accounting entry in FL journal** with gross amounts:
+        - **Member-billed**: Debit `receivable_account_uuid` (member dimension)
+        - **Club-billed**: Debit `vi_type_catalog.charge_account_uuid ?? default_initiation_charge_account_uuid` (no member dimension)
+        - **All**: Credit `receivable_account_uuid` (revenue account)
      4. Links the FL entry to the flight (`accounting_entry_uuid`)
      5. Computes eligible pack discounts and inserts rows in `member_pack_consumptions`
      6. Calls `upsert_rem_entry()` to create or update the single Draft REM entry for this pilot/period
@@ -386,7 +418,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 | `backend/api/routes/accounting.py` | Add REM preview/apply/close-period endpoints |
 | `backend/api/routes/settings.py` | Add `GET/PUT /api/v1/settings/flight-billing` (typed, not JSON blob) + defaults endpoint |
 | `backend/schemas/flights.py` | Add `FlightBillingSettings` schema with typed fields + FKs + `FlightBillingApplyRequest/Response`, consumption schemas |
-| `backend/models.py` | Add `FlightBillingSettings` SQLAlchemy model + `PackDefinition`, `PackApplicability`, `MemberPackConsumption` |
+| `backend/models.py` | Add `FlightBillingSettings` SQLAlchemy models + `PackDefinition`, `PackApplicability`, `MemberPackConsumption` |
 | `frontend/src/modules/banque/api/` | Add `useFlightBillingSettingsQuery`, `useUpsertFlightBillingSettingsMutation`, `useFlightBillingSettingsDefaultsQuery` |
 | `frontend/src/modules/banque/components/FlightBillingSettingsForm.tsx` | **NEW** — Form UI with journal/account selectors, toggles, number inputs |
 | `frontend/src/modules/banque/components/BanqueSettingsPage.tsx` | Add `flight_billing` section; render `FlightBillingSettingsForm` instead of JSON editor when `activeSection === 'flight_billing'` |

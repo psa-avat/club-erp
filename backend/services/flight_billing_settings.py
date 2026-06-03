@@ -86,6 +86,8 @@ async def upsert_flight_billing_settings(
         await _validate_fk(db, AccountingAccount, payload.default_pack_sales_account_uuid, "Pack sales account")
     if payload.default_pack_discount_expense_account_uuid:
         await _validate_fk(db, AccountingAccount, payload.default_pack_discount_expense_account_uuid, "Pack discount expense account")
+    if payload.default_initiation_charge_account_uuid:
+        await _validate_fk(db, AccountingAccount, payload.default_initiation_charge_account_uuid, "Initiation charge account")
 
     # Upsert
     result = await db.execute(
@@ -104,6 +106,7 @@ async def upsert_flight_billing_settings(
             default_pack_sales_account_uuid=payload.default_pack_sales_account_uuid,
             rem_journal_uuid=payload.rem_journal_uuid,
             default_pack_discount_expense_account_uuid=payload.default_pack_discount_expense_account_uuid,
+            default_initiation_charge_account_uuid=payload.default_initiation_charge_account_uuid,
             rem_period_days=payload.rem_period_days,
             allow_post_purchase_recalculation=payload.allow_post_purchase_recalculation,
             max_days_for_post_purchase_discount=payload.max_days_for_post_purchase_discount,
@@ -118,6 +121,7 @@ async def upsert_flight_billing_settings(
         settings.default_pack_sales_account_uuid = payload.default_pack_sales_account_uuid
         settings.rem_journal_uuid = payload.rem_journal_uuid
         settings.default_pack_discount_expense_account_uuid = payload.default_pack_discount_expense_account_uuid
+        settings.default_initiation_charge_account_uuid = payload.default_initiation_charge_account_uuid
         settings.rem_period_days = payload.rem_period_days
         settings.allow_post_purchase_recalculation = payload.allow_post_purchase_recalculation
         settings.max_days_for_post_purchase_discount = payload.max_days_for_post_purchase_discount
@@ -143,6 +147,7 @@ async def get_flight_billing_settings_defaults(
     receivable = await _find_account_by_code(db, "411")
     pack_sales = await _find_account_by_code(db, "706")
     discount_expense = await _find_account_by_code(db, "658")
+    club_contra = await _find_account_by_code(db, "658")
 
     return FlightBillingSettingsDefaults(
         fiscal_year_uuid=fiscal_year_uuid,
@@ -152,6 +157,7 @@ async def get_flight_billing_settings_defaults(
         default_pack_sales_account_uuid=pack_sales.uuid if pack_sales else None,
         rem_journal_uuid=rem_journal.uuid if rem_journal else None,
         default_pack_discount_expense_account_uuid=discount_expense.uuid if discount_expense else None,
+        default_initiation_charge_account_uuid=club_contra.uuid if club_contra else None,
     )
 
 
