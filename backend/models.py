@@ -208,6 +208,65 @@ class SystemSetting(Base):
         return f"<SystemSetting module_name={self.module_name}>"
 
 
+class FlightBillingSettings(Base):
+    """
+    Flight billing operational settings — one row per fiscal year.
+    Each account is paired with its posting journal.
+    """
+
+    __tablename__ = "flight_billing_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fiscal_year_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+
+    # FL journal → receivable account pair
+    fl_journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False)
+    receivable_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False)
+
+    # VT journal → pack sales account pair
+    vt_journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False)
+    default_pack_sales_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+
+    # REM journal → pack discount expense account pair
+    rem_journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False)
+    default_pack_discount_expense_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+
+    # Operational settings
+    rem_period_days = Column(Integer, nullable=False, default=30)
+    allow_post_purchase_recalculation = Column(Boolean, nullable=False, default=True)
+    max_days_for_post_purchase_discount = Column(Integer, nullable=True, default=30)
+    require_approval_for_late_discount = Column(Boolean, nullable=False, default=True)
+
+    # Metadata
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Relationships
+    fiscal_year = relationship("AccountingFiscalYear")
+    fl_journal = relationship("AccountingJournal", foreign_keys=[fl_journal_uuid])
+    vt_journal = relationship("AccountingJournal", foreign_keys=[vt_journal_uuid])
+    rem_journal = relationship("AccountingJournal", foreign_keys=[rem_journal_uuid])
+    receivable_account = relationship("AccountingAccount", foreign_keys=[receivable_account_uuid])
+    pack_sales_account = relationship("AccountingAccount", foreign_keys=[default_pack_sales_account_uuid])
+    pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[default_pack_discount_expense_account_uuid])
+    updated_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<FlightBillingSettings fiscal_year={self.fiscal_year_uuid}>"
+
+
 class AuthChallenge(Base):
     """One-time PIN challenge for 2FA."""
 
@@ -1485,7 +1544,7 @@ class PackDefinition(Base):
     pack_sales_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True
     )
-    rem_discount_account_uuid = Column(
+    pack_discount_expense_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True,
         comment="Debit account for REM pack discount expense, normally class 6 (overrides default)",
     )
@@ -1498,7 +1557,7 @@ class PackDefinition(Base):
 
     fiscal_year = relationship("AccountingFiscalYear")
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[pack_sales_account_uuid])
-    rem_discount_account = relationship("AccountingAccount", foreign_keys=[rem_discount_account_uuid])
+    pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[pack_discount_expense_account_uuid])
     applicability = relationship("PackApplicability", back_populates="pack_definition", cascade="all, delete-orphan")
 
     def __repr__(self):

@@ -36,7 +36,12 @@ from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE
 from models import Member, User, ValidatedFlight
 from schemas.flights import (
     FlightFetchRequest,
+    FlightBillingApplyItem,
+    FlightBillingApplyRequest,
+    FlightBillingApplyResponse,
+    FlightBillingBatchApplyResponse,
     FlightBillingBatchPreviewResponse,
+    FlightBillingPostRequest,
     FlightBillingPreviewRequest,
     FlightBillingPreviewResponse,
     FlightFetchResponse,
@@ -48,6 +53,7 @@ from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import PLANCHE_SETTINGS_MODULE, PlancheSettingsPayload
 from services.accounting import get_system_setting, upsert_system_setting
 from services.flight_billing import FlightBillingPreviewService
+from services.flight_billing_apply import FlightBillingApplyService
 from services.planche_integration import PlancheIntegrationService
 
 router = APIRouter(prefix="/api/v1/flights", tags=["flights"])
@@ -223,6 +229,8 @@ async def list_validated_flights(
             launch_machine_erp_id=r.launch_machine_erp_id,
             instruction_split=r.instruction_split,
             aero=r.aero,
+            observations=r.observations,
+            correction_reason=r.correction_reason,
         ))
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
 
@@ -412,6 +420,10 @@ class BillableFlightItem(BaseModel):
     jour: date | None
     pilot_erp_id: str | None
     pilot_name: str | None
+    second_pilot_erp_id: str | None = None
+    second_pilot_name: str | None = None
+    charge_to_erp_id: str | None = None
+    charge_to_name: str | None = None
     asset_code: str | None
     type_of_flight: int | None
     type_label: str | None
@@ -419,6 +431,8 @@ class BillableFlightItem(BaseModel):
     status: str  # pending | applied | posted
     errors: list[str] = []
     warnings: list[str] = []
+    observations: str | None = None
+    correction_reason: str | None = None
 
 
 class BillableFlightListResponse(BaseModel):
@@ -451,19 +465,50 @@ async def list_billable_flights(
     result = await db.execute(stmt)
     flights = result.scalars().all()
 
+    # Batch-fetch member names
+    member_uuids: set[str] = set()
+    for f in flights:
+        if f.pilot_erp_id:
+            member_uuids.add(f.pilot_erp_id)
+        if f.second_pilot_erp_id:
+            member_uuids.add(f.second_pilot_erp_id)
+        if f.charge_to_erp_id:
+            member_uuids.add(f.charge_to_erp_id)
+
+    member_map: dict[str, tuple[str | None, str | None]] = {}
+    if member_uuids:
+        member_result = await db.execute(
+            select(Member.account_id, Member.first_name, Member.last_name, Member.trigram).where(
+                Member.account_id.in_(list(member_uuids))
+            )
+        )
+        for row in member_result.all():
+            uid = str(row.account_id)
+            name = f"{row.first_name} {row.last_name}" if row.first_name and row.last_name else None
+            member_map[uid] = (name, row.trigram)
+
     items: list[BillableFlightItem] = []
     for f in flights:
+        pilot_name = member_map.get(f.pilot_erp_id, (None, None))[0] if f.pilot_erp_id else None
+        second_name = member_map.get(f.second_pilot_erp_id, (None, None))[0] if f.second_pilot_erp_id else None
+        charge_to_name = member_map.get(f.charge_to_erp_id, (None, None))[0] if f.charge_to_erp_id else None
         items.append(BillableFlightItem(
             uuid=str(f.uuid),
             planche_uuid=f.planche_uuid,
             jour=f.jour,
             pilot_erp_id=f.pilot_erp_id,
-            pilot_name=None,
+            pilot_name=pilot_name,
+            second_pilot_erp_id=f.second_pilot_erp_id,
+            second_pilot_name=second_name,
+            charge_to_erp_id=f.charge_to_erp_id,
+            charge_to_name=charge_to_name,
             asset_code=f.asset_code or f.glider_erp_id,
             type_of_flight=f.type_of_flight,
-            type_label=None,
+            type_label=TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else None,
             total_preview=None,
             status="pending",
+            observations=f.observations,
+            correction_reason=f.correction_reason,
         ))
 
     return BillableFlightListResponse(items=items, total=len(items))
@@ -492,4 +537,91 @@ async def pending_billing_summary(
         total_amount="0",
         pending_count=total,
         error_count=0,
+    )
+
+
+# ── Billing Apply (Phase 5) ────────────────────────────────────────────────
+
+
+@router.post("/{flight_uuid}/billing-apply", response_model=FlightBillingApplyResponse)
+async def apply_flight_billing(
+    flight_uuid: UUID,
+    request: FlightBillingPostRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = flights_guard,
+):
+    """Run billing preview and create a Draft accounting entry for a single flight."""
+    service = FlightBillingApplyService(db)
+    try:
+        entry = await service.apply_flight_billing(
+            flight_uuid,
+            UUID(request.fiscal_year_uuid),
+            current_user.id,
+        )
+        return FlightBillingApplyResponse(
+            entry_uuid=str(entry.uuid),
+            reference=entry.reference or "",
+            description=entry.description or "",
+            state=entry.state,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{flight_uuid}/billing-post", response_model=FlightBillingApplyResponse)
+async def post_flight_billing(
+    flight_uuid: UUID,
+    request: FlightBillingPostRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = flights_guard,
+):
+    """Run billing preview, create a Draft entry, and immediately post it."""
+    service = FlightBillingApplyService(db)
+    try:
+        entry = await service.post_flight_billing(
+            flight_uuid,
+            UUID(request.fiscal_year_uuid),
+            current_user.id,
+        )
+        return FlightBillingApplyResponse(
+            entry_uuid=str(entry.uuid),
+            reference=entry.reference or "",
+            description=entry.description or "",
+            state=entry.state,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/billing-batch-apply", response_model=FlightBillingBatchApplyResponse)
+async def batch_apply_flights_billing(
+    request: FlightBillingApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = flights_guard,
+):
+    """Apply billing for multiple flights in batch."""
+    service = FlightBillingApplyService(db)
+    flight_uuids = [UUID(f) for f in request.flight_uuids]
+    entries = await service.batch_apply(flight_uuids, UUID(request.fiscal_year_uuid), current_user.id)
+
+    items = []
+    success_count = 0
+    error_count = 0
+    for e in entries:
+        items.append(
+            FlightBillingApplyItem(
+                flight_uuid="",  # Not tracked individually in batch_apply response
+                entry_uuid=str(e.uuid),
+                entry_state=e.state,
+                reference=e.reference or "",
+                description=e.description or "",
+            )
+        )
+        success_count += 1
+
+    return FlightBillingBatchApplyResponse(
+        items=items,
+        total=len(items),
+        success_count=success_count,
+        error_count=error_count,
     )

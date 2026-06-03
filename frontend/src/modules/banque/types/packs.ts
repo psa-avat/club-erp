@@ -17,7 +17,7 @@ export type PackDefinition = {
   quantity_allowance: string
   quantity_unit: string
   pack_sales_account_uuid: string | null
-  rem_discount_account_uuid: string | null
+  pack_discount_expense_account_uuid: string | null
   priority: number
   created_at: string
   applicability: ApplicableItem[]

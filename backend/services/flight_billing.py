@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
@@ -239,11 +240,20 @@ class FlightBillingPreviewService:
 
     async def preview_batch(self, request: FlightBillingPreviewRequest) -> FlightBillingBatchPreviewResponse:
         flights = await self._list_flights(request)
+        if not flights:
+            return FlightBillingBatchPreviewResponse(items=[])
+
         pack_balances = await self._initial_pack_balances(flights)
         item_packs = await self._build_item_packs_map()
-        previews: list[FlightBillingPreviewResponse] = []
-        for flight in sorted(flights, key=lambda f: (f.jour, f.takeoff_time or "", str(f.uuid))):
-            previews.append(await self._preview_one(flight, pack_balances, item_packs))
+
+        sorted_flights = sorted(flights, key=lambda f: (f.jour, f.takeoff_time or "", str(f.uuid)))
+        sem = asyncio.Semaphore(5)  # limit concurrent DB access
+
+        async def _preview_with_sem(flight: ValidatedFlight) -> FlightBillingPreviewResponse:
+            async with sem:
+                return await self._preview_one(flight, pack_balances, item_packs)
+
+        previews = await asyncio.gather(*[_preview_with_sem(f) for f in sorted_flights])
         total_amount = sum((p.total_amount for p in previews), Decimal("0"))
         return FlightBillingBatchPreviewResponse(
             items=previews,

@@ -83,6 +83,8 @@ export type ValidatedFlightItem = {
   pilot_name: string | null
   second_pilot_name: string | null
   second_pilot_trigram: string | null
+  observations: string | null
+  correction_reason: string | null
 }
 
 export type ValidatedFlightListResponse = {

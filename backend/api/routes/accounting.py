@@ -389,6 +389,62 @@ async def list_system_settings_endpoint(
     return await list_system_settings(db)
 
 
+from schemas.flight_billing import (
+    FlightBillingSettingsDefaults,
+    FlightBillingSettingsResponse,
+    FlightBillingSettingsUpdate,
+)
+from services.flight_billing_settings import (
+    delete_flight_billing_settings,
+    get_flight_billing_settings,
+    get_flight_billing_settings_defaults,
+    upsert_flight_billing_settings,
+)
+
+billing_settings_guard = Depends(require_capability(CAP_MANAGE_PRICES))
+
+
+@router.get("/settings/flight-billing", response_model=FlightBillingSettingsResponse)
+async def get_flight_billing_settings_endpoint(
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = billing_settings_guard,
+):
+    """Get flight billing settings for a fiscal year."""
+    return await get_flight_billing_settings(db, fiscal_year_uuid)
+
+
+@router.put("/settings/flight-billing", response_model=FlightBillingSettingsResponse)
+async def upsert_flight_billing_settings_endpoint(
+    payload: FlightBillingSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = billing_settings_guard,
+):
+    """Create or update flight billing settings (typed, not JSON blob)."""
+    return await upsert_flight_billing_settings(db, payload, current_user.id)
+
+
+@router.delete("/settings/flight-billing", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_flight_billing_settings_endpoint(
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = billing_settings_guard,
+):
+    """Reset flight billing settings to defaults (delete row)."""
+    await delete_flight_billing_settings(db, fiscal_year_uuid)
+
+
+@router.get("/settings/flight-billing/defaults", response_model=FlightBillingSettingsDefaults)
+async def get_flight_billing_settings_defaults_endpoint(
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = billing_settings_guard,
+):
+    """Return sensible defaults for a new fiscal year (UI pre-fill)."""
+    return await get_flight_billing_settings_defaults(db, fiscal_year_uuid)
+
+
 @router.get("/settings/{module_name}", response_model=SystemSettingResponse)
 async def get_system_setting_endpoint(
     module_name: str,
@@ -1033,3 +1089,5 @@ async def get_account_balances_endpoint(
     Use ``posted_only=false`` to include draft entries as well.
     """
     return await get_account_balances(db, fiscal_year_uuid=fiscal_year_uuid, posted_only=posted_only)
+
+

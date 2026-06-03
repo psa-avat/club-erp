@@ -72,6 +72,8 @@ class ValidatedFlightItem(BaseModel):
     pilot_name: str | None = None
     second_pilot_name: str | None = None
     second_pilot_trigram: str | None = None
+    observations: str | None = None
+    correction_reason: str | None = None
 
     class Config:
         from_attributes = True
@@ -185,3 +187,45 @@ class FlightBillingBatchPreviewResponse(BaseModel):
     billable_count: int = 0
     error_count: int = 0
     total_amount: Decimal = Decimal("0")
+
+
+class FlightBillingPostRequest(BaseModel):
+    """Request to apply/post billing for a single flight (uuid from path)."""
+
+    fiscal_year_uuid: str
+
+
+class FlightBillingApplyRequest(BaseModel):
+    """Request to apply billing for multiple flights."""
+
+    flight_uuids: list[str] = Field(..., min_length=1)
+    fiscal_year_uuid: str
+
+
+class FlightBillingApplyItem(BaseModel):
+    """Result of applying billing for a single flight."""
+
+    flight_uuid: str
+    entry_uuid: str
+    entry_state: int  # 1 = Draft, 2 = Posted
+    reference: str
+    description: str
+    errors: list[str] = Field(default_factory=list)
+
+
+class FlightBillingApplyResponse(BaseModel):
+    """Result of applying billing for one flight."""
+
+    entry_uuid: str
+    reference: str
+    description: str
+    state: int  # 1 = Draft
+
+
+class FlightBillingBatchApplyResponse(BaseModel):
+    """Result of applying billing for multiple flights."""
+
+    items: list[FlightBillingApplyItem] = Field(default_factory=list)
+    total: int = 0
+    success_count: int = 0
+    error_count: int = 0

@@ -89,7 +89,7 @@ async def create_pack_definition(
         quantity_allowance=request.quantity_allowance,
         quantity_unit=request.quantity_unit,
         pack_sales_account_uuid=request.pack_sales_account_uuid,
-        rem_discount_account_uuid=request.rem_discount_account_uuid,
+        pack_discount_expense_account_uuid=request.pack_discount_expense_account_uuid,
         priority=request.priority,
     )
     db.add(pack)

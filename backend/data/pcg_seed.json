@@ -363,16 +363,38 @@
     "is_posting_allowed": true,
     "is_reconcilable": false
   },
- {
-    "code": "607",
-    "name": "Achats de marchandises (Boutique, Bar...)",
+  {
+    "code": "6063",
+    "name": "Carburants",
     "type": 4,
     "is_posting_allowed": true,
     "is_reconcilable": false
   },
   {
-    "code": "6063",
-    "name": "Carburants",
+    "code": "6066",
+    "name": "Remises sur Packs",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "6067",
+    "name": "VI / JD",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "6068",
+    "name": "Stages",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+
+ {
+    "code": "607",
+    "name": "Achats de marchandises (Boutique, Bar...)",
     "type": 4,
     "is_posting_allowed": true,
     "is_reconcilable": false
@@ -566,8 +588,22 @@
     "is_posting_allowed": true,
     "is_reconcilable": false
   },
-
   {
+    "code": "7067",
+    "name": "VI / JD",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+    "code": "7068",
+    "name": "Stages",
+    "type": 5,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+  {
+
     "code": "707",
     "name": "Ventes de marchandises (Boutique, Cartes SIA)",
     "type": 5,

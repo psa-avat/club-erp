@@ -17,8 +17,8 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState } from 'react'
-import { Calculator } from 'lucide-react'
+import { useState, Fragment } from 'react'
+import { Calculator, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
@@ -289,11 +289,29 @@ export function FlightsPage() {
   const hasActiveFilters = Object.keys(filters).length > 0
   const flightsQuery = useFlightListQuery(flightPage, flightPageSize, filters)
   const billingPreviewMutation = useFlightBillingPreviewMutation()
-  const [billingPreview, setBillingPreview] = useState<FlightBillingPreviewResponse | null>(null)
+  const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
+  const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
+
+  function toggleExpand(flight: ValidatedFlightItem) {
+    const willExpand = expandedFlight !== flight.uuid
+    setExpandedFlight(willExpand ? flight.uuid : null)
+
+    if (willExpand && !flightPreviews[flight.uuid]) {
+      billingPreviewMutation.mutate(flight.uuid, {
+        onSuccess: (data) => {
+          setFlightPreviews((prev) => ({ ...prev, [flight.uuid]: data }))
+        },
+      })
+    }
+  }
 
   function previewBilling(flight: ValidatedFlightItem) {
+    setExpandedFlight(flight.uuid)
+    if (flightPreviews[flight.uuid]) return
     billingPreviewMutation.mutate(flight.uuid, {
-      onSuccess: setBillingPreview,
+      onSuccess: (data) => {
+        setFlightPreviews((prev) => ({ ...prev, [flight.uuid]: data }))
+      },
     })
   }
 
@@ -425,6 +443,7 @@ export function FlightsPage() {
               <table className="min-w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50">
                   <tr>
+                    <th className="w-8 px-2 py-3" />
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('table.date')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('table.glider')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('table.type')}</th>
@@ -439,40 +458,104 @@ export function FlightsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {flightsQuery.data?.items.map((flight) => (
-                    <tr key={flight.uuid}>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-800">
-                        {flight.jour ? new Date(flight.jour).toLocaleDateString('fr-FR') : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-800">{flight.asset_code ?? '-'}</td>
-                      <td className={`px-3 py-2 ${highlightType(flight) ? 'font-bold text-amber-600' : 'text-slate-800'}`}>{formatFlightType(flight.type_of_flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.pilot_name ?? flight.pilot_erp_id ?? '-'}</td>
-                      <td className="px-3 py-2 text-slate-800">{formatSecondPilot(flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">
-                        {flight.takeoff_time && flight.landing_time
-                          ? formatDuration(flight.takeoff_time, flight.landing_time)
-                          : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-800">{formatLaunchMethod(flight)}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.launch_pilot_trigram ?? '-'}</td>
-                      <td className="px-3 py-2 text-slate-800">{flight.charge_to_erp_id ?? '-'}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => previewBilling(flight)}
-                          disabled={billingPreviewMutation.isPending && billingPreviewMutation.variables === flight.uuid}
-                          title={t('billing.preview')}
-                          aria-label={t('billing.preview')}
-                        >
-                          <Calculator className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      </td>
-                    </tr>
+                    <Fragment key={flight.uuid}>
+                      <tr>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            className="rounded p-0.5 text-slate-400 hover:text-slate-700"
+                            onClick={() => toggleExpand(flight)}
+                          >
+                            {expandedFlight === flight.uuid ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-slate-800">
+                          {flight.jour ? new Date(flight.jour).toLocaleDateString('fr-FR') : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-800">{flight.asset_code ?? '-'}</td>
+                        <td className={`px-3 py-2 ${highlightType(flight) ? 'font-bold text-amber-600' : 'text-slate-800'}`}>{formatFlightType(flight.type_of_flight)}</td>
+                        <td className="px-3 py-2 text-slate-800">{flight.pilot_name ?? flight.pilot_erp_id ?? '-'}</td>
+                        <td className="px-3 py-2 text-slate-800">{formatSecondPilot(flight)}</td>
+                        <td className="px-3 py-2 text-slate-800">
+                          {flight.takeoff_time && flight.landing_time
+                            ? formatDuration(flight.takeoff_time, flight.landing_time)
+                            : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-800">{formatLaunchMethod(flight)}</td>
+                        <td className="px-3 py-2 text-slate-800">{flight.launch_pilot_trigram ?? '-'}</td>
+                        <td className="px-3 py-2 text-slate-800">{flight.charge_to_erp_id ?? '-'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {flight.observations && (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 cursor-default" title={flight.observations}>
+                                💬
+                              </span>
+                            )}
+                            {flight.correction_reason && (
+                              <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs text-red-700 cursor-default" title={flight.correction_reason}>
+                                ✏️
+                              </span>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => previewBilling(flight)}
+                              disabled={billingPreviewMutation.isPending && billingPreviewMutation.variables === flight.uuid}
+                              title={t('billing.preview')}
+                              aria-label={t('billing.preview')}
+                            >
+                              <Calculator className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedFlight === flight.uuid && (
+                        <tr>
+                          <td colSpan={11} className="bg-slate-50/50 px-6 py-4">
+                            {/* Flight comments & modification reason */}
+                            {(flight.observations || flight.correction_reason || flight.aero) && (
+                              <div className="mb-3 flex flex-wrap gap-3">
+                                {flight.aero && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">
+                                    Aérodrome: {flight.aero}
+                                  </span>
+                                )}
+                                {flight.observations && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700" title={flight.observations}>
+                                    💬 {flight.observations.length > 50 ? flight.observations.slice(0, 50) + '…' : flight.observations}
+                                  </span>
+                                )}
+                                {flight.correction_reason && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700" title={flight.correction_reason}>
+                                    ✏️ Corr.: {flight.correction_reason.length > 50 ? flight.correction_reason.slice(0, 50) + '…' : flight.correction_reason}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {billingPreviewMutation.error && billingPreviewMutation.variables === flight.uuid ? (
+                              <Alert>{billingPreviewMutation.error instanceof Error ? billingPreviewMutation.error.message : t('billing.loadError')}</Alert>
+                            ) : flightPreviews[flight.uuid] ? (
+                              <BillingPreviewPanel preview={flightPreviews[flight.uuid]} />
+                            ) : (
+                              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Chargement de l'aperçu…
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                   {(!flightsQuery.data || flightsQuery.data.items.length === 0) && (
                     <tr>
-                      <td className="px-3 py-6 text-center text-slate-500" colSpan={10}>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={12}>
                         {t('table.empty')}
                       </td>
                     </tr>
@@ -480,18 +563,6 @@ export function FlightsPage() {
                 </tbody>
               </table>
             </div>
-
-            {billingPreviewMutation.error && (
-              <div className="mt-4">
-                <Alert>{t('billing.loadError')}</Alert>
-              </div>
-            )}
-
-            {billingPreview && (
-              <div className="mt-4">
-                <BillingPreviewPanel preview={billingPreview} />
-              </div>
-            )}
 
             {/* Pagination */}
             {flightsQuery.data && flightsQuery.data.total_pages > 1 && (

@@ -18,7 +18,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 | **Fiscal year boundary** | Packs scoped to one fiscal year. Remaining quantities reset to 0 at year-end — no carry-over |
 | **REM journal** | Dedicated journal (code `REM` / `DISC`, type = General) for discount adjustments. One Draft entry per pilot per period, updated as discounts accumulate |
 | **Pack discount accounting** | Pack sale revenue stays in class 7 via `pack_sales_account_uuid`; REM discounts debit a class 6 expense account via `pack_discount_expense_account_uuid`. The pack operating result is read as class 7 pack sales minus class 6 pack discount expenses |
-| **Billing configurability** | Each pack definition carries its own sales account (`pack_sales_account_uuid`) and discount expense account (`pack_discount_expense_account_uuid`, normally class 6). Operational settings (period, tolerance) live in `system_settings`. Journals FL/REM are hardcoded — no dedicated table |
+| **Billing configurability** | Each pack definition carries its own sales account (`pack_sales_account_uuid`) and discount expense account (`pack_discount_expense_account_uuid`, normally class 6). Operational settings (period, tolerance, journals, default accounts) live in a **dedicated `flight_billing_settings` table** with typed columns and FK constraints — one row per fiscal year. A user-friendly form UI replaces raw JSON editing |
 | **Post-purchase** | Allowed — system recalculates `member_pack_consumptions` and updates the REM Draft entry |
 | **Freeze/exclude** | `is_frozen` flag on `member_pack_consumptions` rows; frozen consumptions excluded from REM calculation |
 | **Posting policy** | FL entries can be posted independently. REM entries remain Draft until period close (monthly/quarterly) |
@@ -65,37 +65,112 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
    - See SPEC §5.5 for the full SQL definition
 5. Add `accounting_entry_uuid` to `validated_flights` (nullable FK → accounting_entries — FL entry link)
 6. Ensure REM journal exists in `accounting_journals` (code `REM` or `DISC`, type = General)
-7. Store operational settings in `system_settings` (module `flight_billing`):
-   - `discount_period_days` — period length for REM adjustment (default 30 for monthly)
-   - `allow_post_purchase_recalculation` — true by default
-   - `max_days_for_post_purchase_discount` — 30
-   - `require_approval_for_late_discount` — true
-   - *Accounts (`pack_sales_account_uuid`, `pack_discount_expense_account_uuid`) live on each `pack_definitions` row — no redundant global settings*
+7. Create dedicated `flight_billing_settings` table — one row per fiscal year, each account is paired with its posting journal:
+   - `id` SERIAL PRIMARY KEY
+   - `fiscal_year_uuid` UUID NOT NULL UNIQUE REFERENCES fiscal_years(uuid) ON DELETE CASCADE
+
+   **Journal–account pairs** (each pair defines which journal posts to which account):
+   - `fl_journal_uuid` UUID NOT NULL REFERENCES accounting_journals(uuid)
+     — *Flight billing entries use this journal (debit side)*
+   - `receivable_account_uuid` UUID NOT NULL REFERENCES accounting_accounts(uuid)
+     — *Receivable account (e.g. 411) posted via the FL journal*
+
+   - `vt_journal_uuid` UUID NOT NULL REFERENCES accounting_journals(uuid)
+     — *Pack purchase entries use this journal (credit side)*
+   - `default_pack_sales_account_uuid` UUID REFERENCES accounting_accounts(uuid)
+     — *Pack sales revenue account (class 7) posted via the VT journal*
+
+   - `rem_journal_uuid` UUID NOT NULL REFERENCES accounting_journals(uuid)
+     — *REM discount entries use this journal (debit side)*
+   - `default_pack_discount_expense_account_uuid` UUID REFERENCES accounting_accounts(uuid)
+     — *Pack discount expense account (class 6) posted via the REM journal*
+
+   **Operational settings:**
+   - `rem_period_days` INTEGER NOT NULL DEFAULT 30 CHECK (rem_period_days > 0)
+   - `allow_post_purchase_recalculation` BOOLEAN NOT NULL DEFAULT true
+   - `max_days_for_post_purchase_discount` INTEGER DEFAULT 30
+   - `require_approval_for_late_discount` BOOLEAN NOT NULL DEFAULT true
+
+   **Metadata:**
+   - `created_at`, `updated_at`, `updated_by` (FK → users)
+   - *Per-pack accounts (`pack_sales_account_uuid`, `pack_discount_expense_account_uuid`) on `pack_definitions` override the defaults above*
 
 **Verification**: Migration SQL runs cleanly; new tables are empty; existing flights table migration adds nullable columns.
 
 ---
 
+### Phase 1b — Flight Billing Settings UI (Frontend)
+
+**Steps** (parallel with Phase 1, depends on Phase 1.7 table):
+1. Create new typed API hooks in `frontend/src/modules/banque/api/`:
+   - `useFlightBillingSettingsQuery(fiscalYearUuid)` — fetches settings for a FY
+   - `useUpsertFlightBillingSettingsMutation()` — creates/updates settings
+   - `useFlightBillingSettingsDefaultsQuery()` — fetches defaults for pre-fill
+2. Build `frontend/src/modules/banque/components/FlightBillingSettingsForm.tsx`:
+   - **Fiscal year selector** (reuses `useFiscalYearStore` or dropdown)
+
+   **Three journal–account pair cards** (each card groups a journal selector with its account selector, making the association visually clear):
+
+   a. **FL — Vols (facturation)** card:
+      - `<Combobox>` for FL journal (populated from `useJournalsQuery()`, shows code + name)
+      - `<ComboboxAccount>` for receivable account (populated from `useAccountsQuery()`, searchable by code/label, defaults to 411)
+      - Helper text: *"Les écritures de vol seront postées dans ce journal au débit du compte client"*
+
+   b. **VT — Ventes (forfaits)** card:
+      - `<Combobox>` for VT journal
+      - `<ComboboxAccount>` for default pack sales account (class 7)
+      - Helper text: *"Les achats de forfaits seront postés dans ce journal au crédit du compte de vente"*
+
+   c. **REM — Remises** card:
+      - `<Combobox>` for REM journal
+      - `<ComboboxAccount>` for default pack discount expense account (class 6)
+      - Helper text: *"Les remises de forfaits seront postées dans ce journal au débit du compte de charge"*
+
+   **Operational settings section:**
+   - **REM period** — `<Input type="number">` with min=1, step=1, suffix "jours"
+   - **Toggles** — `<Switch>` components for:
+     - `allow_post_purchase_recalculation` (default ON)
+     - `require_approval_for_late_discount` (default ON)
+   - **Number input** — `max_days_for_post_purchase_discount` (min=1, visible only when recalculation is ON)
+
+   **Save button** with loading state; validates that all required FKs exist
+   **Reset to defaults** button with confirm dialog
+   All text uses i18n keys in `banque` namespace under `settings.flightBilling.*`
+3. Add a "Tarification" entry in the settings sidebar (`BanqueSettingsPage`):
+   - New module name `flight_billing` in `SETTINGS_SECTIONS`
+   - The existing `pricing` module (JSON editor) is replaced by this form
+   - The form is rendered conditionally when `activeSection.moduleName === 'flight_billing'`
+   - Keep other sections (`accounting`, `budget`, `integrations`) as JSON editors for now
+4. Add `Navigation` link from `BankPricingPage` to the new settings page:
+   - The "Réglages" button links to `/banque/settings/flight_billing`
+
+**Verification**: Can open settings page → select FY → see pre-filled form → change a journal → save → reload → change persists → reset to defaults works → invalid account UUID shows validation error.
+
+---
+
 ### Phase 2 — Backend Billing Configuration & Pack Management Service
 
-**Steps** (depends on Phase 1, can be parallelised):
-1. Add helpers to read/write flight billing settings from `system_settings`:
-   - `get_flight_billing_setting(db, key)` → returns value with fallback
-   - `update_flight_billing_setting(db, key, value)` — upserts into `system_settings` module `flight_billing`
-   - `GET/PUT /api/v1/settings/flight-billing` — API endpoints for settings CRUD
-   - *No dedicated table — settings live in `system_settings`*
+**Steps** (depends on Phase 1 + 1b, can be parallelised):
+1. Create `backend/services/flight_billing_settings.py` with typed CRUD for the dedicated table:
+   - `get_flight_billing_settings(db, fiscal_year_uuid)` → returns typed `FlightBillingSettings` dataclass/model with all journal–account pairs
+   - `upsert_flight_billing_settings(db, fiscal_year_uuid, payload, user_id)` — INSERT ON CONFLICT upsert; validates that each journal–account pair exists (FK check)
+   - `get_flight_billing_settings_defaults(db)` — returns sensible defaults for a new FY (journals from `accounting_journals` lookup by code `FL`, `VT`, `REM`; accounts from `accounting_accounts` lookup by code `411`, `706`, `658`, etc.)
+   - `DELETE /api/v1/settings/flight-billing` — reset to defaults
+   - `GET /api/v1/settings/flight-billing?fiscal_year_uuid=...` — returns full settings object with all 3 journal–account pairs
+   - `PUT /api/v1/settings/flight-billing` — create or update settings (validates FK existence for all 6 UUIDs)
+   - `GET /api/v1/settings/flight-billing/defaults` — returns defaults for UI pre-fill
 2. Create `backend/services/flight_packs.py` with:
    - `create_pack_definition(db, payload, user_id)` — defines catalog packs (ex: 25h glider)
    - `manage_pack_applicability(db, pack_definition_uuid, applicable_items, user_id)` — links pricing items with their pack-discounted price
    - `record_pack_consumption(db, member_uuid, flight_uuid, pack_type, quantity_consumed, discount_unit_price, total_discount_amount)` — inserts a row in `member_pack_consumptions`
    - `get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — queries `vw_member_pack_balances` view
    - `compute_rem_adjustment(db, member_uuid, fiscal_year_uuid, period_start, period_end)` — sums `total_discount_amount` for non-frozen consumptions in period
-   - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, pack_discount_expense_account_uuid, total_discount, period_start, period_end)` — creates or updates the single Draft REM entry for this pilot/period (the `pack_discount_expense_account_uuid` is read from the applicable pack definition)
+   - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, pack_discount_expense_account_uuid, total_discount, period_start, period_end, user_id)` — creates or updates the single Draft REM entry for this pilot/period in the configured REM journal; the `pack_discount_expense_account_uuid` is read from the applicable pack definition (or from `flight_billing_settings.default_pack_discount_expense_account_uuid` as fallback)
    - `freeze_consumption(db, consumption_uuid, reason)` / `unfreeze_consumption(db, consumption_uuid)`
 3. Refactor `FlightBillingPreviewService` to compute `member_pack_consumptions` as a **post-billing step**: the FL entry is created at gross price; then eligible lines are checked against `pack_applicability` and `vw_member_pack_balances` to compute discount amounts. The GL is not modified at this stage
 4. Add pack purchase accounting entry creation helper:
-   - `create_pack_purchase_entry(db, member, amount, pack_sales_account_uuid, user_id)` → creates **posted** entry (VT journal):
-     - Debit `411` (member dimension) for total amount
+   - `create_pack_purchase_entry(db, member, amount, pack_sales_account_uuid, vt_journal_uuid, receivable_account_uuid, user_id)` → creates **posted** entry in the configured VT journal:
+     - Debit `receivable_account_uuid` (member dimension) for total amount
      - Credit `pack_sales_account_uuid` (from the pack definition)
    - *Pack purchases are posted immediately — the GL is the source of truth for pack balances*
    - Pack purchases credit a class 7 revenue account; later REM discounts debit a class 6 expense account so pack margin is visible as 7 minus 6.
@@ -109,10 +184,10 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 **Steps** (depends on Phase 1 & 2):
 1. Extend `FlightBillingPreviewService` → new `FlightBillingApplyService` in `backend/services/flight_billing_apply.py`:
    - `apply_flight_billing(flight_uuid, fiscal_year_uuid, user_id)`:
-     1. Loads billing settings from `system_settings`
+     1. Loads billing settings from `flight_billing_settings` (gets `fl_journal_uuid`, `receivable_account_uuid`, `rem_journal_uuid`, etc.)
      2. Runs preview at **gross price** (reuses `_preview_one` with `base_price` — no pack adjustment in the FL entry)
-     3. Creates a **Draft accounting entry in FL journal** with gross amounts:
-        - Debit `411` (member) for `qty × base_price`
+     3. Creates a **Draft accounting entry in the configured FL journal** with gross amounts:
+        - Debit `receivable_account_uuid` (member dimension) for `qty × base_price`
         - Credit `706x` (revenue) for `qty × base_price`
      4. Links the FL entry to the flight (`accounting_entry_uuid`)
      5. Computes eligible pack discounts and inserts rows in `member_pack_consumptions`
@@ -305,17 +380,23 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 | `backend/services/flight_packs.py` | **NEW** — Pack definition + applicability CRUD, consumption recording, REM adjustment computation, upsert, freeze logic |
 | `backend/services/flight_billing.py` | Refactor preview to compute gross amounts; add eligibility check for `member_pack_consumptions` as post-billing step |
 | `backend/services/flight_billing_apply.py` | **NEW** — Gross FL entry creation + consumption recording + REM upsert |
-| `backend/services/accounting.py` | Add flight billing settings helpers in `system_settings` module + REM entry helpers |
+| `backend/services/flight_billing_settings.py` | **NEW** — Typed CRUD for `flight_billing_settings` table; defaults resolver |
+| `backend/services/accounting.py` | REM entry helpers (no longer handles flight billing settings) |
 | `backend/api/routes/flights.py` | Add apply/post/batch + consumption + freeze + recalculate + REM adjustment endpoints |
 | `backend/api/routes/accounting.py` | Add REM preview/apply/close-period endpoints |
-| `backend/api/routes/settings.py` | Add flight billing settings GET/PUT (or reuse existing system_settings routes) |
-| `backend/schemas/flights.py` | Add `FlightBillingApplyRequest/Response`, consumption schemas, billing config schemas |
+| `backend/api/routes/settings.py` | Add `GET/PUT /api/v1/settings/flight-billing` (typed, not JSON blob) + defaults endpoint |
+| `backend/schemas/flights.py` | Add `FlightBillingSettings` schema with typed fields + FKs + `FlightBillingApplyRequest/Response`, consumption schemas |
+| `backend/models.py` | Add `FlightBillingSettings` SQLAlchemy model + `PackDefinition`, `PackApplicability`, `MemberPackConsumption` |
+| `frontend/src/modules/banque/api/` | Add `useFlightBillingSettingsQuery`, `useUpsertFlightBillingSettingsMutation`, `useFlightBillingSettingsDefaultsQuery` |
+| `frontend/src/modules/banque/components/FlightBillingSettingsForm.tsx` | **NEW** — Form UI with journal/account selectors, toggles, number inputs |
+| `frontend/src/modules/banque/components/BanqueSettingsPage.tsx` | Add `flight_billing` section; render `FlightBillingSettingsForm` instead of JSON editor when `activeSection === 'flight_billing'` |
 | `frontend/src/modules/banque/components/BanqueDailyOpsPage.tsx` | Wire `flights` tab to real component |
 | `frontend/src/modules/banque/components/OpsFlightsTab.tsx` | **NEW** — Full flights billing cockpit with gross display + REM panel |
 | `frontend/src/modules/banque/components/PackPurchaseDialog.tsx` | **NEW** — Modal for quick pack purchase |
 | `frontend/src/modules/banque/components/RemPeriodPanel.tsx` | **NEW** — REM period management (view Drafts, close period) |
-| `frontend/src/modules/banque/api/` | Add flight billing + REM + config API calls |
-| `frontend/src/modules/banque/i18n/` | Add translations for flights ops + REM |
+| `frontend/src/modules/banque/i18n/` | Add translations for flight billing settings + flights ops + REM |
+| `packages/i18n/src/resources/fr.ts` | Add `banque.settings.flightBilling.*` keys |
+| `packages/i18n/src/resources/en.ts` | Add `banque.settings.flightBilling.*` keys |
 | `backend/services/flight_billing.py` | Add `recalculate_pack_consumptions()`, `batch_recalculate()`, `handle_post_purchase_pack()` |
 | `backend/api/routes/member_portal.py` | **NEW** — Public token-authenticated endpoints for member self-service |
 | `backend/services/members.py` | Extend expense access token management |
@@ -327,8 +408,10 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 ## Verification Plan
 
 1. **Unit tests**: pack definition CRUD, pack_applicability CRUD, consumption recording, REM adjustment computation, REM upsert, freeze/unfreeze
-2. **Integration test**: full cycle — Planche sync → preview (gross) → apply → verify FL entry at gross price → verify `member_pack_consumptions` rows → verify REM Draft entry upserted → close period → verify REM entry posted
-3. **UI manual test — Daily Ops**: Flights tab → select flights → preview (gross) → apply → verify REM panel updates → buy pack → recalculate → verify REM adjustment updated → close REM period
+2. **Unit tests**: flight billing settings CRUD — create, read, update, reset to defaults, FK validation
+3. **Integration test**: full cycle — Planche sync → preview (gross) → apply → verify FL entry at gross price → verify `member_pack_consumptions` rows → verify REM Draft entry upserted → close period → verify REM entry posted
+3. **UI manual test — Settings form**: Open settings → select flight_billing section → select FY → form loads with current values → change journal → save → reload → change persists → verify FK drop-downs show correct options → reset to defaults
+4. **UI manual test — Daily Ops**: Flights tab → select flights → preview (gross) → apply → verify REM panel updates → buy pack → recalculate → verify REM adjustment updated → close REM period
 4. **UI manual test — Machine dashboard**: After billing flights for multiple machines, dashboard shows correct aggregates → drill-down → entries match
 5. **UI manual test — Member portal**: Enable expense access → login with token → see own gross flights + discount detail + pack balances
 6. **Edge cases**: shared flight (partage) with pack for one pilot only; post-purchase covering an already-billed flight; freeze then unfreeze; fiscal year rollover (pack balances reset to 0)

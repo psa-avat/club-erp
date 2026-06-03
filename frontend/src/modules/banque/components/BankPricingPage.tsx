@@ -20,7 +20,7 @@
 import { useState, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, Copy, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Package } from 'lucide-react'
+import { Plus, Copy, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Package, Settings } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 import { Button } from '../../../components/ui/button'
@@ -548,6 +548,22 @@ export function BankPricingPage() {
             >
               <Package className="mr-1 h-4 w-4" />
               {t('pricing.packs')}
+            </Link>
+            <Link
+              to="/vi/types"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-shape-sm text-sm font-medium transition-all h-8 rounded-md px-3 text-xs text-on-surface-variant hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-outline"
+              title="Types VI — configurez les comptes de vente pour les vols initiation"
+            >
+              <ChevronDown className="mr-1 h-3 w-3 -rotate-90" />
+              Types VI
+            </Link>
+            <Link
+              to="/banque/settings/flight_billing"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-shape-sm text-sm font-medium transition-all h-8 rounded-md px-3 text-xs text-on-surface-variant hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-outline"
+              title="Paramètres généraux de la tarification"
+            >
+              <Settings className="mr-1 h-4 w-4" />
+              {t('pricing.settings', 'Réglages')}
             </Link>
             {canManagePrices && !showNewFyForm && (
               <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>

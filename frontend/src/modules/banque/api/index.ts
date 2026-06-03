@@ -1195,3 +1195,329 @@ export function useUnfreezePackConsumptionMutation() {
     },
   })
 }
+
+// ── Billable Flights (Phase 4/5) ─────────────────────────────────────────
+
+export const banqueFlightsKeys = {
+  billable: (dateFrom?: string, dateTo?: string) =>
+    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all'] as const,
+}
+
+export type BillableFlight = {
+  uuid: string
+  planche_uuid: string | null
+  jour: string | null
+  pilot_erp_id: string | null
+  pilot_name: string | null
+  second_pilot_erp_id: string | null
+  second_pilot_name: string | null
+  charge_to_erp_id: string | null
+  charge_to_name: string | null
+  asset_code: string | null
+  type_of_flight: number | null
+  type_label: string | null
+  total_preview: string | null
+  status: string
+  errors: string[]
+  warnings: string[]
+  observations: string | null
+  correction_reason: string | null
+}
+
+export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, enabled = true) {
+  return useQuery({
+    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo),
+    enabled,
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (dateFrom) params.set('date_from', dateFrom)
+      if (dateTo) params.set('date_to', dateTo)
+      const query = params.toString() ? `?${params.toString()}` : ''
+      const { data } = await apiClient.get<{ items: BillableFlight[]; total: number }>(
+        `/api/v1/flights/billable${query}`,
+        getAuthRequestConfig(),
+      )
+      return data.items
+    },
+  })
+}
+
+// ── Billable Flights — Preview / Apply Mutations ─────────────────────────
+
+export type FlightBillingPayerPreview = {
+  member_uuid: string | null
+  member_account_id: string | null
+  member_name: string | null
+  role: string
+  share: string
+  reason: string
+}
+
+export type FlightBillingAppliedLinePreview = {
+  source: string
+  payer_member_uuid: string | null
+  payer_member_account_id: string | null
+  payer_role: string
+  pricing_version_uuid: string | null
+  pricing_item_uuid: string | null
+  pricing_item_name: string | null
+  asset_uuid: string | null
+  asset_code: string | null
+  quantity: string
+  normal_unit_price: string
+  applied_unit_price: string
+  discount_reason: string | null
+  amount: string
+  debit_account_code: string | null
+  credit_account_code: string | null
+  pack_hours_before: string | null
+  pack_hours_used: string
+  pack_hours_after: string | null
+}
+
+export type FlightAccountingLinePreview = {
+  side: 'debit' | 'credit' | string
+  account_uuid: string | null
+  account_code: string | null
+  member_uuid: string | null
+  member_account_id_snapshot: string | null
+  analytical_asset_uuid: string | null
+  debit: string
+  credit: string
+  description: string | null
+}
+
+export type FlightBillingPreviewResponse = {
+  flight_uuid: string
+  planche_uuid: string | null
+  flight_date: string | null
+  type_of_flight: number | null
+  type_label: string | null
+  total_amount: string
+  billing_hash: string | null
+  payers: FlightBillingPayerPreview[]
+  applied_lines: FlightBillingAppliedLinePreview[]
+  accounting_lines: FlightAccountingLinePreview[]
+  errors: { code: string; message: string; scope: string; blocking: boolean }[]
+  warnings: { code: string; message: string; scope: string; blocking: boolean }[]
+  can_apply: boolean
+  no_bill: boolean
+}
+
+export type FlightBillingBatchPreviewResponse = {
+  items: FlightBillingPreviewResponse[]
+  total: number
+  billable_count: number
+  error_count: number
+  total_amount: string
+}
+
+export type FlightBillingApplyResponse = {
+  entry_uuid: string
+  reference: string
+  description: string
+  state: number
+}
+
+export type FlightBillingBatchApplyResponse = {
+  items: {
+    flight_uuid: string
+    entry_uuid: string
+    entry_state: number
+    reference: string
+    description: string
+    errors: string[]
+  }[]
+  total: number
+  success_count: number
+  error_count: number
+}
+
+export function useFlightBillingPreviewMutation() {
+  return useMutation({
+    mutationFn: async (flightUuid: string) => {
+      const { data } = await apiClient.post<FlightBillingPreviewResponse>(
+        `/api/v1/flights/${flightUuid}/billing-preview`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useFlightBillingBatchPreviewMutation() {
+  return useMutation({
+    mutationFn: async (payload: { date_from?: string; date_to?: string; flight_uuids?: string[] }) => {
+      const { data } = await apiClient.post<FlightBillingBatchPreviewResponse>(
+        '/api/v1/flights/billing-preview',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useFlightBillingApplyMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      flightUuid,
+      fiscalYearUuid,
+    }: {
+      flightUuid: string
+      fiscalYearUuid: string
+    }) => {
+      const { data } = await apiClient.post<FlightBillingApplyResponse>(
+        `/api/v1/flights/${flightUuid}/billing-apply`,
+        { fiscal_year_uuid: fiscalYearUuid },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueFlightsKeys.billable() })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
+    },
+  })
+}
+
+export function useFlightBillingPostMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      flightUuid,
+      fiscalYearUuid,
+    }: {
+      flightUuid: string
+      fiscalYearUuid: string
+    }) => {
+      const { data } = await apiClient.post<FlightBillingApplyResponse>(
+        `/api/v1/flights/${flightUuid}/billing-post`,
+        { fiscal_year_uuid: fiscalYearUuid },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueFlightsKeys.billable() })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
+    },
+  })
+}
+
+export function useFlightBillingBatchApplyMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      flight_uuids: string[]
+      fiscal_year_uuid: string
+    }) => {
+      const { data } = await apiClient.post<FlightBillingBatchApplyResponse>(
+        '/api/v1/flights/billing-batch-apply',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueFlightsKeys.billable() })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
+    },
+  })
+}
+
+// ── Flight Billing Settings ──────────────────────────────────────────────
+
+export type FlightBillingSettings = {
+  id: number
+  fiscal_year_uuid: string
+  fl_journal_uuid: string
+  receivable_account_uuid: string
+  vt_journal_uuid: string
+  default_pack_sales_account_uuid: string | null
+  rem_journal_uuid: string
+  default_pack_discount_expense_account_uuid: string | null
+  rem_period_days: number
+  allow_post_purchase_recalculation: boolean
+  max_days_for_post_purchase_discount: number | null
+  require_approval_for_late_discount: boolean
+  created_at: string
+  updated_at: string
+  updated_by: number | null
+}
+
+export type FlightBillingSettingsUpdate = {
+  fiscal_year_uuid: string
+  fl_journal_uuid: string
+  receivable_account_uuid: string
+  vt_journal_uuid: string
+  default_pack_sales_account_uuid: string | null
+  rem_journal_uuid: string
+  default_pack_discount_expense_account_uuid: string | null
+  rem_period_days: number
+  allow_post_purchase_recalculation: boolean
+  max_days_for_post_purchase_discount: number | null
+  require_approval_for_late_discount: boolean
+}
+
+export type FlightBillingSettingsDefaults = {
+  fiscal_year_uuid: string
+  fl_journal_uuid: string | null
+  receivable_account_uuid: string | null
+  vt_journal_uuid: string | null
+  default_pack_sales_account_uuid: string | null
+  rem_journal_uuid: string | null
+  default_pack_discount_expense_account_uuid: string | null
+  rem_period_days: number
+  allow_post_purchase_recalculation: boolean
+  max_days_for_post_purchase_discount: number
+  require_approval_for_late_discount: boolean
+}
+
+export function useFlightBillingSettingsQuery(fiscalYearUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['banque', 'settings', 'flight-billing', fiscalYearUuid],
+    enabled: enabled && !!fiscalYearUuid,
+    queryFn: async () => {
+      const { data } = await apiClient.get<FlightBillingSettings>(
+        `/api/v1/accounting/settings/flight-billing?fiscal_year_uuid=${fiscalYearUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useFlightBillingSettingsDefaultsQuery(fiscalYearUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['banque', 'settings', 'flight-billing', 'defaults', fiscalYearUuid],
+    enabled: enabled && !!fiscalYearUuid,
+    queryFn: async () => {
+      const { data } = await apiClient.get<FlightBillingSettingsDefaults>(
+        `/api/v1/accounting/settings/flight-billing/defaults?fiscal_year_uuid=${fiscalYearUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useUpsertFlightBillingSettingsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: FlightBillingSettingsUpdate) => {
+      const { data } = await apiClient.put<FlightBillingSettings>(
+        '/api/v1/accounting/settings/flight-billing',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', data.fiscal_year_uuid] })
+      queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', 'defaults', data.fiscal_year_uuid] })
+    },
+  })
+}

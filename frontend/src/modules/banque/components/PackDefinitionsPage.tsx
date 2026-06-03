@@ -262,7 +262,7 @@ export function PackDefinitionEditPage() {
         quantity_allowance: pack.quantity_allowance,
         quantity_unit: pack.quantity_unit,
         pack_sales_account_uuid: pack.pack_sales_account_uuid,
-        rem_discount_account_uuid: pack.rem_discount_account_uuid,
+        pack_discount_expense_account_uuid: pack.pack_discount_expense_account_uuid,
         priority: pack.priority,
       }
     : {
@@ -273,7 +273,7 @@ export function PackDefinitionEditPage() {
         quantity_allowance: '25.00',
         quantity_unit: 'hours',
         pack_sales_account_uuid: null,
-        rem_discount_account_uuid: null,
+        pack_discount_expense_account_uuid: null,
         priority: 0,
       }
 
