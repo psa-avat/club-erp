@@ -371,6 +371,13 @@
     "is_reconcilable": false
   },
   {
+    "code": "6064",
+    "name": "Vols club",
+    "type": 4,
+    "is_posting_allowed": true,
+    "is_reconcilable": false
+  },
+    {
     "code": "6066",
     "name": "Remises sur Packs",
     "type": 4,

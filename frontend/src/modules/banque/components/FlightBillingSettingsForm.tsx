@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
@@ -80,6 +81,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
   const [maxDaysDiscount, setMaxDaysDiscount] = useState(30)
   const [requireApprovalLate, setRequireApprovalLate] = useState(true)
   const [saved, setSaved] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   // Initialize form from saved settings or defaults
   useEffect(() => {
@@ -330,10 +332,21 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
         <Button onClick={handleSave} disabled={!canSave || upsertMutation.isPending}>
           {upsertMutation.isPending ? t('settings.saving') : t('settings.save')}
         </Button>
-        <Button variant="secondary" onClick={handleReset}>
+        <Button variant="secondary" onClick={() => setShowResetConfirm(true)}>
           {t('settings.flightBilling.resetDefaults', 'Réinitialiser')}
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={showResetConfirm}
+        title={t('settings.flightBilling.resetConfirmTitle', 'Réinitialiser la configuration')}
+        body={t('settings.flightBilling.resetConfirmBody', 'Cette action va réinitialiser tous les paramètres aux valeurs par défaut. Les paramètres actuels seront perdus.')}
+        confirmLabel={t('settings.flightBilling.resetDefaults', 'Réinitialiser')}
+        cancelLabel={t('common.cancel', 'Annuler')}
+        variant="destructive"
+        onConfirm={() => { setShowResetConfirm(false); handleReset() }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </div>
   )
 }

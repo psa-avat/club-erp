@@ -1271,6 +1271,8 @@ export const fr = {
         selectJournal: 'Sélectionner un journal…',
         selectAccount: 'Sélectionner un compte…',
         resetDefaults: 'Réinitialiser',
+        resetConfirmTitle: 'Réinitialiser la configuration',
+        resetConfirmBody: 'Cette action va réinitialiser tous les paramètres aux valeurs par défaut. Les paramètres actuels seront perdus.',
         noFiscalYear: 'Aucun exercice fiscal actif. Sélectionnez un exercice dans le module Banque.',
       },
     },
