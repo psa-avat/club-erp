@@ -232,6 +232,18 @@ BEGIN
     END IF;
 END $$;
 
+-- club_member_uuid (the member record representing the club for club-billed flights)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'flight_billing_settings' AND column_name = 'club_member_uuid'
+    ) THEN
+        ALTER TABLE flight_billing_settings
+            ADD COLUMN club_member_uuid UUID REFERENCES members(uuid) ON DELETE SET NULL;
+    END IF;
+END $$;
+
 -- rem_period_days (may be missing in legacy schema)
 DO $$
 BEGIN

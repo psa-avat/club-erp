@@ -185,17 +185,10 @@ class PlancheIntegrationService:
         active_members = await self._active_members(db)
         registered_member_uuids = {member.uuid for member in registered_members}
 
-        # Build matching indexes
-        by_erp_id: dict[str, Member] = {self._member_erp_id(m): m for m in active_members}
-        by_account_id: dict[str, Member] = {}
-        by_ffvp_and_names: dict[str, Member] = {}
-        for member in active_members:
-            legacy_compta_id = self._legacy_compta_id(member)
-            if legacy_compta_id:
-                by_account_id[legacy_compta_id] = member
-            if member.ffvp_id and member.last_name and member.first_name:
-                key = f"{int(member.ffvp_id)}:{self._normalize_name(member.last_name)}:{self._normalize_name(member.first_name)}"
-                by_ffvp_and_names[key] = member
+        # Build matching indexes (using shared helpers)
+        mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full = (
+            self._build_member_indexes(active_members)
+        )
 
         # Count matched and unmatched
         erp_pilots_found_on_planche = 0
@@ -203,23 +196,9 @@ class PlancheIntegrationService:
         unregistered_present_count = 0
         matched_member_ids: set[str] = set()
         for pilot in planche_pilots:
-            matched_member: Member | None = None
-            pilot_erp_id = pilot.get("erp_id")
-            if pilot_erp_id and pilot_erp_id in by_erp_id:
-                matched_member = by_erp_id[pilot_erp_id]
-            else:
-                pilot_compta = pilot.get("id_compta")
-                if pilot_compta and pilot_compta in by_account_id:
-                    matched_member = by_account_id[pilot_compta]
-                elif pilot.get("ffvp") and pilot.get("nom") and pilot.get("prenom"):
-                    try:
-                        pilot_ffvp = int(pilot["ffvp"])
-                    except (TypeError, ValueError):
-                        pilot_ffvp = None
-                    if pilot_ffvp is not None:
-                        key = f"{pilot_ffvp}:{self._normalize_name(pilot['nom'])}:{self._normalize_name(pilot['prenom'])}"
-                        matched_member = by_ffvp_and_names.get(key)
-
+            matched_member = self._match_pilot_to_member(
+                pilot, mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full,
+            )
             if matched_member is not None:
                 member_erp_id = self._member_erp_id(matched_member)
                 if member_erp_id not in matched_member_ids:
@@ -354,10 +333,16 @@ class PlancheIntegrationService:
     def _build_planche_pilot_indexes(
         self,
         planche_pilots: list[dict[str, Any]],
-    ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    ) -> tuple[
+        dict[str, dict[str, Any]],
+        dict[str, dict[str, Any]],
+        dict[str, dict[str, Any]],
+        dict[str, dict[str, Any]],
+    ]:
         by_erp_id: dict[str, dict[str, Any]] = {}
         by_account_id: dict[str, dict[str, Any]] = {}
         by_ffvp_and_names: dict[str, dict[str, Any]] = {}
+        by_full_name: dict[str, dict[str, Any]] = {}
 
         for pilot in planche_pilots:
             pilot_erp_id = pilot.get("erp_id")
@@ -380,7 +365,18 @@ class PlancheIntegrationService:
                 key = f"{ffvp_value}:{self._normalize_name(pilot_nom)}:{self._normalize_name(pilot_prenom)}"
                 by_ffvp_and_names[key] = pilot
 
-        return by_erp_id, by_account_id, by_ffvp_and_names
+            # Name-only index (last resort for category 7 members without ffvp_id)
+            if pilot_nom and pilot_prenom:
+                name_key = f"{self._normalize_name(pilot_nom)}:{self._normalize_name(pilot_prenom)}"
+                # Only index when this name is unique (avoid ambiguous matches)
+                if name_key not in by_full_name:
+                    by_full_name[name_key] = pilot
+                else:
+                    # Duplicate name → mark as ambiguous (None) so _find_existing_pilot
+                    # will skip this fallback.
+                    by_full_name[name_key] = None
+
+        return by_erp_id, by_account_id, by_ffvp_and_names, by_full_name
 
     def _find_existing_pilot(
         self,
@@ -388,13 +384,15 @@ class PlancheIntegrationService:
         by_erp_id: dict[str, dict[str, Any]],
         by_account_id: dict[str, dict[str, Any]],
         by_ffvp_and_names: dict[str, dict[str, Any]],
+        by_full_name: dict[str, dict[str, Any] | None] | None = None,
     ) -> dict[str, Any] | None:
         """Find existing Planche pilot using multi-field matching strategy.
-        
+
         1. Match by erp_id (best, already synced)
         2. Match by ffvp_id + names (robust, no erp_id yet)
         3. Match by account_id (fallback)
-        4. None if no match
+        4. Match by full name only (last resort, category 7 members without ffvp_id)
+        5. None if no match
         """
         erp_id = self._member_erp_id(member)
         if erp_id in by_erp_id:
@@ -405,8 +403,128 @@ class PlancheIntegrationService:
             if key in by_ffvp_and_names:
                 return by_ffvp_and_names[key]
 
+        # Name-only match for club accounts (category 7) without ffvp_id.
+        # Checked BEFORE account_id to avoid a member being "captured" by a
+        # coincidental id_compta match on a different pilot.  For club/dummy
+        # accounts the full name is more stable than a legacy cross-reference.
+        if (
+            by_full_name is not None
+            and member.member_category == 7
+            and member.ffvp_id is None
+            and member.last_name
+            and member.first_name
+        ):
+            name_key = f"{self._normalize_name(member.last_name)}:{self._normalize_name(member.first_name)}"
+            candidate = by_full_name.get(name_key)
+            if candidate is not None:
+                return candidate
+
         if member.account_id and member.account_id in by_account_id:
             return by_account_id[member.account_id]
+
+        return None
+
+    # ------------------------------------------------------------------
+    # Pilot→member matching (opposite direction from _find_existing_pilot)
+    #
+    # The preview proves this direction works reliably: iterate over each
+    # Planche pilot and try to match it to an ERP member using increasingly
+    # loose criteria.  A pilot is examined independently so there is no risk
+    # of one pilot "capturing" a member that belongs to another.
+    # ------------------------------------------------------------------
+
+    def _build_member_indexes(
+        self,
+        members: list[Member],
+    ) -> tuple[
+        dict[str, Member],
+        dict[str, Member],
+        dict[str, Member],
+        dict[str, Member],
+    ]:
+        """Build lookup indexes from ERP members (reverse of _build_planche_pilot_indexes).
+
+        Returns (by_erp_id, by_account_id, by_ffvp_and_names, by_full_name).
+        """
+        by_erp_id: dict[str, Member] = {
+            self._member_erp_id(m): m for m in members
+        }
+        by_account_id: dict[str, Member] = {
+            self._legacy_compta_id(m): m for m in members
+        }
+        by_ffvp_and_names: dict[str, Member] = {}
+        for m in members:
+            if m.ffvp_id is not None and m.last_name and m.first_name:
+                key = (
+                    f"{int(m.ffvp_id)}:"
+                    f"{self._normalize_name(m.last_name)}:"
+                    f"{self._normalize_name(m.first_name)}"
+                )
+                by_ffvp_and_names[key] = m
+
+        by_full_name: dict[str, Member] = {}
+        for m in members:
+            if m.member_category == 7 and m.last_name and m.first_name:
+                name_key = (
+                    f"{self._normalize_name(m.last_name)}:"
+                    f"{self._normalize_name(m.first_name)}"
+                )
+                if name_key not in by_full_name:
+                    by_full_name[name_key] = m
+
+        return by_erp_id, by_account_id, by_ffvp_and_names, by_full_name
+
+    def _match_pilot_to_member(
+        self,
+        pilot: dict[str, Any],
+        member_by_erp_id: dict[str, Member],
+        member_by_account_id: dict[str, Member],
+        member_by_ffvp_and_names: dict[str, Member],
+        member_by_full_name: dict[str, Member],
+    ) -> Member | None:
+        """Match a single Planche pilot to an ERP member (pilot→member direction).
+
+        Strategies, in order:
+          1. pilot.erp_id         → member.account_id
+          2. pilot.id_compta      → member.legacy_account_id
+          3. pilot.ffvp + names   → member.ffvp_id + names
+          4. pilot.nom + prenom   → member.last_name + first_name (cat. 7 only)
+        """
+        # 1. Direct erp_id match (most reliable)
+        pilot_erp_id = pilot.get("erp_id")
+        if pilot_erp_id and pilot_erp_id in member_by_erp_id:
+            return member_by_erp_id[pilot_erp_id]
+
+        # 2. Legacy account_id match
+        pilot_compta = pilot.get("id_compta")
+        if pilot_compta and pilot_compta in member_by_account_id:
+            return member_by_account_id[pilot_compta]
+
+        # 3. FFVP + names match
+        if pilot.get("ffvp") is not None and pilot.get("nom") and pilot.get("prenom"):
+            try:
+                pilot_ffvp = int(pilot["ffvp"])
+            except (TypeError, ValueError):
+                pilot_ffvp = None
+            if pilot_ffvp is not None:
+                key = (
+                    f"{pilot_ffvp}:"
+                    f"{self._normalize_name(pilot['nom'])}:"
+                    f"{self._normalize_name(pilot['prenom'])}"
+                )
+                candidate = member_by_ffvp_and_names.get(key)
+                if candidate is not None:
+                    return candidate
+
+        # 4. Name-only fallback (category 7 club accounts)
+        if pilot.get("nom") and pilot.get("prenom"):
+            name_key = (
+                f"{self._normalize_name(pilot['nom'])}:"
+                f"{self._normalize_name(pilot['prenom'])}"
+            )
+            candidate = member_by_full_name.get(name_key)
+            if candidate is not None:
+                return candidate
 
         return None
 
@@ -484,17 +602,24 @@ class PlancheIntegrationService:
             active_members = await self._active_members(db)
             registered_member_uuids = {member.uuid for member in registered_members}
             planche_pilots = await self._read_planche_pilots()
-            by_erp_id, by_account_id, by_ffvp_and_names = self._build_planche_pilot_indexes(planche_pilots)
+
+            # Build member→pilot map using pilot→member matching (same direction
+            # as the preview) so that every Planche pilot is examined independently.
+            mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full = (
+                self._build_member_indexes(active_members)
+            )
+            member_to_pilot: dict[str, dict[str, Any]] = {}
+            for pilot in planche_pilots:
+                member = self._match_pilot_to_member(
+                    pilot, mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full,
+                )
+                if member is not None:
+                    member_to_pilot[str(member.uuid)] = pilot
 
             members_to_sync: list[tuple[Member, dict[str, Any] | None]] = []
             synchronized_unregistered_present_count = 0
             for member in active_members:
-                existing = self._find_existing_pilot(
-                    member,
-                    by_erp_id,
-                    by_account_id,
-                    by_ffvp_and_names,
-                )
+                existing = member_to_pilot.get(str(member.uuid))
                 should_sync = member.uuid in registered_member_uuids or existing is not None
                 if should_sync:
                     members_to_sync.append((member, existing))
@@ -674,22 +799,47 @@ class PlancheIntegrationService:
             )
             raise
 
-    async def get_pilots_missing_erp_id(self) -> list[dict[str, Any]]:
-        """Retrieve Planche pilots that are missing erp_id (need repair)."""
+    async def get_pilots_missing_erp_id(self, db: AsyncSession) -> list[dict[str, Any]]:
+        """
+        Retrieve Planche pilots that are missing erp_id and have a matching ERP member.
+
+        Uses pilot→member matching (same direction as the preview) so that every
+        Planche pilot is examined independently — no member can be "captured" by
+        a coincidental match on a *different* pilot.
+
+        Only pilots with a corresponding active ERP member are returned (i.e. ones
+        that the push can actually repair).  System / dummy accounts on Planche with
+        no ERP counterpart are excluded.
+        """
         planche_pilots = await self._read_planche_pilots()
-        missing_erp_id = [
-            {
-                "no": pilot.get("no"),
-                "nom": pilot.get("nom"),
-                "prenom": pilot.get("prenom"),
-                "ffvp": pilot.get("ffvp"),
-                "id_compta": pilot.get("id_compta"),
-                "erp_id": pilot.get("erp_id"),
-                "isActif": pilot.get("isActif"),
-            }
-            for pilot in planche_pilots
-            if not pilot.get("erp_id")
-        ]
+        active_members = await self._active_members(db)
+        mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full = (
+            self._build_member_indexes(active_members)
+        )
+
+        missing_erp_id: list[dict[str, Any]] = []
+        for pilot in planche_pilots:
+            if pilot.get("erp_id"):
+                continue  # already has erp_id
+
+            member = self._match_pilot_to_member(
+                pilot, mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full,
+            )
+            if member is None:
+                continue  # no matching ERP member → can't repair
+
+            missing_erp_id.append(
+                {
+                    "no": pilot.get("no"),
+                    "nom": pilot.get("nom"),
+                    "prenom": pilot.get("prenom"),
+                    "ffvp": pilot.get("ffvp"),
+                    "id_compta": pilot.get("id_compta"),
+                    "erp_id": pilot.get("erp_id"),
+                    "isActif": pilot.get("isActif"),
+                }
+            )
+
         return missing_erp_id
 
     async def get_orphaned_pilots_on_planche(self, db: AsyncSession) -> list[dict[str, Any]]:
@@ -697,44 +847,16 @@ class PlancheIntegrationService:
         active_members = await self._active_members(db)
         planche_pilots = await self._read_planche_pilots()
 
-        by_member_erp_id = {
-            self._member_erp_id(m): m
-            for m in active_members
-        }
-        by_member_legacy_compta_id = {
-            self._legacy_compta_id(m): m
-            for m in active_members
-        }
-        by_member_ffvp_and_names: dict[str, Member] = {}
-        for member in active_members:
-            if member.ffvp_id is not None and member.last_name and member.first_name:
-                key = (
-                    f"{int(member.ffvp_id)}:"
-                    f"{self._normalize_name(member.last_name)}:"
-                    f"{self._normalize_name(member.first_name)}"
-                )
-                by_member_ffvp_and_names[key] = member
+        mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full = (
+            self._build_member_indexes(active_members)
+        )
 
         orphaned = []
         for pilot in planche_pilots:
-            matched_member: Member | None = None
-            pilot_erp_id = pilot.get("erp_id")
-            if pilot_erp_id and pilot_erp_id in by_member_erp_id:
-                matched_member = by_member_erp_id[pilot_erp_id]
-            else:
-                pilot_compta = pilot.get("id_compta")
-                if pilot_compta and pilot_compta in by_member_legacy_compta_id:
-                    matched_member = by_member_legacy_compta_id[pilot_compta]
-                elif pilot.get("ffvp") and pilot.get("nom") and pilot.get("prenom"):
-                    try:
-                        pilot_ffvp = int(pilot["ffvp"])
-                    except (TypeError, ValueError):
-                        pilot_ffvp = None
-                    if pilot_ffvp is not None:
-                        key = f"{pilot_ffvp}:{self._normalize_name(pilot['nom'])}:{self._normalize_name(pilot['prenom'])}"
-                        matched_member = by_member_ffvp_and_names.get(key)
-
-            if matched_member is None:
+            member = self._match_pilot_to_member(
+                pilot, mem_by_erp_id, mem_by_account_id, mem_by_ffvp, mem_by_full,
+            )
+            if member is None:
                 orphaned.append(
                     {
                         "no": pilot.get("no"),

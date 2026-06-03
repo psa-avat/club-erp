@@ -74,6 +74,7 @@ class FlightBillingSettingsUpdate(BaseModel):
 
     # Club billing
     default_initiation_charge_account_uuid: Optional[UUID] = None
+    club_member_uuid: Optional[UUID] = None
 
     # Operational settings
     rem_period_days: int = Field(default=30, ge=1)
@@ -93,6 +94,7 @@ class FlightBillingSettingsDefaults(BaseModel):
     rem_journal_uuid: Optional[UUID] = None
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
     default_initiation_charge_account_uuid: Optional[UUID] = None
+    club_member_uuid: Optional[UUID] = None
 
     rem_period_days: int = 30
     allow_post_purchase_recalculation: bool = True

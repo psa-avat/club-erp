@@ -1240,6 +1240,11 @@ export const en = {
         },
       },
       flightBilling: {
+        clubTitle: 'Club billing',
+        clubHelp: 'Default charge account for club-billed flights (initiation VI). Used when the VI type has no account defined.',
+        initiationChargeAccount: 'Initiation charge account (class 6)',
+        clubMember: 'Club member record',
+        selectMember: 'Select a member…',
         flCardTitle: 'Flights (billing)',
         flCardHelp: 'Flight entries will be posted in this journal, debiting the receivable account',
         flJournal: 'FL journal',

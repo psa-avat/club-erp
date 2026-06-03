@@ -25,6 +25,7 @@ import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
+import { useMemberOptionsQuery } from '../../members/api'
 import {
   useAccountsQuery,
   useFlightBillingSettingsDefaultsQuery,
@@ -60,6 +61,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
   const { data: defaults, isLoading: loadingDefaults } = useFlightBillingSettingsDefaultsQuery(fiscalYearUuid, !!fiscalYearUuid)
   const { data: journals } = useJournalsQuery(true)
   const { data: accounts } = useAccountsQuery(true)
+  const { data: memberOptions } = useMemberOptionsQuery()
   const upsertMutation = useUpsertFlightBillingSettingsMutation()
 
   const isLoading = loadingSettings || loadingDefaults
@@ -71,6 +73,8 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
   const [packSalesAccount, setPackSalesAccount] = useState('')
   const [remJournal, setRemJournal] = useState('')
   const [discountExpenseAccount, setDiscountExpenseAccount] = useState('')
+  const [initiationChargeAccount, setInitiationChargeAccount] = useState('')
+  const [clubMember, setClubMember] = useState('')
   const [remPeriodDays, setRemPeriodDays] = useState(30)
   const [allowPostPurchaseRecalc, setAllowPostPurchaseRecalc] = useState(true)
   const [maxDaysDiscount, setMaxDaysDiscount] = useState(30)
@@ -86,6 +90,8 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       setPackSalesAccount(settings.default_pack_sales_account_uuid ?? '')
       setRemJournal(settings.rem_journal_uuid)
       setDiscountExpenseAccount(settings.default_pack_discount_expense_account_uuid ?? '')
+      setInitiationChargeAccount(settings.default_initiation_charge_account_uuid ?? '')
+      setClubMember(settings.club_member_uuid ?? '')
       setRemPeriodDays(settings.rem_period_days)
       setAllowPostPurchaseRecalc(settings.allow_post_purchase_recalculation)
       setMaxDaysDiscount(settings.max_days_for_post_purchase_discount ?? 30)
@@ -97,6 +103,8 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       setPackSalesAccount(defaults.default_pack_sales_account_uuid ?? '')
       setRemJournal(defaults.rem_journal_uuid ?? '')
       setDiscountExpenseAccount(defaults.default_pack_discount_expense_account_uuid ?? '')
+      setInitiationChargeAccount(defaults.default_initiation_charge_account_uuid ?? '')
+      setClubMember(defaults.club_member_uuid ?? '')
       setRemPeriodDays(defaults.rem_period_days)
       setAllowPostPurchaseRecalc(defaults.allow_post_purchase_recalculation)
       setMaxDaysDiscount(defaults.max_days_for_post_purchase_discount)
@@ -104,7 +112,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
     }
   }, [settings, defaults])
 
-  // Journal & account options for SearchableSelect
+  // Journal, account & member options for SearchableSelect
   const journalOptions = useMemo(
     () => (journals ?? []).map((j) => ({ value: j.uuid, label: `${j.code} — ${j.name}` })),
     [journals],
@@ -112,6 +120,12 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
   const accountOptions = useMemo(
     () => (accounts ?? []).map((a) => ({ value: a.uuid, label: `${a.code} — ${a.name}` })),
     [accounts],
+  )
+  const memberLabel = (m: { uuid: string; account_id: string; first_name: string; last_name: string }) =>
+    `${m.account_id} — ${m.first_name} ${m.last_name}`
+  const memberOptionsForSelect = useMemo(
+    () => (memberOptions ?? []).map((m) => ({ value: m.uuid, label: memberLabel(m) })),
+    [memberOptions],
   )
 
   const canSave = flJournal && receivableAccount && vtJournal && remJournal
@@ -127,6 +141,8 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       default_pack_sales_account_uuid: packSalesAccount || null,
       rem_journal_uuid: remJournal,
       default_pack_discount_expense_account_uuid: discountExpenseAccount || null,
+      default_initiation_charge_account_uuid: initiationChargeAccount || null,
+      club_member_uuid: clubMember || null,
       rem_period_days: remPeriodDays,
       allow_post_purchase_recalculation: allowPostPurchaseRecalc,
       max_days_for_post_purchase_discount: maxDaysDiscount,
@@ -145,6 +161,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
     setPackSalesAccount(defaults.default_pack_sales_account_uuid ?? '')
     setRemJournal(defaults.rem_journal_uuid ?? '')
     setDiscountExpenseAccount(defaults.default_pack_discount_expense_account_uuid ?? '')
+    setClubMember(defaults.club_member_uuid ?? '')
     setRemPeriodDays(defaults.rem_period_days)
     setAllowPostPurchaseRecalc(defaults.allow_post_purchase_recalculation)
     setMaxDaysDiscount(defaults.max_days_for_post_purchase_discount)
@@ -235,6 +252,34 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
               value={discountExpenseAccount}
               onChange={setDiscountExpenseAccount}
               placeholder={t('settings.flightBilling.selectAccount', 'Sélectionner un compte…')}
+              clearable
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Club billing */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900">{t('settings.flightBilling.clubTitle', 'Facturation club')}</h3>
+        <p className="mt-1 text-xs text-slate-500">{t('settings.flightBilling.clubHelp', 'Compte de charge par défaut pour les vols facturés au club (initiations VI). Utilisé quand le type VI na pas de compte défini.')}</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-slate-700">{t('settings.flightBilling.initiationChargeAccount', 'Compte charge initiation (classe 6)')}</Label>
+            <SearchableSelect
+              options={accountOptions}
+              value={initiationChargeAccount}
+              onChange={setInitiationChargeAccount}
+              placeholder={t('settings.flightBilling.selectAccount', 'Sélectionner un compte…')}
+              clearable
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-slate-700">{t('settings.flightBilling.clubMember', 'Membre représentant le club')}</Label>
+            <SearchableSelect
+              options={memberOptionsForSelect}
+              value={clubMember}
+              onChange={setClubMember}
+              placeholder={t('settings.flightBilling.selectMember', 'Sélectionner un membre…')}
               clearable
             />
           </div>

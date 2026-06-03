@@ -89,6 +89,8 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
    - `default_initiation_charge_account_uuid` UUID REFERENCES accounting_accounts(uuid)
      — *Default charge account for initiation/VI club-billed flights (class 6 expense, e.g. 658). Used when no matching `vi_type_catalog.charge_account_uuid` is found*
+   - `club_member_uuid` UUID REFERENCES members(uuid) ON DELETE SET NULL
+     — *Member record representing the club entity. When `validated_flights.charge_to_erp_id` equals this member's `account_id`, the flight is club-billed*
 
    **Operational settings:**
    - `rem_period_days` INTEGER NOT NULL DEFAULT 30 CHECK (rem_period_days > 0)
@@ -146,6 +148,7 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
    **Club billing section:**
    - `<ComboboxAccount>` for default initiation charge account (class 6 expense, e.g. 658)
+   - `<ComboboxMember>` for club member record (searchable by name/account_id)
    - Helper text: *"Compte de charge par défaut pour les vols facturés au club (initiations VI). Utilisé quand le type VI n'a pas de compte défini."*
 
    **Operational settings section:**

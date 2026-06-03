@@ -235,6 +235,10 @@ class FlightBillingSettings(Base):
 
     # Club billing (default charge account for initiation/VI flights)
     default_initiation_charge_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+    club_member_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Member record representing the club for club-billed flights (detected via charge_to_erp_id)",
+    )
 
     # Operational settings
     rem_period_days = Column(Integer, nullable=False, default=30)
@@ -264,6 +268,7 @@ class FlightBillingSettings(Base):
     receivable_account = relationship("AccountingAccount", foreign_keys=[receivable_account_uuid])
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[default_pack_sales_account_uuid])
     pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[default_pack_discount_expense_account_uuid])
+    club_member = relationship("Member", foreign_keys=[club_member_uuid])
     updated_by_user = relationship("User")
 
     def __repr__(self):

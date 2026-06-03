@@ -135,7 +135,7 @@ async def get_pilots_missing_erp_id(
 ):
     """Retrieve Planche pilots missing erp_id (need repair/migration)."""
     service = await _get_planche_service(db)
-    pilots = await service.get_pilots_missing_erp_id()
+    pilots = await service.get_pilots_missing_erp_id(db)
     return JSONResponse({"pilots": pilots, "count": len(pilots)})
 
 @router.get("/pilots/orphaned")

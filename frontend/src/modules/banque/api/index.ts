@@ -1439,6 +1439,8 @@ export type FlightBillingSettings = {
   default_pack_sales_account_uuid: string | null
   rem_journal_uuid: string
   default_pack_discount_expense_account_uuid: string | null
+  default_initiation_charge_account_uuid: string | null
+  club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
   max_days_for_post_purchase_discount: number | null
@@ -1456,6 +1458,8 @@ export type FlightBillingSettingsUpdate = {
   default_pack_sales_account_uuid: string | null
   rem_journal_uuid: string
   default_pack_discount_expense_account_uuid: string | null
+  default_initiation_charge_account_uuid: string | null
+  club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
   max_days_for_post_purchase_discount: number | null
@@ -1470,6 +1474,8 @@ export type FlightBillingSettingsDefaults = {
   default_pack_sales_account_uuid: string | null
   rem_journal_uuid: string | null
   default_pack_discount_expense_account_uuid: string | null
+  default_initiation_charge_account_uuid: string | null
+  club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
   max_days_for_post_purchase_discount: number

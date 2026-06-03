@@ -1246,6 +1246,11 @@ export const fr = {
         },
       },
       flightBilling: {
+        clubTitle: 'Facturation club',
+        clubHelp: 'Compte de charge par défaut pour les vols facturés au club (initiations VI). Utilisé quand le type VI na pas de compte défini.',
+        initiationChargeAccount: 'Compte charge initiation (classe 6)',
+        clubMember: 'Membre représentant le club',
+        selectMember: 'Sélectionner un membre…',
         flCardTitle: 'Vols (facturation)',
         flCardHelp: 'Les écritures de vol seront postées dans ce journal au débit du compte client',
         flJournal: 'Journal FL',
