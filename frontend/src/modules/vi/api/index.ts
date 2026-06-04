@@ -35,6 +35,8 @@ export type ViType = {
   name: string
   description: string | null
   is_active: boolean
+  charge_account_uuid: string | null
+  charge_account_code: string | null
 }
 
 export type ViEntitlement = {
@@ -103,7 +105,7 @@ export function useViTypesQuery() {
 export function useCreateViTypeMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { code: string; name: string; description?: string; is_active?: boolean }) => {
+    mutationFn: async (payload: { code: string; name: string; description?: string; is_active?: boolean; charge_account_uuid?: string | null }) => {
       const { data } = await apiClient.post<ViType>('/api/v1/vi/types', payload, getAuthRequestConfig())
       return data
     },

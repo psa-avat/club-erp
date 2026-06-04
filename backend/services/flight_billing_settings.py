@@ -89,6 +89,8 @@ async def upsert_flight_billing_settings(
         await _validate_fk(db, AccountingAccount, payload.default_pack_discount_expense_account_uuid, "Pack discount expense account")
     if payload.default_initiation_charge_account_uuid:
         await _validate_fk(db, AccountingAccount, payload.default_initiation_charge_account_uuid, "Initiation charge account")
+    if payload.club_charge_account_uuid:
+        await _validate_fk(db, AccountingAccount, payload.club_charge_account_uuid, "Club charge account")
     if payload.club_member_uuid:
         await _validate_fk(db, Member, payload.club_member_uuid, "Club member")
 
@@ -110,6 +112,7 @@ async def upsert_flight_billing_settings(
             rem_journal_uuid=payload.rem_journal_uuid,
             default_pack_discount_expense_account_uuid=payload.default_pack_discount_expense_account_uuid,
             default_initiation_charge_account_uuid=payload.default_initiation_charge_account_uuid,
+            club_charge_account_uuid=payload.club_charge_account_uuid,
             club_member_uuid=payload.club_member_uuid,
             rem_period_days=payload.rem_period_days,
             allow_post_purchase_recalculation=payload.allow_post_purchase_recalculation,
@@ -126,6 +129,7 @@ async def upsert_flight_billing_settings(
         settings.rem_journal_uuid = payload.rem_journal_uuid
         settings.default_pack_discount_expense_account_uuid = payload.default_pack_discount_expense_account_uuid
         settings.default_initiation_charge_account_uuid = payload.default_initiation_charge_account_uuid
+        settings.club_charge_account_uuid = payload.club_charge_account_uuid
         settings.club_member_uuid = payload.club_member_uuid
         settings.rem_period_days = payload.rem_period_days
         settings.allow_post_purchase_recalculation = payload.allow_post_purchase_recalculation
@@ -163,6 +167,7 @@ async def get_flight_billing_settings_defaults(
         rem_journal_uuid=rem_journal.uuid if rem_journal else None,
         default_pack_discount_expense_account_uuid=discount_expense.uuid if discount_expense else None,
         default_initiation_charge_account_uuid=club_contra.uuid if club_contra else None,
+        club_charge_account_uuid=None,
         club_member_uuid=None,
     )
 

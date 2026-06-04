@@ -1335,11 +1335,11 @@ export type FlightBillingBatchApplyResponse = {
 
 export function useFlightBillingPreviewMutation() {
   return useMutation({
-    mutationFn: async (flightUuid: string) => {
+    mutationFn: async ({ flightUuid, fiscalYearUuid }: { flightUuid: string; fiscalYearUuid?: string | null }) => {
       const { data } = await apiClient.post<FlightBillingPreviewResponse>(
         `/api/v1/flights/${flightUuid}/billing-preview`,
         {},
-        getAuthRequestConfig(),
+        { ...getAuthRequestConfig(), params: { fiscal_year_uuid: fiscalYearUuid || undefined } },
       )
       return data
     },
@@ -1348,11 +1348,12 @@ export function useFlightBillingPreviewMutation() {
 
 export function useFlightBillingBatchPreviewMutation() {
   return useMutation({
-    mutationFn: async (payload: { date_from?: string; date_to?: string; flight_uuids?: string[] }) => {
+    mutationFn: async (payload: { date_from?: string; date_to?: string; flight_uuids?: string[]; fiscal_year_uuid?: string | null }) => {
+      const { fiscal_year_uuid, ...body } = payload
       const { data } = await apiClient.post<FlightBillingBatchPreviewResponse>(
         '/api/v1/flights/billing-preview',
-        payload,
-        getAuthRequestConfig(),
+        body,
+        { ...getAuthRequestConfig(), params: { fiscal_year_uuid: fiscal_year_uuid || undefined } },
       )
       return data
     },
@@ -1440,6 +1441,7 @@ export type FlightBillingSettings = {
   rem_journal_uuid: string
   default_pack_discount_expense_account_uuid: string | null
   default_initiation_charge_account_uuid: string | null
+  club_charge_account_uuid: string | null
   club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
@@ -1459,6 +1461,7 @@ export type FlightBillingSettingsUpdate = {
   rem_journal_uuid: string
   default_pack_discount_expense_account_uuid: string | null
   default_initiation_charge_account_uuid: string | null
+  club_charge_account_uuid: string | null
   club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
@@ -1475,6 +1478,7 @@ export type FlightBillingSettingsDefaults = {
   rem_journal_uuid: string | null
   default_pack_discount_expense_account_uuid: string | null
   default_initiation_charge_account_uuid: string | null
+  club_charge_account_uuid: string | null
   club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean

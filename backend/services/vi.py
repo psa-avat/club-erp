@@ -47,12 +47,12 @@ def _assert_date_consistency(scheduled_date: date | None, realisation_date: date
 
 
 async def list_vi_types(db: AsyncSession, active_only: bool = False) -> list[ViTypeCatalog]:
-    stmt = select(ViTypeCatalog)
+    stmt = select(ViTypeCatalog).options(joinedload(ViTypeCatalog.charge_account))
     if active_only:
         stmt = stmt.where(ViTypeCatalog.is_active.is_(True))
     stmt = stmt.order_by(ViTypeCatalog.code)
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    return list(result.unique().scalars().all())
 
 
 async def create_vi_type(
@@ -70,17 +70,27 @@ async def create_vi_type(
         name=payload.name.strip(),
         description=payload.description.strip() if isinstance(payload.description, str) else None,
         is_active=payload.is_active,
+        charge_account_uuid=payload.charge_account_uuid,
         updated_by=user_id,
     )
     db.add(row)
     await db.commit()
-    await db.refresh(row)
-    return row
+    # Re-fetch with eager-loaded charge_account for serialization
+    result = await db.execute(
+        select(ViTypeCatalog)
+        .options(joinedload(ViTypeCatalog.charge_account))
+        .where(ViTypeCatalog.uuid == row.uuid)
+    )
+    return result.unique().scalar_one()
 
 
 async def get_vi_type(db: AsyncSession, type_uuid: UUID) -> ViTypeCatalog:
-    result = await db.execute(select(ViTypeCatalog).where(ViTypeCatalog.uuid == type_uuid))
-    row = result.scalar_one_or_none()
+    result = await db.execute(
+        select(ViTypeCatalog)
+        .options(joinedload(ViTypeCatalog.charge_account))
+        .where(ViTypeCatalog.uuid == type_uuid)
+    )
+    row = result.unique().scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VI type not found")
     return row
@@ -109,11 +119,18 @@ async def update_vi_type(
         row.description = payload.description.strip() if payload.description else None
     if payload.is_active is not None:
         row.is_active = payload.is_active
+    if payload.charge_account_uuid is not None:
+        row.charge_account_uuid = payload.charge_account_uuid
 
     row.updated_by = user_id
     await db.commit()
-    await db.refresh(row)
-    return row
+    # Re-fetch with eager-loaded charge_account for serialization
+    result = await db.execute(
+        select(ViTypeCatalog)
+        .options(joinedload(ViTypeCatalog.charge_account))
+        .where(ViTypeCatalog.uuid == row.uuid)
+    )
+    return result.unique().scalar_one()
 
 
 async def list_vi_entitlements(

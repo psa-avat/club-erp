@@ -43,6 +43,7 @@ class FlightBillingSettingsResponse(BaseModel):
 
     # Club billing
     default_initiation_charge_account_uuid: Optional[UUID] = None
+    club_charge_account_uuid: Optional[UUID] = None
     club_member_uuid: Optional[UUID] = None
 
     # Operational settings
@@ -75,6 +76,7 @@ class FlightBillingSettingsUpdate(BaseModel):
 
     # Club billing
     default_initiation_charge_account_uuid: Optional[UUID] = None
+    club_charge_account_uuid: Optional[UUID] = None
     club_member_uuid: Optional[UUID] = None
 
     # Operational settings
@@ -95,6 +97,7 @@ class FlightBillingSettingsDefaults(BaseModel):
     rem_journal_uuid: Optional[UUID] = None
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
     default_initiation_charge_account_uuid: Optional[UUID] = None
+    club_charge_account_uuid: Optional[UUID] = None
     club_member_uuid: Optional[UUID] = None
 
     rem_period_days: int = 30

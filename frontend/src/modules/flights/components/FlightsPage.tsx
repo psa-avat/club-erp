@@ -25,6 +25,7 @@ import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 
 import {
   useFlightBillingPreviewMutation,
@@ -288,6 +289,7 @@ export function FlightsPage() {
 
   const hasActiveFilters = Object.keys(filters).length > 0
   const flightsQuery = useFlightListQuery(flightPage, flightPageSize, filters)
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const billingPreviewMutation = useFlightBillingPreviewMutation()
   const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
   const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
@@ -297,7 +299,7 @@ export function FlightsPage() {
     setExpandedFlight(willExpand ? flight.uuid : null)
 
     if (willExpand && !flightPreviews[flight.uuid]) {
-      billingPreviewMutation.mutate(flight.uuid, {
+      billingPreviewMutation.mutate({ flightUuid: flight.uuid, fiscalYearUuid: activeFiscalYearUuid }, {
         onSuccess: (data) => {
           setFlightPreviews((prev) => ({ ...prev, [flight.uuid]: data }))
         },
@@ -308,7 +310,7 @@ export function FlightsPage() {
   function previewBilling(flight: ValidatedFlightItem) {
     setExpandedFlight(flight.uuid)
     if (flightPreviews[flight.uuid]) return
-    billingPreviewMutation.mutate(flight.uuid, {
+    billingPreviewMutation.mutate({ flightUuid: flight.uuid, fiscalYearUuid: activeFiscalYearUuid }, {
       onSuccess: (data) => {
         setFlightPreviews((prev) => ({ ...prev, [flight.uuid]: data }))
       },
@@ -505,7 +507,7 @@ export function FlightsPage() {
                               size="sm"
                               variant="secondary"
                               onClick={() => previewBilling(flight)}
-                              disabled={billingPreviewMutation.isPending && billingPreviewMutation.variables === flight.uuid}
+                              disabled={billingPreviewMutation.isPending && billingPreviewMutation.variables?.flightUuid === flight.uuid}
                               title={t('billing.preview')}
                               aria-label={t('billing.preview')}
                             >
@@ -538,7 +540,7 @@ export function FlightsPage() {
                               </div>
                             )}
 
-                            {billingPreviewMutation.error && billingPreviewMutation.variables === flight.uuid ? (
+                            {billingPreviewMutation.error && billingPreviewMutation.variables?.flightUuid === flight.uuid ? (
                               <Alert>{billingPreviewMutation.error instanceof Error ? billingPreviewMutation.error.message : t('billing.loadError')}</Alert>
                             ) : flightPreviews[flight.uuid] ? (
                               <BillingPreviewPanel preview={flightPreviews[flight.uuid]} />

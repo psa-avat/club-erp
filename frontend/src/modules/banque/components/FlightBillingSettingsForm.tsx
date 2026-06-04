@@ -75,6 +75,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
   const [remJournal, setRemJournal] = useState('')
   const [discountExpenseAccount, setDiscountExpenseAccount] = useState('')
   const [initiationChargeAccount, setInitiationChargeAccount] = useState('')
+  const [clubChargeAccount, setClubChargeAccount] = useState('')
   const [clubMember, setClubMember] = useState('')
   const [remPeriodDays, setRemPeriodDays] = useState(30)
   const [allowPostPurchaseRecalc, setAllowPostPurchaseRecalc] = useState(true)
@@ -93,6 +94,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       setRemJournal(settings.rem_journal_uuid)
       setDiscountExpenseAccount(settings.default_pack_discount_expense_account_uuid ?? '')
       setInitiationChargeAccount(settings.default_initiation_charge_account_uuid ?? '')
+      setClubChargeAccount(settings.club_charge_account_uuid ?? '')
       setClubMember(settings.club_member_uuid ?? '')
       setRemPeriodDays(settings.rem_period_days)
       setAllowPostPurchaseRecalc(settings.allow_post_purchase_recalculation)
@@ -106,6 +108,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       setRemJournal(defaults.rem_journal_uuid ?? '')
       setDiscountExpenseAccount(defaults.default_pack_discount_expense_account_uuid ?? '')
       setInitiationChargeAccount(defaults.default_initiation_charge_account_uuid ?? '')
+      setClubChargeAccount(defaults.club_charge_account_uuid ?? '')
       setClubMember(defaults.club_member_uuid ?? '')
       setRemPeriodDays(defaults.rem_period_days)
       setAllowPostPurchaseRecalc(defaults.allow_post_purchase_recalculation)
@@ -144,6 +147,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       rem_journal_uuid: remJournal,
       default_pack_discount_expense_account_uuid: discountExpenseAccount || null,
       default_initiation_charge_account_uuid: initiationChargeAccount || null,
+      club_charge_account_uuid: clubChargeAccount || null,
       club_member_uuid: clubMember || null,
       rem_period_days: remPeriodDays,
       allow_post_purchase_recalculation: allowPostPurchaseRecalc,
@@ -163,6 +167,8 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
     setPackSalesAccount(defaults.default_pack_sales_account_uuid ?? '')
     setRemJournal(defaults.rem_journal_uuid ?? '')
     setDiscountExpenseAccount(defaults.default_pack_discount_expense_account_uuid ?? '')
+    setInitiationChargeAccount(defaults.default_initiation_charge_account_uuid ?? '')
+    setClubChargeAccount(defaults.club_charge_account_uuid ?? '')
     setClubMember(defaults.club_member_uuid ?? '')
     setRemPeriodDays(defaults.rem_period_days)
     setAllowPostPurchaseRecalc(defaults.allow_post_purchase_recalculation)
@@ -263,8 +269,8 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
       {/* Club billing */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-900">{t('settings.flightBilling.clubTitle', 'Facturation club')}</h3>
-        <p className="mt-1 text-xs text-slate-500">{t('settings.flightBilling.clubHelp', 'Compte de charge par défaut pour les vols facturés au club (initiations VI). Utilisé quand le type VI na pas de compte défini.')}</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <p className="mt-1 text-xs text-slate-500">{t('settings.flightBilling.clubHelp', 'Comptes de charge pour les vols facturés au club.')}</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1">
             <Label className="text-xs font-medium text-slate-700">{t('settings.flightBilling.initiationChargeAccount', 'Compte charge initiation (classe 6)')}</Label>
             <SearchableSelect
@@ -274,6 +280,18 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
               placeholder={t('settings.flightBilling.selectAccount', 'Sélectionner un compte…')}
               clearable
             />
+            <p className="text-[10px] text-slate-400">{t('settings.flightBilling.initiationChargeAccountHelp', 'Fallback pour les initiations sans type VI')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium text-slate-700">{t('settings.flightBilling.clubChargeAccount', 'Compte charge club (classe 6)')}</Label>
+            <SearchableSelect
+              options={accountOptions}
+              value={clubChargeAccount}
+              onChange={setClubChargeAccount}
+              placeholder={t('settings.flightBilling.selectAccount', 'Sélectionner un compte…')}
+              clearable
+            />
+            <p className="text-[10px] text-slate-400">{t('settings.flightBilling.clubChargeAccountHelp', 'Pour les vols facturés au club (charge_to_erp_id = membre club)')}</p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs font-medium text-slate-700">{t('settings.flightBilling.clubMember', 'Membre représentant le club')}</Label>
@@ -284,6 +302,7 @@ export function FlightBillingSettingsForm({ fiscalYearUuid }: FlightBillingSetti
               placeholder={t('settings.flightBilling.selectMember', 'Sélectionner un membre…')}
               clearable
             />
+            <p className="text-[10px] text-slate-400">{t('settings.flightBilling.clubMemberHelp', 'Compte membre (account_id) utilisé comme sentinelle')}</p>
           </div>
         </div>
       </div>

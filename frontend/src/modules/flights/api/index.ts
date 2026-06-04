@@ -244,11 +244,11 @@ export function useFlightsFetchMutation() {
 
 export function useFlightBillingPreviewMutation() {
   return useMutation({
-    mutationFn: async (flightUuid: string) => {
+    mutationFn: async ({ flightUuid, fiscalYearUuid }: { flightUuid: string; fiscalYearUuid?: string | null }) => {
       const { data } = await apiClient.post<FlightBillingPreviewResponse>(
         `/api/v1/flights/${flightUuid}/billing-preview`,
         {},
-        getAuthRequestConfig(),
+        { ...getAuthRequestConfig(), params: { fiscal_year_uuid: fiscalYearUuid || undefined } },
       )
       return data
     },

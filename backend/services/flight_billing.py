@@ -15,7 +15,7 @@ from uuid import UUID
 
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from models import (
     AccountingAccount,
@@ -262,37 +262,43 @@ class FlightBillingPreviewService:
         else:
             self._club_member = None
 
-    async def _resolve_club_billing(
-        self, flight: ValidatedFlight
-    ) -> _ClubBillingInfo:
+    async def _resolve_charge_account(
+        self, flight: ValidatedFlight, is_initiation: bool = True
+    ) -> tuple[UUID | None, str | None]:
         """
-        Check if the flight is club-billed and resolve the charge account.
-        Returns _ClubBillingInfo with is_club_billed=True when charge_to_erp_id
-        matches the club member's account_id.
+        Resolve the charge account for a club-billed flight.
+
+        For initiation flights (is_initiation=True):
+            vi_type_catalog.charge_account_uuid → settings.default_initiation_charge_account_uuid
+
+        For other club-billed flights (is_initiation=False):
+            settings.club_charge_account_uuid → settings.default_initiation_charge_account_uuid (fallback)
+
+        Returns (charge_account_uuid, charge_account_code).
         """
-        if self._club_member is None or not flight.charge_to_erp_id:
-            return _ClubBillingInfo(is_club_billed=False, charge_account_uuid=None, charge_account_code=None)
-
-        # Compare charge_to_erp_id with club member's account_id
-        if flight.charge_to_erp_id != self._club_member.account_id:
-            return _ClubBillingInfo(is_club_billed=False, charge_account_uuid=None, charge_account_code=None)
-
-        # Resolve charge account: vi_type_catalog.charge_account_uuid → settings default
         charge_account_uuid: UUID | None = None
         charge_account_code: str | None = None
 
-        if flight.vi_erp_id:
+        if is_initiation and flight.vi_erp_id:
+            # Initiation flight with a specific VI type → use its charge account
             vi_result = await self.db.execute(
-                select(ViTypeCatalog).where(ViTypeCatalog.code == flight.vi_erp_id)
+                select(ViTypeCatalog)
+                .options(joinedload(ViTypeCatalog.charge_account))
+                .where(ViTypeCatalog.code == flight.vi_erp_id)
             )
-            vi_type = vi_result.scalar_one_or_none()
+            vi_type = vi_result.unique().scalar_one_or_none()
             if vi_type and vi_type.charge_account_uuid:
                 charge_account_uuid = vi_type.charge_account_uuid
-                if vi_type.charge_account:
-                    charge_account_code = vi_type.charge_account.code
+                charge_account_code = vi_type.charge_account_code
 
         if charge_account_uuid is None and self._billing_settings:
-            charge_account_uuid = self._billing_settings.default_initiation_charge_account_uuid
+            if is_initiation:
+                # Fallback for initiation: default_initiation_charge_account_uuid
+                charge_account_uuid = self._billing_settings.default_initiation_charge_account_uuid
+            else:
+                # Club-billed (non-initiation): use club_charge_account_uuid, fallback to initiation account
+                charge_account_uuid = self._billing_settings.club_charge_account_uuid or self._billing_settings.default_initiation_charge_account_uuid
+
             if charge_account_uuid:
                 acct_result = await self.db.execute(
                     select(AccountingAccount).where(AccountingAccount.uuid == charge_account_uuid)
@@ -300,6 +306,52 @@ class FlightBillingPreviewService:
                 acct = acct_result.scalar_one_or_none()
                 if acct:
                     charge_account_code = acct.code
+
+        return charge_account_uuid, charge_account_code
+
+    async def _resolve_club_billing(
+        self, flight: ValidatedFlight
+    ) -> _ClubBillingInfo:
+        """
+        Check if the flight is club-billed and resolve the charge account.
+
+        Detection order:
+        1. charge_to_erp_id matches the club member's account_id (explicit club billing)
+        2. Flight type is 'initiation' and a charge account can be resolved
+           (from vi_type_catalog.charge_account_uuid or settings default)
+
+        Charge account resolution order:
+        vi_type_catalog.charge_account_uuid → settings.default_initiation_charge_account_uuid
+        """
+        flight_type = FLIGHT_TYPE_LABELS.get(flight.type_of_flight, "unknown")
+        is_initiation = flight_type == "initiation"
+
+        # ── Detection 1: charge_to_erp_id matches club member account_id ──
+        is_club_billed = False
+        if self._club_member is not None and flight.charge_to_erp_id:
+            if flight.charge_to_erp_id == self._club_member.account_id:
+                is_club_billed = True
+
+        # ── Detection 2: initiation flight with a resolvable charge account ──
+        charge_account_uuid: UUID | None = None
+        charge_account_code: str | None = None
+        if not is_club_billed and is_initiation:
+            ca_uuid, ca_code = await self._resolve_charge_account(flight, is_initiation=True)
+            if ca_uuid is not None:
+                is_club_billed = True
+                charge_account_uuid = ca_uuid
+                charge_account_code = ca_code
+
+        if not is_club_billed:
+            return _ClubBillingInfo(
+                is_club_billed=False, charge_account_uuid=None, charge_account_code=None
+            )
+
+        # Detection 1 (club member match): resolve charge account now if not already resolved
+        if charge_account_uuid is None:
+            charge_account_uuid, charge_account_code = await self._resolve_charge_account(
+                flight, is_initiation=False
+            )
 
         return _ClubBillingInfo(
             is_club_billed=True,
@@ -901,15 +953,19 @@ class FlightBillingPreviewService:
         is_club_billed: bool = False,
     ) -> list[FlightAccountingLinePreview]:
         description = f"{line.pricing_item_name} {line.asset_code}"
+        member_uuid = None if is_club_billed else (str(payer.member.uuid) if payer.member else None)
+        member_account_id = None if is_club_billed else (payer.member.account_id if payer.member else None)
+        asset_uuid = str(asset.uuid)
         return [
             FlightAccountingLinePreview(
                 side="debit",
                 account_uuid=str(debit_account.uuid) if debit_account else None,
                 account_code=debit_account.code if debit_account else None,
-                # Club-billed flights: no member dimension on debit line
-                member_uuid=None,
-                member_account_id_snapshot=None,
-                analytical_asset_uuid=str(asset.uuid),
+                # 411 receivable: member dimension = who owes the money
+                member_uuid=member_uuid,
+                member_account_id_snapshot=member_account_id,
+                # 411 receivable: also track analytical asset dimension
+                analytical_asset_uuid=asset_uuid,
                 debit=line.amount,
                 credit=Decimal("0"),
                 description=description,
@@ -918,9 +974,10 @@ class FlightBillingPreviewService:
                 side="credit",
                 account_uuid=str(item.gl_account_credit.uuid) if item.gl_account_credit else None,
                 account_code=item.gl_account_credit.code if item.gl_account_credit else None,
-                member_uuid=None if is_club_billed else (str(payer.member.uuid) if payer.member else None),
-                member_account_id_snapshot=None if is_club_billed else (payer.member.account_id if payer.member else None),
-                analytical_asset_uuid=str(asset.uuid),
+                # 7xx revenue: no member dimension, analytical asset = source of revenue
+                member_uuid=None,
+                member_account_id_snapshot=None,
+                analytical_asset_uuid=asset_uuid,
                 debit=Decimal("0"),
                 credit=line.amount,
                 description=description,

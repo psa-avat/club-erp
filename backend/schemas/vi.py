@@ -34,6 +34,10 @@ class ViTypeCatalogPayload(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool = True
+    charge_account_uuid: UUID | None = Field(
+        default=None,
+        description="Charge account for club-billed flights (overrides settings.default_initiation_charge_account_uuid)",
+    )
 
 
 class ViTypeCatalogResponse(BaseModel):
@@ -42,6 +46,8 @@ class ViTypeCatalogResponse(BaseModel):
     name: str
     description: str | None = None
     is_active: bool
+    charge_account_uuid: UUID | None = None
+    charge_account_code: str | None = None
     created_at: datetime
     updated_at: datetime
     updated_by: int | None = None
@@ -111,6 +117,7 @@ class ViTypeCatalogUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
+    charge_account_uuid: UUID | None = None
 
 
 class ViEntitlementUpdateRequest(BaseModel):

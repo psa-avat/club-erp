@@ -224,7 +224,7 @@ export function OpsFlightsTab() {
 
     // Auto-load preview on expand if not already loaded
     if (willExpand && !flightPreviews[flight.uuid]) {
-      previewMutation.mutate(flight.uuid, {
+      previewMutation.mutate({ flightUuid: flight.uuid, fiscalYearUuid: activeFiscalYearUuid }, {
         onSuccess: (data) => {
           setFlightPreviews((prev) => ({ ...prev, [flight.uuid]: data }))
         },
@@ -241,7 +241,7 @@ export function OpsFlightsTab() {
       return
     }
     // Load preview data
-    previewMutation.mutate(flight.uuid, {
+    previewMutation.mutate({ flightUuid: flight.uuid, fiscalYearUuid: activeFiscalYearUuid }, {
       onSuccess: (data) => {
         setFlightPreviews((prev) => ({ ...prev, [flight.uuid]: data }))
       },
@@ -253,6 +253,7 @@ export function OpsFlightsTab() {
       {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        fiscal_year_uuid: activeFiscalYearUuid,
       },
       {
         onSuccess: setBatchPreview,
@@ -470,10 +471,10 @@ export function OpsFlightsTab() {
                             type="button"
                             className="rounded p-1 text-slate-400 hover:text-slate-700 disabled:opacity-40"
                             title="Aperçu facturation"
-                            disabled={isPreviewing && previewMutation.variables === f.uuid}
+                            disabled={isPreviewing && previewMutation.variables?.flightUuid === f.uuid}
                             onClick={() => handleRowPreview(f)}
                           >
-                            {isPreviewing && previewMutation.variables === f.uuid ? (
+                            {isPreviewing && previewMutation.variables?.flightUuid === f.uuid ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <Play className="h-3.5 w-3.5" />
@@ -502,7 +503,7 @@ export function OpsFlightsTab() {
                           </div>
                         )}
 
-                        {previewMutation.error && previewMutation.variables === f.uuid ? (
+                        {previewMutation.error && previewMutation.variables?.flightUuid === f.uuid ? (
                           <Alert>
                             <p className="text-sm text-red-700">
                               {previewMutation.error instanceof Error ? previewMutation.error.message : t('ops.flights.errors.preview')}

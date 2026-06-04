@@ -233,8 +233,15 @@ class FlightBillingSettings(Base):
     rem_journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False)
     default_pack_discount_expense_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
 
-    # Club billing (default charge account for initiation/VI flights)
-    default_initiation_charge_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+    # Club billing
+    default_initiation_charge_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Fallback charge account for initiation/VI flights when vi_type_catalog has no charge_account_uuid",
+    )
+    club_charge_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Charge account for flights explicitly billed to the club (charge_to_erp_id matches club member)",
+    )
     club_member_uuid = Column(
         UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True,
         comment="Member record representing the club for club-billed flights (detected via charge_to_erp_id)",
@@ -269,6 +276,7 @@ class FlightBillingSettings(Base):
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[default_pack_sales_account_uuid])
     pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[default_pack_discount_expense_account_uuid])
     club_member = relationship("Member", foreign_keys=[club_member_uuid])
+    club_charge_account = relationship("AccountingAccount", foreign_keys=[club_charge_account_uuid])
     updated_by_user = relationship("User")
 
     def __repr__(self):
@@ -1423,6 +1431,10 @@ class ViTypeCatalog(Base):
     updated_by_user = relationship("User")
     entitlements = relationship("ViEntitlement", back_populates="vi_type")
     charge_account = relationship("AccountingAccount", foreign_keys=[charge_account_uuid])
+
+    @property
+    def charge_account_code(self) -> str | None:
+        return self.charge_account.code if self.charge_account else None
 
     def __repr__(self):
         return f"<ViTypeCatalog code={self.code} active={self.is_active}>"
