@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -380,6 +380,8 @@ async def create_pack_purchase_entry(
     sales_account = await get_account(db, pack_definition.pack_sales_account_uuid)
 
     entry_uuid = uuid4()
+
+    # Create as Draft first (state=1) so the DB trigger allows line inserts
     entry = AccountingEntry(
         uuid=entry_uuid,
         fiscal_year_uuid=pack_definition.fiscal_year_uuid,
@@ -387,7 +389,7 @@ async def create_pack_purchase_entry(
         entry_date=datetime.now(timezone.utc),
         reference=f"PACK-{pack_definition.code}",
         description=f"Achat forfait {pack_definition.code} — {pack_definition.name}",
-        state=2,  # Posted
+        state=1,  # Draft initially — lines must be added before posting
         created_by=user_id,
     )
     db.add(entry)
@@ -413,6 +415,7 @@ async def create_pack_purchase_entry(
         credit=amount,
     ))
 
+    # Entry stays Draft — posting is a separate explicit step
     await db.commit()
     await db.refresh(entry)
     return entry
@@ -422,13 +425,14 @@ async def buy_pack(
     db: AsyncSession,
     member_uuid: UUID,
     pack_definition_uuid: UUID,
-    user_id: int,
+    price: Decimal,
+    valid_from: date | None = None,
+    user_id: int = 0,
 ) -> AccountingEntry:
     """
     Buy a pack for a member. Creates a posted VT entry for the pack purchase.
     The entry debits 411 (member receivable) and credits the pack's sales account.
     """
-    # Load pack definition
     result = await db.execute(
         select(PackDefinition).where(PackDefinition.uuid == pack_definition_uuid)
     )
@@ -436,16 +440,12 @@ async def buy_pack(
     if pack is None:
         raise HTTPException(status_code=404, detail="Pack definition not found")
 
-    # Validate member exists
     member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
     if member_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # Calculate amount: quantity_allowance × price = total
-    # Price comes from pack_applicability or a fixed price
-    # For simplicity, use the quantity_allowance as units
-    amount = pack.quantity_allowance  # Will be refined with pricing later
-    return await create_pack_purchase_entry(db, member_uuid, pack, amount, user_id)
+    # Use the provided price as amount
+    return await create_pack_purchase_entry(db, member_uuid, pack, price, user_id)
 
 
 async def update_consumption_valid_from(
@@ -512,28 +512,33 @@ async def upsert_rem_entry(
 ) -> AccountingEntry:
     """
     Create or update the single Draft REM entry for this pilot/period.
+    If a Draft entry exists → update its lines.
+    If a Posted entry exists with same member/period → create a new Draft.
+    Otherwise → create a new Draft entry.
     Debit discount_account_uuid, Credit 411 (member).
     """
-    from models import AccountingFiscalYear
-
     # Check if a REM Draft entry already exists for this member/period
     existing = await db.execute(
         select(AccountingEntry).where(
             AccountingEntry.journal_uuid == rem_journal_uuid,
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
-            AccountingEntry.state == 1,  # Draft
+            AccountingEntry.state == 1,  # Draft only
             AccountingEntry.description.like(f"REM % {member_uuid} %"),
         )
     )
     entry = existing.scalar_one_or_none()
 
     if entry:
-        # Update existing entry — replace lines
-        await db.execute(
-            text("DELETE FROM accounting_lines WHERE entry_uuid = :uuid"),
-            {"uuid": entry.uuid},
+        # Update existing Draft entry — replace lines safely
+        # Use delete-all directly on the relation to avoid trigger issues
+        existing_lines = await db.execute(
+            select(AccountingLine).where(AccountingLine.entry_uuid == entry.uuid)
         )
+        for line in existing_lines.scalars().all():
+            await db.delete(line)
+        await db.flush()
         entry.reference = f"REM-{period_start.date()}-{period_end.date()}"
+        entry.description = f"REM {member_uuid} {period_start.date()} → {period_end.date()}"
     else:
         entry = AccountingEntry(
             uuid=uuid4(),

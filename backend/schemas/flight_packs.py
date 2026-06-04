@@ -147,6 +147,8 @@ class MemberPackBalanceResponse(BaseModel):
 class MemberPackPurchaseRequest(BaseModel):
     """Buy a pack for a member."""
     pack_definition_uuid: UUID
+    price: Decimal = Field(gt=0, decimal_places=2, description="Sale price for the pack")
+    valid_from: date = Field(description="Activation date (within fiscal year)")
     quantity: Decimal = Field(default=Decimal("1"), gt=0, decimal_places=2)
 
 
@@ -157,6 +159,34 @@ class MemberPackPurchaseResponse(BaseModel):
     description: str
     amount: Decimal
     units_purchased: Decimal
+
+
+# ---------------------------------------------------------------------------
+# Pack Purchase Listing
+# ---------------------------------------------------------------------------
+
+class PackPurchaseLine(BaseModel):
+    """One purchased pack with its consumption details."""
+    entry_uuid: UUID
+    reference: str
+    description: str
+    entry_date: date
+    member_uuid: UUID
+    member_name: str | None = None
+    pack_code: str | None = None
+    pack_type: str | None = None
+    amount: Decimal
+    valid_from: date | None = None
+    units_purchased: Decimal = Decimal("0")
+    units_consumed: Decimal = Decimal("0")
+    units_remaining: Decimal = Decimal("0")
+    consumptions: list[dict] = []
+
+
+class PackPurchaseListResponse(BaseModel):
+    """List of all pack purchases for a fiscal year."""
+    items: list[PackPurchaseLine]
+    total: Decimal = Decimal("0")
 
 
 # ---------------------------------------------------------------------------

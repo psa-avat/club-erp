@@ -24,14 +24,15 @@ import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { OpsSupplierTab } from './OpsSupplierTab'
 import { OpsSalesTab } from './OpsSalesTab'
 import { OpsFlightsTab } from './OpsFlightsTab'
+import { OpsPacksTab } from './OpsPacksTab'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type OpsTab = 'dashboard' | 'suppliers' | 'sales' | 'flights' | 'payments' | 'payroll'
+export type OpsTab = 'dashboard' | 'suppliers' | 'sales' | 'flights' | 'packs' | 'payments' | 'payroll'
 
-const OPS_TABS: OpsTab[] = ['dashboard', 'suppliers', 'sales', 'flights', 'payments', 'payroll']
+const OPS_TABS: OpsTab[] = ['dashboard', 'suppliers', 'sales', 'flights', 'packs', 'payments', 'payroll']
 
 // ---------------------------------------------------------------------------
 // Page
@@ -104,6 +105,8 @@ export function BanqueDailyOpsPage() {
               <OpsSalesTab fiscalYearUuid={activeFiscalYearUuid} />
             ) : tab === 'flights' ? (
               <OpsFlightsTab />
+            ) : tab === 'packs' ? (
+              <OpsPacksTab />
             ) : (
               <OpsTabPlaceholder tab={tab} t={t} />
             )}
@@ -124,6 +127,7 @@ function OpsTabPlaceholder({ tab, t }: { tab: OpsTab; t: (key: string) => string
     suppliers: t('ops.placeholders.suppliers'),
     sales: t('ops.placeholders.sales'),
     flights: t('ops.placeholders.flights'),
+    packs: t('ops.placeholders.packs'),
     payments: t('ops.placeholders.payments'),
     payroll: t('ops.placeholders.payroll'),
   }

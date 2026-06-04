@@ -453,6 +453,8 @@ class PendingBillingSummaryResponse(BaseModel):
 async def list_billable_flights(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    type_of_flight: int | None = Query(None, ge=0, le=7, description="Filter by flight type (0-7)"),
+    launch_method: int | None = Query(None, ge=0, le=3, description="Filter by launch method (0-3)"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
 ):
@@ -462,6 +464,10 @@ async def list_billable_flights(
         filters.append(ValidatedFlight.jour >= date_from)
     if date_to is not None:
         filters.append(ValidatedFlight.jour <= date_to)
+    if type_of_flight is not None:
+        filters.append(ValidatedFlight.type_of_flight == type_of_flight)
+    if launch_method is not None:
+        filters.append(ValidatedFlight.launch_method == launch_method)
 
     stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc())
     result = await db.execute(stmt)

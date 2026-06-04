@@ -19,15 +19,17 @@
  """
 
 import logging
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_PRICES, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_FINANCIALS
-from models import User
+from models import AccountingEntry, AccountingLine, PackDefinition, User, ValidatedFlight
 from schemas.flight_packs import (
     ApplicableItemResponse,
     ConsumptionValidFromUpdate,
@@ -37,6 +39,8 @@ from schemas.flight_packs import (
     MemberPackPurchaseRequest,
     MemberPackPurchaseResponse,
     PackDefinitionCreate,
+    PackPurchaseListResponse,
+    PackPurchaseLine,
     PackDefinitionResponse,
     PackDefinitionUpdate,
 )
@@ -214,15 +218,122 @@ async def buy_pack_endpoint(
     current_user: User = Depends(get_current_user),
     _: User = post_guard,
 ):
-    """Buy a pack for a member — creates a posted VT entry."""
-    entry = await buy_pack(db, member_uuid, request.pack_definition_uuid, current_user.id)
+    """Buy a pack for a member — creates a posted VT entry with custom price."""
+    entry = await buy_pack(
+        db, member_uuid, request.pack_definition_uuid,
+        price=request.price, valid_from=request.valid_from,
+        user_id=current_user.id,
+    )
     return MemberPackPurchaseResponse(
         entry_uuid=entry.uuid,
         reference=entry.reference or "",
         description=entry.description or "",
-        amount=Decimal(str(entry.lines[0].debit)) if entry.lines else Decimal("0"),
-        units_purchased=Decimal("0"),  # Will be refined when pricing is integrated
+        amount=request.price,
+        units_purchased=Decimal(str(request.quantity)),
     )
+
+
+@router.get(
+    "/purchases",
+    response_model=PackPurchaseListResponse,
+)
+async def list_pack_purchases(
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """
+    List all pack purchases for a fiscal year, grouped by pack definition.
+    Returns each purchase entry with member info, amounts, and consumption details.
+    """
+    # Find all pack sales accounts from active pack definitions
+    pack_defs_result = await db.execute(
+        select(PackDefinition).where(
+            PackDefinition.fiscal_year_uuid == fiscal_year_uuid,
+            PackDefinition.pack_sales_account_uuid.isnot(None),
+        )
+    )
+    pack_defs = list(pack_defs_result.scalars().all())
+    sales_account_uuids = [pd.pack_sales_account_uuid for pd in pack_defs if pd.pack_sales_account_uuid]
+
+    if not sales_account_uuids:
+        return PackPurchaseListResponse(items=[])
+
+    # Find accounting lines with those accounts → these are pack purchases
+    from sqlalchemy.orm import joinedload
+    lines_result = await db.execute(
+        select(AccountingLine)
+        .join(AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .options(
+            joinedload(AccountingLine.entry),
+            joinedload(AccountingLine.account),
+            joinedload(AccountingLine.member),
+        )
+        .where(
+            AccountingLine.account_uuid.in_(sales_account_uuids),
+            AccountingLine.fiscal_year_uuid == fiscal_year_uuid,
+            AccountingLine.credit > 0,  # Credit lines = revenue
+        )
+        .order_by(AccountingEntry.entry_date.desc(), AccountingLine.uuid.asc())
+    )
+    lines = list(lines_result.unique().scalars().all())
+
+    items: list[PackPurchaseLine] = []
+    entry_map: dict[UUID, int] = {}  # entry_uuid → index in items
+
+    for al in lines:
+        entry = al.entry
+        if not entry:
+            continue
+
+        # Find which pack def matches
+        pack_def = next((pd for pd in pack_defs if pd.pack_sales_account_uuid == al.account_uuid), None)
+        if not pack_def:
+            continue
+
+        # Get consumptions for this member + pack_type
+        consumptions = await list_consumptions_for_member(db, al.member_uuid, pack_def.pack_type)
+        total_consumed = sum(c.total_discount_amount for c in consumptions)
+        units_consumed = sum(c.quantity_consumed for c in consumptions)
+
+        # Build consumption detail
+        consumption_detail = []
+        for c in consumptions:
+            flight_result = await db.execute(
+                select(ValidatedFlight).where(ValidatedFlight.uuid == c.flight_uuid)
+            )
+            flight = flight_result.scalar_one_or_none()
+            consumption_detail.append({
+                "consumption_uuid": str(c.uuid),
+                "flight_uuid": str(c.flight_uuid),
+                "flight_date": str(flight.jour) if flight else None,
+                "asset_code": flight.asset_code if flight else None,
+                "quantity_consumed": str(c.quantity_consumed),
+                "discount_unit_price": str(c.discount_unit_price),
+                "total_discount_amount": str(c.total_discount_amount),
+                "valid_from": str(c.valid_from.date()) if c.valid_from else None,
+            })
+
+        member_name = f"{al.member.first_name} {al.member.last_name}" if al.member else None
+
+        items.append(PackPurchaseLine(
+            entry_uuid=entry.uuid,
+            reference=entry.reference or "",
+            description=entry.description or "",
+            entry_date=entry.entry_date if hasattr(entry, 'entry_date') else entry.created_at.date(),
+            member_uuid=al.member_uuid,
+            member_name=member_name,
+            pack_code=pack_def.code,
+            pack_type=pack_def.pack_type,
+            amount=al.credit or Decimal("0"),
+            units_purchased=pack_def.quantity_allowance,
+            units_consumed=units_consumed,
+            units_remaining=pack_def.quantity_allowance - units_consumed,
+            consumptions=consumption_detail,
+        ))
+
+    total_amount = sum(item.amount for item in items)
+    return PackPurchaseListResponse(items=items, total=total_amount)
 
 
 # ---------------------------------------------------------------------------

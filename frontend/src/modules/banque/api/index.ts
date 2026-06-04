@@ -1179,13 +1179,43 @@ export function useUpdateConsumptionValidFromMutation() {
   })
 }
 
+export type PackPurchaseLine = {
+  entry_uuid: string
+  reference: string
+  description: string
+  entry_date: string
+  member_uuid: string
+  member_name: string | null
+  pack_code: string | null
+  pack_type: string | null
+  amount: string
+  units_purchased: string
+  units_consumed: string
+  units_remaining: string
+  consumptions: Array<{
+    consumption_uuid: string
+    flight_uuid: string
+    flight_date: string | null
+    asset_code: string | null
+    quantity_consumed: string
+    discount_unit_price: string
+    total_discount_amount: string
+    valid_from: string | null
+  }>
+}
+
+export type PackPurchaseListResponse = {
+  items: PackPurchaseLine[]
+  total: string
+}
+
 export function useBuyPackMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ memberUuid, packDefinitionUuid }: { memberUuid: string; packDefinitionUuid: string }) => {
+    mutationFn: async (payload: { memberUuid: string; packDefinitionUuid: string; price: string; valid_from: string }) => {
       const { data } = await apiClient.post<{ entry_uuid: string; reference: string; description: string; amount: string; units_purchased: string }>(
-        `/api/v1/packs/purchase/${memberUuid}`,
-        { pack_definition_uuid: packDefinitionUuid },
+        `/api/v1/packs/purchase/${payload.memberUuid}`,
+        { pack_definition_uuid: payload.packDefinitionUuid, price: payload.price, valid_from: payload.valid_from },
         getAuthRequestConfig(),
       )
       return data
@@ -1193,6 +1223,21 @@ export function useBuyPackMutation() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'packs', 'balances'] })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs', 'purchases'] })
+    },
+  })
+}
+
+export function usePackPurchasesQuery(fiscalYearUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['banque', 'packs', 'purchases', fiscalYearUuid],
+    enabled: enabled && !!fiscalYearUuid,
+    queryFn: async () => {
+      const { data } = await apiClient.get<PackPurchaseListResponse>(
+        `/api/v1/packs/purchases?fiscal_year_uuid=${fiscalYearUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
     },
   })
 }
@@ -1243,8 +1288,8 @@ export function useCloseRemPeriodMutation() {
 // ── Billable Flights (Phase 4/5) ─────────────────────────────────────────
 
 export const banqueFlightsKeys = {
-  billable: (dateFrom?: string, dateTo?: string) =>
-    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all'] as const,
+  billable: (dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number) =>
+    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all', typeOfFlight ?? 'all', launchMethod ?? 'all'] as const,
 }
 
 export type BillableFlight = {
@@ -1268,14 +1313,16 @@ export type BillableFlight = {
   correction_reason: string | null
 }
 
-export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, enabled = true) {
+export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, enabled = true) {
   return useQuery({
-    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo),
+    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo, typeOfFlight, launchMethod),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams()
       if (dateFrom) params.set('date_from', dateFrom)
       if (dateTo) params.set('date_to', dateTo)
+      if (typeOfFlight !== undefined) params.set('type_of_flight', String(typeOfFlight))
+      if (launchMethod !== undefined) params.set('launch_method', String(launchMethod))
       const query = params.toString() ? `?${params.toString()}` : ''
       const { data } = await apiClient.get<{ items: BillableFlight[]; total: number }>(
         `/api/v1/flights/billable${query}`,

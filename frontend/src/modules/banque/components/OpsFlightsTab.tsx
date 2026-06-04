@@ -18,7 +18,7 @@
  */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, ShoppingCart, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Alert } from '../../../components/ui/alert'
@@ -35,8 +35,6 @@ import {
   type FlightBillingBatchPreviewResponse,
   type BillableFlight,
 } from '../api'
-import { PackPurchaseDialog } from './PackPurchaseDialog'
-import { RemPeriodPanel } from './RemPeriodPanel'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -206,6 +204,8 @@ export function OpsFlightsTab() {
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [filterType, setFilterType] = useState<number | undefined>(undefined)
+  const [filterLaunch, setFilterLaunch] = useState<number | undefined>(undefined)
   const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
   const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
   const [batchPreview, setBatchPreview] = useState<FlightBillingBatchPreviewResponse | null>(null)
@@ -213,6 +213,8 @@ export function OpsFlightsTab() {
   const { data: flights = [], isLoading, refetch } = useBillableFlightsQuery(
     dateFrom || undefined,
     dateTo || undefined,
+    filterType,
+    filterLaunch,
     true,
   )
 
@@ -221,8 +223,7 @@ export function OpsFlightsTab() {
   const postMutation = useFlightBillingPostMutation()
   const batchPreviewMutation = useFlightBillingBatchPreviewMutation()
   const batchApplyMutation = useFlightBillingBatchApplyMutation()
-  const [showPackPurchase, setShowPackPurchase] = useState(false)
-  const [applyFlightUuid, setApplyFlightUuid] = useState<string | null>(null)
+  const [applyFlightUuid, setApplyFlightUuid]= useState<string | null>(null)
   const [postFlightUuid, setPostFlightUuid] = useState<string | null>(null)
 
   // ── Handlers ──────────────────────────────────────────────────────────
@@ -342,6 +343,32 @@ export function OpsFlightsTab() {
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
           />
+          <select
+            className="h-8 rounded-lg border border-slate-300 px-2 text-sm"
+            value={filterType ?? ''}
+            onChange={(e) => setFilterType(e.target.value ? Number(e.target.value) : undefined)}
+          >
+            <option value="">Tous types</option>
+            <option value="0">Instruction</option>
+            <option value="1">Solo</option>
+            <option value="2">Initiation</option>
+            <option value="3">Partage</option>
+            <option value="4">Passager</option>
+            <option value="5">Lâcher</option>
+            <option value="6">Supervisé</option>
+            <option value="7">Essai</option>
+          </select>
+          <select
+            className="h-8 rounded-lg border border-slate-300 px-2 text-sm"
+            value={filterLaunch ?? ''}
+            onChange={(e) => setFilterLaunch(e.target.value ? Number(e.target.value) : undefined)}
+          >
+            <option value="">Tous lancements</option>
+            <option value="0">Extérieur</option>
+            <option value="1">Treuil</option>
+            <option value="2">Remorqueur</option>
+            <option value="3">Autonome</option>
+          </select>
           <Button
             size="sm"
             variant="ghost"
@@ -353,17 +380,6 @@ export function OpsFlightsTab() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          {canManagePrices && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setShowPackPurchase(true)}
-              title={t('ops.flights.buyPack', 'Acheter un forfait')}
-            >
-              <ShoppingCart className="mr-1 h-3.5 w-3.5" />
-              {t('ops.flights.buyPack', 'Forfait')}
-            </Button>
-          )}
           {(canEditFlights || canManagePrices) && (
             <Button
               size="sm"
@@ -396,10 +412,6 @@ export function OpsFlightsTab() {
         </div>
       </div>
 
-      {/* REM Period Panel */}
-      {canPost && (
-        <RemPeriodPanel fiscalYearUuid={activeFiscalYearUuid} />
-      )}
 
       {/* Batch preview result */}
       {batchPreview && (
@@ -631,11 +643,6 @@ export function OpsFlightsTab() {
         </Alert>
       )}
 
-      {/* Pack Purchase Dialog */}
-      <PackPurchaseDialog
-        open={showPackPurchase}
-        onClose={() => setShowPackPurchase(false)}
-      />
     </div>
   )
 }
