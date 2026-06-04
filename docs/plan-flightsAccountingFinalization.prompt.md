@@ -31,6 +31,175 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 ---
 
+## Flight Billing Lifecycle & State Management
+
+### 1. Flight Billing Status Tracking
+
+Each `validated_flights` row carries two billing-related fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `accounting_entry_uuid` | UUID, unique, nullable | FK → `accounting_entries.uuid`. Set when a Draft FL entry is created. The `UNIQUE` constraint **prevents double billing**: once set, no second entry can reference this flight |
+| `billing_quote_state` | VARCHAR(16), default `'pending'` | Lifecycle state: `pending` → `applied` → `posted` |
+| `erp_status` | SMALLINT, default 0 | 0=validated (draft), 1=transferred (locked), 2=modified_after_transfer |
+
+### 2. Lifecycle States & Transitions
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending : Flight imported from Planche
+    pending --> applied : Preview → Apply (Draft FL entry created)
+    applied --> posted : Accountant posts the FL entry
+    applied --> pending : Draft FL entry deleted (unlink)
+    posted --> correcting : Flight modified after posting
+    correcting --> posted : Reversal + new entry posted
+```
+
+| State | `billing_quote_state` | `accounting_entry_uuid` | Meaning |
+|---|---|---|---|
+| `pending` | `'pending'` | NULL | Flight not billed yet. Shown in billable list |
+| `applied` | `'applied'` | Set (Draft) | Draft FL entry exists but not yet posted |
+| `posted` | `'posted'` | Set (Posted) | FL entry is posted (immutable) |
+| `correcting` | `'posted'` | Set (Posted + reversal) | Posted entry has a reversal + replacement |
+
+### 3. Duplicate Billing Prevention
+
+**Database level:** `accounting_entry_uuid` has a `UNIQUE` constraint on `validated_flights`. Once set, any attempt to create a second entry for the same flight violates the constraint.
+
+**Application level:**
+- `GET /api/v1/flights/billable` filters `WHERE accounting_entry_uuid IS NULL` — only shows unbilled flights
+- `FlightBillingApplyService.apply_flight_billing()` checks `preview.can_apply` before creating the entry
+- The batch-preview endpoint also checks `include_already_billed=false` by default
+
+**Frontend level:**
+- `OpsFlightsTab` queries `/api/v1/flights/billable` which only returns unbilled flights
+- Once applied, the flight disappears from the list (query auto-refreshes on success)
+
+### 4. Draft Entry Deletion (Unlink)
+
+If a Draft FL entry is deleted (manually via accounting or system cleanup), the flight must be returned to `pending` state:
+
+```
+DELETE /api/v1/accounting/entries/{entry_uuid}
+  → Also NULLify validated_flights.accounting_entry_uuid
+  → Reset billing_quote_state to 'pending'
+  → Delete associated member_pack_consumptions rows
+  → If REM Draft entry now has zero consumptions, delete or zero it
+```
+
+This operation is **allowed only for Draft entries** (state=1). Posted entries cannot be deleted — they require reversal.
+
+**If a Draft entry is deleted outside this flow** (e.g. direct DB manipulation):
+- The flight's `accounting_entry_uuid` still points to a non-existent entry
+- Recovery: Admin can manually NULLify the field via the flight detail UI
+- Future: Add a cleanup job that detects orphaned `accounting_entry_uuid` values (WHERE entry deleted but flight still linked)
+
+### 5. Flight Modification After Billing
+
+When a flight is re-imported from Planche after being billed:
+
+1. **Flight is Draft** (state=1): The Draft entry is replaced. New preview → new Draft → old Draft discarded
+2. **Flight is Posted** (state=2): The flight's `erp_status` is set to 2 (`modified_after_transfer`). The accountant must:
+   - Create a reversal of the original posted entry
+   - Run a new preview with current data
+   - Create a new Draft → post it
+   - The reversal and new entry are linked to the flight
+
+The frontend shows a **warning badge** on flights with `erp_status=2` or flights where the current Planche revision is higher than when billed.
+
+### 6. Billing Status Filters
+
+The billable endpoint supports filtering by multiple criteria:
+
+| Parameter | Values | Purpose |
+|---|---|---|
+| `date_from`, `date_to` | ISO dates | Date range filter |
+| `type_of_flight` | 0-7 | Instruction, Solo, Initiation, etc. |
+| `launch_method` | 0-3 | Winch, tow, self-launch, etc. |
+| `status` | `pending`, `applied`, `posted`, `all` | **NEW** — filter by billing state. Default = `pending` |
+
+When `status=all`, the endpoint returns flights regardless of `accounting_entry_uuid`, allowing the user to see ALL flights with their current billing state.
+
+### 7. UX/UI: Billing & Discount Application Flow
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  OpsFlightsTab — Daily Operations > Flights                            │
+│                                                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  [Date from] → [Date to]  [Type▼] [Launch▼]  [Status▼]  🔄    │   │
+│  │                              [🔍 Preview] [📤 Apply All]         │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                        │
+│  ┌─────┬────────┬────────┬────────┬────────┬────────┬────────┬──────┐  │
+│  │  ▸  │ Date   │ Pilot  │ Machine│ Type   │ Gross  │ Status │  ⋮   │  │
+│  ├─────┼────────┼────────┼────────┼────────┼────────┼────────┼──────┤  │
+│  │  ▸  │ 25/04  │ Dupont │ F-CABC │ Init   │ 111.00 │ ▶ View │ 📄📤 │  │
+│  │     │        │        │        │        │        │        │      │  │
+│  │  ── expanded ────────────────────────────────────────────────── │  │
+│  │  │ 💬 Observations...                                         │ │  │
+│  │  │ ┌── Preview Panel ──────────────────────────────────────┐ │ │  │
+│  │  │ │ Payer: J.Dupont (100%)                                │ │ │  │
+│  │  │ │                                                        │ │ │  │
+│  │  │ │ Line          │ Qty │ Unit price │ Amount │ Pack ?    │ │ │  │
+│  │  │ │───────────────┼─────┼────────────┼────────┼───────────│ │ │  │
+│  │  │ │Vol F-CABC     │ 1h  │ 100.00     │ 100.00 │ 20h left  │ │ │  │
+│  │  │ │Treuillage     │ 1   │  11.00     │  11.00 │   —       │ │ │  │
+│  │  │ │                                                        │ │ │  │
+│  │  │ │ Total: 111.00 EUR  │  [📄 Apply Draft]  [📤 Post]     │ │ │  │
+│  │  │ └────────────────────────────────────────────────────────┘ │ │  │
+│  │  └─────────────────────────────────────────────────────────────┘ │  │
+│  └─────┴────────┴────────┴────────┴────────┴────────┴────────┴──────┘  │
+│                                                                        │
+│  ┌── Pack Discount Panel (when a pack is active) ──────────────────┐   │
+│  │  J.Dupont — 25h pack (20h remaining)                            │   │
+│  │  Activation: 01/04/2026                                         │   │
+│  │  ┌──────────────────────────────────────────────────────────┐   │   │
+│  │  │ Flight date │ Consumed │ Discount │ Valid from │         │   │   │
+│  │  │─────────────┼──────────┼──────────┼────────────┼─────────│   │   │
+│  │  │ 25/04       │ 1.0h     │ 80.00    │ 01/04/26   │ 📝 edit│   │   │
+│  │  └──────────────────────────────────────────────────────────┘   │   │
+│  │  Total REM discount this FY: 80.00 EUR                          │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**Step-by-step flow:**
+
+1. **Filter flights**: Date range + type + launch + status (`pending`)
+2. **Preview**: Click ▶ on a flight → side-effect-free preview shows:
+   - Payer(s) with their share
+   - Pricing lines (machine, qty, unit price, amount)
+   - Available pack balance (if member has active packs)
+   - Club billing indicator (if applicable)
+3. **Apply**: Click 📄 (Apply Draft) → creates Draft FL entry at gross price:
+   - Sets `accounting_entry_uuid` on the flight
+   - Sets `billing_quote_state = 'applied'`
+   - Records `member_pack_consumptions` rows
+   - Updates/creates REM Draft entry for the pilot
+   - Flight disappears from billable list
+4. **Post**: Click 📤 (Apply+Post) → same as Apply + immediately posts the FL entry:
+   - FL entry becomes immutable
+   - Flight disappears from billable list
+5. **Batch operations**: Select multiple flights → 🔍 Preview batch → 📤 Apply All
+6. **Pack consumption review**: In the packs tab or expanded flight view:
+   - Shows each consumption line (flight, qty, discount, valid_from)
+   - Admin can edit `valid_from` (📝) to retroactively include/exclude
+   - REM entry updates automatically
+
+**Error states & resolution:**
+
+| Error | UI Indicator | Resolution |
+|---|---|---|
+| Pricing missing (no active version) | 🔴 Blocking badge | Configure pricing for the asset type |
+| Member not found | 🔴 Blocking badge | Link the pilot ERP ID in Planche |
+| Club billing target missing | 🔴 Blocking badge | Configure charge account on VI type or settings |
+| Already billed (duplicate) | 🟡 Warning | Flight removed from billable list |
+| Flight modified after posting | 🟠 Warning badge on flight row | Reversal + rebill |
+| Pack discount applied successfully | 🔵 Info badge | Shown in preview line |
+
+---
+
 ## Phases
 
 ### Phase 1 — Data Models & Migration
