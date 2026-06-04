@@ -40,7 +40,7 @@ flowchart LR
     L --> M[FL + REM entries posted]
     M --> N{Correction needed?}
     N -- Post-purchase pack --> O[Recalculate discounts]
-    N -- Freeze consumption --> O
+    N -- Valid_from change --> O
     O --> P[Update REM adjustment entry<br/>or create reversal if posted]
     P --> J
 ```
@@ -107,7 +107,20 @@ Payer allocation depends on flight type:
 | `instruction` | Pilot 100%, unless `instruction_split` → pilot 50% + second 50% |
 | `partage` | Pilot 50% + second pilot 50% |
 | `passager` | `charge_to` 100%, or pilot 100% if not set |
-| `initiation` | Blocking error — no club billing target configured |
+| `initiation` | **Club-billed** via one of two detection modes (see §4.4) |
+
+### 4.4 Club Billing Detection
+
+Club billing is detected in two ways:
+
+1. **Explicit club billing**: `flight.charge_to_erp_id` matches the club member's `account_id` (configured in `flight_billing_settings.club_member_uuid`). Applies to any flight type.
+2. **Initiation fallback**: Flight type is `initiation` AND a charge account can be resolved (from `vi_type_catalog.charge_account_uuid` or `flight_billing_settings.default_initiation_charge_account_uuid`). Does NOT require the club member to be configured.
+
+Charge account resolution order:
+- **Initiation flights**: `vi_type_catalog.charge_account_uuid` (by `flight.vi_erp_id`) → `settings.default_initiation_charge_account_uuid`
+- **Explicit club billing**: `settings.club_charge_account_uuid` → `settings.default_initiation_charge_account_uuid` (fallback)
+
+Club-billed lines have no `member_uuid` dimension on any accounting line.
 
 ---
 
@@ -172,7 +185,7 @@ INSERT INTO member_pack_consumptions (
 
 ### 5.5 `vw_member_pack_balances` — Remaining Quantity View
 
-Instead of a table that can desynchronise, remaining pack balances are computed by a **view** that crosses GL purchases with operational consumptions:
+Instead of a table that can desynchronise, remaining pack balances are computed by a **view** that crosses GL purchases with operational consumptions (using `valid_from` instead of the removed `is_frozen` flag):
 
 ```sql
 CREATE VIEW vw_member_pack_balances AS
@@ -193,7 +206,7 @@ pack_consumptions AS (
         pack_type,
         SUM(quantity_consumed) as total_consumed_units
     FROM member_pack_consumptions
-    WHERE is_frozen = FALSE
+    WHERE valid_from <= NOW()  -- only consumptions whose validity has started
     GROUP BY member_uuid, pack_type
 )
 SELECT
@@ -261,12 +274,12 @@ A dedicated **REM journal** (code `REM` or `DISC`, type = General) aggregates al
 ```
 For each pilot in the period:
   total_discount = SUM(member_pack_consumptions.total_discount_amount)
-                  WHERE is_frozen = FALSE
+                  WHERE valid_from <= flight.jour  -- consumption validity started
                   AND flight date IN current period
 
   One Draft entry in journal REM:
     Debit   6xx (Pack discount expense / Discounts granted)   total_discount
-    Credit  411 (member dimension)                          total_discount
+    Credit  411 (member dimension)                            total_discount
 
   If a Draft entry already exists for this pilot + period:
     → UPDATE its lines with the new total (overwrite, do not duplicate)
@@ -288,10 +301,10 @@ For each pilot in the period:
 
 **Step 1 — FL journal entry (gross):**
 ```
-  Debit  411/Member   100.00   Flight time F-CABC (gross)
-  Credit 7062         100.00   Flight time revenue
-  Debit  411/Member    11.00   Winch launch TREUIL
-  Credit 7063          11.00   Winch launch revenue
+  Debit  411/Member (analytical_asset=F-CABC)   100.00   Flight time F-CABC (gross)
+  Credit 7062 (analytical_asset=F-CABC)         100.00   Flight time revenue
+  Debit  411/Member (analytical_asset=TREUIL)    11.00   Winch launch
+  Credit 7063 (analytical_asset=TREUIL)          11.00   Winch launch revenue
 ```
 
 **Step 2 — `member_pack_consumptions` row:**
@@ -302,8 +315,8 @@ For each pilot in the period:
 
 **Step 3 — REM adjustment entry (for this pilot's period):**
 ```
-  Debit  6xx              80.00   Pack discount expense
-  Credit 411/Member        80.00   Pack discount adjustment
+  Debit  6xx                                    80.00   Pack discount expense
+  Credit 411/Member                              80.00   Pack discount adjustment
 ```
 
 **Combined net on 411:**
@@ -349,7 +362,7 @@ Posting is always a **separate, explicit step**. No entry is posted automaticall
 | Trigger | Effect |
 |---|---|
 | Pack purchased after flight date | Recalculates billing for eligible flights of that member in the same FY |
-| Freeze/unfreeze a consumption | Recalculates the affected flight |
+| Valid_from change on a consumption | Recalculates the affected flight |
 | Manual "Recalculate" button | Recalculates the selected flight |
 
 ### 7.2 Recalculation Logic
@@ -362,7 +375,7 @@ recalculate_billing(flight_uuid, fy_uuid, user_id):
      - Nullify accounting_entry_uuid on the flight
   3. If entry exists and is Posted:
      - Create reversal of the posted entry (new Draft)
-  4. Run fresh preview with current pack quantities and freeze state
+  4. Run fresh preview with current pack quantities and valid_from dates
   5. Create new Draft entry + new consumption rows
   6. Link accounting_entry_uuid on the flight
   7. If original entry was Posted, post the new entry + post the reversal
@@ -383,14 +396,15 @@ handle_post_purchase_pack(member_uuid, pack_uuid, fy_uuid):
 
 ---
 
-## 8. Freeze / Exclude
+## 8. Valid_from Management (replaces Freeze/Exclude)
 
-Each `member_pack_consumptions` row has an `is_frozen` boolean.
+Each `member_pack_consumptions` row has a `valid_from` timestamp that determines REM inclusion.
 
-- **Frozen** = the consumption is excluded from pack quantity calculations for future recalculation.
-- **Unfrozen** = the consumption is re-included in eligibility.
-- Changing freeze state triggers `recalculate_billing()` for the affected flight.
-- The freeze reason is stored for audit.
+- **Valid_from applicability**: a consumption is included in REM adjustment only when `valid_from <= flight.jour`. Changing `valid_from` to after the flight date effectively excludes it.
+- **Editing**: `valid_from` can be modified via `PATCH /api/v1/packs/consumptions/{consumption_uuid}/valid-from`.
+- **Auto-calculation**: when a consumption is first recorded, `valid_from` defaults to `NOW()`. An admin can later adjust it if needed.
+- Changing `valid_from` triggers `recalculate_billing()` for the affected flight and updates the REM Draft entry.
+- This replaces the old `is_frozen` / `frozen_at` / `frozen_reason` mechanism which has been removed from the model.
 
 ---
 
@@ -402,16 +416,18 @@ Each `member_pack_consumptions` row has an `is_frozen` boolean.
 |---|---|---|
 | `uuid` | UUID | PK |
 | `fiscal_year_uuid` | UUID | FK → accounting_fiscal_years |
-| `code` | varchar | Unique business key (e.g. PACK_25H_GLIDER) |
-| `name` | varchar | Display name |
-| `pack_type` | varchar | `flight_hours` / `winch_launches` / `tow_launches` |
-| `quantity_allowance` | Numeric(10,4) | Base quantity included in one pack purchase |
-| `quantity_unit` | varchar | `hours` / `launches` |
-| `eligible_asset_type_uuid` | UUID? | Optional FK → asset_types (restricts eligible asset types) |
-| `pack_sales_account_uuid` | UUID? | Optional FK → accounting_accounts (overrides FY default) |
-| `flights_journal_uuid` | UUID? | Optional FK → accounting_journals (overrides FY default) |
-| `priority` | int? | Optional tie-breaker when multiple pack definitions match |
+| `code` | varchar(32) | Unique business key (e.g. PACK_25H_GLIDER) |
+| `name` | varchar(100) | Display name |
+| `pack_type` | varchar(32) | `flight_hours` / `winch_launches` / `tow_launches` / `engine_time` |
+| `quantity_allowance` | Numeric(10,2) | Base quantity included in one pack purchase |
+| `quantity_unit` | varchar(32) | `hours` / `launches` |
+| `eligible_asset_type_uuid` | UUID? | FK → asset_types (restricts eligible asset types) |
+| `pack_sales_account_uuid` | UUID? | FK → accounting_accounts (overrides FY default, class 7) |
+| `pack_discount_expense_account_uuid` | UUID? | FK → accounting_accounts (debit side for REM, normally class 6) |
+| `flights_journal_uuid` | UUID? | FK → accounting_journals (overrides FY default, unused) |
+| `priority` | int | Default 0, tie-breaker when multiple pack definitions match |
 | `created_at` | timestamptz | |
+| `updated_at` | timestamptz | |
 
 ### 9.2 `pack_applicability`
 
@@ -437,11 +453,11 @@ Business rules:
 | `member_uuid` | UUID | FK → members |
 | `flight_uuid` | UUID | FK → validated_flights |
 | `pack_type` | varchar | `flight_hours` / `winch_launches` / `tow_launches` / `engine_time` |
-| `quantity_consumed` | Numeric(5,2) | Quantity consumed from pack for this flight (e.g. 1.5 for 1h30) |
+| `valid_from` | timestamptz | **Replaces is_frozen**. Pack applicable only to flights on/after this date |
+| `quantity_consumed` | Numeric(10,2) | Quantity consumed from pack for this flight (e.g. 1.5 for 1h30) |
 | `discount_unit_price` | Numeric(10,2) | `base_price − pack_price` |
 | `total_discount_amount` | Numeric(10,2) | `quantity_consumed × discount_unit_price` |
-| `accounting_entry_uuid` | UUID? | FK → accounting_entries (REM adjustment entry) |
-| `is_frozen` | boolean | Default false |
+| `accounting_entry_uuid` | UUID? | Link to REM entry (app-level integrity, no FK) |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
 
@@ -451,22 +467,36 @@ Index: `(member_uuid, pack_type)` for fast balance computation.
 
 Not a table — a live SQL view crossing GL pack purchases with operational consumptions (see §5.5 for full definition). Returns: `member_uuid, pack_type, total_purchased, total_consumed, units_remaining`.
 
-### 9.5 `flight_billing_configs`
+### 9.5 `flight_billing_settings`
 
 | Column | Type | Notes |
 |---|---|---|
-| `uuid` | UUID | PK |
+| `id` | SERIAL | PK |
 | `fiscal_year_uuid` | UUID | FK → accounting_fiscal_years, unique |
-| `flights_journal_uuid` | UUID | FK → accounting_journals (default = FL) |
-| `rem_journal_uuid` | UUID | FK → accounting_journals (default = REM/DISC) |
-| `pack_sales_account_uuid` | UUID | FK → accounting_accounts (pack sales account) |
-| `pack_discount_expense_account_uuid` | UUID | FK → accounting_accounts (debit side for pack discounts, normally class 6) |
-| `discount_period_days` | int | Period length for REM adjustment (default 30 = monthly) |
+| `fl_journal_uuid` | UUID | FK → accounting_journals (FL journal for flight billing) |
+| `receivable_account_uuid` | UUID | FK → accounting_accounts (411) |
+| `vt_journal_uuid` | UUID | FK → accounting_journals (VT journal for pack purchases) |
+| `default_pack_sales_account_uuid` | UUID? | FK → accounting_accounts (class 7) |
+| `rem_journal_uuid` | UUID | FK → accounting_journals (REM journal for discounts) |
+| `default_pack_discount_expense_account_uuid` | UUID? | FK → accounting_accounts (class 6) |
+| `default_initiation_charge_account_uuid` | UUID? | FK → accounting_accounts (class 6, fallback for initiations) |
+| `club_charge_account_uuid` | UUID? | FK → accounting_accounts (class 6, for explicit club billing) |
+| `club_member_uuid` | UUID? | FK → members (club entity sentinel) |
+| `rem_period_days` | int | Default 30 |
 | `allow_post_purchase_recalculation` | boolean | Default true |
+| `max_days_for_post_purchase_discount` | int? | Default 30 |
+| `require_approval_for_late_discount` | boolean | Default true |
+| `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
 | `updated_by` | int? | FK → users |
 
-### 9.6 Tolerance Parameters
+### 9.6 `vi_type_catalog` (charge_account_uuid)
+
+| Column | Type | Notes |
+|---|---|---|
+| `charge_account_uuid` | UUID? | FK → accounting_accounts. Each VI type (VI, JD, STAGE) can define its own charge account for club billing, overriding the settings default |
+
+### 9.7 Tolerance Parameters
 
 Stored in `system_settings` (module `flight_billing`):
 
@@ -483,24 +513,27 @@ Stored in `system_settings` (module `flight_billing`):
 
 ### 10.1 Flight Billing
 
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/v1/flights/{flight_uuid}/billing-preview` | Preview single flight |
-| `POST` | `/api/v1/flights/billing-preview` | Preview batch by date range |
-| `POST` | `/api/v1/flights/{flight_uuid}/billing-apply` | Apply preview → create Draft entry |
-| `POST` | `/api/v1/flights/{flight_uuid}/billing-post` | Apply + Post in one step |
-| `POST` | `/api/v1/flights/billing-batch-apply` | Batch apply + post |
-| `GET` | `/api/v1/flights/billable-flights` | List flights ready for billing |
-| `GET` | `/api/v1/flights/pending-billing-summary` | Aggregate stats |
+| Method | Path | Query Params | Purpose |
+|---|---|---|---|
+| `POST` | `/api/v1/flights/{flight_uuid}/billing-preview` | `?fiscal_year_uuid=` | Preview single flight (club billing detection) |
+| `POST` | `/api/v1/flights/billing-preview` | `?fiscal_year_uuid=` | Preview batch by date range |
+| `POST` | `/api/v1/flights/{flight_uuid}/billing-apply` | | Apply preview → create Draft entry in FL journal |
+| `POST` | `/api/v1/flights/{flight_uuid}/billing-post` | | Apply + Post in one step |
+| `POST` | `/api/v1/flights/billing-batch-apply` | | Batch apply |
+| `GET` | `/api/v1/flights/billable` | `?date_from=&date_to=` | List flights ready for billing |
+| `GET` | `/api/v1/flights/billing-summary` | `?date_from=&date_to=` | Aggregate stats |
 
 ### 10.2 Pack Management
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/v1/members/{member_uuid}/packs` | Buy a pack (creates pack + Draft entry) |
-| `GET` | `/api/v1/members/{member_uuid}/packs` | List packs with purchased/consumed/remaining quantities |
-| `POST` | `/api/v1/pack-events/{event_uuid}/freeze` | Freeze a consume event |
-| `POST` | `/api/v1/pack-events/{event_uuid}/unfreeze` | Unfreeze a consume event |
+| `POST` | `/api/v1/packs/purchase/{member_uuid}` | Buy a pack (creates posted VT entry) |
+| `GET` | `/api/v1/packs/balances/{member_uuid}` | List pack balances from `vw_member_pack_balances` |
+| `GET` | `/api/v1/packs/consumptions/by-member/{member_uuid}` | List consumption detail |
+| `GET` | `/api/v1/packs/consumptions/by-flight/{flight_uuid}` | List consumptions for a flight |
+| `PATCH` | `/api/v1/packs/consumptions/{consumption_uuid}/valid-from` | **Update valid_from** (replaces freeze/unfreeze) |
+| `GET` | `/api/v1/packs/definitions` | List pack definitions |
+| `POST` | `/api/v1/packs/definitions` | Create pack definition |
 
 ### 10.3 Recalculation
 
@@ -514,8 +547,10 @@ Stored in `system_settings` (module `flight_billing`):
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/v1/accounting/fiscal-years/{fy_uuid}/flight-billing-config` | Get billing config |
-| `PUT` | `/api/v1/accounting/fiscal-years/{fy_uuid}/flight-billing-config` | Update billing config |
+| `GET` | `/api/v1/accounting/settings/flight-billing` | Get billing config for a FY |
+| `PUT` | `/api/v1/accounting/settings/flight-billing` | Create or update billing config |
+| `DELETE` | `/api/v1/accounting/settings/flight-billing` | Reset to defaults |
+| `GET` | `/api/v1/accounting/settings/flight-billing/defaults` | Get sensible defaults for UI pre-fill |
 
 ### 10.5 REM Discount Adjustment
 
@@ -524,6 +559,14 @@ Stored in `system_settings` (module `flight_billing`):
 | `POST` | `/api/v1/accounting/rem-adjustments/preview` | Preview the REM adjustment for a pilot/period without saving |
 | `POST` | `/api/v1/accounting/rem-adjustments/apply` | Create or update the REM Draft entry for a pilot/period |
 | `POST` | `/api/v1/accounting/rem-adjustments/close-period` | Post all REM Draft entries for a given period and open new ones |
+
+### 10.6 VI Type Management
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/vi/types` | List VI types |
+| `POST` | `/api/v1/vi/types` | Create VI type (with `charge_account_uuid`) |
+| `PATCH` | `/api/v1/vi/types/{uuid}` | Update VI type (`charge_account_uuid`, etc.) |
 
 ---
 
@@ -535,9 +578,17 @@ Stored in `system_settings` (module `flight_billing`):
 | Pack purchase | 411 (member) | pack_sales_account | purchase_amount | VT |
 | Discount adjustment (periodic) | 6xx (pack discount expense account) | 411 (member) | total_discount_amount | REM |
 
-The **411 account** always carries the member dimension (`member_uuid`, `member_account_id_snapshot`).
+### Accounting Dimensions
 
-The analytical dimension (`analytical_asset_uuid`) is set to the machine UUID on every flight line, enabling per-machine financial reporting.
+| Line | Account | `member_uuid` | `analytical_asset_uuid` |
+|---|---|---|---|
+| Debit | 411 (receivable) | ✅ **Member who owes** (NULL for club-billed) | ✅ Machine UUID |
+| Credit | 7xx (revenue) | ❌ NULL | ✅ Machine UUID (enables per-machine financial reporting) |
+
+- Club-billed flights: `member_uuid` is NULL on **both** lines.
+- The 411 line carries both the member dimension (who owes) and the analytical asset (which machine).
+- The 7xx line carries only the analytical asset (which machine generated the revenue).
+- `analytical_asset_uuid` enables per-machine financial reporting (see Phase 9).
 
 The pack discount debit account is normally a **class 6 expense account** and is configured as `pack_discount_expense_account_uuid` on the pack definition or billing config. Pack sales remain credited to class 7, so class 7 pack revenue minus class 6 pack discount expense gives the operating result of pack activity.
 
@@ -552,8 +603,9 @@ Costs advanced by members must be reimbursed through the expense-report (`note d
 | Capability | Operations |
 |---|---|
 | `VIEW_FINANCIALS` | View previews, billing config, REM adjustments, machine dashboard |
-| `POST_ACCOUNTING_ENTRIES` | Apply, post, recalculate, freeze/unfreeze |
-| `MANAGE_PRICES` | Configure billing config (pack sales account, REM journal, discount account, period), manage pack definitions |
+| `POST_ACCOUNTING_ENTRIES` | Apply, post, recalculate, batch operations |
+| `MANAGE_PRICES` | Configure billing config (pack sales account, REM journal, discount account, period), manage pack definitions, manage VI types |
 | `MANAGE_USERS` | Enable expense access tokens for members |
+| `MANAGE_VI` | Manage VI type catalog (including `charge_account_uuid`) |
 
 The member portal uses **token-based auth** (not capabilities) — a valid expense access token grants read-only access to the member's own data.

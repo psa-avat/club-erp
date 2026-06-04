@@ -20,11 +20,78 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# REM Adjustment
+# ---------------------------------------------------------------------------
+
+class RemAdjustmentPreviewRequest(BaseModel):
+    """Preview REM adjustment for a member/period."""
+    member_uuid: UUID
+    fiscal_year_uuid: UUID
+    period_start: date
+    period_end: date
+
+
+class RemAdjustmentLine(BaseModel):
+    """One consumption line in a REM adjustment preview."""
+    consumption_uuid: UUID
+    flight_uuid: UUID
+    flight_date: date | None = None
+    pack_type: str
+    quantity_consumed: Decimal
+    discount_unit_price: Decimal
+    total_discount_amount: Decimal
+    is_frozen: bool = False
+
+
+class RemAdjustmentPreviewResponse(BaseModel):
+    """Preview of a REM adjustment for a member/period."""
+    member_uuid: UUID
+    fiscal_year_uuid: UUID
+    period_start: date
+    period_end: date
+    total_discount: Decimal = Decimal("0")
+    consumptions: list[RemAdjustmentLine] = []
+    has_existing_draft: bool = False
+    existing_draft_entry_uuid: UUID | None = None
+
+
+class RemAdjustmentApplyRequest(BaseModel):
+    """Create or update a REM Draft entry for a member/period."""
+    member_uuid: UUID
+    fiscal_year_uuid: UUID
+    period_start: date
+    period_end: date
+
+
+class RemAdjustmentApplyResponse(BaseModel):
+    """Result of applying a REM adjustment."""
+    entry_uuid: UUID
+    reference: str
+    description: str
+    state: int = 1  # Draft
+    total_discount: Decimal = Decimal("0")
+
+
+class CloseRemPeriodRequest(BaseModel):
+    """Close a REM period — post all Drafts, open new ones."""
+    fiscal_year_uuid: UUID
+    period_end: date
+
+
+class CloseRemPeriodResponse(BaseModel):
+    """Result of closing a REM period."""
+    posted_count: int = 0
+    total_discount: Decimal = Decimal("0")
+    entries: list[dict] = []
 
 
 class FlightBillingSettingsResponse(BaseModel):

@@ -18,17 +18,18 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, status, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_PRICES, CAP_MANAGE_SYSTEM_SETTINGS, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_FINANCIALS
-from models import User
+from models import AccountingAccount, AccountingEntry, AccountingFiscalYear, User, FlightBillingSettings
 from schemas.accounting import (
     AccountBalanceResponse,
     AccountingEntriesBulkPostRequest,
@@ -390,15 +391,27 @@ async def list_system_settings_endpoint(
 
 
 from schemas.flight_billing import (
+    CloseRemPeriodRequest,
+    CloseRemPeriodResponse,
     FlightBillingSettingsDefaults,
     FlightBillingSettingsResponse,
     FlightBillingSettingsUpdate,
+    RemAdjustmentApplyRequest,
+    RemAdjustmentApplyResponse,
+    RemAdjustmentPreviewRequest,
+    RemAdjustmentPreviewResponse,
 )
+from services.flight_billing_apply import FlightBillingApplyService
 from services.flight_billing_settings import (
     delete_flight_billing_settings,
     get_flight_billing_settings,
     get_flight_billing_settings_defaults,
     upsert_flight_billing_settings,
+)
+from services.flight_packs import (
+    compute_rem_adjustment,
+    get_member_pack_balance,
+    list_consumptions_for_member,
 )
 
 billing_settings_guard = Depends(require_capability(CAP_MANAGE_PRICES))
@@ -443,6 +456,128 @@ async def get_flight_billing_settings_defaults_endpoint(
 ):
     """Return sensible defaults for a new fiscal year (UI pre-fill)."""
     return await get_flight_billing_settings_defaults(db, fiscal_year_uuid)
+
+
+# ── REM Adjustments ────────────────────────────────────────────────────────
+
+post_guard = Depends(require_capability(CAP_POST_ACCOUNTING_ENTRIES))
+
+
+@router.post("/rem-adjustments/preview", response_model=RemAdjustmentPreviewResponse)
+async def preview_rem_adjustment(
+    request: RemAdjustmentPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Preview REM adjustment for a member/period — list consumptions and total discount."""
+    total_discount = await compute_rem_adjustment(
+        db, request.member_uuid, request.fiscal_year_uuid,
+        datetime.combine(request.period_start, datetime.min.time()),
+        datetime.combine(request.period_end, datetime.max.time()),
+    )
+    consumptions = await list_consumptions_for_member(db, request.member_uuid)
+    # Check if a Draft REM entry already exists
+    from models import AccountingEntry
+    existing = await db.execute(
+        select(AccountingEntry).where(
+            AccountingEntry.journal_uuid.in_(
+                select(FlightBillingSettings.rem_journal_uuid).where(
+                    FlightBillingSettings.fiscal_year_uuid == request.fiscal_year_uuid
+                )
+            ),
+            AccountingEntry.fiscal_year_uuid == request.fiscal_year_uuid,
+            AccountingEntry.state == 1,
+            AccountingEntry.description.ilike(f"%{request.member_uuid}%"),
+        )
+    )
+    existing_draft = existing.scalar_one_or_none()
+
+    return RemAdjustmentPreviewResponse(
+        member_uuid=request.member_uuid,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        period_start=request.period_start,
+        period_end=request.period_end,
+        total_discount=total_discount,
+        consumptions=[
+            {
+                "consumption_uuid": c.uuid,
+                "flight_uuid": c.flight_uuid,
+                "pack_type": c.pack_type,
+                "quantity_consumed": c.quantity_consumed,
+                "discount_unit_price": c.discount_unit_price,
+                "total_discount_amount": c.total_discount_amount,
+            }
+            for c in consumptions
+        ],
+        has_existing_draft=existing_draft is not None,
+        existing_draft_entry_uuid=existing_draft.uuid if existing_draft else None,
+    )
+
+
+@router.post("/rem-adjustments/apply", response_model=RemAdjustmentApplyResponse)
+async def apply_rem_adjustment(
+    request: RemAdjustmentApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = post_guard,
+):
+    """Create or update the REM Draft entry for a member/period."""
+    # Load settings to get REM journal and discount account
+    settings_result = await db.execute(
+        select(FlightBillingSettings).where(
+            FlightBillingSettings.fiscal_year_uuid == request.fiscal_year_uuid
+        )
+    )
+    settings = settings_result.scalar_one_or_none()
+    if settings is None:
+        raise HTTPException(status_code=400, detail="Flight billing settings not configured.")
+
+    discount_account_uuid = settings.default_pack_discount_expense_account_uuid
+    if discount_account_uuid is None:
+        # Fallback to 658
+        acct = await get_account_by_code(db, "658")
+        if acct is None:
+            raise HTTPException(status_code=500, detail="Default discount account 658 not found.")
+        discount_account_uuid = acct.uuid
+    else:
+        acct = await db.get(AccountingAccount, discount_account_uuid)
+
+    total_discount = await compute_rem_adjustment(
+        db, request.member_uuid, request.fiscal_year_uuid,
+        datetime.combine(request.period_start, datetime.min.time()),
+        datetime.combine(request.period_end, datetime.max.time()),
+    )
+
+    entry = await upsert_rem_entry(
+        db, request.member_uuid, request.fiscal_year_uuid,
+        settings.rem_journal_uuid, discount_account_uuid,
+        total_discount,
+        datetime.combine(request.period_start, datetime.min.time()),
+        datetime.combine(request.period_end, datetime.max.time()),
+        current_user.id,
+    )
+
+    return RemAdjustmentApplyResponse(
+        entry_uuid=entry.uuid,
+        reference=entry.reference or "",
+        description=entry.description or "",
+        state=entry.state,
+        total_discount=total_discount,
+    )
+
+
+@router.post("/rem-adjustments/close-period", response_model=CloseRemPeriodResponse)
+async def close_rem_period_endpoint(
+    request: CloseRemPeriodRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = post_guard,
+):
+    """Post all Draft REM entries for the period, opening new Drafts for next period."""
+    service = FlightBillingApplyService(db)
+    return await service.close_rem_period(
+        request.fiscal_year_uuid, request.period_end, current_user.id
+    )
 
 
 @router.get("/settings/{module_name}", response_model=SystemSettingResponse)

@@ -30,14 +30,18 @@ from constants import CAP_MANAGE_PRICES, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_F
 from models import User
 from schemas.flight_packs import (
     ApplicableItemResponse,
+    ConsumptionValidFromUpdate,
     MemberPackBalanceResponse,
     MemberPackConsumptionCreate,
     MemberPackConsumptionResponse,
+    MemberPackPurchaseRequest,
+    MemberPackPurchaseResponse,
     PackDefinitionCreate,
     PackDefinitionResponse,
     PackDefinitionUpdate,
 )
 from services.flight_packs import (
+    buy_pack,
     create_pack_definition,
     get_pack_definition,
     list_applicable_items,
@@ -46,6 +50,7 @@ from services.flight_packs import (
     list_pack_definitions,
     get_member_pack_balance,
     record_consumption,
+    update_consumption_valid_from,
     update_pack_definition,
     delete_pack_definition,
 )
@@ -191,3 +196,48 @@ async def get_member_pack_balance_endpoint(
 ):
     """Get remaining pack balances for a member from vw_member_pack_balances."""
     return await get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=pack_type)
+
+
+# ---------------------------------------------------------------------------
+# Pack Purchase
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/purchase/{member_uuid}",
+    response_model=MemberPackPurchaseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def buy_pack_endpoint(
+    member_uuid: UUID,
+    request: MemberPackPurchaseRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = post_guard,
+):
+    """Buy a pack for a member — creates a posted VT entry."""
+    entry = await buy_pack(db, member_uuid, request.pack_definition_uuid, current_user.id)
+    return MemberPackPurchaseResponse(
+        entry_uuid=entry.uuid,
+        reference=entry.reference or "",
+        description=entry.description or "",
+        amount=Decimal(str(entry.lines[0].debit)) if entry.lines else Decimal("0"),
+        units_purchased=Decimal("0"),  # Will be refined when pricing is integrated
+    )
+
+
+# ---------------------------------------------------------------------------
+# Consumption valid_from
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/consumptions/{consumption_uuid}/valid-from",
+    response_model=MemberPackConsumptionResponse,
+)
+async def update_consumption_valid_from_endpoint(
+    consumption_uuid: UUID,
+    request: ConsumptionValidFromUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = prices_guard,
+):
+    """Update the valid_from date on a pack consumption (replaces freeze)."""
+    return await update_consumption_valid_from(db, consumption_uuid, request.valid_from)

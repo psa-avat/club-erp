@@ -141,12 +141,28 @@ class MemberPackBalanceResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Freeze / Unfreeze
+# Pack Purchase
 # ---------------------------------------------------------------------------
 
-class FreezeConsumptionRequest(BaseModel):
-    """Request to freeze or unfreeze a pack consumption."""
-    reason: Optional[str] = None
+class MemberPackPurchaseRequest(BaseModel):
+    """Buy a pack for a member."""
+    pack_definition_uuid: UUID
+    quantity: Decimal = Field(default=Decimal("1"), gt=0, decimal_places=2)
 
 
-# Kept for backward compatibility — always succeeds
+class MemberPackPurchaseResponse(BaseModel):
+    """Result of a pack purchase."""
+    entry_uuid: UUID
+    reference: str
+    description: str
+    amount: Decimal
+    units_purchased: Decimal
+
+
+# ---------------------------------------------------------------------------
+# Consumption valid_from update
+# ---------------------------------------------------------------------------
+
+class ConsumptionValidFromUpdate(BaseModel):
+    """Update the valid_from date on a pack consumption."""
+    valid_from: datetime

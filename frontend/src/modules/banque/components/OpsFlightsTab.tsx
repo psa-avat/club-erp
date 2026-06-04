@@ -18,7 +18,7 @@
  */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, ShoppingCart, FileText } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Alert } from '../../../components/ui/alert'
@@ -28,11 +28,15 @@ import {
   useBillableFlightsQuery,
   useFlightBillingPreviewMutation,
   useFlightBillingBatchPreviewMutation,
+  useFlightBillingApplyMutation,
+  useFlightBillingPostMutation,
   useFlightBillingBatchApplyMutation,
   type FlightBillingPreviewResponse,
   type FlightBillingBatchPreviewResponse,
   type BillableFlight,
 } from '../api'
+import { PackPurchaseDialog } from './PackPurchaseDialog'
+import { RemPeriodPanel } from './RemPeriodPanel'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -213,8 +217,13 @@ export function OpsFlightsTab() {
   )
 
   const previewMutation = useFlightBillingPreviewMutation()
+  const applyMutation = useFlightBillingApplyMutation()
+  const postMutation = useFlightBillingPostMutation()
   const batchPreviewMutation = useFlightBillingBatchPreviewMutation()
   const batchApplyMutation = useFlightBillingBatchApplyMutation()
+  const [showPackPurchase, setShowPackPurchase] = useState(false)
+  const [applyFlightUuid, setApplyFlightUuid] = useState<string | null>(null)
+  const [postFlightUuid, setPostFlightUuid] = useState<string | null>(null)
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
@@ -278,6 +287,36 @@ export function OpsFlightsTab() {
     )
   }
 
+  async function handleApply(flightUuid: string) {
+    if (!activeFiscalYearUuid) return
+    setApplyFlightUuid(flightUuid)
+    try {
+      await applyMutation.mutateAsync({ flightUuid, fiscalYearUuid: activeFiscalYearUuid })
+      setFlightPreviews((prev) => {
+        const next = { ...prev }
+        delete next[flightUuid]
+        return next
+      })
+    } finally {
+      setApplyFlightUuid(null)
+    }
+  }
+
+  async function handlePost(flightUuid: string) {
+    if (!activeFiscalYearUuid) return
+    setPostFlightUuid(flightUuid)
+    try {
+      await postMutation.mutateAsync({ flightUuid, fiscalYearUuid: activeFiscalYearUuid })
+      setFlightPreviews((prev) => {
+        const next = { ...prev }
+        delete next[flightUuid]
+        return next
+      })
+    } finally {
+      setPostFlightUuid(null)
+    }
+  }
+
   // ── Derived state ─────────────────────────────────────────────────────
 
   const isPreviewing = previewMutation.isPending
@@ -314,6 +353,17 @@ export function OpsFlightsTab() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
+          {canManagePrices && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowPackPurchase(true)}
+              title={t('ops.flights.buyPack', 'Acheter un forfait')}
+            >
+              <ShoppingCart className="mr-1 h-3.5 w-3.5" />
+              {t('ops.flights.buyPack', 'Forfait')}
+            </Button>
+          )}
           {(canEditFlights || canManagePrices) && (
             <Button
               size="sm"
@@ -326,7 +376,7 @@ export function OpsFlightsTab() {
               ) : (
                 <Eye className="mr-1 h-3.5 w-3.5" />
               )}
-              {t('ops.flights.preview')}
+              {t('ops.flights.preview', 'Prévisualiser')}
             </Button>
           )}
           {canEditFlights && canPost && (
@@ -340,11 +390,16 @@ export function OpsFlightsTab() {
               ) : (
                 <Send className="mr-1 h-3.5 w-3.5" />
               )}
-              {t('ops.flights.apply')}
+              {t('ops.flights.apply', 'Appliquer tout')}
             </Button>
           )}
         </div>
       </div>
+
+      {/* REM Period Panel */}
+      {canPost && (
+        <RemPeriodPanel fiscalYearUuid={activeFiscalYearUuid} />
+      )}
 
       {/* Batch preview result */}
       {batchPreview && (
@@ -480,6 +535,36 @@ export function OpsFlightsTab() {
                               <Play className="h-3.5 w-3.5" />
                             )}
                           </button>
+                          {canPost && (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-blue-400 hover:text-blue-700 disabled:opacity-40"
+                                title="Appliquer (Draft)"
+                                disabled={applyFlightUuid === f.uuid || !activeFiscalYearUuid}
+                                onClick={() => handleApply(f.uuid)}
+                              >
+                                {applyFlightUuid === f.uuid ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <FileText className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded p-1 text-emerald-400 hover:text-emerald-700 disabled:opacity-40"
+                                title="Appliquer + Post"
+                                disabled={postFlightUuid === f.uuid || !activeFiscalYearUuid}
+                                onClick={() => handlePost(f.uuid)}
+                              >
+                                {postFlightUuid === f.uuid ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Send className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </td>
@@ -545,6 +630,12 @@ export function OpsFlightsTab() {
           </p>
         </Alert>
       )}
+
+      {/* Pack Purchase Dialog */}
+      <PackPurchaseDialog
+        open={showPackPurchase}
+        onClose={() => setShowPackPurchase(false)}
+      />
     </div>
   )
 }

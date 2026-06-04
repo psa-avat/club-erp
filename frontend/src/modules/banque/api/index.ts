@@ -1162,13 +1162,13 @@ export function useMemberPackBalancesQuery(memberUuid: string | null, fiscalYear
   })
 }
 
-export function useFreezePackConsumptionMutation() {
+export function useUpdateConsumptionValidFromMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ consumptionUuid, reason }: { consumptionUuid: string; reason?: string }) => {
-      const { data } = await apiClient.post<MemberPackConsumption>(
-        `/api/v1/packs/consumptions/${consumptionUuid}/freeze`,
-        reason ? { reason } : {},
+    mutationFn: async ({ consumptionUuid, valid_from }: { consumptionUuid: string; valid_from: string }) => {
+      const { data } = await apiClient.patch<MemberPackConsumption>(
+        `/api/v1/packs/consumptions/${consumptionUuid}/valid-from`,
+        { valid_from },
         getAuthRequestConfig(),
       )
       return data
@@ -1179,19 +1179,63 @@ export function useFreezePackConsumptionMutation() {
   })
 }
 
-export function useUnfreezePackConsumptionMutation() {
+export function useBuyPackMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (consumptionUuid: string) => {
-      const { data } = await apiClient.post<MemberPackConsumption>(
-        `/api/v1/packs/consumptions/${consumptionUuid}/unfreeze`,
-        {},
+    mutationFn: async ({ memberUuid, packDefinitionUuid }: { memberUuid: string; packDefinitionUuid: string }) => {
+      const { data } = await apiClient.post<{ entry_uuid: string; reference: string; description: string; amount: string; units_purchased: string }>(
+        `/api/v1/packs/purchase/${memberUuid}`,
+        { pack_definition_uuid: packDefinitionUuid },
         getAuthRequestConfig(),
       )
       return data
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs', 'balances'] })
+    },
+  })
+}
+
+// ── REM Adjustment Hooks ────────────────────────────────────────────────
+
+export function useRemAdjustmentPreviewMutation() {
+  return useMutation({
+    mutationFn: async (payload: { member_uuid: string; fiscal_year_uuid: string; period_start: string; period_end: string }) => {
+      const { data } = await apiClient.post<{
+        member_uuid: string; total_discount: string; has_existing_draft: boolean; existing_draft_entry_uuid: string | null
+      }>('/api/v1/accounting/rem-adjustments/preview', payload, getAuthRequestConfig())
+      return data
+    },
+  })
+}
+
+export function useRemAdjustmentApplyMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { member_uuid: string; fiscal_year_uuid: string; period_start: string; period_end: string }) => {
+      const { data } = await apiClient.post<{ entry_uuid: string; reference: string; description: string; state: number; total_discount: string }>(
+        '/api/v1/accounting/rem-adjustments/apply', payload, getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'entries'] })
+    },
+  })
+}
+
+export function useCloseRemPeriodMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { fiscal_year_uuid: string; period_end: string }) => {
+      const { data } = await apiClient.post<{ posted_count: number; total_discount: string; entries: Array<{ entry_uuid: string; posted: boolean }> }>(
+        '/api/v1/accounting/rem-adjustments/close-period', payload, getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'entries'] })
     },
   })
 }

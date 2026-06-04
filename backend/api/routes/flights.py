@@ -607,23 +607,19 @@ async def batch_apply_flights_billing(
     entries = await service.batch_apply(flight_uuids, UUID(request.fiscal_year_uuid), current_user.id)
 
     items = []
-    success_count = 0
-    error_count = 0
-    for e in entries:
+    for fuuid, entry in entries:
         items.append(
             FlightBillingApplyItem(
-                flight_uuid="",  # Not tracked individually in batch_apply response
-                entry_uuid=str(e.uuid),
-                entry_state=e.state,
-                reference=e.reference or "",
-                description=e.description or "",
+                flight_uuid=str(fuuid),
+                entry_uuid=str(entry.uuid),
+                entry_state=entry.state,
+                reference=entry.reference or "",
+                description=entry.description or "",
             )
         )
-        success_count += 1
-
     return FlightBillingBatchApplyResponse(
         items=items,
         total=len(items),
-        success_count=success_count,
-        error_count=error_count,
+        success_count=len(items),
+        error_count=0,
     )

@@ -418,6 +418,55 @@ async def create_pack_purchase_entry(
     return entry
 
 
+async def buy_pack(
+    db: AsyncSession,
+    member_uuid: UUID,
+    pack_definition_uuid: UUID,
+    user_id: int,
+) -> AccountingEntry:
+    """
+    Buy a pack for a member. Creates a posted VT entry for the pack purchase.
+    The entry debits 411 (member receivable) and credits the pack's sales account.
+    """
+    # Load pack definition
+    result = await db.execute(
+        select(PackDefinition).where(PackDefinition.uuid == pack_definition_uuid)
+    )
+    pack = result.scalar_one_or_none()
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Pack definition not found")
+
+    # Validate member exists
+    member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
+    if member_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # Calculate amount: quantity_allowance × price = total
+    # Price comes from pack_applicability or a fixed price
+    # For simplicity, use the quantity_allowance as units
+    amount = pack.quantity_allowance  # Will be refined with pricing later
+    return await create_pack_purchase_entry(db, member_uuid, pack, amount, user_id)
+
+
+async def update_consumption_valid_from(
+    db: AsyncSession,
+    consumption_uuid: UUID,
+    valid_from: datetime,
+) -> MemberPackConsumption:
+    """Update the valid_from date on a pack consumption."""
+    result = await db.execute(
+        select(MemberPackConsumption).where(MemberPackConsumption.uuid == consumption_uuid)
+    )
+    consumption = result.scalar_one_or_none()
+    if consumption is None:
+        raise HTTPException(status_code=404, detail="Pack consumption not found")
+
+    consumption.valid_from = valid_from
+    await db.commit()
+    await db.refresh(consumption)
+    return consumption
+
+
 async def get_account_by_code(db: AsyncSession, code: str) -> AccountingAccount | None:
     """Look up an accounting account by its code."""
     result = await db.execute(
