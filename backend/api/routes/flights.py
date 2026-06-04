@@ -246,13 +246,14 @@ async def list_validated_flights(
 @router.post("/{flight_uuid}/billing-preview", response_model=FlightBillingPreviewResponse)
 async def preview_flight_billing(
     flight_uuid: UUID,
+    fiscal_year_uuid: UUID | None = Query(None, description="Required for club billing detection"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
 ):
     """Calculate one imported flight billing preview without applying it."""
     service = FlightBillingPreviewService(db)
     try:
-        return await service.preview_flight(flight_uuid)
+        return await service.preview_flight(flight_uuid, fiscal_year_uuid=fiscal_year_uuid)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -260,12 +261,13 @@ async def preview_flight_billing(
 @router.post("/billing-preview", response_model=FlightBillingBatchPreviewResponse)
 async def preview_flights_billing(
     request: FlightBillingPreviewRequest,
+    fiscal_year_uuid: UUID | None = Query(None, description="Required for club billing detection"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
 ):
     """Calculate imported flight billing previews without applying accounting."""
     service = FlightBillingPreviewService(db)
-    return await service.preview_batch(request)
+    return await service.preview_batch(request, fiscal_year_uuid=fiscal_year_uuid)
 
 
 TYPE_OF_FLIGHT_LABELS: dict[int, str] = {

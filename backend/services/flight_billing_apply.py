@@ -83,7 +83,9 @@ class FlightBillingApplyService:
         4. Records pack consumptions
         5. Upserts REM entry for the pilot
         """
-        preview = await self._preview_service.preview_flight(flight_uuid)
+        preview = await self._preview_service.preview_flight(
+            flight_uuid, fiscal_year_uuid=fiscal_year_uuid
+        )
         if not preview.can_apply:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

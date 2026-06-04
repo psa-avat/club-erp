@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from models import (
     AccountingAccount,
     Asset,
+    FlightBillingSettings,
     FlightType,
     Member,
     PackApplicability,
@@ -28,6 +29,7 @@ from models import (
     PricingItemTier,
     PricingVersion,
     ValidatedFlight,
+    ViTypeCatalog,
 )
 from schemas.flights import (
     FlightAccountingLinePreview,
@@ -77,6 +79,14 @@ class _PricedMachine:
     asset: Asset | None
     version: PricingVersion | None
     items: list[PricingItem]
+
+
+@dataclass
+class _ClubBillingInfo:
+    """Context for club-billed flights (initiation/VI charged to club)."""
+    is_club_billed: bool
+    charge_account_uuid: UUID | None
+    charge_account_code: str | None
 
 
 def _dec(value: object, default: str = "0") -> Decimal:
@@ -231,17 +241,95 @@ class FlightBillingPreviewService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._billing_settings: FlightBillingSettings | None = None
+        self._club_member: Member | None = None
 
-    async def preview_flight(self, flight_uuid: UUID | str) -> FlightBillingPreviewResponse:
+    async def _load_billing_settings(self, fiscal_year_uuid: UUID | None) -> None:
+        """Load FlightBillingSettings and resolve club member for club billing detection."""
+        if fiscal_year_uuid is None:
+            return
+        result = await self.db.execute(
+            select(FlightBillingSettings).where(
+                FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
+            )
+        )
+        self._billing_settings = result.scalar_one_or_none()
+        if self._billing_settings and self._billing_settings.club_member_uuid:
+            member_result = await self.db.execute(
+                select(Member).where(Member.uuid == self._billing_settings.club_member_uuid)
+            )
+            self._club_member = member_result.scalar_one_or_none()
+        else:
+            self._club_member = None
+
+    async def _resolve_club_billing(
+        self, flight: ValidatedFlight
+    ) -> _ClubBillingInfo:
+        """
+        Check if the flight is club-billed and resolve the charge account.
+        Returns _ClubBillingInfo with is_club_billed=True when charge_to_erp_id
+        matches the club member's account_id.
+        """
+        if self._club_member is None or not flight.charge_to_erp_id:
+            return _ClubBillingInfo(is_club_billed=False, charge_account_uuid=None, charge_account_code=None)
+
+        # Compare charge_to_erp_id with club member's account_id
+        if flight.charge_to_erp_id != self._club_member.account_id:
+            return _ClubBillingInfo(is_club_billed=False, charge_account_uuid=None, charge_account_code=None)
+
+        # Resolve charge account: vi_type_catalog.charge_account_uuid → settings default
+        charge_account_uuid: UUID | None = None
+        charge_account_code: str | None = None
+
+        if flight.vi_erp_id:
+            vi_result = await self.db.execute(
+                select(ViTypeCatalog).where(ViTypeCatalog.code == flight.vi_erp_id)
+            )
+            vi_type = vi_result.scalar_one_or_none()
+            if vi_type and vi_type.charge_account_uuid:
+                charge_account_uuid = vi_type.charge_account_uuid
+                if vi_type.charge_account:
+                    charge_account_code = vi_type.charge_account.code
+
+        if charge_account_uuid is None and self._billing_settings:
+            charge_account_uuid = self._billing_settings.default_initiation_charge_account_uuid
+            if charge_account_uuid:
+                acct_result = await self.db.execute(
+                    select(AccountingAccount).where(AccountingAccount.uuid == charge_account_uuid)
+                )
+                acct = acct_result.scalar_one_or_none()
+                if acct:
+                    charge_account_code = acct.code
+
+        return _ClubBillingInfo(
+            is_club_billed=True,
+            charge_account_uuid=charge_account_uuid,
+            charge_account_code=charge_account_code,
+        )
+
+    async def preview_flight(
+        self,
+        flight_uuid: UUID | str,
+        fiscal_year_uuid: UUID | None = None,
+    ) -> FlightBillingPreviewResponse:
         flight = await self._get_flight(flight_uuid)
+        await self._load_billing_settings(fiscal_year_uuid)
+        club_info = await self._resolve_club_billing(flight)
         pack_balances = await self._initial_pack_balances([flight])
         item_packs = await self._build_item_packs_map()
-        return await self._preview_one(flight, pack_balances, item_packs)
+        return await self._preview_one(flight, pack_balances, item_packs, club_info=club_info)
 
-    async def preview_batch(self, request: FlightBillingPreviewRequest) -> FlightBillingBatchPreviewResponse:
+    async def preview_batch(
+        self,
+        request: FlightBillingPreviewRequest,
+        fiscal_year_uuid: UUID | None = None,
+    ) -> FlightBillingBatchPreviewResponse:
         flights = await self._list_flights(request)
         if not flights:
             return FlightBillingBatchPreviewResponse(items=[])
+
+        # Load settings once for the batch (uses first flight's FY if available)
+        await self._load_billing_settings(fiscal_year_uuid)
 
         pack_balances = await self._initial_pack_balances(flights)
         item_packs = await self._build_item_packs_map()
@@ -251,7 +339,8 @@ class FlightBillingPreviewService:
 
         async def _preview_with_sem(flight: ValidatedFlight) -> FlightBillingPreviewResponse:
             async with sem:
-                return await self._preview_one(flight, pack_balances, item_packs)
+                club_info = await self._resolve_club_billing(flight)
+                return await self._preview_one(flight, pack_balances, item_packs, club_info=club_info)
 
         previews = await asyncio.gather(*[_preview_with_sem(f) for f in sorted_flights])
         total_amount = sum((p.total_amount for p in previews), Decimal("0"))
@@ -299,14 +388,32 @@ class FlightBillingPreviewService:
         flight: ValidatedFlight,
         pack_balances: dict[tuple[UUID, str], Decimal],
         item_packs: dict[UUID, list[tuple[str, Decimal, int]]],
+        club_info: _ClubBillingInfo | None = None,
     ) -> FlightBillingPreviewResponse:
         errors: list[FlightBillingError] = []
         warnings: list[FlightBillingError] = []
-        debit_account = await self._get_receivable_account()
-        if debit_account is None:
-            errors.append(_error("receivable_account_missing", "Posting account 411 is not configured."))
 
-        payers = await self._resolve_payers(flight, errors)
+        club = club_info or _ClubBillingInfo(
+            is_club_billed=False, charge_account_uuid=None, charge_account_code=None
+        )
+
+        # Resolve debit account — use club charge account for club billing, else 411
+        debit_account: AccountingAccount | None = None
+        if club.is_club_billed and club.charge_account_uuid:
+            acct_result = await self.db.execute(
+                select(AccountingAccount).where(AccountingAccount.uuid == club.charge_account_uuid)
+            )
+            debit_account = acct_result.scalar_one_or_none()
+        if debit_account is None and not club.is_club_billed:
+            debit_account = await self._get_receivable_account()
+        if debit_account is None:
+            errors.append(_error(
+                "debit_account_missing",
+                "Charge account not found for club billing." if club.is_club_billed
+                else "Posting account 411 is not configured."
+            ))
+
+        payers = await self._resolve_payers(flight, errors, club=club)
         machines = [await self._resolve_machine("flight", flight.asset_code or flight.glider_erp_id, flight, errors, warnings)]
         if flight.launch_asset_code or flight.launch_machine_erp_id:
             machines.append(await self._resolve_machine("launch", flight.launch_asset_code or flight.launch_machine_erp_id, flight, errors, warnings))
@@ -361,7 +468,9 @@ class FlightBillingPreviewService:
                             pack_hours_after=Decimal("0"),
                         )
                         applied_lines.append(preview_line)
-                        accounting_lines.extend(self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item))
+                        accounting_lines.extend(
+                            self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item, is_club_billed=club.is_club_billed)
+                        )
                     continue
 
                 # ── Per-unit pricing (existing logic) ────────────────────────────
@@ -411,7 +520,9 @@ class FlightBillingPreviewService:
                             pack_hours_after=after,
                         )
                         applied_lines.append(preview_line)
-                        accounting_lines.extend(self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item))
+                        accounting_lines.extend(
+                            self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item, is_club_billed=club.is_club_billed)
+                        )
 
         total_amount = _money(sum((line.amount for line in applied_lines), Decimal("0")))
         billing_hash = self._billing_hash(applied_lines) if applied_lines else None
@@ -427,7 +538,7 @@ class FlightBillingPreviewService:
                 FlightBillingPayerPreview(
                     member_uuid=str(p.member.uuid) if p.member else None,
                     member_account_id=p.member.account_id if p.member else None,
-                    member_name=_full_name(p.member),
+                    member_name=_full_name(p.member) if p.member else ("Club" if club.is_club_billed else None),
                     role=p.role,
                     share=p.share,
                     reason=p.reason,
@@ -474,7 +585,20 @@ class FlightBillingPreviewService:
         result = await self.db.execute(select(Member).where(or_(*clauses)))
         return result.scalars().first()
 
-    async def _resolve_payers(self, flight: ValidatedFlight, errors: list[FlightBillingError]) -> list[_Payer]:
+    async def _resolve_payers(
+        self,
+        flight: ValidatedFlight,
+        errors: list[FlightBillingError],
+        club: _ClubBillingInfo | None = None,
+    ) -> list[_Payer]:
+        club = club or _ClubBillingInfo(
+            is_club_billed=False, charge_account_uuid=None, charge_account_code=None
+        )
+
+        # ── Club billing: charge_to_erp_id matches club member account_id ──
+        if club.is_club_billed:
+            return [_Payer(None, "club", Decimal("1"), "club_billing")]
+
         pilot = await self._resolve_member(flight.pilot_erp_id)
         second = await self._resolve_member(flight.second_pilot_erp_id or flight.second_pilot_id)
         charge_to = await self._resolve_member(flight.charge_to_erp_id or flight.charge_to_compta_id)
@@ -514,6 +638,7 @@ class FlightBillingPreviewService:
             role = "charge_to" if charge_to is not None else "pilot"
             return [_Payer(payer, role, Decimal("1"), "passager")]
         if flight_type == "initiation":
+            # Initiation flight without club billing configuration
             errors.append(_error("club_billing_target_missing", "Initiation/VI club billing target is not configured."))
             return []
 
@@ -773,6 +898,7 @@ class FlightBillingPreviewService:
         asset: Asset,
         debit_account: AccountingAccount | None,
         item: PricingItem,
+        is_club_billed: bool = False,
     ) -> list[FlightAccountingLinePreview]:
         description = f"{line.pricing_item_name} {line.asset_code}"
         return [
@@ -780,8 +906,9 @@ class FlightBillingPreviewService:
                 side="debit",
                 account_uuid=str(debit_account.uuid) if debit_account else None,
                 account_code=debit_account.code if debit_account else None,
-                member_uuid=str(payer.member.uuid) if payer.member else None,
-                member_account_id_snapshot=payer.member.account_id if payer.member else None,
+                # Club-billed flights: no member dimension on debit line
+                member_uuid=None,
+                member_account_id_snapshot=None,
                 analytical_asset_uuid=str(asset.uuid),
                 debit=line.amount,
                 credit=Decimal("0"),
@@ -791,8 +918,8 @@ class FlightBillingPreviewService:
                 side="credit",
                 account_uuid=str(item.gl_account_credit.uuid) if item.gl_account_credit else None,
                 account_code=item.gl_account_credit.code if item.gl_account_credit else None,
-                member_uuid=None,
-                member_account_id_snapshot=None,
+                member_uuid=None if is_club_billed else (str(payer.member.uuid) if payer.member else None),
+                member_account_id_snapshot=None if is_club_billed else (payer.member.account_id if payer.member else None),
                 analytical_asset_uuid=str(asset.uuid),
                 debit=Decimal("0"),
                 credit=line.amount,
