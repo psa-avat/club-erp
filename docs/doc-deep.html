@@ -1,0 +1,477 @@
+Here is an HTML document that presents the Flight Billing Module user manual in a clean, professional format suitable for club treasurers and daily operations managers.
+```html
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Manuel utilisateur – Facturation des vols | Club ERP</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #f1f5f9;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+            color: #0f172a;
+            padding: 2rem 1rem;
+        }
+
+        .document-container {
+            max-width: 1300px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+
+        /* header */
+        .doc-header {
+            background: linear-gradient(135deg, #0b2b26 0%, #1a4a44 100%);
+            color: white;
+            padding: 2rem 2rem 1.8rem;
+        }
+
+        .doc-header h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-bottom: 0.5rem;
+        }
+
+        .doc-header .subhead {
+            font-size: 1rem;
+            opacity: 0.85;
+            border-left: 3px solid #5ee0c4;
+            padding-left: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .badge-version {
+            background: #2c6e64;
+            border-radius: 40px;
+            padding: 0.2rem 0.8rem;
+            font-size: 0.8rem;
+            display: inline-block;
+            margin-top: 0.75rem;
+            font-weight: 500;
+        }
+
+        /* navigation / toc */
+        .toc {
+            background: #f8fafc;
+            padding: 1.2rem 2rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .toc h2 {
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #1e5a5a;
+            margin-bottom: 0.8rem;
+        }
+
+        .toc-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 1rem;
+        }
+
+        .toc a {
+            color: #1e4a6e;
+            text-decoration: none;
+            font-size: 0.85rem;
+            background: white;
+            padding: 0.2rem 0.9rem;
+            border-radius: 20px;
+            border: 1px solid #cbd5e1;
+            transition: all 0.2s;
+        }
+
+        .toc a:hover {
+            background: #e6f7f3;
+            border-color: #2c6e64;
+            color: #115e59;
+        }
+
+        /* content */
+        .content {
+            padding: 2rem 2rem 2.5rem;
+        }
+
+        h2 {
+            font-size: 1.7rem;
+            font-weight: 600;
+            margin: 1.8rem 0 1rem 0;
+            padding-bottom: 0.4rem;
+            border-bottom: 3px solid #cbd5e1;
+            color: #0c4e6e;
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 1.4rem 0 0.8rem 0;
+            color: #1e5a5a;
+        }
+
+        h4 {
+            font-weight: 600;
+            margin: 1rem 0 0.3rem 0;
+            color: #2c3e50;
+        }
+
+        p {
+            margin-bottom: 0.9rem;
+        }
+
+        .card-note {
+            background: #f0fdf4;
+            border-left: 5px solid #10b981;
+            padding: 1rem 1.2rem;
+            border-radius: 16px;
+            margin: 1.2rem 0;
+        }
+
+        .warning-note {
+            background: #fff7ed;
+            border-left: 5px solid #f97316;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.2rem 0;
+            font-size: 0.9rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+
+        th {
+            background: #eef2ff;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid #cbd5e1;
+        }
+
+        td {
+            padding: 0.65rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+
+        .badge-pending { background: #fef9c3; color: #854d0e; }
+        .badge-applied { background: #fed7aa; color: #9a3412; }
+        .badge-posted { background: #d9f99d; color: #3f6212; }
+        .badge-correcting { background: #fed7aa; color: #b45309; }
+        .badge-error { background: #fee2e2; color: #b91c1c; }
+
+        .ui-mock {
+            background: #f1f5f9;
+            border-radius: 20px;
+            padding: 1rem;
+            margin: 1.2rem 0;
+            border: 1px solid #e2e8f0;
+            font-family: 'SF Mono', 'Menlo', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+        }
+
+        .two-step {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.2rem;
+            margin: 1.5rem 0;
+        }
+        .step-card {
+            flex: 1;
+            background: #f8fafc;
+            border-radius: 20px;
+            padding: 1rem 1.2rem;
+            border: 1px solid #e2e8f0;
+        }
+        .step-card strong {
+            color: #0f766e;
+        }
+
+        kbd {
+            background: #f1f5f9;
+            border-radius: 6px;
+            padding: 0.1rem 0.4rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            border: 1px solid #cbd5e1;
+        }
+
+        .glossary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px,1fr));
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
+        .glossary-item {
+            background: #fefce8;
+            padding: 0.5rem 0.8rem;
+            border-radius: 14px;
+        }
+
+        hr {
+            margin: 2rem 0;
+            border: none;
+            height: 1px;
+            background: #cbd5e1;
+        }
+        footer {
+            background: #f1f5f9;
+            text-align: center;
+            padding: 1.2rem;
+            font-size: 0.8rem;
+            color: #475569;
+            border-top: 1px solid #e2e8f0;
+        }
+        @media (max-width: 700px) {
+            .content, .doc-header, .toc { padding-left: 1rem; padding-right: 1rem; }
+            th, td { padding: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="document-container">
+    <div class="doc-header">
+        <h1>✈️ Facturation des vols & Forfaits</h1>
+        <div class="subhead">Manuel utilisateur – Module ERP club (loi 1901)</div>
+        <div class="badge-version">Version 3.0 – approche découplée (REM + forfaits consommables)</div>
+    </div>
+
+    <div class="toc">
+        <h2>📑 Sommaire rapide</h2>
+        <div class="toc-grid">
+            <a href="#concepts">Concepts clés</a>
+            <a href="#config-init">Configuration initiale</a>
+            <a href="#daily-ops">Facturation quotidienne</a>
+            <a href="#packs">Gestion des forfaits</a>
+            <a href="#rem-period">Périodes REM</a>
+            <a href="#member-portal">Portail membre</a>
+            <a href="#machine-dash">Dashboard machines</a>
+            <a href="#troubleshooting">Dépannage</a>
+            <a href="#glossary">Glossaire</a>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Overview -->
+        <h2 id="concepts">📘 Aperçu & concepts fondamentaux</h2>
+        <p>Le module de facturation des vols gère la facturation des membres, les réductions par forfaits et l’intégration comptable. Les vols sont d’abord facturés au <strong>prix brut</strong>, puis les rabais forfaitaires sont appliqués via un <strong>journal REM dédié</strong> (périodique).</p>
+        
+        <div class="two-step">
+            <div class="step-card">
+                <strong>✈️ 1. Facturation brute (journal FL)</strong><br>
+                Vol 1h planeur : 100€ débit 411 / crédit 7062<br>
+                Pas de réduction immédiate
+            </div>
+            <div class="step-card">
+                <strong>🎁 2. Achat d’un forfait</strong><br>
+                Pack 25h à 500€ → crédit 7066, débit 411<br>
+                Réduction unitaire = 80€/h
+            </div>
+            <div class="step-card">
+                <strong>🔄 3. Ajustement REM (périodique)</strong><br>
+                Écriture REM : 6xx → 411 (montant total des réductions)<br>
+                Net dû par le membre = brut − réductions
+            </div>
+        </div>
+
+        <div class="card-note">
+            💡 <strong>Principe clé</strong> : le solde du compte 411 (créances membres) est évalué en combinant les écritures FL brutes <strong>ET</strong> l’ajustement REM en cours. Les alertes de seuil minimal se basent sur le net final.
+        </div>
+
+        <!-- Configuration initiale -->
+        <h2 id="config-init">⚙️ 1. Configuration initiale</h2>
+        <h3>1.1 Paramètres généraux (facturation vols)</h3>
+        <p><strong>Accès :</strong> <code>Paramètres → Tarification → Vols</code> (par exercice fiscal)</p>
+        <table>
+            <thead><tr><th>Section</th><th>Choix typique</th><th>Rôle</th></tr></thead>
+            <tbody>
+                <tr><td>FL – Journal vols</td><td><code>FL</code></td><td>Journal des écritures de vol (brut)</td></tr>
+                <tr><td>FL – Compte client</td><td><code>411 – Membres</code></td><td>Débit client</td></tr>
+                <tr><td>VT – Journal ventes forfaits</td><td><code>VT</code></td><td>Achat de packs</td></tr>
+                <tr><td>REM – Journal remises</td><td><code>REM</code></td><td>Écritures d’ajustement (rabais)</td></tr>
+                <tr><td>REM – Compte de charge remise</td><td><code>658 – Rabais accordés</code></td><td>Compte de classe 6 (dépense)</td></tr>
+                <tr><td>Facturation club (initiation)</td><td>compte 658 – Vols initiation</td><td>Vols sans membre identifié</td></tr>
+                <tr><td>Membre club sentinelle</td><td>Fiche “Club”</td><td>Détection facturation club</td></tr>
+            </tbody>
+        </table>
+        <h3>1.2 Créer un forfait (pack)</h3>
+        <p><strong>Accès :</strong> <code>Catalogue → Forfaits</code></p>
+        <ul>
+            <li><strong>Code</strong> : <code>PACK_25H_GLIDER</code>, <strong>Nom</strong> : Pack 25h planeur</li>
+            <li><strong>Type</strong> : <code>flight_hours</code> (heures de vol) / <code>winch_launches</code> (treuils)</li>
+            <li><strong>Quantité incluse</strong> : 25 (heures)</li>
+            <li><strong>Compte vente</strong> : 7066 (classe 7) – peut être modifié</li>
+            <li><strong>Compte charge remise</strong> : 658 (classe 6) – débité lors des réductions</li>
+        </ul>
+        <h3>1.3 Associer un forfait aux prestations (pack_applicability)</h3>
+        <p>Dans la fiche du forfait, onglet <strong>Tarifs applicables</strong> : lier chaque <code>pricing_item</code> (ex: HEURE_CELLULE_ASK21) et indiquer le <strong>prix unitaire après remise</strong> (ex: 20€ au lieu de 100€). La réduction unitaire est automatiquement calculée (80€).</p>
+        <div class="card-note">
+            📌 Un forfait peut couvrir plusieurs types de machines (ASK21, LS8) et un même pricing_item peut être couvert par plusieurs forfaits (pack 25h, pack 50h). La logique FIFO s’applique.
+        </div>
+        <h3>1.4 Types VI (vols d'initiation)</h3>
+        <p><code>Administration → Types VI</code> : pour chaque type (VI, JD, STAGE), vous pouvez définir un <strong>compte de charge spécifique</strong> (sinon le compte par défaut des paramètres est utilisé).</p>
+
+        <!-- DAILY OPS -->
+        <h2 id="daily-ops">📆 2. Opérations quotidiennes : facturer les vols</h2>
+        <h3>2.1 Onglet “Vols” – Centre de facturation</h3>
+        <div class="ui-mock">
+            ┌─────────────────────────────────────────────────────────────────────────────┐<br>
+            │  Opérations quotidiennes / Vols                                             │<br>
+            │  [Date from] → [Date to]  [Type▼] [Mise en route▼] [Statut pending▼]  🔍 Preview  📤 Apply All │<br>
+            ├──────────────┬───────────┬───────────┬────────────┬───────────┬─────────────┤<br>
+            │ ▸ 25/04      │ Dupont    │ F-CABC    │ Initiation │ €111.00   │ 🟢 pending  │<br>
+            │ ▸ 25/04      │ Martin    │ F-CXYZ    │ Solo       │ € 85.00   │ 🟢 pending  │<br>
+            └──────────────┴───────────┴───────────┴────────────┴───────────┴─────────────┘
+        </div>
+        <h3>2.2 Étapes : prévisualiser → appliquer (brouillon) → poster</h3>
+        <ol>
+            <li><strong>Filtrer</strong> les vols avec statut <code>pending</code> (non facturés).</li>
+            <li><strong>Développer une ligne</strong> (▼) : visualiser les lignes de tarification, les packs disponibles et le montant brut.</li>
+            <li><strong>“Appliquer (brouillon)”</strong> 📄 : crée une écriture <strong>brute</strong> dans le journal FL, enregistre les consommations de forfait (<code>member_pack_consumptions</code>) et met à jour l’écriture REM du pilote (brouillon).</li>
+            <li><strong>“Poster”</strong> 📤 : valide l’écriture (devient immuable). Possibilité de faire “Appliquer+Poster” directement.</li>
+        </ol>
+        <h3>2.3 Indicateurs de statut</h3>
+        <p>
+            <span class="badge badge-pending">pending</span> en attente de facturation<br>
+            <span class="badge badge-applied">applied</span> écriture brouillon FL créée<br>
+            <span class="badge badge-posted">posted</span> écriture définitive<br>
+            <span class="badge badge-correcting">correcting</span> correction en cours (vol modifié après facturation)<br>
+            <span class="badge badge-error">missing pricing</span> version de tarif manquante → bloquant
+        </p>
+        <div class="card-note">
+            ✅ <strong>Opérations batch</strong> : sélectionner plusieurs vols → “Apply All” (transaction atomique). Si un vol échoue, tout est annulé.
+        </div>
+
+        <!-- Pack Management -->
+        <h2 id="packs">🎁 3. Gestion des forfaits membres</h2>
+        <h3>3.1 Achat d’un forfait</h3>
+        <p>Depuis la fiche membre (<code>Membres → [membre] → Forfaits</code>) ou via action rapide dans l’onglet Vols. L’achat déclenche :</p>
+        <ul>
+            <li>Écriture comptable <strong>postée</strong> dans le journal VT : débit 411 / crédit 7066 (montant du pack).</li>
+            <li>Mise à jour du solde visible dans <code>vw_member_pack_balances</code>.</li>
+            <li>Si le paramètre <strong>“Recalcul après achat”</strong> est activé, les vols passés éligibles (dans la même année fiscale) sont recalculés automatiquement.</li>
+        </ul>
+        <h3>3.2 Consultation du solde restant</h3>
+        <p>Fiche membre → onglet Forfaits :</p>
+        <table>
+            <tr><th>Type</th><th>Acheté</th><th>Consommé</th><th>Restant</th></tr>
+            <tr><td>flight_hours</td><td>25.0 h</td><td>12.5 h</td><td>12.5 h</td></tr>
+            <tr><td>winch_launches</td><td>20</td><td>8</td><td>12</td></tr>
+        </table>
+        <h3>3.3 Ajustement manuel : modifier la date “Valide à partir de” (valid_from)</h3>
+        <p>Lorsqu’une consommation ne doit pas s’appliquer à un vol (ex: achat postérieur hors délai de tolérance), il suffit de modifier la colonne <strong>Valid from</strong> dans la liste des consommations du membre (pencil ✏️). Si <code>valid_from</code> devient postérieur à la date du vol, la consommation est exclue du calcul REM. L’écriture d’ajustement REM est recalculée instantanément. <br>⚠️ Ce mécanisme remplace l’ancien “freeze/unfreeze”.</p>
+
+        <!-- REM Period -->
+        <h2 id="rem-period">📅 4. Périodes REM & clôture</h2>
+        <p>Les réductions forfaitaires sont regroupées par période (par défaut 30 jours). Une seule écriture de brouillon par membre et par période dans le journal REM.</p>
+        <ul>
+            <li><strong>Consulter les brouillons REM</strong> : <code>Comptabilité → Remises périodiques</code> – liste des membres avec total des réductions.</li>
+            <li><strong>Clôturer une période</strong> : l’ensemble des écritures REM brouillon sont <strong>postées</strong> (deviennent immuables). Une nouvelle période vierge est ouverte automatiquement.</li>
+        </ul>
+        <div class="card-note">
+            🔒 La clôture intervient généralement en fin de mois ou trimestre. Après clôture, aucune modification rétroactive des consommations n’est possible sans écriture de contre-passation.
+        </div>
+
+        <!-- Member portal -->
+        <h2 id="member-portal">🌐 5. Portail membre (accès externe)</h2>
+        <p>Les membres peuvent consulter leurs vols, factures et solde via un portail sécurisé par jeton (lecture seule).</p>
+        <h3>5.1 Activer l’accès</h3>
+        <p><code>Membres → [membre] → Accès externe</code> : activer l’interrupteur “Accès portail”, régénérer le jeton. Le communiquer au membre (email, impression).</p>
+        <h3>5.2 Ce que le membre voit</h3>
+        <ul>
+            <li>Tableau de bord : solde compte 411, forfaits actifs avec quantités restantes, 5 derniers vols.</li>
+            <li>Liste détaillée des vols : montant brut, réduction appliquée (détail par ligne), net dû.</li>
+            <li>Écritures comptables le concernant (consultation).</li>
+        </ul>
+        <div class="ui-mock">
+            Vol du 25/04/2026 – Planeur F-CABC<br>
+            Tarification brute : 100.00€ (1h) + 11.00€ treuil → 111.00€<br>
+            Remise (Pack 25h) : -80.00€<br>
+            <strong>Net dû : 31.00€</strong>
+        </div>
+
+        <!-- Machine Dashboard -->
+        <h2 id="machine-dash">📊 6. Dashboard analytique par machine</h2>
+        <p><strong>Accès :</strong> <code>Comptabilité → Machines</code>. Agrège les lignes comptables où la dimension <code>analytical_asset_uuid</code> est renseignée (avion, treuil, remorqueur).</p>
+        <table>
+            <thead><tr><th>Machine</th><th>Débit (coût)</th><th>Crédit (CA)</th><th>Achats forfaits liés</th><th>Conso forfait</th><th>Vols</th></tr></thead>
+            <tbody>
+                <tr><td>F-CABC (ASK21)</td><td>0 €</td><td>2 450 €</td><td>500 €</td><td>45.0 h</td><td>24</td></tr>
+                <tr><td>TREUIL</td><td>0 €</td><td>528 €</td><td>0 €</td><td>48</td><td>48</td></tr>
+            </tbody>
+        </table>
+        <p>En cliquant sur une machine, affichage du détail des écritures (date, référence, débit/crédit, membre). Export CSV disponible.</p>
+
+        <!-- Troubleshooting -->
+        <h2 id="troubleshooting">🛠️ 7. Dépannage fréquent</h2>
+        <div class="warning-note card-note">
+            <strong>Erreur "Aucune version tarifaire active"</strong> → Vérifier qu’une <code>PricingVersion</code> existe pour le type d’actif à la date du vol (statut actif, plage de dates).
+        </div>
+        <div class="warning-note card-note">
+            <strong>Facturation club : "compte de charge manquant"</strong> → Configurer soit le <strong>compte de charge</strong> dans le Type VI, soit le compte par défaut dans <code>Paramètres facturation vols</code>.
+        </div>
+        <div class="warning-note card-note">
+            <strong>Un forfait ne s’applique pas</strong> → Vérifier : solde restant >0, type de pack correspond à la prestation (flight_hours / winch_launches), <code>valid_from</code> ≤ date vol, et lien <code>pack_applicability</code> existe bien avec discounted_unit_price.
+        </div>
+        <p><strong>Vol modifié après facturation postée</strong> : le badge "correcting" apparaît. Le comptable doit créer une contre-passation de l’écriture originale, puis générer une nouvelle facturation (brouillon + poster). La traçabilité est conservée.</p>
+
+        <!-- Glossary -->
+        <h2 id="glossary">📖 Glossaire</h2>
+        <div class="glossary-grid">
+            <div class="glossary-item"><strong>411</strong> – Compte client (créances membres)</div>
+            <div class="glossary-item"><strong>7066</strong> – Ventes de forfaits / packs (classe 7)</div>
+            <div class="glossary-item"><strong>658</strong> – Compte de charge pour remises (classe 6)</div>
+            <div class="glossary-item"><strong>Journal FL</strong> – Écritures de vol brutes</div>
+            <div class="glossary-item"><strong>Journal REM</strong> – Écritures d’ajustement périodique (rabais)</div>
+            <div class="glossary-item"><strong>Valid from</strong> – Date à partir de laquelle une consommation de pack est prise en compte</div>
+            <div class="glossary-item"><strong>FIFO</strong> – Ordre de consommation des packs : premier acheté, premier consommé</div>
+            <div class="glossary-item"><strong>Membre club</strong> – Enregistrement sentinelle pour facturer les vols au club</div>
+            <div class="glossary-item"><strong>Analytical asset</strong> – Machine (planeur, treuil) attachée aux lignes comptables</div>
+        </div>
+
+        <h2>⌨️ Raccourcis clavier (onglet Vols)</h2>
+        <ul>
+            <li><kbd>Ctrl+Shift+P</kbd> – Prévisualiser les vols filtrés</li>
+            <li><kbd>Ctrl+Shift+A</kbd> – Appliquer tous les vols en attente</li>
+            <li><kbd>Ctrl+Shift+Enter</kbd> – Appliquer + poster le vol courant</li>
+            <li><kbd>→</kbd> / <kbd>←</kbd> – Développer / réduire la ligne sélectionnée</li>
+        </ul>
+
+        <h2>📌 Historique des versions</h2>
+        <table>
+            <tr><th>Version</th><th>Date</th><th>Changements majeurs</th></tr>
+            <tr><td>3.0</td><td>2026</td><td>Découplage facturation brute + REM, remplacement du freeze par <code>valid_from</code>, forfaits consommables, tableau de bord machines, portail membre, facturation club.</td></tr>
+        </table>
+        <hr>
+        <p style="font-size:0.85rem; text-align:center; margin-top:1.5rem;">Manuel basé sur l’implémentation ERP – module facturation vols · Pour toute assistance technique, contacter l’administrateur club.</p>
+    </div>
+    <footer>
+        © Association – Module Vols & Forfaits · Document généré depuis la specification v3.0 (approche REM)
+    </footer>
+</div>
+</body>
+</html>
+```
