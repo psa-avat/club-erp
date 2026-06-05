@@ -1322,6 +1322,7 @@ class ValidatedFlight(Base):
 
     # Accounting entry linkage
     accounting_entry_uuid = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)  # Link to GL entry
+    has_discount = Column(Boolean, nullable=False, default=False, comment="True when pack discount has been applied to this flight")
 
     created_at = Column(
         DateTime(timezone=True),

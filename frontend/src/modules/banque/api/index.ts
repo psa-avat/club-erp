@@ -1288,8 +1288,8 @@ export function useCloseRemPeriodMutation() {
 // ── Billable Flights (Phase 4/5) ─────────────────────────────────────────
 
 export const banqueFlightsKeys = {
-  billable: (dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number) =>
-    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all', typeOfFlight ?? 'all', launchMethod ?? 'all'] as const,
+  billable: (dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, status?: string) =>
+    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all', typeOfFlight ?? 'all', launchMethod ?? 'all', status ?? 'pending'] as const,
 }
 
 export type BillableFlight = {
@@ -1307,15 +1307,16 @@ export type BillableFlight = {
   type_label: string | null
   total_preview: string | null
   status: string
+  has_discount: boolean
   errors: string[]
   warnings: string[]
   observations: string | null
   correction_reason: string | null
 }
 
-export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, enabled = true) {
+export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, status?: string, enabled = true) {
   return useQuery({
-    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo, typeOfFlight, launchMethod),
+    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo, typeOfFlight, launchMethod, status),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -1323,6 +1324,7 @@ export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, type
       if (dateTo) params.set('date_to', dateTo)
       if (typeOfFlight !== undefined) params.set('type_of_flight', String(typeOfFlight))
       if (launchMethod !== undefined) params.set('launch_method', String(launchMethod))
+      if (status) params.set('status', status)
       const query = params.toString() ? `?${params.toString()}` : ''
       const { data } = await apiClient.get<{ items: BillableFlight[]; total: number }>(
         `/api/v1/flights/billable${query}`,

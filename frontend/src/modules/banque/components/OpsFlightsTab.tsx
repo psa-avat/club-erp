@@ -18,7 +18,7 @@
  */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, FileText, CheckSquare, Square, Percent } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Alert } from '../../../components/ui/alert'
@@ -206,6 +206,8 @@ export function OpsFlightsTab() {
   const [dateTo, setDateTo] = useState('')
   const [filterType, setFilterType] = useState<number | undefined>(undefined)
   const [filterLaunch, setFilterLaunch] = useState<number | undefined>(undefined)
+  const [filterStatus, setFilterStatus] = useState<string>('pending')
+  const [selectedFlights, setSelectedFlights] = useState<Set<string>>(new Set())
   const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
   const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
   const [batchPreview, setBatchPreview] = useState<FlightBillingBatchPreviewResponse | null>(null)
@@ -215,6 +217,7 @@ export function OpsFlightsTab() {
     dateTo || undefined,
     filterType,
     filterLaunch,
+    filterStatus !== 'pending' ? filterStatus : undefined, // null = default pending
     true,
   )
 
@@ -318,6 +321,22 @@ export function OpsFlightsTab() {
     }
   }
 
+  function toggleSelect(uuid: string) {
+    setSelectedFlights((prev) => {
+      const next = new Set(prev)
+      if (next.has(uuid)) next.delete(uuid); else next.add(uuid)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedFlights.size === flights.length) {
+      setSelectedFlights(new Set())
+    } else {
+      setSelectedFlights(new Set(flights.map((f) => f.uuid)))
+    }
+  }
+
   // ── Derived state ─────────────────────────────────────────────────────
 
   const isPreviewing = previewMutation.isPending
@@ -368,6 +387,16 @@ export function OpsFlightsTab() {
             <option value="1">Treuil</option>
             <option value="2">Remorqueur</option>
             <option value="3">Autonome</option>
+          </select>
+          <select
+            className="h-8 rounded-lg border border-slate-300 px-2 text-sm"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="pending">En attente</option>
+            <option value="applied">Appliqué</option>
+            <option value="posted">Posté</option>
+            <option value="all">Tous</option>
           </select>
           <Button
             size="sm"
@@ -477,6 +506,11 @@ export function OpsFlightsTab() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
+                <th className="w-8 px-2 py-3">
+                  <button type="button" className="text-slate-400 hover:text-slate-700" onClick={toggleSelectAll}>
+                    {selectedFlights.size === flights.length && flights.length > 0 ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                  </button>
+                </th>
                 <th className="w-8 px-2 py-3" />
                 <th className="px-4 py-3 font-medium text-slate-600">Date</th>
                 <th className="px-4 py-3 font-medium text-slate-600">Pilote</th>
@@ -484,6 +518,7 @@ export function OpsFlightsTab() {
                 <th className="px-4 py-3 font-medium text-slate-600">Machine</th>
                 <th className="px-4 py-3 font-medium text-slate-600">Type</th>
                 <th className="px-4 py-3 font-medium text-slate-600">Total</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Remise</th>
                 <th className="px-4 py-3 font-medium text-slate-600">Statut</th>
                 <th className="px-4 py-3 font-medium text-slate-600">{t('common.actions')}</th>
               </tr>
@@ -491,7 +526,12 @@ export function OpsFlightsTab() {
             <tbody>
               {flights.map((f) => (
                 <Fragment key={f.uuid}>
-                  <tr className="border-b border-slate-100 hover:bg-slate-50">
+                  <tr className={`border-b border-slate-100 hover:bg-slate-50 ${selectedFlights.has(f.uuid) ? 'bg-sky-50' : ''}`}>
+                    <td className="px-2 py-3">
+                      <button type="button" className="text-slate-400 hover:text-slate-700" onClick={() => toggleSelect(f.uuid)}>
+                        {selectedFlights.has(f.uuid) ? <CheckSquare className="h-4 w-4 text-sky-600" /> : <Square className="h-4 w-4" />}
+                      </button>
+                    </td>
                     <td className="px-2 py-3">
                       <button
                         type="button"
@@ -523,6 +563,15 @@ export function OpsFlightsTab() {
                       {f.total_preview ?? '—'}
                     </td>
                     <td className="px-4 py-3">
+                      {f.has_discount ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700" title="Remise forfait appliquée">
+                          <Percent className="h-3 w-3" /> Pack
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         f.status === 'posted' ? 'bg-green-100 text-green-700' :
                         f.status === 'applied' ? 'bg-blue-100 text-blue-700' :
@@ -547,7 +596,7 @@ export function OpsFlightsTab() {
                               <Play className="h-3.5 w-3.5" />
                             )}
                           </button>
-                          {canPost && (
+                          {canPost && f.status === 'pending' && (
                             <>
                               <button
                                 type="button"
@@ -583,7 +632,7 @@ export function OpsFlightsTab() {
                   </tr>
                   {expandedFlight === f.uuid && (
                     <tr>
-                      <td colSpan={9} className="bg-slate-50/50 px-6 py-4">
+                      <td colSpan={11} className="bg-slate-50/50 px-6 py-4">
                         {/* Flight comments & modification reason */}
                         {(f.observations || f.correction_reason) && (
                           <div className="mb-3 flex flex-wrap gap-3">

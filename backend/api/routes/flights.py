@@ -431,6 +431,7 @@ class BillableFlightItem(BaseModel):
     type_label: str | None
     total_preview: str | None
     status: str  # pending | applied | posted
+    has_discount: bool = False
     errors: list[str] = []
     warnings: list[str] = []
     observations: str | None = None
@@ -455,11 +456,19 @@ async def list_billable_flights(
     date_to: date | None = Query(None),
     type_of_flight: int | None = Query(None, ge=0, le=7, description="Filter by flight type (0-7)"),
     launch_method: int | None = Query(None, ge=0, le=3, description="Filter by launch method (0-3)"),
+    status: str | None = Query(None, pattern="^(pending|applied|posted|all)$", description="Filter by billing status"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
 ):
-    """List flights ready for billing (not yet applied) within a date range."""
-    filters = [ValidatedFlight.accounting_entry_uuid.is_(None)]
+    """List flights with billing status info. Default returns only unbilled (pending) flights."""
+    filters: list = []
+    if status is None or status == "pending":
+        filters.append(ValidatedFlight.accounting_entry_uuid.is_(None))
+    elif status == "applied":
+        filters.append(ValidatedFlight.billing_quote_state == "applied")
+    elif status == "posted":
+        filters.append(ValidatedFlight.billing_quote_state == "posted")
+    # status=all → no accounting_entry_uuid filter
     if date_from is not None:
         filters.append(ValidatedFlight.jour >= date_from)
     if date_to is not None:
@@ -515,6 +524,7 @@ async def list_billable_flights(
             type_label=TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else None,
             total_preview=None,
             status="pending",
+            has_discount=f.has_discount or False,
             observations=f.observations,
             correction_reason=f.correction_reason,
         ))

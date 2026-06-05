@@ -6,6 +6,46 @@ Add the billing **apply** step that turns previews into **Draft** accounting ent
 
 ---
 
+## Billing Workflow (Complete Process)
+
+```mermaid
+flowchart LR
+    A[1. Select flights] --> B[2. Calculate prices]
+    B --> C[3. Apply → Draft entries]
+    C --> D[4. Apply pack discounts]
+    D --> E[5. Send to GESASSO]
+    D --> F[6. Send to OSRT]
+    
+    G[Buy pack after billing] --> H[7. Discount review]
+    H --> D
+    
+    style A fill:#e8f4fd
+    style B fill:#e8f4fd
+    style C fill:#e8f4fd
+    style D fill:#e8f4fd
+    style E fill:#f0f0f0,stroke-dasharray: 5 5
+    style F fill:#f0f0f0,stroke-dasharray: 5 5
+    style G fill:#fff3e0
+    style H fill:#fff3e0
+```
+
+| Step | Action | Module | Tooling |
+|---|---|---|---|
+| **1** | Select flights to charge | Daily Ops → Flights tab | Checkboxes + filters |
+| **2** | Calculate prices (preview) | Daily Ops → Flights tab | 🔍 Preview button (per flight or batch) |
+| **3** | Apply — create Draft accounting entries | Daily Ops → Flights tab | 📄 Apply button |
+| **4** | Apply pack discounts to newly billed flights | Daily Ops → Packs tab | 🔄 Discount review (see below) |
+| **5** | Send flights to GESASSO (track pilot activities) | Separate module ⏱️ | API to create |
+| **6** | Send flights to OSRT (track machine activities) | Separate module ⏱️ | API to create |
+
+**Key rules:**
+- Steps 5 & 6 can be executed **independently and later** — they are not part of the billing critical path
+- Pilots can **buy packs after flights are billed** — the discount review step handles retroactive application
+- A **discount review** recalculation can be launched at any time from the **Packs tab** for all pilots with active packs
+- Discounts apply **only from the pack's `valid_from` date** — flights before that date are not discounted
+
+---
+
 ## Design Decisions
 
 | Decision | Choice |
@@ -41,6 +81,7 @@ Each `validated_flights` row carries two billing-related fields:
 |---|---|---|
 | `accounting_entry_uuid` | UUID, unique, nullable | FK → `accounting_entries.uuid`. Set when a Draft FL entry is created. The `UNIQUE` constraint **prevents double billing**: once set, no second entry can reference this flight |
 | `billing_quote_state` | VARCHAR(16), default `'pending'` | Lifecycle state: `pending` → `applied` → `posted` |
+| `has_discount` | BOOLEAN, default false | **NEW** — set to `true` when the billing apply step records at least one `member_pack_consumptions` row for this flight. Indicates that a pack discount was applied. Reset to `false` if consumptions are deleted |
 | `erp_status` | SMALLINT, default 0 | 0=validated (draft), 1=transferred (locked), 2=modified_after_transfer |
 
 ### 2. Lifecycle States & Transitions
@@ -75,37 +116,196 @@ stateDiagram-v2
 - `OpsFlightsTab` queries `/api/v1/flights/billable` which only returns unbilled flights
 - Once applied, the flight disappears from the list (query auto-refreshes on success)
 
-### 4. Draft Entry Deletion (Unlink)
+### 4. Delete / Reverse Accounting Entry
 
-If a Draft FL entry is deleted (manually via accounting or system cleanup), the flight must be returned to `pending` state:
+A dedicated function handles both cases:
+
+```python
+async def delete_or_reverse_entry(
+    db, entry_uuid, fiscal_year_uuid, user_id, reason: str
+) -> AccountingEntry | None:
+    """
+    If entry is Draft (state=1) → delete it + log reason + unl flights.
+    If entry is Posted (state=2) → create a reversal entry + log reason.
+    """
+```
+
+#### 4a. Draft Entry — Hard Delete + Unlink
+
+When the entry is Draft (state=1, not yet posted):
 
 ```
-DELETE /api/v1/accounting/entries/{entry_uuid}
-  → Also NULLify validated_flights.accounting_entry_uuid
-  → Reset billing_quote_state to 'pending'
-  → Delete associated member_pack_consumptions rows
-  → If REM Draft entry now has zero consumptions, delete or zero it
+POST /api/v1/accounting/entries/{entry_uuid}/delete
+Body: { "reason": "Erreur de saisie : doublon" }
+
+Backend:
+  1. Verify entry.state == 1 (Draft)
+  2. Find all validated_flights linked to this entry (accounting_entry_uuid)
+     → NULLify accounting_entry_uuid on each flight
+     → Reset billing_quote_state to 'pending'
+  3. Delete all member_pack_consumptions rows linked to this entry
+  4. If REM Draft entry now has zero consumptions, delete or zero it
+  5. Log the deletion to audit_log (entry_uuid, reason, user_id, action='delete_draft')
+  6. Delete the entry and its lines
+  → Returns 204 No Content
 ```
 
-This operation is **allowed only for Draft entries** (state=1). Posted entries cannot be deleted — they require reversal.
+**Recovery on orphaned links** (entry already deleted manually):
+- Admin tool in flight detail UI: "Unlink billing" button that NULLifies `accounting_entry_uuid`
+- Batch cleanup job: `SELECT * FROM validated_flights WHERE accounting_entry_uuid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM accounting_entries WHERE uuid = accounting_entry_uuid)`
 
-**If a Draft entry is deleted outside this flow** (e.g. direct DB manipulation):
-- The flight's `accounting_entry_uuid` still points to a non-existent entry
-- Recovery: Admin can manually NULLify the field via the flight detail UI
-- Future: Add a cleanup job that detects orphaned `accounting_entry_uuid` values (WHERE entry deleted but flight still linked)
+#### 4b. Posted Entry — Reversal + Reason
 
-### 5. Flight Modification After Billing
+When the entry is Posted (state=2, immutable):
 
-When a flight is re-imported from Planche after being billed:
+```
+POST /api/v1/accounting/entries/{entry_uuid}/reverse
+Body: { "reason": "Vol annulé par le pilote" }
 
-1. **Flight is Draft** (state=1): The Draft entry is replaced. New preview → new Draft → old Draft discarded
-2. **Flight is Posted** (state=2): The flight's `erp_status` is set to 2 (`modified_after_transfer`). The accountant must:
-   - Create a reversal of the original posted entry
-   - Run a new preview with current data
-   - Create a new Draft → post it
-   - The reversal and new entry are linked to the flight
+Backend:
+  1. Verify entry.state == 2 (Posted)
+  2. Verify no existing reversal already linked (reversal_of_entry_uuid is NULL)
+  3. Create a new Draft entry in the same journal with:
+     - Opposite amounts (debit ↔ credit) for each line
+     - Reference: "REVERSAL-{original_reference}"
+     - Description: "Annulation de {original_description} — {reason}"
+     - reversal_of_entry_uuid = original entry UUID
+     - analytical_asset_uuid, member_uuid copied from original lines
+  4. Set entry_hash on the reversal (ensures deterministic content)
+  5. Post the reversal immediately (state=2)
+  6. Set original entry's reversal_of_entry_uuid (prevents double reversal)
+  7. If linked to validated_flights:
+     → NULLify accounting_entry_uuid
+     → Set erp_status = 2 (modified_after_transfer)
+     → Reset billing_quote_state to 'pending'
+     → Keep existing member_pack_consumptions or recalculate
+  8. Log to audit_log (original_entry_uuid, reversal_entry_uuid, reason, user_id, action='reversal')
+  → Returns the reversal entry
+```
 
-The frontend shows a **warning badge** on flights with `erp_status=2` or flights where the current Planche revision is higher than when billed.
+**Frontend UI:**
+- Draft entries: "🗑️ Delete" button + confirmation dialog with reason textarea
+- Posted entries: "↩️ Reverse" button + confirmation dialog with reason textarea
+- Both buttons visible in the accounting entry detail panel
+
+### 5. Dual Flight Status Model
+
+Each `validated_flights` row has **two independent status dimensions**:
+
+| Dimension | Field | Values | Tracks |
+|---|---|---|---|
+| **Planche side** | `source_status` | `active` / `updated` / `deleted` | What Planche reports about this flight |
+| **ERP side** | `erp_status` | 0=validated / 1=transferred(billed) / 2=modified_after_transfer | Is the flight billed/locked in the ERP |
+| **ERP billing** | `billing_quote_state` | `pending` / `applied` / `posted` | Billing lifecycle substate |
+| **ERP billing** | `accounting_entry_uuid` | UUID or NULL | NULL = not billed; set = billed |
+
+#### 5a. Planche Status Transitions
+
+```
+                    ┌──────────────────────────────────┐
+                    │          Planche side             │
+                    │          source_status            │
+                    └──────────────────────────────────┘
+
+     ┌──────────┐
+     │  active  │───→ transferred (with erp_status=1)
+     │ (created)│───→ updated (flight modified in Planche)
+     │          │───→ deleted (flight removed in Planche)
+     └──────────┘
+          │
+          │
+     ┌──────────┐
+     │ updated  │───→ transferred (with erp_status=1)
+     │(modified)│───→ updated (re-modified)
+     │          │───→ deleted
+     └──────────┘
+          │
+          │
+     ┌──────────┐
+     │ deleted  │───→ transferred (re-imported after deletion)
+     └──────────┘
+```
+
+**Planche status transitions from the sync API:**
+- `created` → `active` (first import)
+- `created` → `updated` (flight changed before first ERP billing)
+- `created` → `deleted` (flight removed from Planche)
+- `modified` → `active` (updated after being active)
+- `modified` → `modified` (updated again)
+- `modified` → `deleted` (removed after being modified)
+- `deleted` → `active` (re-imported after deletion)
+
+#### 5b. ERP Status Transitions
+
+```
+                    ┌──────────────────────────────────┐
+                    │           ERP side                │
+                    │        erp_status                 │
+                    └──────────────────────────────────┘
+
+     ┌─────────┐
+     │    0    │───→ 1 (transferred = billing applied or posted)
+     │(valid.) │───→ 2 (modified_after_transfer — Planche changed it after billing)
+     └─────────┘
+          │
+          │
+     ┌─────────┐
+     │    1    │───→ 2 (Planche update detected after billing)
+     │(billed) │───→ back to 0 (if billing is reversed/deleted)
+     └─────────┘
+          │
+          │
+     ┌─────────┐
+     │    2    │───→ back to 1 (after reversal + rebill)
+     │(modif.) │
+     └─────────┘
+```
+
+**Discount tracking:** The `has_discount` boolean on `validated_flights` indicates whether pack discounts were applied:
+
+| Value | Meaning | Set when |
+|---|---|---|
+| `false` | No discount — flight billed at gross price | Default — no `member_pack_consumptions` rows for this flight |
+| `true` | Discount applied — at least one `member_pack_consumptions` row exists | `apply_flight_billing` records a consumption. Reset to `false` when all consumptions for this flight are deleted |
+
+**Combined view — what the user sees:**
+
+| source_status | erp_status | billing_quote_state | has_discount | User message |
+|---|---|---|---|---|
+| `active` | 0 | `pending` | false | ✅ Billable — no discount yet |
+| `active` | 0 | `pending` | true | ✅ Billable — has discount from previous apply (rare) |
+| `active` | 1 | `applied` | false | 📄 Draft entry — gross price only, no pack used |
+| `active` | 1 | `applied` | true | 📄 Draft entry — gross with 🔵 pack discount |
+| `active` | 1 | `posted` | false | 📌 Posted — gross only |
+| `active` | 1 | `posted` | true | 📌 Posted — gross + 🔵 pack discount applied |
+| `updated` | 0 | `pending` | false | ⚠️ Modified in Planche — review before billing |
+| `updated` | 1 | `applied` | any | ⚠️ Modified after Draft — will be replaced on rebill |
+| `updated` | 2 | `posted` | any | 🟠 Modified after posting — reversal needed |
+| `deleted` | 0 | `pending` | any | 🗑️ Deleted in Planche — not billable |
+| `deleted` | 1 | `applied/posted` | any | 🗑️ Deleted in Planche but billed — reversal recommended |
+
+**End state target:** `source_status='active'` (or `'updated'` reconciled) + `erp_status=1` + `billing_quote_state='posted'` + `accounting_entry_uuid` set.
+
+#### 5c. Handling Planche Changes After Billing
+
+When the Planche sync detects changes for an already-billed flight:
+
+1. **If billing is Draft** (`state=1`):
+   - Delete the Draft entry (see 4a)
+   - Update flight data from Planche
+   - Set `source_status='active'` (reconciled)
+   - Flight reappears in billable list
+
+2. **If billing is Posted** (`state=2`):
+   - Set `erp_status=2` (modified_after_transfer)
+   - Set `source_status='updated'`
+   - Warning badge in UI: "Flight modified after posting — reverse & rebill"
+   - Accountant uses reversal flow (4b) then re-bills
+
+3. **If flight is deleted in Planche after billing:**
+   - Set `source_status='deleted'`
+   - Warning badge: "Flight deleted in Planche — reversal recommended"
+   - Accountant decides whether to reverse the entry or keep it
 
 ### 6. Billing Status Filters
 
@@ -430,55 +630,73 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 ---
 
-### Phase 5 — Daily Operations: Flights Tab (Frontend)
+### Phase 5 — Daily Operations: Flights Tab (Frontend) ✅ DONE
 
-**Steps** (depends on Phase 4):
-1. Create `frontend/src/modules/banque/components/OpsFlightsTab.tsx`:
-   - **Header**: date range picker + "Sync from Planche" button + "Calculate" button + "Post All" button
-   - **Flights list**: table with columns: date, pilot, glider, type, total (preview), status (pending/applied/posted), actions
-   - **Row expand**: click to see detail — payers, applied lines, accounting lines, and pack consumptions
-   - **Bulk actions**: select flights → "Preview" → "Apply" → "Post"
-   - **Warnings/errors**: color-coded badges for each flight (e.g., pricing missing = red, pack applied = blue)
-   - **Net display**: each flight row shows the gross amount. A separate "Discounts" panel shows the current period's REM adjustment per pilot, with link to `member_pack_consumptions` detail.
-2. Integrate component into `BanqueDailyOpsPage.tsx` — replace `flights` tab placeholder with `<OpsFlightsTab />`
-3. Add pack purchase form (modal/dialog) for quick pack purchase:
-   - Member selector, pack definition selector (includes 25h packs), quantity multiplier, "Buy Pack" → creates posted VT entry
-4. Add REM period management panel: view current period Drafts, close period, open new period
-5. Add translations in `frontend/src/modules/banque/i18n/` (French + English)
-6. Add API client calls in `frontend/src/modules/banque/api/`
+**All steps implemented:**
+1. ✅ `OpsFlightsTab.tsx` with:
+   - **Header**: date range picker + filters (type_of_flight, launch_method, status) + Preview + Apply All buttons
+   - **Flights list**: table with columns: checkbox (selection), expand, date, pilot, second/charge, machine, type, total, discount badge 🔵, status, actions
+   - **Row expand**: click for full preview panel (payers, lines, accounting lines)
+   - **Individual actions**: Apply (Draft) + Apply+Post per flight row
+   - **Batch actions**: Preview batch + Apply All
+   - **Discount badge**: shows 🔵 "Pack" when `has_discount=true`
+   - **Selection**: checkboxes with select-all, highlighted rows
+   - **Status filter**: pending/applied/posted/all with backend query support
+2. ✅ Integrated into `BanqueDailyOpsPage.tsx`
+3. ✅ `has_discount` column added to `validated_flights` model (migration 043)
+4. ✅ `BillableFlightItem` backend schema + frontend type updated with `has_discount`
+5. ✅ `status` query parameter on `GET /api/v1/flights/billable` endpoint
 
-**Alert trigger safety**: Balance checks must evaluate the **combined** net of the gross FL entry + the current REM Draft adjustment — never the gross alone.
-
-**Verification**: UI renders; can select flights, preview at gross, apply; REM panel shows per-pilot adjustment; can close period.
+**Alert trigger safety**: Combined net of FL entry + REM adjustment — never gross alone.
 
 ---
 
-### Phase 6 — Post-Purchase & Recalculation
+### Phase 6 — Post-Purchase, Discount Review & External Sync
 
 **Steps** (depends on Phase 3, parallel with Phase 4-5):
 1. Backend: `recalculate_pack_consumptions(flight_uuid, fiscal_year_uuid, user_id)`:
    - Deletes existing `member_pack_consumptions` rows for this flight (if any)
    - Re-runs discount eligibility against current `vw_member_pack_balances`
+   - Only applies discount if `valid_from <= flight.jour` (pack activation date)
    - Inserts new `member_pack_consumptions` rows
+   - Updates `validated_flights.has_discount = true/false`
    - Calls `upsert_rem_entry()` to update the pilot's REM Draft entry with the new total
    - *The FL entry is untouched — only the REM adjustment is updated*
 2. Backend: `batch_recalculate(flight_uuids, fiscal_year_uuid, user_id)`:
    - Same logic as single recalc but in a transaction
-3. Backend: `handle_post_purchase_pack(member_uuid, pack_type, fiscal_year_uuid, user_id)`:
+3. **Discount Review** (triggered from Packs tab):
+   - `POST /api/v1/packs/discount-review` — recalculates discounts for ALL billed flights
+   - Identifies all members with active packs (positive balance in `vw_member_pack_balances`)
+   - For each member, finds all flights where:
+     - `accounting_entry_uuid IS NOT NULL` (billed)
+     - Flight date >= pack's `valid_from`
+     - Has eligible pricing items matching pack type
+   - Calls `recalculate_pack_consumptions()` for each eligible flight
+   - Returns summary: `{ members_affected: N, flights_recalculated: M, total_discount: X }`
+4. Backend: `handle_post_purchase_pack(member_uuid, pack_type, fiscal_year_uuid, user_id)`:
    - After a pack purchase is recorded in the GL, identifies all already-billed flights for that member in the same FY eligible for this `pack_type`
    - Calls `recalculate_pack_consumptions()` for each eligible flight
    - Updates the REM Draft entry for the pilot
-4. **Launch pack support**: The recalc engine respects `pack_type` — a winch-launch pack only discounts launch lines
-5. UI: 
-   - "Recalculate discounts" button on flight detail panel
-   - "Buy pack" quick action when a flight has eligible lines at full price
-   - "Refresh REM adjustment" after pack purchase (recalculates consumptions + updates REM Draft)
+5. **GESASSO sync** (separate module):
+   - `POST /api/v1/integrations/gesasso/sync-flights` — sends billed flights to GESASSO
+   - Tracks pilot activities (flight hours, types, dates)
+   - Can be executed independently at any time
+6. **OSRT sync** (separate module):
+   - `POST /api/v1/integrations/osrt/sync-flights` — sends billed flights to OSRT
+   - Tracks machine activities (hours, landings, maintenance triggers)
+   - Can be executed independently at any time
+7. UI — **Packs tab discount review**:
+   - "🔄 Apply discounts to all billed flights" button
+   - Shows preview of affected members and flights before applying
+   - Progress indicator during batch recalc
+   - Results summary after completion
 
 **Verification**: 
 - Flight with 1h glider at gross €100, member buys 25h pack → recalculate → verify `member_pack_consumptions` row with `discount_unit_price=80`
-- Flight with winch launch, member buys winch pack → recalculate → verify consumption on launch line only
+- Flight before pack date → no discount applied
+- Flight after pack date → discount applied
+- Discount review recalculates all eligible billed flights
 - REM Draft entry updated correctly after batch recalculate
-- Multiple packs of same type consumed FIFO, verified via `vw_member_pack_balances`
 
 ---
 
@@ -499,7 +717,7 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 **Steps** (depends on Phase 3, parallel with Phase 4-7):
 
-**Context**: The ERP already has a token-based `expense_access` mechanism on `MemberSheet`. This phase extends that concept into a full self-service view where members can see their billing, flight log, and account movements without needing an ERP user account.
+**Context**: The ERP already has a token-based `expense_access` mechanism on `MemberSheet`. This phase extends that concept into a full self-service view where members can manage their account without needing an ERP user account.
 
 1. **Backend — Public/Token-authenticated endpoints** (new router `backend/api/routes/member_portal.py`, no capability guard, uses token auth):
    - `POST /api/v1/member-portal/login` — Accepts a member identifier + expense access token, returns a short-lived JWT
@@ -507,21 +725,30 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
    - `GET /api/v1/member-portal/flights/{flight_uuid}/billing` — Detail of one flight billing (applied lines, accounting lines, pack consumptions)
    - `GET /api/v1/member-portal/account` — Account summary (current balance, active packs per type, pending/posted entries)
    - `GET /api/v1/member-portal/account/entries` — List accounting entries where the member appears (filterable by year, state)
+   - `GET /api/v1/member-portal/account/packs` — List active packs with remaining quantities
+   - `GET /api/v1/member-portal/expenses` — List expense declarations for the member
+   - `POST /api/v1/member-portal/expenses` — Declare an expense for the club (user submits amount + reason)
+   - `POST /api/v1/member-portal/deposit` — Record a deposit on the member's account (money put on account)
+   - `GET /api/v1/member-portal/tax-expenses` — List volunteer expenses for tax declaration purposes
 2. **Backend — Expense access token management** (enhance existing `expense_access`):
    - Add `member_portal_enabled` flag alongside `expense_access_enabled` (or reuse the existing one)
    - Token can be regenerated (existing endpoint) and distributed to the member via email/print
 3. **Frontend — Standalone member portal app** (new route group outside the shell, no auth guard):
    - `frontend/src/modules/member-portal/` — new module
    - Login page: member identifier + token input → obtain JWT → store in session-only storage
-   - Dashboard view: active packs with remaining quantities, last 5 flights, account balance
-   - Flights list: paginated table with billing detail expand
-   - Account entries: ledger view of posted entries affecting the member
+   - **Dashboard view**: active packs with remaining quantities, last 5 flights, account balance
+   - **Flights tab**: paginated table with billing detail expand, discount info, pack consumption
+   - **Account tab**: ledger view of posted entries, current balance, deposit form
+   - **Expenses tab**: 
+     - "Declare expense for club" form (amount, reason, receipt photo upload)
+     - "Volunteer expenses" page (used to generate tax forms) — lists volunteer missions with declarable amounts
+   - **Deposit tab**: form to record money put on account (payment method, amount)
    - Uses the same `decimal.js` and formatting utilities as the main app
    - Styled with Tailwind + shadcn, mobile-friendly (members may use phones)
 4. **Security rules**:
    - Token is hashed in DB (existing `_hash_token` pattern), never stored in plain text
    - JWT expires in 2 hours; refresh requires re-login
-   - Read-only: no mutation endpoints in the portal
+   - Deposit and expense declarations are read-write mutations, restricted to own account
    - Rate-limited: max 30 requests/minute per token
 
 **Accounting visibility rule**:
@@ -530,7 +757,10 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 - `vw_member_pack_balances` is exposed so members can see remaining pack units per type.
 
 **Verification**:
-- Enable expense access for a member → generate token → log in via portal → see flights, billing, account
+- Enable expense access for a member → generate token → log in via portal → see flights, billing, account, packs
+- Declare an expense → appears in expense list
+- Record a deposit → account balance updates
+- Volunteer expenses page shows correct data for tax forms
 - Invalid token → 401
 - Expired token → 401 with clear message
 - Flights from other members → not visible
@@ -621,7 +851,10 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 | File | Phase | Description |
 |---|---|---|
-| `backend/services/flight_billing.py` | Phase 6 | Add `recalculate_pack_consumptions()`, `batch_recalculate()`, `handle_post_purchase_pack()` |
+| `backend/services/flight_billing.py` | Phase 6 | Add `recalculate_pack_consumptions()`, `batch_recalculate()`, `handle_post_purchase_pack()`, `discount_review()` |
+| `backend/services/flight_packs.py` | Phase 6 | Add `discount_review(fiscal_year_uuid)` — applies pack discounts to all eligible billed flights |
+| `backend/api/routes/packs.py` | Phase 6 | Add `POST /api/v1/packs/discount-review` endpoint |
+| `backend/api/routes/integrations.py` | Phase 6 | Add GESASSO and OSRT sync endpoints (stubs) |
 | `frontend/src/modules/banque/components/PackPurchaseDialog.tsx` | Phase 5 | Modal for quick pack purchase |
 | `frontend/src/modules/banque/components/RemPeriodPanel.tsx` | Phase 5 | REM period management (view Drafts, close period) |
 | `frontend/src/modules/banque/components/OpsFlightsTab.tsx` | Phase 5 | Wire batch apply/post buttons, add pack purchase modal |
