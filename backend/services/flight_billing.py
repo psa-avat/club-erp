@@ -710,12 +710,8 @@ class FlightBillingPreviewService:
         return result.scalars().first()
 
     def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight) -> set[str]:
-        if source == "launch" and flight.launch_method == 2:
-            launch_type = flight.launch_type
-            if launch_type is None or str(launch_type).strip() in {"", "0"}:
-                return {"RMQ", "rmq", "remorque", "REMORQUE"}
-            return {str(launch_type), str(launch_type).strip()}
-
+        # Use the actual flight type (solo, partage, instruction…) for ALL sources.
+        # The launch machine pricing items are linked by flight type, not by launch method.
         label = FLIGHT_TYPE_LABELS.get(flight.type_of_flight)
         if label is None:
             return {str(flight.type_of_flight)}

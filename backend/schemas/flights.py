@@ -64,6 +64,7 @@ class ValidatedFlightItem(BaseModel):
     launch_asset_code: str | None = None
     launch_pilot_trigram: str | None = None
     charge_to_erp_id: str | None = None
+    charge_comment: str | None = None
     asset_code: str | None = None
     glider_erp_id: str | None = None
     launch_machine_erp_id: str | None = None
@@ -86,6 +87,12 @@ class ValidatedFlightListResponse(BaseModel):
     page_size: int = 50
     total_pages: int = 0
     error_details: list[str] = Field(default_factory=list)
+
+
+class FlightBillingFieldsUpdate(BaseModel):
+    """Update billable fields on a validated flight."""
+    charge_to_erp_id: str | None = None
+    charge_comment: str | None = None
 
 
 class FlightStatsResponse(BaseModel):

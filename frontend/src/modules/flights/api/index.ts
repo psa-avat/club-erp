@@ -75,6 +75,7 @@ export type ValidatedFlightItem = {
   launch_asset_code: string | null
   launch_pilot_trigram: string | null
   charge_to_erp_id: string | null
+  charge_comment: string | null
   asset_code: string | null
   glider_erp_id: string | null
   launch_machine_erp_id: string | null
@@ -251,6 +252,23 @@ export function useFlightBillingPreviewMutation() {
         { ...getAuthRequestConfig(), params: { fiscal_year_uuid: fiscalYearUuid || undefined } },
       )
       return data
+    },
+  })
+}
+
+export function useUpdateFlightBillingFieldsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ flightUuid, payload }: { flightUuid: string; payload: { charge_to_erp_id?: string | null; charge_comment?: string | null } }) => {
+      const { data } = await apiClient.patch<ValidatedFlightItem>(
+        `/api/v1/flights/${flightUuid}/billing-fields`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['flights'] })
     },
   })
 }

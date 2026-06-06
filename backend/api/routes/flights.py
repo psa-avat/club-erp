@@ -35,15 +35,16 @@ from api.security import get_current_user, require_capability
 from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE
 from models import Member, User, ValidatedFlight
 from schemas.flights import (
-    FlightFetchRequest,
     FlightBillingApplyItem,
     FlightBillingApplyRequest,
     FlightBillingApplyResponse,
     FlightBillingBatchApplyResponse,
     FlightBillingBatchPreviewResponse,
+    FlightBillingFieldsUpdate,
     FlightBillingPostRequest,
     FlightBillingPreviewRequest,
     FlightBillingPreviewResponse,
+    FlightFetchRequest,
     FlightFetchResponse,
     FlightStatsResponse,
     ValidatedFlightItem,
@@ -555,6 +556,51 @@ async def pending_billing_summary(
         total_amount="0",
         pending_count=total,
         error_count=0,
+    )
+
+
+# ── Flight field update (PATCH) ────────────────────────────────────────────
+
+
+@router.patch("/{flight_uuid}/billing-fields", response_model=ValidatedFlightItem)
+async def patch_flight_billing_fields(
+    flight_uuid: UUID,
+    request: FlightBillingFieldsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = flights_guard,
+):
+    """Update billable fields (charge_to_erp_id, charge_comment) on a flight."""
+    result = await db.execute(select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid))
+    flight = result.scalar_one_or_none()
+    if flight is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flight not found")
+
+    if request.charge_to_erp_id is not None:
+        flight.charge_to_erp_id = request.charge_to_erp_id
+    if request.charge_comment is not None:
+        flight.charge_comment = request.charge_comment
+
+    await db.commit()
+    await db.refresh(flight)
+
+    return ValidatedFlightItem(
+        uuid=str(flight.uuid),
+        planche_uuid=flight.planche_uuid,
+        jour=flight.jour,
+        pilot_erp_id=flight.pilot_erp_id,
+        second_pilot_erp_id=flight.second_pilot_erp_id,
+        charge_to_erp_id=flight.charge_to_erp_id,
+        charge_comment=flight.charge_comment,
+        asset_code=flight.asset_code or flight.glider_erp_id,
+        type_of_flight=flight.type_of_flight,
+        launch_method=flight.launch_method,
+        takeoff_time=flight.takeoff_time,
+        landing_time=flight.landing_time,
+        engine_time=flight.engine_time,
+        landing_count=flight.landing_count,
+        flight_km=flight.flight_km,
+        observations=flight.observations,
     )
 
 

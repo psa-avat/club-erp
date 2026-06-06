@@ -402,9 +402,9 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 ## Phases
 
-### Phase 1 — Data Models & Migration
+### Phase 1 — Data Models & Migration ✅ DONE
 
-**Steps** (all parallel — schema only, no logic):
+**All 10 items implemented** — models, migrations, resolution order, accounting dimensions.
 1. Create `pack_definitions` table (catalog model)
    - `uuid`, `code` (unique), `name`
    - `fiscal_year_uuid` (FK)
@@ -503,9 +503,9 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 ---
 
-### Phase 1b — Flight Billing Settings UI (Frontend)
+### Phase 1b — Flight Billing Settings UI (Frontend) ✅ DONE
 
-**Steps** (parallel with Phase 1, depends on Phase 1.7 table):
+**All steps implemented** — API hooks, settings form (3 journal-account cards + club billing + operational), BanqueSettingsPage integration, navigation link.
 1. Create new typed API hooks in `frontend/src/modules/banque/api/`:
    - `useFlightBillingSettingsQuery(fiscalYearUuid)` — fetches settings for a FY
    - `useUpsertFlightBillingSettingsMutation()` — creates/updates settings
@@ -558,39 +558,14 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 ---
 
-### Phase 2 — Backend Billing Configuration & Pack Management Service
+### Phase 2 — Backend Billing Configuration & Pack Management Service ✅ DONE
 
-**Steps** (depends on Phase 1 + 1b, can be parallelised):
-1. Create `backend/services/flight_billing_settings.py` with typed CRUD for the dedicated table:
-   - `get_flight_billing_settings(db, fiscal_year_uuid)` → returns typed `FlightBillingSettings` dataclass/model with all journal–account pairs
-   - `upsert_flight_billing_settings(db, fiscal_year_uuid, payload, user_id)` — INSERT ON CONFLICT upsert; validates that each journal–account pair exists (FK check)
-   - `get_flight_billing_settings_defaults(db)` — returns sensible defaults for a new FY (journals from `accounting_journals` lookup by code `FL`, `VT`, `REM`; accounts from `accounting_accounts` lookup by code `411`, `706`, `658`, etc.)
-   - `DELETE /api/v1/settings/flight-billing` — reset to defaults
-   - `GET /api/v1/settings/flight-billing?fiscal_year_uuid=...` — returns full settings object with all 3 journal–account pairs
-   - `PUT /api/v1/settings/flight-billing` — create or update settings (validates FK existence for all 6 UUIDs)
-   - `GET /api/v1/settings/flight-billing/defaults` — returns defaults for UI pre-fill
-2. Create `backend/services/flight_packs.py` with:
-   - `create_pack_definition(db, payload, user_id)` — defines catalog packs (ex: 25h glider)
-   - `manage_pack_applicability(db, pack_definition_uuid, applicable_items, user_id)` — links pricing items with their pack-discounted price
-   - `record_pack_consumption(db, member_uuid, flight_uuid, pack_type, quantity_consumed, discount_unit_price, total_discount_amount)` — inserts a row in `member_pack_consumptions`
-   - `get_member_pack_balance(db, member_uuid, fiscal_year_uuid, pack_type=None)` — queries `vw_member_pack_balances` view
-   - `compute_rem_adjustment(db, member_uuid, fiscal_year_uuid, period_start, period_end)` — sums `total_discount_amount` for non-frozen consumptions in period
-   - `upsert_rem_entry(db, member_uuid, fiscal_year_uuid, rem_journal_uuid, pack_discount_expense_account_uuid, total_discount, period_start, period_end, user_id)` — creates or updates the single Draft REM entry for this pilot/period in the configured REM journal; the `pack_discount_expense_account_uuid` is read from the applicable pack definition (or from `flight_billing_settings.default_pack_discount_expense_account_uuid` as fallback)
-   - `update_consumption_valid_from(db, consumption_uuid, valid_from)` — modify a consumption's applicability date (replaces freeze)
-3. Refactor `FlightBillingPreviewService`:
-   - **Club billing detection** (`_resolve_club_billing`): Two detection modes — (1) `charge_to_erp_id` matches the club member's `account_id`, (2) Flight is initiation type and a charge account can be resolved (from `vi_type_catalog.charge_account_uuid` or `settings.default_initiation_charge_account_uuid`)
-   - **Charge account resolution** (`_resolve_charge_account`): For initiation flights: `vi_type_catalog.charge_account_uuid` → `settings.default_initiation_charge_account_uuid`. For club-billed flights: `settings.club_charge_account_uuid` → `settings.default_initiation_charge_account_uuid` (fallback)
-   - **`_accounting_lines_for`**: Member UUID on 411 debit line, analytical asset UUID on both lines, no member on credit line
-   - **ValidatedFlight** : Add `charge_comment` field for audit trail; make `charge_to_erp_id` editable on the flight detail UI (not just Planche import)
-   - Compute `member_pack_consumptions` as a **post-billing step**: the FL entry is created at gross price; then eligible lines are checked against `pack_applicability` and `vw_member_pack_balances` to compute discount amounts. The GL is not modified at this stage
-4. Add pack purchase accounting entry creation helper:
-   - `create_pack_purchase_entry(db, member, amount, pack_sales_account_uuid, vt_journal_uuid, receivable_account_uuid, user_id)` → creates **posted** entry in the configured VT journal:
-     - Debit `receivable_account_uuid` (member dimension) for total amount
-     - Credit `pack_sales_account_uuid` (from the pack definition)
-   - *Pack purchases are posted immediately — the GL is the source of truth for pack balances*
-   - Pack purchases credit a class 7 revenue account; later REM discounts debit a class 6 expense account so pack margin is visible as 7 minus 6.
-
-**Verification**: Unit tests for billing config CRUD, pack definition + applicability CRUD, consumption recording, REM adjustment computation and upsert, pack purchase entry creation (posted).
+**All steps implemented:**
+1. ✅ `backend/services/flight_billing_settings.py` — typed CRUD (get, upsert with FK validation, defaults resolver, delete) + API endpoints at `/api/v1/accounting/settings/flight-billing`
+2. ✅ `backend/services/flight_packs.py` — pack definitions CRUD, applicability management, consumption recording, pack balances, REM adjustment computation + upsert, pack purchase entry (`buy_pack`, `create_pack_purchase_entry`), `update_consumption_valid_from` (replaces freeze)
+3. ✅ `FlightBillingPreviewService` refactored — club billing detection (2 modes), `_resolve_charge_account` (initiation vs club accounts), `_accounting_lines_for` (member on 411, analytical_asset on both lines)
+4. ✅ `charge_comment` field on `ValidatedFlight` + `charge_to_erp_id` editable via `PATCH /api/v1/flights/{uuid}/billing-fields` with UI (`EditableChargeFields` component in FlightsPage)
+5. ✅ Pack purchase entries now stay Draft (state=1) — posting is a separate explicit step
 
 ---
 

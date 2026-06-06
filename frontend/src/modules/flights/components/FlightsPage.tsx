@@ -30,6 +30,7 @@ import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
   useFlightBillingPreviewMutation,
   useFlightListQuery,
+  useUpdateFlightBillingFieldsMutation,
   type FlightBillingPreviewResponse,
   type FlightListFilters,
   type ValidatedFlightItem,
@@ -241,6 +242,58 @@ function highlightType(flight: ValidatedFlightItem): boolean {
   const hasSplit = (flight.instruction_split ?? 0) > 0
   const hasChargeTo = !!flight.charge_to_erp_id && flight.charge_to_erp_id !== flight.pilot_erp_id
   return hasSplit || hasChargeTo
+}
+
+function EditableChargeFields({ flight }: { flight: ValidatedFlightItem }) {
+  const { t } = useTranslation('flights')
+  const updateMutation = useUpdateFlightBillingFieldsMutation()
+  const [editing, setEditing] = useState(false)
+  const [chargeTo, setChargeTo] = useState(flight.charge_to_erp_id ?? '')
+  const [chargeComment, setChargeComment] = useState(flight.charge_comment ?? '')
+
+  async function handleSave() {
+    await updateMutation.mutateAsync({
+      flightUuid: flight.uuid,
+      payload: { charge_to_erp_id: chargeTo || null, charge_comment: chargeComment || null },
+    })
+    setEditing(false)
+  }
+
+  if (!editing) {
+    return (
+      <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-slate-600">
+            <span className="font-medium">Facturation à :</span>{' '}
+            {flight.charge_to_erp_id ?? <span className="text-slate-300">non défini</span>}
+            {flight.charge_comment && <span className="ml-2 text-slate-400">— {flight.charge_comment}</span>}
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>{t('common.edit', 'Modifier')}</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-slate-600">{t('table.chargeTo', 'Charge à')}</Label>
+          <Input value={chargeTo} onChange={(e) => setChargeTo(e.target.value)} placeholder="ERP ID ou account_id" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-slate-600">{t('table.chargeComment', 'Commentaire')}</Label>
+          <Input value={chargeComment} onChange={(e) => setChargeComment(e.target.value)} placeholder="Raison de la facturation" />
+        </div>
+        <div className="flex items-end gap-1">
+          <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? t('common.saving', 'Sauvegarde…') : t('common.save', 'Sauvegarder')}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>{t('common.cancel', 'Annuler')}</Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function FlightsPage() {
@@ -539,6 +592,9 @@ export function FlightsPage() {
                                 )}
                               </div>
                             )}
+
+                            {/* Editable billing fields */}
+                            <EditableChargeFields flight={flight} />
 
                             {billingPreviewMutation.error && billingPreviewMutation.variables?.flightUuid === flight.uuid ? (
                               <Alert>{billingPreviewMutation.error instanceof Error ? billingPreviewMutation.error.message : t('billing.loadError')}</Alert>
