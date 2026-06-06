@@ -994,8 +994,10 @@ class FlightType(Base):
         nullable=False,
     )
 
+    launch_type = Column(Integer, nullable=True, unique=True, comment="Planche launch_type integer (0, 1, 2…). Enables pricing per launch type (remorquage, dépannage, convoyage…)")
+
     def __repr__(self):
-        return f"<FlightType code={self.code}>"
+        return f"<FlightType code={self.code} launch_type={self.launch_type}>"
 
 
 class Asset(Base):

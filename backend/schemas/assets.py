@@ -68,12 +68,14 @@ class FlightTypeCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = Field(default=None, max_length=255)
     is_active: bool = True
+    launch_type: Optional[int] = Field(default=None, ge=0, description="Planche launch_type mapping (0, 1, 2…). Winch=raw, tow=+10, plane=+20")
 
 
 class FlightTypeUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     description: Optional[str] = Field(default=None, max_length=255)
     is_active: Optional[bool] = None
+    launch_type: Optional[int] = Field(default=None, ge=0)
 
 
 class FlightTypeResponse(BaseModel):
@@ -82,6 +84,7 @@ class FlightTypeResponse(BaseModel):
     name: str
     description: Optional[str]
     is_active: bool
+    launch_type: Optional[int] = None
     updated_at: datetime
 
     class Config:

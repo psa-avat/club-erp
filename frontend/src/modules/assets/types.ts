@@ -39,6 +39,7 @@ export type FlightType = {
   name: string
   description: string | null
   is_active: boolean
+  launch_type: number | null
   updated_at: string
 }
 
@@ -47,12 +48,14 @@ export type CreateFlightTypePayload = {
   name: string
   description?: string | null
   is_active?: boolean
+  launch_type?: number | null
 }
 
 export type UpdateFlightTypePayload = {
   name?: string
   description?: string | null
   is_active?: boolean
+  launch_type?: number | null
 }
 
 // ── Asset ─────────────────────────────────────────────────────────────────────

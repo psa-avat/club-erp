@@ -709,25 +709,22 @@ class FlightBillingPreviewService:
         result = await self.db.execute(select(Asset).where(or_(*clauses)))
         return result.scalars().first()
 
-    def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight) -> set[str]:
-        # For the launch machine, try the actual flight type first, then fall back
-        # to the launch method code (RMQ for tow, TREUIL for winch).
+    def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight, resolved_code: str | None = None) -> set[str]:
         if source == "launch":
-            # Try actual flight type (solo, partage, instruction…)
+            # 1. If a resolved code was found via FlightType.launch_type lookup, use ONLY that
+            if resolved_code:
+                return {resolved_code}
+
+            # 2. No specific launch_type mapping: fall back to defaults
+            codes: set[str] = set()
+            codes.update({"RMQ", "rmq", "remorque", "REMORQUE"})
+
+            # 3. Add the flight type label as extra fallback
             flight_label = FLIGHT_TYPE_LABELS.get(flight.type_of_flight)
-            flight_codes: set[str] = set()
             if flight_label:
-                flight_codes = {flight_label, flight_label.upper(), str(flight.type_of_flight)}
-            else:
-                flight_codes = {str(flight.type_of_flight)}
+                codes.update({flight_label, flight_label.upper(), str(flight.type_of_flight)})
 
-            # Add launch-method fallback codes (RMQ / TREUIL)
-            if flight.launch_method == 2:
-                flight_codes.update({"RMQ", "rmq", "remorque", "REMORQUE"})
-            elif flight.launch_method == 1:
-                flight_codes.update({"TREUIL", "treuil", "winch", "WINCH"})
-
-            return flight_codes
+            return codes
 
         # For the glider: use the actual flight type only
         label = FLIGHT_TYPE_LABELS.get(flight.type_of_flight)
@@ -735,8 +732,8 @@ class FlightBillingPreviewService:
             return {str(flight.type_of_flight)}
         return {label, label.upper(), str(flight.type_of_flight)}
 
-    async def _flight_type_uuid_for_machine(self, source: str, flight: ValidatedFlight) -> UUID | None:
-        candidates = self._flight_type_codes_for_machine(source, flight)
+    async def _flight_type_uuid_for_machine(self, source: str, flight: ValidatedFlight, resolved_code: str | None = None) -> UUID | None:
+        candidates = self._flight_type_codes_for_machine(source, flight, resolved_code=resolved_code)
         result = await self.db.execute(select(FlightType).where(FlightType.code.in_(candidates)))
         flight_type = result.scalars().first()
         return flight_type.uuid if flight_type else None
@@ -777,7 +774,27 @@ class FlightBillingPreviewService:
             return _PricedMachine(source, asset, None, [])
 
         version = versions[0]
-        flight_type_uuid = await self._flight_type_uuid_for_machine(source, flight)
+        # For launch machines, resolve flight type via launch_type mapping.
+        # The launch_type value is shifted by launch_method to avoid collisions:
+        #   Winch (launch_method=1) → raw launch_type (0, 1, 2…)
+        #   Tow   (launch_method=2) → launch_type + 10 (10, 11, 12…)
+        resolved_launch_code = None
+        if source == "launch" and flight.launch_type is not None and asset is not None:
+            search_type = int(flight.launch_type)
+            # Determine shift based on launch_method (1=treuil/winch, 2=remorqueur/tow)
+            if flight.launch_method == 2:
+                search_type += 10  # tow: +10
+            # launch_method == 1 (winch): raw launch_type, no shift needed
+            # Other launch_method values (0=exterieur, 3=autonome): shift by asset category
+
+            ft_result = await self.db.execute(
+                select(FlightType).where(FlightType.launch_type == search_type)
+            )
+            ft = ft_result.scalar_one_or_none()
+            if ft:
+                resolved_launch_code = ft.code
+
+        flight_type_uuid = await self._flight_type_uuid_for_machine(source, flight, resolved_code=resolved_launch_code)
         items = [item for item in version.items if item.flight_type_uuid is None or item.flight_type_uuid == flight_type_uuid]
         if not items:
             warnings.append(_error("pricing_item_missing", f"No price item applies to {asset.code}.", scope=source, blocking=False))

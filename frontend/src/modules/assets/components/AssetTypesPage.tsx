@@ -176,12 +176,13 @@ type FtFormState = {
   name: string
   description: string
   is_active: boolean
+  launch_type: string
 }
 
-const EMPTY_FT: FtFormState = { code: '', name: '', description: '', is_active: true }
+const EMPTY_FT: FtFormState = { code: '', name: '', description: '', is_active: true, launch_type: '' }
 
 function ftToForm(ft: FlightType): FtFormState {
-  return { code: ft.code, name: ft.name, description: ft.description ?? '', is_active: ft.is_active }
+  return { code: ft.code, name: ft.name, description: ft.description ?? '', is_active: ft.is_active, launch_type: ft.launch_type != null ? String(ft.launch_type) : '' }
 }
 
 function FlightTypeForm({
@@ -199,7 +200,7 @@ function FlightTypeForm({
   error: string | null
   onSave: (f: FtFormState) => void
   onCancel: () => void
-  t: (k: string) => string
+  t: (k: string, defaultValue?: string) => string
 }) {
   const [form, setForm] = useState<FtFormState>(initial)
   function set<K extends keyof FtFormState>(key: K, value: FtFormState[K]) {
@@ -226,6 +227,10 @@ function FlightTypeForm({
         <div className="space-y-1">
           <Label className="text-xs">{t('assetTypes.flightTypes.description')}</Label>
           <Input value={form.description} onChange={(e) => set('description', e.target.value)} className="h-8 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{t('assetTypes.flightTypes.launchType', 'Launch type Planche')}</Label>
+          <Input value={form.launch_type} onChange={(e) => { setForm((prev) => ({ ...prev, launch_type: e.target.value })); }} placeholder="Ex: 0, 1, 10, 11…" className="h-8 text-sm" />
         </div>
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-xs">
@@ -278,6 +283,7 @@ function FlightTypesPanel({
         name: form.name.trim(),
         description: form.description.trim() || null,
         is_active: form.is_active,
+        launch_type: form.launch_type ? Number(form.launch_type) : null,
       })
       setShowForm(false)
       setFtError(null)
@@ -294,6 +300,7 @@ function FlightTypesPanel({
         name: form.name.trim(),
         description: form.description.trim() || null,
         is_active: form.is_active,
+        launch_type: form.launch_type ? Number(form.launch_type) : null,
       })
       setEditingFt(null)
       setFtError(null)
