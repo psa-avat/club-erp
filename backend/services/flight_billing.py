@@ -710,8 +710,26 @@ class FlightBillingPreviewService:
         return result.scalars().first()
 
     def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight) -> set[str]:
-        # Use the actual flight type (solo, partage, instruction…) for ALL sources.
-        # The launch machine pricing items are linked by flight type, not by launch method.
+        # For the launch machine, try the actual flight type first, then fall back
+        # to the launch method code (RMQ for tow, TREUIL for winch).
+        if source == "launch":
+            # Try actual flight type (solo, partage, instruction…)
+            flight_label = FLIGHT_TYPE_LABELS.get(flight.type_of_flight)
+            flight_codes: set[str] = set()
+            if flight_label:
+                flight_codes = {flight_label, flight_label.upper(), str(flight.type_of_flight)}
+            else:
+                flight_codes = {str(flight.type_of_flight)}
+
+            # Add launch-method fallback codes (RMQ / TREUIL)
+            if flight.launch_method == 2:
+                flight_codes.update({"RMQ", "rmq", "remorque", "REMORQUE"})
+            elif flight.launch_method == 1:
+                flight_codes.update({"TREUIL", "treuil", "winch", "WINCH"})
+
+            return flight_codes
+
+        # For the glider: use the actual flight type only
         label = FLIGHT_TYPE_LABELS.get(flight.type_of_flight)
         if label is None:
             return {str(flight.type_of_flight)}
