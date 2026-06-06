@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { portalApiClient, setPortalToken, setPortalProfile, clearPortalToken, getPortalToken, getPortalProfile, isPortalAuthenticated } from './client'
+import { portalApiClient, setPortalToken, setPortalProfile, clearPortalToken } from './client'
+export { getPortalToken, getPortalProfile, clearPortalToken, isPortalAuthenticated } from './client'
 import type {
   MemberPortalLoginResponse,
   MemberPortalFlightListResponse,

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { useMemberPortalLogout, getPortalProfile } from '../api/client'
+import { getPortalProfile } from '../api/client'
+import { useMemberPortalLogout } from '../api'
 import type { MemberPortalProfile } from '../types'
 
 export function PortalShell() {
