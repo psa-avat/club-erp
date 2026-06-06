@@ -62,6 +62,7 @@ flowchart LR
 | **Post-purchase** | Allowed — system recalculates `member_pack_consumptions` and updates the REM Draft entry |
 | **Valid_from dates** | `member_pack_consumptions` rows have a `valid_from` date determining REM inclusion. Instead of freeze, the `valid_from` can be adjusted via UI to retroactively include/exclude consumptions |
 | **Posting policy** | FL entries can be posted independently. REM entries remain Draft until period close (monthly/quarterly) |
+| **FlightType resolution** | `asset_flight_types.launch_type` stores the Planche launch_type integer (shifted by launch_method: winch=raw, tow=+10). For launch machines, `flight.launch_method` determines the shift. If a FlightType matches, its code is used exclusively for pricing item filtering; otherwise, RMQ defaults are used as fallback |
 
 | **Club billing — Detection** | Two detection modes: (1) `charge_to_erp_id` matches the club member's `account_id`, (2) Flight type is `initiation` and a charge account can be resolved (from `vi_type_catalog.charge_account_uuid` or settings). Detection 2 allows initiation flights to be billed without requiring the club member to be configured |
 | **Club billing — Dual accounts** | `default_initiation_charge_account_uuid` = charge account for initiation flights (fallback when VI type has none); `club_charge_account_uuid` = charge account for flights explicitly billed to club (member match). Each uses a different class-6 account if desired |
@@ -787,6 +788,7 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 |---|---|
 | `docs/migrations/041_flight_billing_packs_settings.sql` | Phase 1: pack_definitions, member_pack_consumptions, vw_member_pack_balances, validated_flights billing columns, REM journal seed, flight_billing_settings, vi_type_catalog.charge_account_uuid |
 | `docs/migrations/042_club_charge_account.sql` | Phase 2: add `club_charge_account_uuid` to `flight_billing_settings` |
+| `docs/migrations/044_launch_type_mappings.sql` | Phase 5: add `launch_type` INTEGER UNIQUE to `asset_flight_types` for Planche launch_type → FlightType resolution (tow: +10, winch: raw) |
 
 ## Relevant Files (Current Status)
 
@@ -795,11 +797,12 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 - ✅ `FlightBillingSettings` — with `club_charge_account_uuid`, `default_initiation_charge_account_uuid`, `club_member_uuid`
 - ✅ `ValidatedFlight` — with `charge_comment`, `accounting_entry_uuid`, `billing_quote_state`
 - ✅ `ViTypeCatalog` — with `charge_account_uuid`, `charge_account_code` (property)
+- ✅ `FlightType` — added `launch_type` INTEGER UNIQUE column for Planche launch_type → FlightType mapping (tow: +10 shift, winch: raw)
 
 ### Backend — Services
 | File | Status |
 |---|---|
-| `backend/services/flight_billing.py` | ✅ Club billing detection (2 modes), `_resolve_charge_account()`, correct accounting dimensions |
+| `backend/services/flight_billing.py` | ✅ Club billing detection (2 modes), `_resolve_charge_account()`, correct accounting dimensions, **FlightType resolution via `launch_type` mapping** (`launch_method`-based shift: winch raw, tow +10) |
 | `backend/services/flight_billing_settings.py` | ✅ Typed CRUD with FK validation, defaults resolver |
 | `backend/services/flight_billing_apply.py` | ✅ Uses `FlightBillingSettings`, `close_rem_period()`, `batch_apply` with flight tracking |
 | `backend/services/flight_packs.py` | ✅ Pack CRUD, applicabilité, consommations, soldes, REM, achat forfait, `update_consumption_valid_from()` |
@@ -818,6 +821,7 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 | `frontend/src/modules/banque/api/index.ts` | ✅ Settings hooks, preview hooks (pass `fiscal_year_uuid`), account/journal queries |
 | `frontend/src/modules/banque/components/FlightBillingSettingsForm.tsx` | ✅ Form with 3 journal-account cards, club billing (initiation + club + member), operational settings |
 | `frontend/src/modules/banque/components/OpsFlightsTab.tsx` | ✅ Flights billing cockpit with preview panel, batch operations |
+| `frontend/src/modules/assets/components/AssetTypesPage.tsx` | ✅ Flight type management with `launch_type` field (Planche mapping), `launchType` edit in flight type form |
 | `frontend/src/modules/vi/components/ViTypesPage.tsx` | ✅ VI type management with `charge_account_uuid` selector |
 | `frontend/src/modules/banque/i18n/` | Add translations for flight billing settings + flights ops + REM |
 | `packages/i18n/src/resources/fr.ts` | Add `banque.settings.flightBilling.*` keys |

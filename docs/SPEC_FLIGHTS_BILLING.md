@@ -81,8 +81,75 @@ For each machine:
 4. If more than one version found → overlap blocking error
 5. Select pricing items from the version where:
    - `flight_type_uuid IS NULL` (applies to all types) **OR**
-   - `flight_type_uuid` matches the flight type resolved from the Planche data
+   - `flight_type_uuid` matches the flight type resolved from the Planche data (see §4.5)
 6. Revenue account (`gl_account_credit_uuid`) must be configured on each item
+
+### 4.5 Flight Type Resolution from Planche Data
+
+The `asset_flight_types` table (`FlightType` model) has a `launch_type` column that stores a Planche launch_type integer. This is used to resolve the flight type code for pricing item filtering.
+
+#### 4.5.1 Launch Method Shift
+
+The `launch_type` value is shifted by `launch_method` to avoid collisions between tow and winch types:
+
+| Launch method | Shift | Example |
+|---|---|---|
+| `1` (treuil/winch) | raw `launch_type` (no shift) | `launch_type=0` → `search_type=0` (normal winch) |
+| `2` (remorqueur/tow) | `launch_type + 10` | `launch_type=1` → `search_type=11` (dépannage remorqué) |
+
+The shifted value is stored as `asset_flight_types.launch_type`:
+
+```
+Tow:
+  launch_type=0 (remorquage)    → stored as 10
+  launch_type=1 (dépannage)     → stored as 11
+  launch_type=2 (convoyage)     → stored as 12
+
+Winch:
+  launch_type=0 (normal)        → stored as 0
+  launch_type=1 (exercice)      → stored as 1
+  launch_type=2 (câble cassé)   → stored as 2
+```
+
+#### 4.5.2 Resolution Algorithm
+
+For launch machines, the algorithm in `_resolve_machine()`:
+
+```
+  if source == "launch" and flight.launch_type is not None:
+    1. search_type = flight.launch_type
+    2. If flight.launch_method == 2 (tow):
+         search_type += 10
+       (launch_method == 1 / winch → keep raw)
+    3. Query FlightType WHERE launch_type == search_type
+    4. If found → use ft.code as resolved_code (e.g. "RMQD")
+       If not found → resolved_code = None → fall back to RMQ defaults
+```
+
+#### 4.5.3 Code Set Construction
+
+`_flight_type_codes_for_machine()` builds the candidate set for `FlightType.code` lookup:
+
+- **If `resolved_code` is set** (from §4.5.2): return `{resolved_code}` exclusively
+- **If no `resolved_code`** (no matching FlightType found): return fallback set:
+  - `{"RMQ", "rmq", "remorque", "REMORQUE"}` (tow defaults)
+  - Plus the flight type label (solo, partage, instruction…)
+  - *(Winch-specific TREUIL fallback removed — Planche winch flights always have a launch_type)*
+
+The fallback FlightType UUID is the first matching row from `WHERE code IN (...)`.
+
+#### 4.5.4 Pricing Item Filtering
+
+Once `flight_type_uuid` is resolved, pricing items are filtered:
+
+```python
+items = [item for item in version.items 
+         if item.flight_type_uuid is None 
+         or item.flight_type_uuid == flight_type_uuid]
+```
+
+- `flight_type_uuid = NULL` → applies to ALL flight types (global items)
+- `flight_type_uuid = <resolved UUID>` → applies only to flights matching that type
 
 ### 4.2 Quantity Calculation by Unit
 

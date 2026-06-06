@@ -1,6 +1,14 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { LoginPage, ProtectedRoute, PublicOnlyRoute } from './auth'
+import {
+  LoginPage as MemberPortalLoginPage,
+  PortalShell,
+  DashboardPage as MemberPortalDashboardPage,
+  FlightsPage as MemberPortalFlightsPage,
+  AccountPage as MemberPortalAccountPage,
+  ExpensesPage as MemberPortalExpensesPage,
+} from './modules/member-portal'
 import { AdminPage } from './modules/admin'
 import {
   BanquePage,
@@ -40,6 +48,16 @@ function App() {
 
       <Route element={<PublicOnlyRoute />}>
         <Route path="/login" element={<LoginPage />} />
+      </Route>
+
+      {/* Member portal — standalone, outside the ERP auth guard */}
+      <Route path="/member-portal/login" element={<MemberPortalLoginPage />} />
+      <Route element={<PortalShell />}>
+        <Route path="/member-portal/dashboard" element={<MemberPortalDashboardPage />} />
+        <Route path="/member-portal/flights" element={<MemberPortalFlightsPage />} />
+        <Route path="/member-portal/account" element={<MemberPortalAccountPage />} />
+        <Route path="/member-portal/expenses" element={<MemberPortalExpensesPage />} />
+        <Route path="/member-portal" element={<Navigate to="/member-portal/dashboard" replace />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>

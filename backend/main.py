@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AsyncSessionLocal, init_db, engine
 from api.security import get_current_user, get_user_capabilities, get_user_roles
-from api.routes import auth, admin, members, accounting, assets, flights, flight_packs, helloasso, planche, storage, vi
+from api.routes import auth, admin, members, accounting, assets, flights, flight_packs, helloasso, member_portal, planche, storage, vi
 from models import User
 from gestionlog import LogConfig
 from services.accounting import ensure_default_journals, ensure_default_system_settings
@@ -234,6 +234,7 @@ app.include_router(planche.router)
 app.include_router(vi.router)
 app.include_router(storage.router)
 app.include_router(flight_packs.router)
+app.include_router(member_portal.router)
 
 
 if __name__ == "__main__":

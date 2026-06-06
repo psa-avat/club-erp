@@ -23,6 +23,7 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 
 import jwt
 from argon2 import PasswordHasher
@@ -84,6 +85,70 @@ def generate_pin_code() -> str:
 
 def generate_trusted_device_token() -> str:
     return secrets.token_urlsafe(48)
+
+
+# ── Member Portal JWT ─────────────────────────────────────────────────────────
+MEMBER_PORTAL_JWT_EXPIRATION_HOURS = int(os.getenv("MEMBER_PORTAL_JWT_EXPIRATION_HOURS", "2"))
+MEMBER_PORTAL_TOKEN_KIND = "member_portal"
+
+
+def create_member_portal_token(member_uuid: str) -> str:
+    """Create a short-lived JWT for member portal access."""
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=MEMBER_PORTAL_JWT_EXPIRATION_HOURS)
+    payload = {
+        "sub": member_uuid,
+        "kind": MEMBER_PORTAL_TOKEN_KIND,
+        "iat": now,
+        "exp": expires_at,
+    }
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return token
+
+
+def decode_member_portal_token(token: str) -> dict | None:
+    """Decode and validate a member portal JWT. Returns payload or None."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        if payload.get("kind") != MEMBER_PORTAL_TOKEN_KIND:
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
+async def get_member_portal_member(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> "Member":
+    """Dependency: validate member portal token and return the Member."""
+    from models import Member  # avoid circular import
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Token d'accès requis")
+
+    payload = decode_member_portal_token(credentials.credentials)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Token invalide ou expiré")
+
+    member_uuid_str = payload.get("sub")
+    if not member_uuid_str:
+        raise HTTPException(status_code=401, detail="Token invalide")
+
+    try:
+        member_uuid = UUID(member_uuid_str)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Token invalide")
+
+    result = await db.execute(
+        select(Member).where(Member.uuid == member_uuid, Member.status == 1)
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=401, detail="Membre introuvable ou inactif")
+    return member
 
 
 async def get_user_roles(db: AsyncSession, user_id: int) -> list[str]:
