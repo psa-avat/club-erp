@@ -32,7 +32,6 @@ import {
 } from '../api'
 import { useMembersStore } from '../store'
 import {
-  CheckboxField,
   Pill,
   SelectField,
   TextField,
@@ -107,6 +106,26 @@ export function MemberSheetsPage() {
     setExpenseToken(null)
   }
 
+  const [tokenCopied, setTokenCopied] = useState(false)
+
+  async function handleCopyToken() {
+    if (!expenseToken) return
+    try {
+      await navigator.clipboard.writeText(expenseToken)
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2000)
+    } catch {
+      const el = document.getElementById('portal-token-value')
+      if (el) {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+      }
+    }
+  }
+
   const combinedError =
     membersQuery.error ??
     memberDetailQuery.error ??
@@ -118,12 +137,6 @@ export function MemberSheetsPage() {
   return (
     <ClubPageShell>
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
-
-      {expenseToken ? (
-        <Alert>
-          {t('sheet.generatedToken')}: <span className="font-mono">{expenseToken}</span>
-        </Alert>
-      ) : null}
 
       {/* Mobile: back button when viewing form */}
       {mobileView === 'form' && selectedMemberId ? (
@@ -247,39 +260,104 @@ export function MemberSheetsPage() {
                       }
                     />
                   </div>
-                  <CheckboxField
-                    label={t('sheet.expenseAccessEnabled')}
-                    checked={sheetForm.expense_access_enabled}
-                    onChange={(checked) =>
-                      setSheetForm({ ...sheetForm, expense_access_enabled: checked })
-                    }
-                  />
-                  {/* Actions — full width on mobile */}
+
+                  {/* Save button */}
                   <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
                     <Button className="w-full sm:w-auto" disabled={upsertMemberSheetMutation.isPending} type="submit">
                       {t('actions.saveSheet')}
                     </Button>
-                    <Button
-                      className="w-full sm:w-auto"
-                      disabled={!selectedYearSheet || enableExpenseAccessMutation.isPending}
-                      type="button"
-                      variant="secondary"
-                      onClick={handleEnableExpenseAccess}
-                    >
-                      {t('actions.enableExpenseAccess')}
-                    </Button>
-                    <Button
-                      className="w-full sm:w-auto"
-                      disabled={!selectedYearSheet || disableExpenseAccessMutation.isPending}
-                      type="button"
-                      variant="ghost"
-                      onClick={handleDisableExpenseAccess}
-                    >
-                      {t('actions.disableExpenseAccess')}
-                    </Button>
                   </div>
                 </form>
               )}
+
+              {/* ── Member Portal Access — shown for ALL members with a sheet, regardless of can_fly ── */}
+              {selectedMemberId && (
+                <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-blue-800">
+                          🚪 Accès portail membre
+                        </p>
+                        <p className="mt-0.5 text-xs text-blue-600">
+                          {t('sheet.portalTokenDescription')}
+                        </p>
+                      </div>
+                      {selectedYearSheet?.expense_access_enabled ? (
+                        <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                          {t('sheet.portalActive')}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-500">
+                          {t('sheet.portalInactive')}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Generated token display */}
+                    {expenseToken && (
+                      <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
+                        <p className="text-xs font-medium text-blue-700">{t('sheet.generatedToken')}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <code
+                            id="portal-token-value"
+                            className="flex-1 break-all rounded bg-slate-100 px-2 py-1 font-mono text-sm text-slate-800"
+                          >
+                            {expenseToken}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={handleCopyToken}
+                            className="shrink-0 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                          >
+                            {tokenCopied ? t('sheet.tokenCopied') : t('sheet.copyToken')}
+                          </button>
+                        </div>
+                        <p className="mt-1.5 text-xs text-amber-600">
+                          ⚠️ Ce code ne sera plus affiché après rechargement de la page.
+                          Copiez-le et transmettez-le au membre.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {!selectedYearSheet?.expense_access_enabled ? (
+                        <button
+                          type="button"
+                          disabled={enableExpenseAccessMutation.isPending}
+                          onClick={handleEnableExpenseAccess}
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {enableExpenseAccessMutation.isPending
+                            ? 'Génération…'
+                            : t('sheet.regenerateToken')}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={enableExpenseAccessMutation.isPending}
+                            onClick={handleEnableExpenseAccess}
+                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {enableExpenseAccessMutation.isPending
+                              ? 'Génération…'
+                              : t('sheet.regenerateToken')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={disableExpenseAccessMutation.isPending}
+                            onClick={handleDisableExpenseAccess}
+                            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            {t('sheet.disablePortal')}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+              ) /* end can_fly condition */}
             </div>
           </div>
         </div>

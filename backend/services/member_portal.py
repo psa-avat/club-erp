@@ -24,7 +24,7 @@ import hashlib
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
@@ -80,16 +80,23 @@ async def authenticate_member(
     Validate member identifier + expense access token.
     Returns the Member if valid, None otherwise.
     """
-    # Resolve member by account_id or UUID
+    # Resolve member — try UUID first, then account_id (never OR both to avoid
+    # multiple-row matches when a UUID coincidentally matches an account_id).
+    member = None
     try:
         member_uuid = UUID(member_identifier)
-        clauses = [Member.uuid == member_uuid]
+        result = await db.execute(
+            select(Member).where(Member.uuid == member_uuid, Member.status == 1)
+        )
+        member = result.scalar_one_or_none()
     except (ValueError, TypeError):
-        clauses = [Member.account_id == member_identifier]
+        pass
 
-    clauses.append(Member.status == 1)
-    result = await db.execute(select(Member).where(or_(*clauses)))
-    member = result.scalar_one_or_none()
+    if member is None:
+        result = await db.execute(
+            select(Member).where(Member.account_id == member_identifier, Member.status == 1)
+        )
+        member = result.scalar_one_or_none()
     if member is None:
         return None
 

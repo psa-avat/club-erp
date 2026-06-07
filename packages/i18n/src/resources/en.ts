@@ -264,6 +264,13 @@ export const en = {
       remainingHours: 'Remaining pack hours',
       expenseAccessEnabled: 'Expense access enabled',
       generatedToken: 'Generated external access token',
+      portalTokenDescription: 'This code allows the member to log into the member portal (flights, balance, packs).',
+      copyToken: 'Copy code',
+      tokenCopied: 'Code copied!',
+      regenerateToken: 'Regenerate code',
+      disablePortal: 'Disable portal',
+      portalActive: 'Member portal active',
+      portalInactive: 'Member portal inactive',
       backToList: 'Back to list',
     },
     pilotSheet: {

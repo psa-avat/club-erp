@@ -274,6 +274,13 @@ export const fr = {
       remainingHours: 'Heures restantes du pack',
       expenseAccessEnabled: 'Accès dépenses actif',
       generatedToken: "Jeton d'accès externe généré",
+      portalTokenDescription: 'Ce code permet au membre de se connecter au portail membre (mes vols, solde, forfaits).',
+      copyToken: 'Copier le code',
+      tokenCopied: 'Code copié !',
+      regenerateToken: 'Régénérer le code',
+      disablePortal: 'Désactiver le portail',
+      portalActive: 'Portail membre actif',
+      portalInactive: 'Portail membre inactif',
       backToList: 'Retour à la liste',
     },
     pilotSheet: {
