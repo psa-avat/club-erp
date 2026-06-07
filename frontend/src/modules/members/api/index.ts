@@ -2,10 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import type {
+  AccountEntriesResponse,
+  AccountSummary,
   Committee,
   CommitteeMembership,
   CreateCommitteePayload,
   CreateMemberPayload,
+  DepositRequest,
+  DepositResponse,
   ExpenseAccessResponse,
   ImportResult,
   LogbookFilters,
@@ -441,4 +445,69 @@ export function useMemberLogbookQuery(memberUuid: string | null, filters: Logboo
     },
   })
 }
+
+export type { LogbookFilters } from '../types'
+
+// ── Account / Balance ────────────────────────────────────────────────────
+
+export function useMemberAccountSummaryQuery(memberUuid: string | null, fiscalYearUuid?: string | null) {
+  return useQuery({
+    queryKey: ['members', 'account-summary', memberUuid, fiscalYearUuid],
+    enabled: Boolean(memberUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountSummary>(
+        `/api/v1/members/${memberUuid}/account-summary`,
+        {
+          ...getAuthRequestConfig(),
+          params: fiscalYearUuid ? { fiscal_year_uuid: fiscalYearUuid } : {},
+        },
+      )
+      return data
+    },
+  })
+}
+
+export function useMemberAccountEntriesQuery(
+  memberUuid: string | null,
+  filters: { fiscalYearUuid?: string; state?: number; limit?: number; offset?: number } = {},
+) {
+  return useQuery({
+    queryKey: ['members', 'account-entries', memberUuid, filters],
+    enabled: Boolean(memberUuid),
+    queryFn: async () => {
+      const params: Record<string, string | number> = {}
+      if (filters.fiscalYearUuid) params.fiscal_year_uuid = filters.fiscalYearUuid
+      if (filters.state !== undefined) params.state = filters.state
+      if (filters.limit !== undefined) params.limit = filters.limit
+      if (filters.offset !== undefined) params.offset = filters.offset
+
+      const { data } = await apiClient.get<AccountEntriesResponse>(
+        `/api/v1/members/${memberUuid}/account-entries`,
+        { ...getAuthRequestConfig(), params },
+      )
+      return data
+    },
+  })
+}
+
+export function useCreateMemberDepositMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ memberUuid, payload }: { memberUuid: string; payload: DepositRequest }) => {
+      const { data } = await apiClient.post<DepositResponse>(
+        `/api/v1/members/${memberUuid}/deposit`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['members', 'account-summary', variables.memberUuid] })
+      await queryClient.invalidateQueries({ queryKey: ['members', 'account-entries', variables.memberUuid] })
+    },
+  })
+}
+
+export type { AccountSummary, AccountEntriesResponse, AccountEntryItem, DepositResponse } from '../types'
 

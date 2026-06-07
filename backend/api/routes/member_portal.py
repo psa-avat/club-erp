@@ -34,10 +34,7 @@ from api.security import (
 )
 from models import Member
 from schemas.member_portal import (
-    MemberPortalAccountEntriesResponse,
-    MemberPortalAccountSummary,
-    MemberPortalDepositRequest,
-    MemberPortalDepositResponse,
+    MemberPortalChangePasswordRequest,
     MemberPortalExpenseDeclaration,
     MemberPortalExpenseListResponse,
     MemberPortalFlightBillingDetail,
@@ -48,21 +45,30 @@ from schemas.member_portal import (
     MemberPortalProfile,
     MemberPortalTaxExpenseListResponse,
 )
-from schemas.members import LogbookListResponse
+from schemas.members import (
+    AccountEntriesResponse,
+    AccountSummaryResponse,
+    DepositRequest,
+    DepositResponse,
+    LogbookListResponse,
+)
 from services.member_portal import (
     authenticate_member,
+    change_portal_password,
     declare_expense,
-    get_account_summary,
     get_flight_billing_detail,
     get_member_profile,
-    list_account_entries,
     list_expenses,
     list_member_flights,
     list_member_packs,
     list_tax_expenses,
-    record_deposit,
 )
-from services.members import list_member_logbook
+from services.members import (
+    create_member_deposit,
+    get_member_account_summary,
+    list_member_account_entries,
+    list_member_logbook,
+)
 
 router = APIRouter(prefix="/api/v1/member-portal", tags=["member-portal"])
 
@@ -74,16 +80,16 @@ async def member_portal_login(
     body: MemberPortalLoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Authenticate a member using their identifier + expense access token."""
+    """Authenticate a member using their identifier + password."""
     member = await authenticate_member(
         db=db,
         member_identifier=body.member_identifier,
-        expense_access_token=body.expense_access_token,
+        password=body.password,
     )
     if member is None:
         raise HTTPException(
             status_code=401,
-            detail="Identifiant ou code d'accès invalide",
+            detail="Identifiant ou mot de passe invalide",
         )
 
     token = create_member_portal_token(str(member.uuid))
@@ -94,6 +100,23 @@ async def member_portal_login(
         expires_at="",  # JWT expiry handling
         member=profile,
     )
+
+
+@router.patch("/password", status_code=204)
+async def member_portal_change_password(
+    body: MemberPortalChangePasswordRequest,
+    member: Member = Depends(get_member_portal_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the member's portal password."""
+    success = await change_portal_password(
+        db=db,
+        member_uuid=member.uuid,
+        current_password=body.current_password,
+        new_password=body.new_password,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
 
 
 # ── Flights ────────────────────────────────────────────────────────────────────
@@ -139,6 +162,7 @@ async def member_portal_logbook(
     date_to: date | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    group_by: str | None = Query(default=None, pattern="^(machine|type|launch)$"),
     member: Member = Depends(get_member_portal_member),
     db: AsyncSession = Depends(get_db),
 ):
@@ -151,32 +175,62 @@ async def member_portal_logbook(
         date_to=date_to,
         limit=limit,
         offset=offset,
+        group_by=group_by,
     )
 
 
 # ── Account ────────────────────────────────────────────────────────────────────
 
-@router.get("/account", response_model=MemberPortalAccountSummary)
+@router.get("/account", response_model=AccountSummaryResponse)
 async def member_portal_account_summary(
+    fiscal_year_uuid: UUID | None = Query(default=None),
     member: Member = Depends(get_member_portal_member),
     db: AsyncSession = Depends(get_db),
 ):
-    """Account summary: balance, active packs."""
-    return await get_account_summary(db=db, member_uuid=member.uuid)
+    """Account summary: balance."""
+    return await get_member_account_summary(
+        db=db, member_uuid=member.uuid, fiscal_year_uuid=fiscal_year_uuid,
+    )
 
 
-@router.get("/account/entries", response_model=MemberPortalAccountEntriesResponse)
+@router.get("/account/entries", response_model=AccountEntriesResponse)
 async def member_portal_account_entries(
-    limit: int = Query(default=50, ge=1, le=200),
+    fiscal_year_uuid: UUID | None = Query(default=None),
+    state: int | None = Query(default=None, ge=1, le=2),
+    limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     member: Member = Depends(get_member_portal_member),
     db: AsyncSession = Depends(get_db),
 ):
     """List accounting entries where the member appears."""
-    items, total = await list_account_entries(
-        db=db, member_uuid=member.uuid, limit=limit, offset=offset,
+    return await list_member_account_entries(
+        db=db, member_uuid=member.uuid,
+        fiscal_year_uuid=fiscal_year_uuid, state=state,
+        limit=limit, offset=offset,
     )
-    return MemberPortalAccountEntriesResponse(items=items, total=total)
+
+
+@router.post("/deposit", response_model=DepositResponse, status_code=201)
+async def member_portal_deposit(
+    body: DepositRequest,
+    member: Member = Depends(get_member_portal_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a deposit on the member's account."""
+    from models import FlightBillingSettings
+    from sqlalchemy import select
+
+    settings_result = await db.execute(
+        select(FlightBillingSettings).limit(1)
+    )
+    settings = settings_result.scalar_one_or_none()
+    if not settings:
+        raise HTTPException(status_code=400, detail="Aucune configuration de dépôt trouvée")
+
+    return await create_member_deposit(
+        db=db, member_uuid=member.uuid, payload=body,
+        fiscal_year_uuid=settings.fiscal_year_uuid,
+    )
 
 
 @router.get("/account/packs", response_model=list[MemberPortalPackBalance])
@@ -217,22 +271,6 @@ async def member_portal_declare_expense(
     return {"status": "ok", "message": "Dépense enregistrée"}
 
 
-# ── Deposits ───────────────────────────────────────────────────────────────────
-
-@router.post("/deposit", response_model=MemberPortalDepositResponse)
-async def member_portal_deposit(
-    body: MemberPortalDepositRequest,
-    member: Member = Depends(get_member_portal_member),
-    db: AsyncSession = Depends(get_db),
-):
-    """Record a deposit on the member's account."""
-    result = await record_deposit(
-        db=db,
-        member_uuid=member.uuid,
-        amount=body.amount,
-        payment_method=body.payment_method,
-    )
-    return MemberPortalDepositResponse(**result)
 
 
 # ── Tax Expenses ───────────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 
 class MemberPortalLoginRequest(BaseModel):
     member_identifier: str = Field(..., description="Member account_id or UUID")
-    expense_access_token: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
 
 
 class MemberPortalLoginResponse(BaseModel):
@@ -39,6 +39,11 @@ class MemberPortalLoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_at: str
     member: "MemberPortalProfile"
+
+
+class MemberPortalChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=1)
 
 
 class MemberPortalProfile(BaseModel):

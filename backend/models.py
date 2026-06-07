@@ -247,6 +247,20 @@ class FlightBillingSettings(Base):
         comment="Member record representing the club for club-billed flights (detected via charge_to_erp_id)",
     )
 
+    # Deposit settings
+    deposit_journal_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=True,
+        comment="Journal for member deposits (e.g. BQ or CAISSE)",
+    )
+    deposit_bank_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True,
+        comment="Bank/cash account debited on member deposit",
+    )
+    deposit_receivable_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True,
+        comment="Member receivable account credited on deposit (e.g. 411)",
+    )
+
     # Operational settings
     rem_period_days = Column(Integer, nullable=False, default=30)
     allow_post_purchase_recalculation = Column(Boolean, nullable=False, default=True)
@@ -277,6 +291,9 @@ class FlightBillingSettings(Base):
     pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[default_pack_discount_expense_account_uuid])
     club_member = relationship("Member", foreign_keys=[club_member_uuid])
     club_charge_account = relationship("AccountingAccount", foreign_keys=[club_charge_account_uuid])
+    deposit_journal = relationship("AccountingJournal", foreign_keys=[deposit_journal_uuid])
+    deposit_bank_account = relationship("AccountingAccount", foreign_keys=[deposit_bank_account_uuid])
+    deposit_receivable_account = relationship("AccountingAccount", foreign_keys=[deposit_receivable_account_uuid])
     updated_by_user = relationship("User")
 
     def __repr__(self):
@@ -506,9 +523,6 @@ class MemberSheet(Base):
         CheckConstraint("year BETWEEN 2000 AND 9999", name="chk_member_sheets_year"),
         CheckConstraint("fare_type BETWEEN 1 AND 5", name="chk_member_sheets_fare_type"),
         CheckConstraint("hours_count >= 0", name="chk_member_sheets_hours_count"),
-        CheckConstraint("packs_bought_count >= 0", name="chk_member_sheets_packs_bought_count"),
-        CheckConstraint("hours_done_in_pack >= 0", name="chk_member_sheets_hours_done_in_pack"),
-        CheckConstraint("remaining_hours_in_pack >= 0", name="chk_member_sheets_remaining_hours_in_pack"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -517,11 +531,9 @@ class MemberSheet(Base):
     licence_number = Column(String(100), nullable=True)
     fare_type = Column(SmallInteger, nullable=False)
     hours_count = Column(Numeric(8, 2), nullable=False, default=0)
-    packs_bought_count = Column(Integer, nullable=False, default=0)
-    hours_done_in_pack = Column(Numeric(8, 2), nullable=False, default=0)
-    remaining_hours_in_pack = Column(Numeric(8, 2), nullable=False, default=0)
     expense_access_token_hash = Column(String(255), nullable=True)
     expense_access_enabled = Column(Boolean, nullable=False, default=False)
+    portal_password_hash = Column(String(255), nullable=True, comment="SHA256 hash of portal password; if NULL, default = ffvp_id_YYYYMMDD")
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -1324,6 +1336,7 @@ class ValidatedFlight(Base):
 
     # Accounting entry linkage
     accounting_entry_uuid = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)  # Link to GL entry
+    billing_quote_state = Column(String(16), nullable=True, default="pending")
     has_discount = Column(Boolean, nullable=False, default=False, comment="True when pack discount has been applied to this flight")
 
     created_at = Column(

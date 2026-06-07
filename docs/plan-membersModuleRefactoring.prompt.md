@@ -15,7 +15,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 | **Page layout** | Tabbed workspace (single route) rather than separate pages | Cleaner navigation, consistent header, reduces route duplication |
 | **Pack fields on MemberSheet** | **DROP columns** `packs_bought_count`, `hours_done_in_pack`, `remaining_hours_in_pack` | User confirmed: full removal. Single source of truth in packs module |
 | **Member list balance** | Computed via a new `vw_member_financial_summary` view | Avoids N+1 queries on accounting_lines per member |
-| **Member auth for portal** | Extend expense_access token system: send token by email, allow in-portal token regeneration | Reuses existing infrastructure (MemberSheet.expense_access_token_hash); no new auth system |
+| **Member auth for portal** | Default password = `{ffvp_id}_{YYYYMMDD}` (birth date), member changes after first login | No admin setup needed; member already knows their credentials; password change in portal |
 | **Deposit recording** | Full accounting integration (not stub) — **auto-posted** (state=2) | Real money needs immediate reflection; reversal handles errors |
 | **Document management** | S3-based file storage using **existing** `/storage/settings` config, new `member_documents` table | Infrastructure already exists (bucket defined), just unused |
 | **Email sending** | New `backend/services/email.py` service based on `conf_emails.json` SMTP config | Sync send with error handling for v1; queue later if needed |

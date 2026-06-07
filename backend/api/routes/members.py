@@ -11,19 +11,24 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi import HTTPException, status as http_status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import require_capability
 from constants import CAP_MANAGE_PRICES, CAP_MANAGE_USERS
-from models import User
+from models import FlightBillingSettings, User
 from schemas.members import (
+    AccountEntriesResponse,
+    AccountSummaryResponse,
     AnonymizationResultResponse,
     CommitteeCreateRequest,
     CommitteeMembershipReplaceRequest,
     CommitteeMembershipResponse,
     CommitteeResponse,
     CommitteeUpdateRequest,
+    DepositRequest,
+    DepositResponse,
     ExpenseAccessResponse,
     ImportResultResponse,
     LogbookListResponse,
@@ -43,6 +48,9 @@ from schemas.members import (
 from services.members import (
         count_members,
     anonymize_inactive_members,
+    create_member_deposit,
+    get_member_account_summary,
+    list_member_account_entries,
     complete_member_registration,
     create_committee,
     create_member,
@@ -400,10 +408,14 @@ async def list_member_logbook_endpoint(
     date_to: Optional[date] = Query(default=None),
     limit: Optional[int] = Query(default=None, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    group_by: Optional[str] = Query(default=None, pattern="^(machine|type|launch)$"),
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
-    """Return paginated logbook entries for a member (flight history + billing status)."""
+    """Return paginated logbook entries for a member with summary KPIs and optional grouping.
+
+    Group by: 'machine', 'type', or 'launch' — returns aggregated rows instead of flat list.
+    """
     return await list_member_logbook(
         db=db,
         member_uuid=member_uuid,
@@ -412,6 +424,65 @@ async def list_member_logbook_endpoint(
         date_to=date_to,
         limit=limit,
         offset=offset,
+        group_by=group_by,
+    )
+
+
+# ── Account / Balance ─────────────────────────────────────────────────────
+
+@router.get("/{member_uuid:uuid}/account-summary", response_model=AccountSummaryResponse)
+async def get_member_account_summary_endpoint(
+    member_uuid: UUID,
+    fiscal_year_uuid: Optional[UUID] = Query(default=None),
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the account balance summary for a member."""
+    return await get_member_account_summary(
+        db=db, member_uuid=member_uuid, fiscal_year_uuid=fiscal_year_uuid,
+    )
+
+
+@router.get("/{member_uuid:uuid}/account-entries", response_model=AccountEntriesResponse)
+async def list_member_account_entries_endpoint(
+    member_uuid: UUID,
+    fiscal_year_uuid: Optional[UUID] = Query(default=None),
+    state: Optional[int] = Query(default=None, ge=1, le=2),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return paginated accounting entries for a member."""
+    return await list_member_account_entries(
+        db=db, member_uuid=member_uuid,
+        fiscal_year_uuid=fiscal_year_uuid, state=state,
+        limit=limit, offset=offset,
+    )
+
+
+@router.post("/{member_uuid:uuid}/deposit", response_model=DepositResponse, status_code=201)
+async def create_member_deposit_endpoint(
+    member_uuid: UUID,
+    payload: DepositRequest,
+    current_user: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a deposit on a member's account (auto-posted)."""
+    # Resolve the fiscal year from settings or use a default
+    settings_result = await db.execute(
+        select(FlightBillingSettings).limit(1)
+    )
+    settings = settings_result.scalar_one_or_none()
+    if not settings:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucune configuration de dépôt trouvée",
+        )
+    return await create_member_deposit(
+        db=db, member_uuid=member_uuid, payload=payload,
+        fiscal_year_uuid=settings.fiscal_year_uuid,
+        created_by_user_id=current_user.id,
     )
 
 

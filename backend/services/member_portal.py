@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -66,22 +67,46 @@ PACK_TYPE_LABELS: dict[str, str] = {
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
-def _hash_token(raw_token: str) -> str:
-    """SHA256 hash of a raw token for secure storage."""
-    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+def _hash_password(raw: str) -> str:
+    """SHA256 hash of a password for secure storage."""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _compute_default_password(member: Member) -> str | None:
+    """Default portal password = {ffvp_id}_{YYYYMMDD} or {account_id}_{YYYYMMDD}."""
+    date_part = member.date_of_birth.strftime("%Y%m%d") if member.date_of_birth else None
+    if not date_part:
+        return None
+    identifier = member.ffvp_id or member.account_id
+    return f"{identifier}_{date_part}"
+
+
+async def _get_current_sheet(db: AsyncSession, member_uuid: UUID) -> MemberSheet | None:
+    """Get the most recent MemberSheet for the member (current year or latest)."""
+    result = await db.execute(
+        select(MemberSheet)
+        .where(MemberSheet.member_uuid == member_uuid)
+        .order_by(MemberSheet.year.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def authenticate_member(
     db: AsyncSession,
     member_identifier: str,
-    expense_access_token: str,
+    password: str,
 ) -> Member | None:
     """
-    Validate member identifier + expense access token.
-    Returns the Member if valid, None otherwise.
+    Validate member identifier + portal password.
+
+    Password logic:
+    1. If MemberSheet.portal_password_hash is set → compare against that
+    2. Otherwise → compute default password = {ffvp_id}_{YYYYMMDD}
+       If matches → store the hash (first-login activation)
+    3. Also check legacy expense_access_token_hash for backward compat
     """
-    # Resolve member — try UUID first, then account_id (never OR both to avoid
-    # multiple-row matches when a UUID coincidentally matches an account_id).
+    # Resolve member
     member = None
     try:
         member_uuid = UUID(member_identifier)
@@ -100,20 +125,80 @@ async def authenticate_member(
     if member is None:
         return None
 
-    # Find active MemberSheet with matching token hash
-    token_hash = _hash_token(expense_access_token)
-    sheet_result = await db.execute(
-        select(MemberSheet).where(
-            MemberSheet.member_uuid == member.uuid,
-            MemberSheet.expense_access_enabled == True,
-            MemberSheet.expense_access_token_hash == token_hash,
-        )
-    )
-    sheet = sheet_result.scalar_one_or_none()
-    if sheet is None:
+    # Check legacy expense access token first
+    legacy_hash = _hash_password(password)
+    sheet = await _get_current_sheet(db, member.uuid)
+    if sheet and sheet.expense_access_enabled and sheet.expense_access_token_hash == legacy_hash:
+        return member
+
+    # Portal password logic
+    password_hash = _hash_password(password)
+
+    if sheet and sheet.portal_password_hash:
+        # Password already set → verify
+        if sheet.portal_password_hash == password_hash:
+            return member
         return None
 
+    # No password hash yet → try default
+    default_pw = _compute_default_password(member)
+    if default_pw is None:
+        return None
+    if password != default_pw:
+        return None
+
+    # First successful login with default password → store hash
+    if sheet is None:
+        # Create a MemberSheet for the current year if none exists
+        from datetime import timezone
+        current_year = datetime.now(timezone.utc).year
+        sheet = MemberSheet(
+            member_uuid=member.uuid,
+            year=current_year,
+            fare_type=1,
+            portal_password_hash=password_hash,
+        )
+        db.add(sheet)
+    else:
+        sheet.portal_password_hash = password_hash
+    await db.commit()
     return member
+
+
+async def change_portal_password(
+    db: AsyncSession,
+    member_uuid: UUID,
+    current_password: str,
+    new_password: str,
+) -> bool:
+    """Change the member's portal password. Returns True on success."""
+    member_result = await db.execute(
+        select(Member).where(Member.uuid == member_uuid, Member.status == 1)
+    )
+    member = member_result.scalar_one_or_none()
+    if not member:
+        return False
+
+    # Verify current password
+    auth_result = await authenticate_member(db, member.account_id, current_password)
+    if not auth_result:
+        return False
+
+    # Hash and store new password
+    sheet = await _get_current_sheet(db, member.uuid)
+    if sheet is None:
+        from datetime import timezone
+        current_year = datetime.now(timezone.utc).year
+        sheet = MemberSheet(
+            member_uuid=member.uuid,
+            year=current_year,
+            fare_type=1,
+        )
+        db.add(sheet)
+
+    sheet.portal_password_hash = _hash_password(new_password)
+    await db.commit()
+    return True
 
 
 async def get_member_profile(member: Member) -> MemberPortalProfile:

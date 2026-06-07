@@ -74,9 +74,6 @@ export type SheetFormState = {
   licence_number: string
   fare_type: string
   hours_count: string
-  packs_bought_count: string
-  hours_done_in_pack: string
-  remaining_hours_in_pack: string
   expense_access_enabled: boolean
 }
 
@@ -131,9 +128,6 @@ export function createSheetForm(sheet?: MemberSheet | null): SheetFormState {
     licence_number: sheet?.licence_number ?? '',
     fare_type: String(sheet?.fare_type ?? 1),
     hours_count: sheet?.hours_count ?? '0',
-    packs_bought_count: String(sheet?.packs_bought_count ?? 0),
-    hours_done_in_pack: sheet?.hours_done_in_pack ?? '0',
-    remaining_hours_in_pack: sheet?.remaining_hours_in_pack ?? '0',
     expense_access_enabled: sheet?.expense_access_enabled ?? false,
   }
 }
@@ -238,9 +232,6 @@ export function buildSheetPayload(form: SheetFormState): UpsertMemberSheetPayloa
     ...(form.licence_number.trim() ? { licence_number: form.licence_number.trim() } : {}),
     fare_type: Number(form.fare_type),
     hours_count: form.hours_count || '0',
-    packs_bought_count: Number(form.packs_bought_count || 0),
-    hours_done_in_pack: form.hours_done_in_pack || '0',
-    remaining_hours_in_pack: form.remaining_hours_in_pack || '0',
     expense_access_enabled: form.expense_access_enabled,
   }
 }

@@ -45,9 +45,6 @@ export type MemberSheet = {
   licence_number: string | null
   fare_type: number
   hours_count: string
-  packs_bought_count: number
-  hours_done_in_pack: string
-  remaining_hours_in_pack: string
   expense_access_enabled: boolean
   created_at: string
   updated_at: string
@@ -207,9 +204,6 @@ export type UpsertMemberSheetPayload = {
   licence_number?: string
   fare_type: number
   hours_count: string
-  packs_bought_count: number
-  hours_done_in_pack: string
-  remaining_hours_in_pack: string
   expense_access_enabled: boolean
 }
 
@@ -234,6 +228,7 @@ export type LogbookFilters = {
   date_to?: string
   limit?: number
   offset?: number
+  group_by?: 'machine' | 'type' | 'launch'
 }
 
 export type LogbookItem = {
@@ -243,12 +238,14 @@ export type LogbookItem = {
   type_label: string | null
   launch_method: number
   launch_label: string | null
+  role: string | null
   pilot_name: string | null
   second_pilot_name: string | null
   asset_code: string | null
   takeoff_time: string | null
   landing_time: string | null
   duration_minutes: number | null
+  flight_km: number | null
   billing_quote_state: string | null
   has_discount: boolean
   gross_amount: string | null
@@ -256,7 +253,65 @@ export type LogbookItem = {
   errors: string[]
 }
 
+export type LogbookSummary = {
+  total_flight_count: number
+  total_duration_minutes: number
+  total_km: number
+  pilot_duration_minutes: number
+  second_pilot_duration_minutes: number
+}
+
+export type LogbookGroupedItem = {
+  group_key: string
+  group_label: string
+  flight_count: number
+  total_duration_minutes: number
+  total_km: number
+}
+
 export type LogbookResponse = {
   items: LogbookItem[]
   total: number
+  summary: LogbookSummary
+  grouped: LogbookGroupedItem[]
+}
+
+// ── Account / Balance ────────────────────────────────────────────────────────
+
+export type AccountSummary = {
+  current_balance: string
+  pending_total: string
+  posted_total: string
+  currency: string
+}
+
+export type AccountEntryItem = {
+  entry_uuid: string
+  entry_date: string | null
+  journal_code: string | null
+  description: string | null
+  reference: string | null
+  state: number
+  debit: string
+  credit: string
+}
+
+export type AccountEntriesResponse = {
+  items: AccountEntryItem[]
+  total: number
+}
+
+export type DepositRequest = {
+  amount: string
+  payment_method: string
+  reference?: string
+  deposit_date?: string
+}
+
+export type DepositResponse = {
+  deposit_uuid: string
+  entry_uuid: string
+  amount: string
+  status: string
+  message: string
 }

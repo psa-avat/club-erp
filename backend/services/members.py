@@ -7,11 +7,11 @@ import io
 import logging
 import re
 import secrets
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from hashlib import sha256
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, exists, func, or_, select
@@ -25,9 +25,11 @@ from models import (
     AccountingEntryTemplate,
     AccountingFiscalYear,
     AccountingJournal,
+    AccountingLine,
     Asset,
     Committee,
     CommitteeMember,
+    FlightBillingSettings,
     Member,
     MemberRegistration,
     MemberSheet,
@@ -38,17 +40,24 @@ from models import (
 )
 from schemas.accounting import AccountingEntryCreateRequest, AccountingLineCreateRequest
 from schemas.members import (
+    AccountEntriesResponse,
+    AccountEntryItem,
+    AccountSummaryResponse,
     AnonymizationResultResponse,
     CommitteeCreateRequest,
     CommitteeMembershipResponse,
     CommitteeMembershipReplaceRequest,
     CommitteeResponse,
     CommitteeUpdateRequest,
+    DepositRequest,
+    DepositResponse,
     ExpenseAccessResponse,
     ImportResultResponse,
     ImportRowError,
+    LogbookGroupedItem,
     LogbookItemResponse,
     LogbookListResponse,
+    LogbookSummary,
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
@@ -1309,14 +1318,22 @@ async def list_member_logbook(
     date_to: Optional[date] = None,
     limit: Optional[int] = None,
     offset: int = 0,
+    group_by: Optional[str] = None,
 ) -> LogbookListResponse:
-    """Return paginated logbook entries for a member.
+    """Return paginated logbook entries for a member with summary KPIs and optional grouping.
 
-    Matches flights where pilot_erp_id equals the member's account_id.
+    Matches flights where the member is pilot or second pilot.
+    Group by: 'machine', 'type', or 'launch'.
     """
     member = await get_member_or_404(db, member_uuid)
 
-    filters = [ValidatedFlight.pilot_erp_id == member.account_id]
+    # Match flights where member is either pilot or second pilot
+    filters = [
+        or_(
+            ValidatedFlight.pilot_erp_id == member.account_id,
+            ValidatedFlight.second_pilot_erp_id == member.account_id,
+        )
+    ]
 
     if year is not None:
         filters.append(
@@ -1331,25 +1348,74 @@ async def list_member_logbook(
     count_q = select(func.count(ValidatedFlight.uuid)).where(*filters)
     total = (await db.execute(count_q)).scalar() or 0
 
-    # Fetch flights ordered by date DESC
-    stmt = (
+    # Fetch ALL matching flights (unpaginated) to compute summary & grouping
+    all_stmt = (
         select(ValidatedFlight)
         .where(*filters)
         .order_by(ValidatedFlight.jour.desc(), ValidatedFlight.takeoff_time.desc())
     )
-    if limit is not None:
-        stmt = stmt.limit(limit).offset(offset)
-    result = await db.execute(stmt)
-    flights = result.scalars().all()
+    all_result = await db.execute(all_stmt)
+    all_flights = all_result.scalars().all()
 
-    # Batch-fetch member names for pilot and second pilot
+    # ── Compute summary KPIs from all flights ──
+    summary = LogbookSummary()
+    summary.total_flight_count = len(all_flights)
+    for f in all_flights:
+        dur = _flight_duration_minutes(f)
+        if dur is not None:
+            summary.total_duration_minutes += dur
+            role = _member_role(member.account_id, f)
+            if role in ("pilot", "pilot_and_second"):
+                summary.pilot_duration_minutes += dur
+            if role in ("second_pilot", "pilot_and_second"):
+                summary.second_pilot_duration_minutes += dur
+        if f.flight_km is not None:
+            summary.total_km += f.flight_km
+
+    # ── Compute grouped data if requested ──
+    grouped: list[LogbookGroupedItem] = []
+    if group_by in ("machine", "type", "launch"):
+        groups: dict[str, dict] = {}
+        for f in all_flights:
+            if group_by == "machine":
+                key = f.asset_code or f.glider_erp_id or "?"
+                label = key
+            elif group_by == "type":
+                key = str(f.type_of_flight)
+                label = TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else f"type_{key}"
+            elif group_by == "launch":
+                key = str(f.launch_method)
+                label = LAUNCH_METHOD_LABELS.get(f.launch_method) if f.launch_method is not None else f"launch_{key}"
+            else:
+                continue
+            if key not in groups:
+                groups[key] = {"count": 0, "minutes": 0, "km": 0.0, "label": label}
+            groups[key]["count"] += 1
+            dur = _flight_duration_minutes(f)
+            if dur is not None:
+                groups[key]["minutes"] += dur
+            if f.flight_km is not None:
+                groups[key]["km"] += f.flight_km
+        grouped = [
+            LogbookGroupedItem(
+                group_key=k, group_label=v["label"],
+                flight_count=v["count"],
+                total_duration_minutes=v["minutes"],
+                total_km=v["km"],
+            )
+            for k, v in sorted(groups.items(), key=lambda x: -x[1]["minutes"])
+        ]
+
+    # ── Apply pagination for items ──
+    page_flights = all_flights[offset:offset + limit] if limit is not None else all_flights
+
+    # Batch-fetch member names
     member_uuids: set[str] = set()
-    for f in flights:
+    for f in page_flights:
         if f.pilot_erp_id:
             member_uuids.add(f.pilot_erp_id)
         if f.second_pilot_erp_id:
             member_uuids.add(f.second_pilot_erp_id)
-
     member_map: dict[str, str | None] = {}
     if member_uuids:
         member_result = await db.execute(
@@ -1361,25 +1427,13 @@ async def list_member_logbook(
             name = f"{row.first_name} {row.last_name}" if row.first_name and row.last_name else None
             member_map[uid] = name
 
-    # Build response items
+    # Build response items (paginated)
     items: list[LogbookItemResponse] = []
-    for f in flights:
+    for f in page_flights:
         pilot_name = member_map.get(f.pilot_erp_id) if f.pilot_erp_id else None
         second_name = member_map.get(f.second_pilot_erp_id) if f.second_pilot_erp_id else None
-
-        # Compute duration in minutes
-        duration: int | None = None
-        if f.takeoff_time and f.landing_time:
-            try:
-                th, tm = f.takeoff_time.split(":")
-                lh, lm = f.landing_time.split(":")
-                takeoff_min = int(th) * 60 + int(tm)
-                landing_min = int(lh) * 60 + int(lm)
-                if landing_min >= takeoff_min:
-                    duration = landing_min - takeoff_min
-            except (ValueError, AttributeError):
-                pass
-
+        duration = _flight_duration_minutes(f)
+        role = _member_role(member.account_id, f)
         items.append(LogbookItemResponse(
             flight_uuid=f.uuid,
             flight_date=f.jour,
@@ -1387,19 +1441,246 @@ async def list_member_logbook(
             type_label=TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else None,
             launch_method=f.launch_method,
             launch_label=LAUNCH_METHOD_LABELS.get(f.launch_method) if f.launch_method is not None else None,
+            role=role,
             pilot_name=pilot_name,
             second_pilot_name=second_name,
             asset_code=f.asset_code or f.glider_erp_id,
             takeoff_time=f.takeoff_time,
             landing_time=f.landing_time,
             duration_minutes=duration,
+            flight_km=f.flight_km,
             billing_quote_state=f.billing_quote_state,
             has_discount=f.has_discount or False,
-            gross_amount=None,   # Computed in Phase 3 via billing preview
-            net_amount=None,     # Computed in Phase 3 via billing preview
+            gross_amount=None,
+            net_amount=None,
         ))
 
-    return LogbookListResponse(items=items, total=total)
+    return LogbookListResponse(items=items, total=total, summary=summary, grouped=grouped)
+
+
+# ---------------------------------------------------------------------------
+# Account / Balance
+# ---------------------------------------------------------------------------
+
+async def get_member_account_summary(
+    db: AsyncSession,
+    member_uuid: UUID,
+    *,
+    fiscal_year_uuid: Optional[UUID] = None,
+) -> AccountSummaryResponse:
+    """Compute the account balance for a member from accounting lines."""
+    # Build base filter on member_uuid
+    base_filters = [AccountingLine.member_uuid == member_uuid]
+
+    # If a fiscal year is given, scope to entries in that FY
+    if fiscal_year_uuid:
+        base_filters.append(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
+
+    # Get totals by entry state
+    summary = AccountSummaryResponse()
+
+    for state, target_field in [(1, "pending_total"), (2, "posted_total")]:
+        stmt = select(
+            func.coalesce(func.sum(AccountingLine.debit), 0),
+            func.coalesce(func.sum(AccountingLine.credit), 0),
+        ).join(
+            AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid
+        ).where(
+            *base_filters,
+            AccountingEntry.state == state,
+        )
+        row = await db.execute(stmt)
+        debit, credit = row.one()
+        total = getattr(summary, target_field)
+        setattr(summary, target_field, total + debit - credit)
+
+    summary.current_balance = summary.posted_total
+    return summary
+
+
+async def list_member_account_entries(
+    db: AsyncSession,
+    member_uuid: UUID,
+    *,
+    fiscal_year_uuid: Optional[UUID] = None,
+    state: Optional[int] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> AccountEntriesResponse:
+    """List accounting entries where this member appears on a line."""
+    filters = [AccountingLine.member_uuid == member_uuid]
+    if fiscal_year_uuid:
+        filters.append(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
+    if state is not None:
+        filters.append(AccountingEntry.state == state)
+
+    # Count
+    count_q = select(func.count(func.distinct(AccountingEntry.uuid))).join(
+        AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid
+    ).where(*filters)
+    total = (await db.execute(count_q)).scalar() or 0
+
+    # Fetch entries (distinct, ordered by date DESC)
+    stmt = (
+        select(AccountingEntry)
+        .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .where(*filters)
+        .order_by(AccountingEntry.entry_date.desc(), AccountingEntry.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .distinct()
+    )
+    result = await db.execute(stmt)
+    entries = result.scalars().all()
+
+    # For each entry, sum the member's debit/credit lines
+    items: list[AccountEntryItem] = []
+    for entry in entries:
+        line_sum = await db.execute(
+            select(
+                func.coalesce(func.sum(AccountingLine.debit), 0),
+                func.coalesce(func.sum(AccountingLine.credit), 0),
+            ).where(
+                AccountingLine.entry_uuid == entry.uuid,
+                AccountingLine.member_uuid == member_uuid,
+            )
+        )
+        debit, credit = line_sum.one()
+
+        items.append(AccountEntryItem(
+            entry_uuid=entry.uuid,
+            entry_date=entry.entry_date,
+            journal_code=entry.journal_code,
+            description=entry.description,
+            reference=entry.reference,
+            state=entry.state,
+            debit=debit,
+            credit=credit,
+        ))
+
+    return AccountEntriesResponse(items=items, total=total)
+
+
+async def create_member_deposit(
+    db: AsyncSession,
+    member_uuid: UUID,
+    payload: DepositRequest,
+    *,
+    fiscal_year_uuid: UUID,
+    created_by_user_id: int | None = None,
+) -> DepositResponse:
+    """Record a deposit on a member's account. Auto-posted (state=2).
+
+    Debit: bank/cash account (from FlightBillingSettings)
+    Credit: member receivable account (from FlightBillingSettings)
+    """
+    # Load the member
+    member = await get_member_or_404(db, member_uuid)
+
+    # Load billing settings for this FY
+    settings_result = await db.execute(
+        select(FlightBillingSettings).where(
+            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid,
+        )
+    )
+    settings = settings_result.scalar_one_or_none()
+    if not settings:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucune configuration de dépôt pour cet exercice fiscal. "
+                   "Configurez les paramètres de dépôt dans les réglages de facturation.",
+        )
+    if not settings.deposit_journal_uuid or not settings.deposit_bank_account_uuid or not settings.deposit_receivable_account_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Les paramètres de dépôt sont incomplets (journal, compte banque, compte client).",
+        )
+
+    entry_uuid = uuid4()
+    deposit_uuid = uuid4()
+    entry_date = payload.deposit_date or date.today()
+
+    # Default reference
+    reference = payload.reference or f"DÉPÔT-{member.account_id}-{entry_date.isoformat()}"
+
+    # Create the accounting entry (auto-posted)
+    entry = AccountingEntry(
+        uuid=entry_uuid,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=settings.deposit_journal_uuid,
+        entry_date=entry_date,
+        state=2,  # Posted
+        description=f"Dépôt de {member.first_name} {member.last_name} ({payload.payment_method})",
+        reference=reference,
+        created_by=created_by_user_id,
+        posted_at=datetime.now(timezone.utc),
+    )
+    db.add(entry)
+
+    # Line 1: Debit the bank/cash account
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=settings.deposit_bank_account_uuid,
+        member_uuid=member_uuid,
+        debit=payload.amount,
+        credit=Decimal("0"),
+        description=f"Dépôt {member.first_name} {member.last_name}",
+    ))
+
+    # Line 2: Credit the member receivable account
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=settings.deposit_receivable_account_uuid,
+        member_uuid=member_uuid,
+        debit=Decimal("0"),
+        credit=payload.amount,
+        description=f"Avance de {member.first_name} {member.last_name}",
+    ))
+
+    await db.commit()
+
+    return DepositResponse(
+        deposit_uuid=deposit_uuid,
+        entry_uuid=entry_uuid,
+        amount=payload.amount,
+        status="posted",
+        message="Dépôt enregistré et comptabilisé",
+    )
+
+
+# ── Logbook helpers ──
+
+def _flight_duration_minutes(flight: ValidatedFlight) -> int | None:
+    """Compute flight duration in minutes from takeoff/landing times."""
+    if not flight.takeoff_time or not flight.landing_time:
+        return None
+    try:
+        th, tm = flight.takeoff_time.split(":")
+        lh, lm = flight.landing_time.split(":")
+        takeoff_min = int(th) * 60 + int(tm)
+        landing_min = int(lh) * 60 + int(lm)
+        if landing_min >= takeoff_min:
+            return landing_min - takeoff_min
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
+def _member_role(account_id: str, flight: ValidatedFlight) -> str | None:
+    """Determine the member's role on this flight."""
+    is_pilot = flight.pilot_erp_id == account_id
+    is_second = flight.second_pilot_erp_id == account_id
+    if is_pilot and is_second:
+        return "pilot_and_second"
+    if is_pilot:
+        return "pilot"
+    if is_second:
+        return "second_pilot"
+    return None
 
 
 # ---------------------------------------------------------------------------

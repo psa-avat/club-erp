@@ -19,14 +19,17 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { ArrowLeft, Key, Mail } from 'lucide-react';
 
 import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
 import { InitialsAvatar } from './MemberRowBadges';
 import { memberCategoryLabel } from './membersShared';
 import { useMemberQuery } from '../api';
 import { getPortalProfile } from '../../member-portal/api/client';
+import { useChangePortalPasswordMutation } from '../../member-portal/api';
 import { MemberLogbookTab } from './MemberLogbookTab';
+import { MemberBalanceTab } from './MemberBalanceTab';
 import type {
   WorkspaceMode,
   WorkspaceTab,
@@ -110,6 +113,13 @@ function TabButton({
 export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('logbook');
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const changePasswordMutation = useChangePortalPasswordMutation();
 
   // In club mode, fetch member detail from the main API.
   // In portal mode, use the profile cached in sessionStorage to avoid
@@ -192,11 +202,10 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => {
-                  /* Phase 8 — change token dialog */
-                }}
+                onClick={() => setShowPasswordDialog(true)}
               >
-                🔑 Changer le code
+                <Key className="mr-1 h-4 w-4" />
+                Changer le mot de passe
               </Button>
             )}
           </div>
@@ -218,11 +227,79 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
       {/* ── Tab content ── */}
       <div>
         {activeTab === 'logbook' && <MemberLogbookTab memberUuid={memberUuid} mode={mode} />}
-        {activeTab === 'balance' && <TabPlaceholder tab="balance" />}
+        {activeTab === 'balance' && <MemberBalanceTab memberUuid={memberUuid} mode={mode} />}
         {activeTab === 'club-expenses' && <TabPlaceholder tab="club-expenses" />}
         {activeTab === 'volunteer-fiscal' && <TabPlaceholder tab="volunteer-fiscal" />}
         {activeTab === 'documents' && <TabPlaceholder tab="documents" />}
       </div>
+
+      {/* ── Password change dialog (portal mode) ── */}
+      {showPasswordDialog && mode === 'portal' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-800">Changer le mot de passe</h3>
+
+            {pwSuccess ? (
+              <div className="mt-4 space-y-4">
+                <p className="text-sm text-emerald-700">Mot de passe modifié avec succès.</p>
+                <Button variant="secondary" size="sm" onClick={() => { setShowPasswordDialog(false); setPwSuccess(false); }}>
+                  Fermer
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setPwError(null);
+                if (!pwCurrent || !pwNew || !pwConfirm) {
+                  setPwError('Veuillez remplir tous les champs');
+                  return;
+                }
+                if (pwNew !== pwConfirm) {
+                  setPwError('Les nouveaux mots de passe ne correspondent pas');
+                  return;
+                }
+                if (pwNew.length < 6) {
+                  setPwError('Le mot de passe doit faire au moins 6 caractères');
+                  return;
+                }
+                try {
+                  await changePasswordMutation.mutateAsync({ currentPassword: pwCurrent, newPassword: pwNew });
+                  setPwSuccess(true);
+                  setPwCurrent('');
+                  setPwNew('');
+                  setPwConfirm('');
+                } catch {
+                  setPwError('Mot de passe actuel incorrect');
+                }
+              }} className="mt-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Mot de passe actuel</label>
+                  <Input type="password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Nouveau mot de passe</label>
+                  <Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Confirmer le nouveau mot de passe</label>
+                  <Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} className="mt-1" />
+                </div>
+
+                {pwError && <p className="text-sm text-red-600">{pwError}</p>}
+
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setShowPasswordDialog(false)}>
+                    Annuler
+                  </Button>
+                  <Button type="submit" size="sm" disabled={changePasswordMutation.isPending}>
+                    {changePasswordMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

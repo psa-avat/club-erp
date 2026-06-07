@@ -238,27 +238,6 @@ export function MemberSheetsPage() {
                       value={sheetForm.hours_count}
                       onChange={(value) => setSheetForm({ ...sheetForm, hours_count: value })}
                     />
-                    <TextField
-                      id="sheet-packs-bought"
-                      label={t('sheet.packsBought')}
-                      type="number"
-                      value={sheetForm.packs_bought_count}
-                      onChange={(value) => setSheetForm({ ...sheetForm, packs_bought_count: value })}
-                    />
-                    <TextField
-                      id="sheet-hours-in-pack"
-                      label={t('sheet.hoursInPack')}
-                      value={sheetForm.hours_done_in_pack}
-                      onChange={(value) => setSheetForm({ ...sheetForm, hours_done_in_pack: value })}
-                    />
-                    <TextField
-                      id="sheet-remaining-hours"
-                      label={t('sheet.remainingHours')}
-                      value={sheetForm.remaining_hours_in_pack}
-                      onChange={(value) =>
-                        setSheetForm({ ...sheetForm, remaining_hours_in_pack: value })
-                      }
-                    />
                   </div>
 
                   {/* Save button */}

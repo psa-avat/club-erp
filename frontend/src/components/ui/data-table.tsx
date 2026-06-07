@@ -43,6 +43,10 @@ interface DataTableProps<T> {
   defaultSortDir?: SortDir
   className?: string
   emptyState?: React.ReactNode
+  /** Key of the currently expanded row. When set, renderExpanded is called below that row. */
+  expandedRow?: string | number | null
+  /** Renders expanded content for a given row (rendered as an extra row below). */
+  renderExpanded?: (row: T) => React.ReactNode
 }
 
 function DataTable<T>({
@@ -55,6 +59,8 @@ function DataTable<T>({
   defaultSortDir = 'asc',
   className,
   emptyState,
+  expandedRow,
+  renderExpanded,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = React.useState<string | undefined>(defaultSortKey)
   const [sortDir, setSortDir] = React.useState<SortDir>(defaultSortDir)
@@ -128,27 +134,38 @@ function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {data.map(row => (
-            <tr
-              key={getRowKey(row)}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cn(
-                'border-b border-outline-variant last:border-0',
-                onRowClick && 'cursor-pointer transition-colors hover:bg-surface-container',
-              )}
-            >
-              {columns.map(col => (
-                <td key={col.key} className={cn('px-3 py-3 text-on-surface', col.className)}>
-                  {col.cell(row)}
-                </td>
-              ))}
-              {actions && (
-                <td className="px-3 py-3">
-                  <div className="flex items-center justify-end gap-1">{actions(row)}</div>
-                </td>
-              )}
-            </tr>
-          ))}
+          {data.map(row => {
+            const rowKey = getRowKey(row)
+            return (
+              <React.Fragment key={rowKey}>
+                <tr
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={cn(
+                    'border-b border-outline-variant last:border-0',
+                    onRowClick && 'cursor-pointer transition-colors hover:bg-surface-container',
+                  )}
+                >
+                  {columns.map(col => (
+                    <td key={col.key} className={cn('px-3 py-3 text-on-surface', col.className)}>
+                      {col.cell(row)}
+                    </td>
+                  ))}
+                  {actions && (
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-end gap-1">{actions(row)}</div>
+                    </td>
+                  )}
+                </tr>
+                {expandedRow === rowKey && renderExpanded && (
+                  <tr className="border-b border-outline-variant">
+                    <td colSpan={columns.length + (actions ? 1 : 0)} className="p-0">
+                      {renderExpanded(row)}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            )
+          })}
         </tbody>
       </table>
     </div>

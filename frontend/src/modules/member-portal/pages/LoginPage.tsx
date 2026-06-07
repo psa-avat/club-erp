@@ -5,27 +5,27 @@ import { useMemberPortalLogin, isPortalAuthenticated } from '../api'
 export function LoginPage() {
   const navigate = useNavigate()
   const [memberId, setMemberId] = useState('')
-  const [token, setToken] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const loginMutation = useMemberPortalLogin()
 
-  // Already logged in → redirect
+  // Already logged in → redirect to workspace
   if (isPortalAuthenticated()) {
-    return <Navigate to="/member-portal/dashboard" replace />
+    return <Navigate to="/member-portal/workspace" replace />
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!memberId.trim() || !token.trim()) {
+    if (!memberId.trim() || !password.trim()) {
       setError('Veuillez remplir tous les champs')
       return
     }
     try {
       await loginMutation.mutateAsync({
         memberIdentifier: memberId.trim(),
-        expenseToken: token.trim(),
+        password: password.trim(),
       })
       navigate('/member-portal/dashboard', { replace: true })
     } catch (err: unknown) {
@@ -63,13 +63,13 @@ export function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-slate-700">
-              Code d'accès
+              Mot de passe
             </label>
             <input
               type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Votre code d'accès"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Votre mot de passe"
               className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               autoComplete="current-password"
             />
@@ -90,7 +90,8 @@ export function LoginPage() {
 
         <p className="mt-6 text-center text-xs text-slate-400">
           Ce portail est réservé aux membres du club.<br />
-          Si vous n'avez pas de code d'accès, contactez le bureau.
+          Votre mot de passe par défaut est : <strong>n°ffvp_date_naissance</strong><br />
+          Exemple : <em>12345_19900115</em>
         </p>
       </div>
     </div>

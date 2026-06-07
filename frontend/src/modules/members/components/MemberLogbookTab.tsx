@@ -73,6 +73,15 @@ function formatMoney(amount: string | null | undefined): string {
   return numeric.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function roleLabel(role: string | null): string {
+  switch (role) {
+    case 'pilot': return 'Pilote'
+    case 'second_pilot': return 'Instructeur'
+    case 'pilot_and_second': return 'Pilote + Instr.'
+    default: return '—'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -90,7 +99,7 @@ function ExpandedRowContent({ flight }: { flight: LogbookItem }) {
   return (
     <div className="space-y-3 bg-slate-50 p-4">
       {/* Flight details */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
         <div>
           <span className="font-medium text-slate-500">Décollage :</span>{' '}
           <span className="text-slate-800">{flight.takeoff_time ?? '—'}</span>
@@ -102,6 +111,10 @@ function ExpandedRowContent({ flight }: { flight: LogbookItem }) {
         <div>
           <span className="font-medium text-slate-500">Durée :</span>{' '}
           <span className="text-slate-800">{formatMinutes(flight.duration_minutes)}</span>
+        </div>
+        <div>
+          <span className="font-medium text-slate-500">Distance :</span>{' '}
+          <span className="text-slate-800">{flight.flight_km != null ? `${flight.flight_km} km` : '—'}</span>
         </div>
         <div>
           <span className="font-medium text-slate-500">Lancement :</span>{' '}
@@ -137,21 +150,34 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [expandedPilot, setExpandedPilot] = useState<string | null>(null)
+  const [expandedInstructor, setExpandedInstructor] = useState<string | null>(null)
+  const [groupBy, setGroupBy] = useState<'machine' | 'type' | 'launch' | ''>('')
 
   const filters: LogbookFilters = {
     year: selectedYear,
     ...(dateFrom && { date_from: dateFrom }),
     ...(dateTo && { date_to: dateTo }),
+    ...(groupBy && { group_by: groupBy }),
   }
 
   const clubQuery = useMemberLogbookQuery(memberUuid, filters)
   const portalQuery = useMemberPortalLogbookQuery(filters)
-  const { data, isLoading } = mode === 'portal' ? portalQuery : clubQuery
+  const { data } = mode === 'portal' ? portalQuery : clubQuery
 
   const flights = data?.items ?? []
+  const summary = data?.summary
+  const grouped = data?.grouped ?? []
 
-  const columns: ColumnDef<LogbookItem>[] = [
+  // Split flights: instructor (second_pilot) vs pilot/other
+  const instructorFlights = flights.filter((f) => f.role === 'second_pilot')
+  const otherFlights = flights.filter((f) => f.role !== 'second_pilot')
+
+  function makeColumns(
+    expanded: string | null,
+    onToggle: (uuid: string) => void,
+  ): ColumnDef<LogbookItem>[] {
+    return [
     {
       key: 'expand',
       header: '',
@@ -159,10 +185,10 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
       cell: (row) => (
         <button
           type="button"
-          onClick={() => setExpandedRow(expandedRow === row.flight_uuid ? null : row.flight_uuid)}
+          onClick={() => onToggle(row.flight_uuid)}
           className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
         >
-          {expandedRow === row.flight_uuid ? (
+          {expanded === row.flight_uuid ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
@@ -188,6 +214,12 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
       header: 'Type',
       className: 'min-w-[100px]',
       cell: (row) => <span className="text-sm text-slate-700">{row.type_label ?? `type ${row.type_of_flight}`}</span>,
+    },
+    {
+      key: 'role',
+      header: 'Rôle',
+      className: 'min-w-[90px]',
+      cell: (row) => <span className="text-sm text-slate-700">{roleLabel(row.role)}</span>,
     },
     {
       key: 'duration',
@@ -234,8 +266,35 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
     },
   ]
 
+  }
+
+  const pilotColumns = makeColumns(expandedPilot, (uuid) => setExpandedPilot(expandedPilot === uuid ? null : uuid))
+  const instructorColumns = makeColumns(expandedInstructor, (uuid) => setExpandedInstructor(expandedInstructor === uuid ? null : uuid))
+
   return (
     <div className="space-y-4">
+      {/* ── KPI Strip ── */}
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-medium text-slate-500">Total vols</p>
+            <p className="mt-0.5 text-xl font-semibold text-slate-800">{summary.total_flight_count}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-medium text-slate-500">Temps de vol</p>
+            <p className="mt-0.5 text-xl font-semibold text-slate-800">{formatMinutes(summary.total_duration_minutes)}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-medium text-slate-500">Dont instructeur</p>
+            <p className="mt-0.5 text-xl font-semibold text-slate-800">{formatMinutes(summary.second_pilot_duration_minutes)}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-medium text-slate-500">Distance totale</p>
+            <p className="mt-0.5 text-xl font-semibold text-slate-800">{summary.total_km.toLocaleString('fr-FR')} km</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
         <div className="flex items-center gap-2">
@@ -259,42 +318,121 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           />
         </div>
 
+        {/* Group by selector */}
+        <select
+          value={groupBy}
+          onChange={(e) => setGroupBy(e.target.value as 'machine' | 'type' | 'launch' | '')}
+          className="h-8 rounded border border-slate-300 bg-white px-2 text-sm text-slate-700"
+        >
+          <option value="">Vue liste</option>
+          <option value="machine">Par machine</option>
+          <option value="type">Par type de vol</option>
+          <option value="launch">Par lancement</option>
+        </select>
+
         <div className="ml-auto text-xs text-slate-400">
           {data ? `${data.total} vol${data.total !== 1 ? 's' : ''}` : ''}
         </div>
       </div>
 
-      {/* ── Table ── */}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <DataTable
-          columns={columns}
-          data={flights}
-          getRowKey={(row) => row.flight_uuid}
-          defaultSortKey="date"
-          emptyState={
-            <div className="p-8 text-center text-sm text-slate-500">
-              {isLoading ? 'Chargement du carnet de vol…' : 'Aucun vol enregistré pour cette période.'}
-            </div>
-          }
-          actions={(row) =>
-            mode === 'club' ? (
-              <button
-                type="button"
-                onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                title="Voir dans les opérations"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </button>
-            ) : undefined
-          }
-        />
+      {/* ── Grouped summary table ── */}
+      {groupBy && grouped.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50">
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">{groupBy === 'machine' ? 'Machine' : groupBy === 'type' ? 'Type de vol' : 'Lancement'}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">Vols</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">Durée</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">Distance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map((g) => (
+                <tr key={g.group_key} className="border-b border-slate-100 last:border-0">
+                  <td className="px-3 py-2 font-medium text-slate-800">{g.group_label}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{g.flight_count}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{formatMinutes(g.total_duration_minutes)}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{g.total_km.toLocaleString('fr-FR')} km</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {/* Expanded row */}
-        {expandedRow && (
-          <ExpandedRowContent flight={flights.find((f) => f.flight_uuid === expandedRow)!} />
-        )}
-      </div>
+      {/* ── Detail tables (only when not grouped) ── */}
+      {!groupBy && (
+        <div className="space-y-6">
+          {/* Other flights (pilot / pilot_and_second) */}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-slate-700">
+              Vols comme pilote ({otherFlights.length})
+            </h3>
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <DataTable
+                columns={pilotColumns}
+                data={otherFlights}
+                getRowKey={(row) => row.flight_uuid}
+                defaultSortKey="date"
+                expandedRow={expandedPilot}
+                renderExpanded={(row) => <ExpandedRowContent flight={row} />}
+                emptyState={
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    Aucun vol comme pilote.
+                  </div>
+                }
+                actions={(row) =>
+                  mode === 'club' ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      title="Voir dans les opérations"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </button>
+                  ) : undefined
+                }
+              />
+            </div>
+          </div>
+
+          {/* Instructor flights (second_pilot) */}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-slate-700">
+              Vols comme instructeur ({instructorFlights.length})
+            </h3>
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <DataTable
+                columns={instructorColumns}
+                data={instructorFlights}
+                getRowKey={(row) => row.flight_uuid}
+                defaultSortKey="date"
+                expandedRow={expandedInstructor}
+                renderExpanded={(row) => <ExpandedRowContent flight={row} />}
+                emptyState={
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    Aucun vol comme instructeur.
+                  </div>
+                }
+                actions={(row) =>
+                  mode === 'club' ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      title="Voir dans les opérations"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </button>
+                  ) : undefined
+                }
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

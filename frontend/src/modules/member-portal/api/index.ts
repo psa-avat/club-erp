@@ -1,7 +1,7 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { portalApiClient, setPortalToken, setPortalProfile, clearPortalToken } from './client'
 export { getPortalToken, getPortalProfile, clearPortalToken, isPortalAuthenticated } from './client'
-import type { LogbookFilters, LogbookResponse } from '../../members/types'
+import type { AccountEntriesResponse, AccountSummary, DepositRequest, DepositResponse, LogbookFilters, LogbookResponse } from '../../members/types'
 import type {
   MemberPortalLoginResponse,
   MemberPortalFlightListResponse,
@@ -16,18 +16,18 @@ import type {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
-async function loginRequest(memberIdentifier: string, token: string) {
+async function loginRequest(memberIdentifier: string, password: string) {
   const { data } = await portalApiClient.post<MemberPortalLoginResponse>(
     '/api/v1/member-portal/login',
-    { member_identifier: memberIdentifier, expense_access_token: token },
+    { member_identifier: memberIdentifier, password },
   )
   return data
 }
 
 export function useMemberPortalLogin() {
   return useMutation({
-    mutationFn: ({ memberIdentifier, expenseToken }: { memberIdentifier: string; expenseToken: string }) =>
-      loginRequest(memberIdentifier, expenseToken),
+    mutationFn: ({ memberIdentifier, password }: { memberIdentifier: string; password: string }) =>
+      loginRequest(memberIdentifier, password),
     onSuccess: (data) => {
       setPortalToken(data.access_token)
       setPortalProfile(data.member)
@@ -200,3 +200,69 @@ export function useMemberPortalLogbookQuery(filters: LogbookFilters = {}) {
     queryFn: () => fetchPortalLogbook(filters),
   })
 }
+
+// ── Account / Balance ─────────────────────────────────────────────────────────
+
+async function fetchPortalAccountSummary(fiscalYearUuid?: string) {
+  const { data } = await portalApiClient.get<AccountSummary>('/api/v1/member-portal/account', {
+    params: fiscalYearUuid ? { fiscal_year_uuid: fiscalYearUuid } : {},
+  })
+  return data
+}
+
+export function useMemberPortalAccountSummaryQuery(fiscalYearUuid?: string | null) {
+  return useQuery({
+    queryKey: ['member-portal', 'account-summary', fiscalYearUuid],
+    queryFn: () => fetchPortalAccountSummary(fiscalYearUuid ?? undefined),
+  })
+}
+
+async function fetchPortalAccountEntries(filters: { fiscalYearUuid?: string; state?: number; limit?: number; offset?: number }) {
+  const params: Record<string, string | number> = {}
+  if (filters.fiscalYearUuid) params.fiscal_year_uuid = filters.fiscalYearUuid
+  if (filters.state !== undefined) params.state = filters.state
+  if (filters.limit !== undefined) params.limit = filters.limit
+  if (filters.offset !== undefined) params.offset = filters.offset
+
+  const { data } = await portalApiClient.get<AccountEntriesResponse>('/api/v1/member-portal/account/entries', { params })
+  return data
+}
+
+export function useMemberPortalAccountEntriesQuery(filters: { fiscalYearUuid?: string; state?: number; limit?: number; offset?: number } = {}) {
+  return useQuery({
+    queryKey: ['member-portal', 'account-entries', filters],
+    queryFn: () => fetchPortalAccountEntries(filters),
+  })
+}
+
+async function fetchPortalDeposit(payload: DepositRequest) {
+  const { data } = await portalApiClient.post<DepositResponse>('/api/v1/member-portal/deposit', payload)
+  return data
+}
+
+export function useMemberPortalDepositMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (payload: DepositRequest) => fetchPortalDeposit(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['member-portal', 'account-summary'] })
+      await queryClient.invalidateQueries({ queryKey: ['member-portal', 'account-entries'] })
+    },
+  })
+}
+
+// ── Password change ───────────────────────────────────────────────────────────
+
+export function useChangePortalPasswordMutation() {
+  return useMutation({
+    mutationFn: async ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) => {
+      await portalApiClient.patch('/api/v1/member-portal/password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      })
+    },
+  })
+}
+
+export type { LogbookFilters } from '../../members/types'

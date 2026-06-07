@@ -135,9 +135,6 @@ class MemberSheetUpsertRequest(BaseModel):
     licence_number: Optional[str] = Field(default=None, max_length=100)
     fare_type: int = Field(ge=1, le=5)
     hours_count: Decimal = Field(default=Decimal("0"), ge=0)
-    packs_bought_count: int = Field(default=0, ge=0)
-    hours_done_in_pack: Decimal = Field(default=Decimal("0"), ge=0)
-    remaining_hours_in_pack: Decimal = Field(default=Decimal("0"), ge=0)
     expense_access_enabled: bool = False
 
 
@@ -216,9 +213,6 @@ class MemberSheetResponse(BaseModel):
     licence_number: Optional[str] = None
     fare_type: int
     hours_count: Decimal
-    packs_bought_count: int
-    hours_done_in_pack: Decimal
-    remaining_hours_in_pack: Decimal
     expense_access_enabled: bool
     created_at: datetime
     updated_at: datetime
@@ -361,12 +355,14 @@ class LogbookItemResponse(BaseModel):
     type_label: Optional[str] = None
     launch_method: int
     launch_label: Optional[str] = None
+    role: Optional[str] = None  # 'pilot' or 'second_pilot'
     pilot_name: Optional[str] = None
     second_pilot_name: Optional[str] = None
     asset_code: Optional[str] = None
     takeoff_time: Optional[str] = None
     landing_time: Optional[str] = None
     duration_minutes: Optional[int] = None
+    flight_km: Optional[float] = None
     billing_quote_state: Optional[str] = None
     has_discount: bool = False
     gross_amount: Optional[Decimal] = None
@@ -374,8 +370,82 @@ class LogbookItemResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class LogbookSummary(BaseModel):
+    """Aggregated KPIs for the member's logbook (across all matching flights, not just the page)."""
+
+    total_flight_count: int = 0
+    total_duration_minutes: int = 0
+    total_km: float = 0
+    pilot_duration_minutes: int = 0
+    second_pilot_duration_minutes: int = 0
+
+
+class LogbookGroupedItem(BaseModel):
+    """One row in a grouped logbook summary."""
+
+    group_key: str
+    group_label: str
+    flight_count: int
+    total_duration_minutes: int
+    total_km: float
+
+
 class LogbookListResponse(BaseModel):
     """Paginated logbook response."""
 
     items: list[LogbookItemResponse]
     total: int
+    summary: LogbookSummary = LogbookSummary()
+    grouped: list[LogbookGroupedItem] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Account / Balance
+# ---------------------------------------------------------------------------
+
+class AccountSummaryResponse(BaseModel):
+    """Member account balance summary."""
+
+    current_balance: Decimal = Decimal("0")
+    pending_total: Decimal = Decimal("0")
+    posted_total: Decimal = Decimal("0")
+    currency: str = "EUR"
+
+
+class AccountEntryItem(BaseModel):
+    """One accounting entry line for a member."""
+
+    entry_uuid: UUID
+    entry_date: Optional[date] = None
+    journal_code: Optional[str] = None
+    description: Optional[str] = None
+    reference: Optional[str] = None
+    state: int  # 1=Draft, 2=Posted
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+
+
+class AccountEntriesResponse(BaseModel):
+    """Paginated account entries."""
+
+    items: list[AccountEntryItem]
+    total: int
+
+
+class DepositRequest(BaseModel):
+    """Record a deposit on a member's account."""
+
+    amount: Decimal = Field(..., gt=0)
+    payment_method: str = Field(default="bank_transfer", pattern=r"^(bank_transfer|check|cash|card)$")
+    reference: Optional[str] = None
+    deposit_date: Optional[date] = None
+
+
+class DepositResponse(BaseModel):
+    """Response after recording a deposit."""
+
+    deposit_uuid: UUID
+    entry_uuid: UUID
+    amount: Decimal
+    status: str
+    message: str
