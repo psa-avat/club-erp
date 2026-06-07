@@ -54,14 +54,14 @@ function formatMinutes(minutes: number | null): string {
   return `${h}h${m.toString().padStart(2, '0')}`
 }
 
-function billingStateBadge(state: string | null): { label: string; class: string } {
+function billingStateBadge(state: string | null, t: (key: string) => string): { label: string; class: string } {
   switch (state) {
     case 'pending':
-      return { label: 'En attente', class: 'bg-slate-100 text-slate-700' }
+      return { label: t('statePending'), class: 'bg-slate-100 text-slate-700' }
     case 'applied':
-      return { label: 'Brouillon', class: 'bg-amber-100 text-amber-800' }
+      return { label: t('stateDraft'), class: 'bg-amber-100 text-amber-800' }
     case 'posted':
-      return { label: 'Comptabilisé', class: 'bg-emerald-100 text-emerald-800' }
+      return { label: t('statePosted'), class: 'bg-emerald-100 text-emerald-800' }
     default:
       return { label: state ?? '—', class: 'bg-slate-100 text-slate-500' }
   }
@@ -74,11 +74,11 @@ function formatMoney(amount: string | null | undefined): string {
   return numeric.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function roleLabel(role: string | null): string {
+function roleLabel(role: string | null, t: (key: string) => string): string {
   switch (role) {
-    case 'pilot': return 'Pilote'
-    case 'second_pilot': return 'Instructeur'
-    case 'pilot_and_second': return 'Pilote + Instr.'
+    case 'pilot': return t('logbookPilot')
+    case 'second_pilot': return t('logbookInstructorShort')
+    case 'pilot_and_second': return t('logbookPilotAndInstructor')
     default: return '—'
   }
 }
@@ -96,41 +96,41 @@ interface MemberLogbookTabProps {
 // Expandable row content
 // ---------------------------------------------------------------------------
 
-function ExpandedRowContent({ flight }: { flight: LogbookItem }) {
+function ExpandedRowContent({ flight, t }: { flight: LogbookItem; t: (key: string) => string }) {
   return (
     <div className="space-y-3 bg-slate-50 p-4">
       {/* Flight details */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
         <div>
-          <span className="font-medium text-slate-500">Décollage :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookTakeoff')} :</span>{' '}
           <span className="text-slate-800">{flight.takeoff_time ?? '—'}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Atterrissage :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookLanding')} :</span>{' '}
           <span className="text-slate-800">{flight.landing_time ?? '—'}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Durée :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookDurationLabel')} :</span>{' '}
           <span className="text-slate-800">{formatMinutes(flight.duration_minutes)}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Distance :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookDistanceLabel')} :</span>{' '}
           <span className="text-slate-800">{flight.flight_km != null ? `${flight.flight_km} km` : '—'}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Temps moteur :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookEngineTime')} :</span>{' '}
           <span className="text-slate-800">{flight.engine_time != null ? `${flight.engine_time} h` : '—'}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Lancement :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookLaunchLabel')} :</span>{' '}
           <span className="text-slate-800">{flight.launch_label ?? `type ${flight.launch_method}`}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Second pilote :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookSecondPilot')} :</span>{' '}
           <span className="text-slate-800">{flight.second_pilot_name ?? '—'}</span>
         </div>
         <div>
-          <span className="font-medium text-slate-500">Montant brut :</span>{' '}
+          <span className="font-medium text-slate-500">{t('logbookGrossAmount')} :</span>{' '}
           <span className="text-slate-800">{formatMoney(flight.gross_amount)} €</span>
         </div>
       </div>
@@ -208,55 +208,55 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
     },
     {
       key: 'date',
-      header: 'Date',
+      header: t('logbookDate'),
       sortable: true,
       className: 'min-w-[100px]',
       cell: (row) => <span className="text-sm text-slate-800">{formatDate(row.flight_date)}</span>,
     },
     {
       key: 'machine',
-      header: 'Machine',
+      header: t('logbookMachine'),
       className: 'min-w-[100px]',
       cell: (row) => <span className="text-sm font-medium text-slate-800">{row.asset_code ?? '—'}</span>,
     },
     {
       key: 'type',
-      header: 'Type',
+      header: t('logbookType'),
       className: 'min-w-[100px]',
       cell: (row) => <span className="text-sm text-slate-700">{row.type_label ?? `type ${row.type_of_flight}`}</span>,
     },
     {
       key: 'role',
-      header: 'Rôle',
+      header: t('logbookRole'),
       className: 'min-w-[90px]',
-      cell: (row) => <span className="text-sm text-slate-700">{roleLabel(row.role)}</span>,
+      cell: (row) => <span className="text-sm text-slate-700">{roleLabel(row.role, t)}</span>,
     },
     {
       key: 'duration',
-      header: 'Durée',
+      header: t('logbookDurationLabel'),
       className: 'min-w-[80px] text-right',
       cell: (row) => <span className="text-sm text-slate-700">{formatMinutes(row.duration_minutes)}</span>,
     },
     {
       key: 'pilot',
-      header: 'Pilote',
+      header: t('logbookPilot'),
       headerClassName: 'hidden md:table-cell',
       className: 'hidden md:table-cell min-w-[120px]',
       cell: (row) => <span className="text-sm text-slate-700">{row.pilot_name ?? '—'}</span>,
     },
     {
       key: 'status',
-      header: 'Facturation',
+      header: t('logbookBilling'),
       className: 'min-w-[120px]',
       cell: (row) => {
-        const badge = billingStateBadge(row.billing_quote_state)
+        const badge = billingStateBadge(row.billing_quote_state, t)
         return (
           <div className="flex items-center gap-2">
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge.class}`}>
               {badge.label}
             </span>
             {row.has_discount && (
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700" title="Remise forfait appliquée">
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700" title={t('logbookPackDiscount')}>
                 🔵 Pack
               </span>
             )}
@@ -266,7 +266,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
     },
     {
       key: 'amount',
-      header: 'Montant',
+      header: t('logbookAmount'),
       className: 'min-w-[100px] text-right',
       cell: (row) => (
         <span className={`text-sm font-medium ${Number(row.gross_amount) > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
@@ -383,7 +383,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           {/* Other flights (pilot / pilot_and_second) */}
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-700">
-              Vols comme pilote ({otherFlights.length})
+              {t('logbookAsPilot')} ({otherFlights.length})
             </h3>
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
               <DataTable
@@ -392,10 +392,10 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
                 getRowKey={(row) => row.flight_uuid}
                 defaultSortKey="date"
                 expandedRow={expandedPilot}
-                renderExpanded={(row) => <ExpandedRowContent flight={row} />}
+                renderExpanded={(row) => <ExpandedRowContent flight={row} t={t} />}
                 emptyState={
                   <div className="p-8 text-center text-sm text-slate-500">
-                    Aucun vol comme pilote.
+                    {t('logbookEmptyPilot')}
                   </div>
                 }
                 actions={(row) =>
@@ -404,7 +404,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
                       type="button"
                       onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
                       className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      title="Voir dans les opérations"
+                      title={t('logbookSeeOps')}
                     >
                       <ExternalLink className="h-4 w-4" />
                     </button>
@@ -417,7 +417,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           {/* Instructor flights (second_pilot) */}
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-700">
-              Vols comme instructeur ({instructorFlights.length})
+              {t('logbookAsInstructor')} ({instructorFlights.length})
             </h3>
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
               <DataTable
@@ -426,10 +426,10 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
                 getRowKey={(row) => row.flight_uuid}
                 defaultSortKey="date"
                 expandedRow={expandedInstructor}
-                renderExpanded={(row) => <ExpandedRowContent flight={row} />}
+                renderExpanded={(row) => <ExpandedRowContent flight={row} t={t} />}
                 emptyState={
                   <div className="p-8 text-center text-sm text-slate-500">
-                    Aucun vol comme instructeur.
+                    {t('logbookEmptyInstructor')}
                   </div>
                 }
                 actions={(row) =>
@@ -438,7 +438,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
                       type="button"
                       onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
                       className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      title="Voir dans les opérations"
+                      title={t('logbookSeeOps')}
                     >
                       <ExternalLink className="h-4 w-4" />
                     </button>
