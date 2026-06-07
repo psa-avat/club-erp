@@ -194,10 +194,11 @@ async function fetchPortalLogbook(filters: LogbookFilters) {
   return data
 }
 
-export function useMemberPortalLogbookQuery(filters: LogbookFilters = {}) {
+export function useMemberPortalLogbookQuery(filters: LogbookFilters = {}, enabled = true) {
   return useQuery({
     queryKey: ['member-portal', 'logbook', filters],
     queryFn: () => fetchPortalLogbook(filters),
+    enabled,
   })
 }
 
@@ -210,10 +211,11 @@ async function fetchPortalAccountSummary(fiscalYearUuid?: string) {
   return data
 }
 
-export function useMemberPortalAccountSummaryQuery(fiscalYearUuid?: string | null) {
+export function useMemberPortalAccountSummaryQuery(fiscalYearUuid?: string | null, enabled = true) {
   return useQuery({
     queryKey: ['member-portal', 'account-summary', fiscalYearUuid],
     queryFn: () => fetchPortalAccountSummary(fiscalYearUuid ?? undefined),
+    enabled,
   })
 }
 
@@ -228,10 +230,11 @@ async function fetchPortalAccountEntries(filters: { fiscalYearUuid?: string; sta
   return data
 }
 
-export function useMemberPortalAccountEntriesQuery(filters: { fiscalYearUuid?: string; state?: number; limit?: number; offset?: number } = {}) {
+export function useMemberPortalAccountEntriesQuery(filters: { fiscalYearUuid?: string; state?: number; limit?: number; offset?: number } = {}, enabled = true) {
   return useQuery({
     queryKey: ['member-portal', 'account-entries', filters],
     queryFn: () => fetchPortalAccountEntries(filters),
+    enabled,
   })
 }
 

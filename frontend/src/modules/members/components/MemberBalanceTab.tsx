@@ -141,11 +141,11 @@ export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
   const { activeFiscalYearUuid } = useFiscalYearStore()
 
   const clubSummary = useMemberAccountSummaryQuery(memberUuid, activeFiscalYearUuid)
-  const portalSummary = useMemberPortalAccountSummaryQuery(activeFiscalYearUuid)
+  const portalSummary = useMemberPortalAccountSummaryQuery(activeFiscalYearUuid, mode === 'portal')
   const summary = mode === 'portal' ? portalSummary.data : clubSummary.data
 
   const clubEntries = useMemberAccountEntriesQuery(memberUuid, { fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 })
-  const portalEntries = useMemberPortalAccountEntriesQuery({ fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 })
+  const portalEntries = useMemberPortalAccountEntriesQuery({ fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 }, mode === 'portal')
   const entries = mode === 'portal' ? portalEntries.data : clubEntries.data
 
   const columns: ColumnDef<AccountEntryItem>[] = [

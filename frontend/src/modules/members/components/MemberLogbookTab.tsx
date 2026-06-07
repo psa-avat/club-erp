@@ -172,7 +172,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
   }
 
   const clubQuery = useMemberLogbookQuery(memberUuid, filters)
-  const portalQuery = useMemberPortalLogbookQuery(filters)
+  const portalQuery = useMemberPortalLogbookQuery(filters, mode === 'portal')
   const { data } = mode === 'portal' ? portalQuery : clubQuery
 
   const flights = data?.items ?? []
