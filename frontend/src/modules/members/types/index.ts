@@ -268,6 +268,8 @@ export type LogbookSummary = {
   total_km: number
   pilot_duration_minutes: number
   second_pilot_duration_minutes: number
+  supervised_flight_count: number
+  supervised_duration_minutes: number
 }
 
 export type LogbookGroupedItem = {

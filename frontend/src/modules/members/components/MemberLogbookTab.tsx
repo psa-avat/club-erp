@@ -19,6 +19,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 
 import { Input } from '../../../components/ui/input'
@@ -149,8 +150,7 @@ function ExpandedRowContent({ flight }: { flight: LogbookItem }) {
 // ---------------------------------------------------------------------------
 
 export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
-  const navigate = useNavigate()
-  const { activeFiscalYearData } = useFiscalYearStore()
+  const navigate = useNavigate()  ; const { t } = useTranslation('common');  const { activeFiscalYearData } = useFiscalYearStore()
   const fy = activeFiscalYearData
 
   const [dateFrom, setDateFrom] = useState(fy?.start_date ?? '')
@@ -285,21 +285,27 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
     <div className="space-y-4">
       {/* ── KPI Strip ── */}
       {summary && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-xs font-medium text-slate-500">Total vols</p>
+            <p className="text-xs font-medium text-slate-500">{t('logbookTotalFlights')}</p>
             <p className="mt-0.5 text-xl font-semibold text-slate-800">{summary.total_flight_count}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-xs font-medium text-slate-500">Temps de vol</p>
+            <p className="text-xs font-medium text-slate-500">{t('logbookDuration')}</p>
             <p className="mt-0.5 text-xl font-semibold text-slate-800">{formatMinutes(summary.total_duration_minutes)}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-xs font-medium text-slate-500">Dont instructeur</p>
+            <p className="text-xs font-medium text-slate-500">{t('logbookInstructor')}</p>
             <p className="mt-0.5 text-xl font-semibold text-slate-800">{formatMinutes(summary.second_pilot_duration_minutes)}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-xs font-medium text-slate-500">Distance totale</p>
+            <p className="text-xs font-medium text-slate-500">{t('logbookSupervised')}</p>
+            <p className="mt-0.5 text-xl font-semibold text-slate-800">
+              {summary.supervised_flight_count} {t('logbookGroupFlights').toLowerCase()} · {formatMinutes(summary.supervised_duration_minutes)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-medium text-slate-500">{t('logbookDistance')}</p>
             <p className="mt-0.5 text-xl font-semibold text-slate-800">{summary.total_km.toLocaleString('fr-FR')} km</p>
           </div>
         </div>
@@ -308,7 +314,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-500" htmlFor="logbook-from">Du</label>
+          <label className="text-xs font-medium text-slate-500" htmlFor="logbook-from">{t('logbookFilterFrom')}</label>
           <Input
             id="logbook-from"
             type="date"
@@ -318,7 +324,7 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-500" htmlFor="logbook-to">Au</label>
+          <label className="text-xs font-medium text-slate-500" htmlFor="logbook-to">{t('logbookFilterTo')}</label>
           <Input
             id="logbook-to"
             type="date"
@@ -334,14 +340,14 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           onChange={(e) => setGroupBy(e.target.value as 'machine' | 'type' | 'launch' | '')}
           className="h-8 rounded border border-slate-300 bg-white px-2 text-sm text-slate-700"
         >
-          <option value="">Vue liste</option>
-          <option value="machine">Par machine</option>
-          <option value="type">Par type de vol</option>
-          <option value="launch">Par lancement</option>
+          <option value="">{t('logbookViewList')}</option>
+          <option value="machine">{t('logbookViewByMachine')}</option>
+          <option value="type">{t('logbookViewByType')}</option>
+          <option value="launch">{t('logbookViewByLaunch')}</option>
         </select>
 
         <div className="ml-auto text-xs text-slate-400">
-          {data ? `${data.total} vol${data.total !== 1 ? 's' : ''}` : ''}
+          {data ? `${data.total} ${t('logbookGroupFlights').toLowerCase()}` : ''}
         </div>
       </div>
 
@@ -351,10 +357,10 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">{groupBy === 'machine' ? 'Machine' : groupBy === 'type' ? 'Type de vol' : 'Lancement'}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">Vols</th>
-                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">Durée</th>
-                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">Distance</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase text-slate-500">{groupBy === 'machine' ? t('logbookGroupMachine') : groupBy === 'type' ? t('logbookGroupType') : t('logbookGroupLaunch')}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">{t('logbookGroupFlights')}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">{t('logbookGroupDuration')}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase text-slate-500">{t('logbookGroupDistance')}</th>
               </tr>
             </thead>
             <tbody>

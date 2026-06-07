@@ -32,7 +32,7 @@ export function AccountPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">{t('portal.myAccount')}</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{t('portalMyAccount')}</h1>
         <button
           type="button"
           onClick={() => setShowDeposit(!showDeposit)}
@@ -43,24 +43,24 @@ export function AccountPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
+        <p className="text-sm text-slate-400">{t('portalLoading')}</p>
       ) : account ? (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs font-medium text-slate-500">{t('portal.balance')}</p>
+              <p className="text-xs font-medium text-slate-500">{t('portalBalance')}</p>
               <p className="mt-1 text-2xl font-bold text-slate-800">
                 {account.current_balance} €
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs font-medium text-slate-500">{t('portal.pendingEntries')}</p>
+              <p className="text-xs font-medium text-slate-500">{t('portalPendingEntries')}</p>
               <p className="mt-1 text-2xl font-bold text-amber-600">
                 {account.pending_entries_count}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs font-medium text-slate-500">{t('portal.postedEntries')}</p>
+              <p className="text-xs font-medium text-slate-500">{t('portalPostedEntries')}</p>
               <p className="mt-1 text-2xl font-bold text-green-600">
                 {account.posted_entries_count}
               </p>
@@ -69,7 +69,7 @@ export function AccountPage() {
 
           {account.active_packs.length > 0 && (
             <section>
-              <h2 className="mb-2 text-lg font-semibold text-slate-700">{t('portal.myPacks')}</h2>
+              <h2 className="mb-2 text-lg font-semibold text-slate-700">{t('portalMyPacks')}</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 {account.active_packs.map((pack) => (
                   <div key={pack.pack_type} className="rounded-lg border border-slate-200 bg-white p-3">
@@ -88,10 +88,10 @@ export function AccountPage() {
       {/* Deposit form */}
       {showDeposit && (
         <form onSubmit={handleDeposit} className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('portal.depositTitle')}</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('portalDepositTitle')}</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600">{t('portal.depositAmount')}</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portalDepositAmount')}</label>
               <input
                 type="number"
                 step="0.01"
@@ -103,16 +103,16 @@ export function AccountPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600">{t('portal.depositMethod')}</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portalDepositMethod')}</label>
               <select
                 value={depositMethod}
                 onChange={(e) => setDepositMethod(e.target.value)}
                 className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               >
-                <option value="bank_transfer">{t('portal.depositBankTransfer')}</option>
-                <option value="check">{t('portal.depositCheck')}</option>
-                <option value="cash">{t('portal.depositCash')}</option>
-                <option value="card">{t('portal.depositCard')}</option>
+                <option value="bank_transfer">{t('portalDepositBankTransfer')}</option>
+                <option value="check">{t('portalDepositCheck')}</option>
+                <option value="cash">{t('portalDepositCash')}</option>
+                <option value="card">{t('portalDepositCard')}</option>
               </select>
             </div>
             <button
@@ -120,7 +120,7 @@ export function AccountPage() {
               disabled={depositMutation.isPending}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {depositMutation.isPending ? `${t('portal.depositSubmit')}…` : t('portal.depositSubmit')}
+              {depositMutation.isPending ? `${t('portalDepositSubmit')}…` : t('portal.depositSubmit')}
             </button>
             {depositMsg && <p className="text-sm text-green-600">{depositMsg}</p>}
           </div>

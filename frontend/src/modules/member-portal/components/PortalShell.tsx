@@ -8,7 +8,9 @@ export function PortalShell() {
   const navigate = useNavigate()
   const logout = useMemberPortalLogout()
   const profile = getPortalProfile<MemberPortalProfile>()
-  const { i18n, t } = useTranslation('common')
+  const { i18n, t } = useTranslation()
+
+  const badgeLabel = t('portalBadge');
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -18,7 +20,7 @@ export function PortalShell() {
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-slate-800">Club ERP</span>
             <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-              {t('portal.portalBadge')}
+              {badgeLabel}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -41,7 +43,7 @@ export function PortalShell() {
               onClick={() => { logout(); navigate('/member-portal/login') }}
               className="rounded px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700"
             >
-              {t('portal.logout')}
+              {t('portalLogout')}
             </button>
           </div>
         </div>

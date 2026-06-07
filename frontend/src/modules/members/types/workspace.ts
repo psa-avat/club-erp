@@ -33,6 +33,6 @@ export type WorkspaceTab = 'logbook' | 'balance' | 'club-expenses' | 'volunteer-
 
 export interface WorkspaceTabDefinition {
   id: WorkspaceTab;
-  label: string;
+  labelKey: string;
   icon: string;
 }

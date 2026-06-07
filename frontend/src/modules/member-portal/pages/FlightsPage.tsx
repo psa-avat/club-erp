@@ -16,13 +16,13 @@ export function FlightsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">{t('portal.myFlights')}</h1>
+      <h1 className="text-2xl font-bold text-slate-800">{t('portalMyFlights')}</h1>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
+        <p className="text-sm text-slate-400">{t('portalLoading')}</p>
       ) : !data || data.items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 py-12 text-center">
-          <p className="text-sm text-slate-400">{t('portal.noFlights')}</p>
+          <p className="text-sm text-slate-400">{t('portalNoFlights')}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -58,7 +58,7 @@ export function FlightsPage() {
                   }`}
                 >
                   {flight.billing_quote_state === 'posted'
-                    ? t('portal.billingPosted')
+                    ? t('portalBillingPosted')
                     : flight.billing_quote_state === 'applied'
                       ? 'Brouillon'
                       : 'En attente'}

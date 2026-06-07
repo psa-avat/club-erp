@@ -19,6 +19,7 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Key, Mail } from 'lucide-react';
 
 import { Button } from '../../../components/ui/button';
@@ -42,11 +43,11 @@ import type { MemberPortalProfile } from '../../member-portal/types';
 // ---------------------------------------------------------------------------
 
 const ALL_TABS: WorkspaceTabDefinition[] = [
-  { id: 'logbook', label: 'Carnet de vol', icon: '📖' },
-  { id: 'balance', label: 'Solde & Dépôts', icon: '💰' },
-  { id: 'club-expenses', label: 'Notes de frais', icon: '🧾' },
-  { id: 'volunteer-fiscal', label: 'Fiscal bénévole', icon: '📋' },
-  { id: 'documents', label: 'Documents', icon: '📄' },
+  { id: 'logbook', labelKey: 'workspaceTabLogbook', icon: '📖' },
+  { id: 'balance', labelKey: 'workspaceTabBalance', icon: '💰' },
+  { id: 'club-expenses', labelKey: 'workspaceTabExpenses', icon: '🧾' },
+  { id: 'volunteer-fiscal', labelKey: 'workspaceTabVolunteerFiscal', icon: '📋' },
+  { id: 'documents', labelKey: 'workspaceTabDocuments', icon: '📄' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -62,17 +63,11 @@ interface MemberWorkspaceShellProps {
 // Placeholder tab content (phases 2-5)
 // ---------------------------------------------------------------------------
 
-function TabPlaceholder({ tab }: { tab: WorkspaceTab }) {
-  const labels: Record<WorkspaceTab, string> = {
-    logbook: 'Carnet de vol — à venir',
-    balance: 'Solde & Dépôts — à venir',
-    'club-expenses': 'Notes de frais — à venir',
-    'volunteer-fiscal': 'Fiscal bénévole — à venir',
-    documents: 'Documents — à venir',
-  };
+function TabPlaceholder({ labelKey }: { labelKey: string }) {
+  const { t } = useTranslation('common');
   return (
     <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 p-12">
-      <p className="text-sm text-slate-500">{labels[tab]}</p>
+      <p className="text-sm text-slate-500">{t(labelKey)} — {t('close')}</p>
     </div>
   );
 }
@@ -90,6 +85,7 @@ function TabButton({
   isActive: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation('common');
   return (
     <button
       type="button"
@@ -101,7 +97,7 @@ function TabButton({
       }`}
     >
       <span>{tab.icon}</span>
-      <span>{tab.label}</span>
+      <span>{t(tab.labelKey)}</span>
     </button>
   );
 }
@@ -112,6 +108,7 @@ function TabButton({
 
 export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation('common');
 
   // Read initial tab from URL search param ?tab= (no useSearchParams — avoids react-router type resolution in pnpm)
   const initialTab = (() => {
@@ -149,7 +146,7 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
                 type="button"
                 onClick={() => navigate('/club/members/core')}
                 className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                title="Retour à l'annuaire"
+                title={t('workspaceBackToDirectory')}
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
@@ -193,17 +190,17 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
                     /* Phase 8 — send portal access */
                   }}
                   disabled={!member.email}
-                  title={!member.email ? "L'adhérent n'a pas d'email renseigné" : undefined}
+                  title={!member.email ? t('workspaceNoEmail') : undefined}
                 >
                   <Mail className="mr-1.5 h-4 w-4" />
-                  Envoyer l'accès
+                  {t('workspaceSendAccess')}
                 </Button>
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => navigate(`/club/members/${memberUuid}/edit`)}
                 >
-                  Modifier
+                  {t('workspaceEdit')}
                 </Button>
               </>
             )}
@@ -214,7 +211,7 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
                 onClick={() => setShowPasswordDialog(true)}
               >
                 <Key className="mr-1 h-4 w-4" />
-                Changer le mot de passe
+                {t('workspaceChangePassword')}
               </Button>
             )}
           </div>
@@ -237,22 +234,22 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
       <div>
         {activeTab === 'logbook' && <MemberLogbookTab memberUuid={memberUuid} mode={mode} />}
         {activeTab === 'balance' && <MemberBalanceTab memberUuid={memberUuid} mode={mode} />}
-        {activeTab === 'club-expenses' && <TabPlaceholder tab="club-expenses" />}
-        {activeTab === 'volunteer-fiscal' && <TabPlaceholder tab="volunteer-fiscal" />}
-        {activeTab === 'documents' && <TabPlaceholder tab="documents" />}
+        {activeTab === 'club-expenses' && <TabPlaceholder labelKey="workspaceTabExpenses" />}
+        {activeTab === 'volunteer-fiscal' && <TabPlaceholder labelKey="workspaceTabVolunteerFiscal" />}
+        {activeTab === 'documents' && <TabPlaceholder labelKey="workspaceTabDocuments" />}
       </div>
 
       {/* ── Password change dialog (portal mode) ── */}
       {showPasswordDialog && mode === 'portal' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-800">Changer le mot de passe</h3>
+            <h3 className="text-lg font-semibold text-slate-800">{t('workspaceChangePassword')}</h3>
 
             {pwSuccess ? (
               <div className="mt-4 space-y-4">
-                <p className="text-sm text-emerald-700">Mot de passe modifié avec succès.</p>
+                <p className="text-sm text-emerald-700">{t('workspacePasswordChanged')}</p>
                 <Button variant="secondary" size="sm" onClick={() => { setShowPasswordDialog(false); setPwSuccess(false); }}>
-                  Fermer
+                  {t('workspaceClose')}
                 </Button>
               </div>
             ) : (
@@ -260,15 +257,15 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
                 e.preventDefault();
                 setPwError(null);
                 if (!pwCurrent || !pwNew || !pwConfirm) {
-                  setPwError('Veuillez remplir tous les champs');
+                  setPwError(t('workspacePasswordRequired'));
                   return;
                 }
                 if (pwNew !== pwConfirm) {
-                  setPwError('Les nouveaux mots de passe ne correspondent pas');
+                  setPwError(t('workspacePasswordMismatch'));
                   return;
                 }
                 if (pwNew.length < 6) {
-                  setPwError('Le mot de passe doit faire au moins 6 caractères');
+                  setPwError(t('workspacePasswordTooShort'));
                   return;
                 }
                 try {
@@ -278,19 +275,19 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
                   setPwNew('');
                   setPwConfirm('');
                 } catch {
-                  setPwError('Mot de passe actuel incorrect');
+                  setPwError(t('workspacePasswordWrong'));
                 }
               }} className="mt-4 space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Mot de passe actuel</label>
+                  <label className="block text-sm font-medium text-slate-700">{t('workspacePasswordCurrent')}</label>
                   <Input type="password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} className="mt-1" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Nouveau mot de passe</label>
+                  <label className="block text-sm font-medium text-slate-700">{t('workspacePasswordNew')}</label>
                   <Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} className="mt-1" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Confirmer le nouveau mot de passe</label>
+                  <label className="block text-sm font-medium text-slate-700">{t('workspacePasswordConfirm')}</label>
                   <Input type="password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} className="mt-1" />
                 </div>
 

@@ -384,6 +384,8 @@ class LogbookSummary(BaseModel):
     total_km: float = 0
     pilot_duration_minutes: int = 0
     second_pilot_duration_minutes: int = 0
+    supervised_flight_count: int = 0
+    supervised_duration_minutes: int = 0
 
 
 class LogbookGroupedItem(BaseModel):

@@ -1422,6 +1422,8 @@ async def list_member_logbook(
     all_flights = all_result.scalars().all()
 
     # ── Compute summary KPIs from all flights ──
+    INSTRUCTION_TYPES_NOT_FOR_INSTRUCTOR = {5, 6}  # lacher, supervise — student's flight, not instructor time
+
     summary = LogbookSummary()
     summary.total_flight_count = len(all_flights)
     for f in all_flights:
@@ -1431,8 +1433,17 @@ async def list_member_logbook(
             role = _member_role(member.account_id, f)
             if role in ("pilot", "pilot_and_second"):
                 summary.pilot_duration_minutes += dur
+            # Type 5 (lacher) and 6 (supervise) are the student's flights;
+            # when the member is second pilot (instructor), the time does not
+            # count as instructor flight time.
             if role in ("second_pilot", "pilot_and_second"):
-                summary.second_pilot_duration_minutes += dur
+                if f.type_of_flight not in INSTRUCTION_TYPES_NOT_FOR_INSTRUCTOR:
+                    summary.second_pilot_duration_minutes += dur
+            # Supervised flight KPI (lacher + supervise as second pilot)
+            if f.type_of_flight in {5, 6} and role in ("second_pilot", "pilot_and_second"):
+                summary.supervised_flight_count += 1
+                if dur is not None:
+                    summary.supervised_duration_minutes += dur
         if f.flight_km is not None:
             summary.total_km += f.flight_km
 

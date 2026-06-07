@@ -40,7 +40,7 @@ export function ExpensesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">{t('portal.expenses')}</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{t('portalExpenses')}</h1>
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
@@ -52,10 +52,10 @@ export function ExpensesPage() {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('portal.newExpense')}</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('portalNewExpense')}</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600">{t('portal.expenseAmount')}</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portalExpenseAmount')}</label>
               <input
                 type="number"
                 step="0.01"
@@ -67,7 +67,7 @@ export function ExpensesPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600">{t('portal.expenseReason')}</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portalExpenseReason')}</label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -82,7 +82,7 @@ export function ExpensesPage() {
               disabled={declareMutation.isPending}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {declareMutation.isPending ? `${t('portal.depositSubmit')}…` : t('portal.depositSubmit')}
+              {declareMutation.isPending ? `${t('portalDepositSubmit')}…` : t('portal.depositSubmit')}
             </button>
             {msg && <p className="text-sm text-green-600">{msg}</p>}
           </div>
@@ -90,7 +90,7 @@ export function ExpensesPage() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
+        <p className="text-sm text-slate-400">{t('portalLoading')}</p>
       ) : data && data.items.length > 0 ? (
         <div className="space-y-2">
           {data.items.map((expense) => (
@@ -126,7 +126,7 @@ export function ExpensesPage() {
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-slate-300 py-12 text-center">
-          <p className="text-sm text-slate-400">{t('portal.expenseEmpty')}</p>
+          <p className="text-sm text-slate-400">{t('portalExpenseEmpty')}</p>
         </div>
       )}
     </div>
