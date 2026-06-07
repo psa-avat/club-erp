@@ -1335,6 +1335,79 @@ export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, type
   })
 }
 
+// ── Raw Flight Details (DB-level dump) ────────────────────────────────────
+
+export type RawFlightDetails = {
+  uuid: string
+  planche_uuid: string | null
+  aero: string | null
+  source_snapshot_uuid: string | null
+  jour: string | null
+  asset_code: string | null
+  glider_erp_id: string | null
+  pilot_erp_id: string | null
+  pilot_name: string | null
+  pilot_compta_id: string | null
+  second_pilot_erp_id: string | null
+  second_pilot_name: string | null
+  second_pilot_id: string | null
+  charge_to_erp_id: string | null
+  charge_to_name: string | null
+  charge_to_compta_id: string | null
+  charge_comment: string | null
+  instruction_split: number
+  vi_erp_id: string | null
+  vi_name: string | null
+  type_of_flight: number | null
+  type_label: string | null
+  launch_method: number | null
+  launch_method_label: string | null
+  launch_type: number | null
+  launch_asset_code: string | null
+  launch_machine_erp_id: string | null
+  launch_pilot_trigram: string | null
+  launch_instructor_trigram: string | null
+  takeoff_time: string | null
+  landing_time: string | null
+  start_index: number | null
+  stop_index: number | null
+  engine_time: number | null
+  landing_count: number
+  flight_km: number | null
+  takeoff_location: string | null
+  landed_location: string | null
+  observations: string | null
+  erp_status: number
+  erp_status_label: string | null
+  validated_at: string | null
+  validated_by: string | null
+  transferred_at: string | null
+  transferred_by: string | null
+  revision: number
+  source_status: string
+  corrected_at: string | null
+  corrected_by: string | null
+  correction_reason: string | null
+  last_export_hash: string | null
+  accounting_entry_uuid: string | null
+  billing_quote_state: string | null
+  has_discount: boolean
+}
+
+export function useFlightRawDetailsQuery(flightUuid: string | null) {
+  return useQuery({
+    queryKey: ['banque', 'flights', 'raw-details', flightUuid],
+    enabled: !!flightUuid,
+    queryFn: async () => {
+      const { data } = await apiClient.get<RawFlightDetails>(
+        `/api/v1/flights/${flightUuid}/raw-details`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
 // ── Billable Flights — Preview / Apply Mutations ─────────────────────────
 
 export type FlightBillingPayerPreview = {

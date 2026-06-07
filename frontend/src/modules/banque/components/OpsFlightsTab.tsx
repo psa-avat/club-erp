@@ -18,7 +18,7 @@
  */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, FileText, CheckSquare, Square, Percent } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play, Send, RotateCw, Eye, Loader2, AlertTriangle, CheckCircle2, FileText, CheckSquare, Square, Percent, Info } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Alert } from '../../../components/ui/alert'
@@ -35,6 +35,7 @@ import {
   type FlightBillingBatchPreviewResponse,
   type BillableFlight,
 } from '../api'
+import { FlightDetailDialog } from './FlightDetailDialog'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -209,6 +210,7 @@ export function OpsFlightsTab() {
   const [filterStatus, setFilterStatus] = useState<string>('pending')
   const [selectedFlights, setSelectedFlights] = useState<Set<string>>(new Set())
   const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
+  const [detailFlightUuid, setDetailFlightUuid] = useState<string | null>(null)
   const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
   const [batchPreview, setBatchPreview] = useState<FlightBillingBatchPreviewResponse | null>(null)
 
@@ -585,6 +587,14 @@ export function OpsFlightsTab() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
+                            className="rounded p-1 text-slate-400 hover:text-slate-700"
+                            title="Détails bruts (BDD)"
+                            onClick={() => setDetailFlightUuid(f.uuid)}
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
                             className="rounded p-1 text-slate-400 hover:text-slate-700 disabled:opacity-40"
                             title="Aperçu facturation"
                             disabled={isPreviewing && previewMutation.variables?.flightUuid === f.uuid}
@@ -691,6 +701,11 @@ export function OpsFlightsTab() {
           </p>
         </Alert>
       )}
+
+      <FlightDetailDialog
+        flightUuid={detailFlightUuid}
+        onClose={() => setDetailFlightUuid(null)}
+      />
 
     </div>
   )

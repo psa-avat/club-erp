@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
-from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE
+from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE, TYPE_OF_FLIGHT_LABELS, LAUNCH_METHOD_LABELS
 from models import Member, User, ValidatedFlight
 from schemas.flights import (
     FlightBillingApplyItem,
@@ -684,4 +684,190 @@ async def batch_apply_flights_billing(
         total=len(items),
         success_count=len(items),
         error_count=0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Raw Flight Details (DB-level dump with decoded enums)
+# ---------------------------------------------------------------------------
+
+ERP_STATUS_LABELS: dict[int, str] = {
+    0: "validated",
+    1: "transferred",
+    2: "modified_after_transfer",
+}
+
+
+class RawFlightDetailsResponse(BaseModel):
+    """Full ValidatedFlight record with decoded enum labels, grouped by category."""
+
+    # ── Identification ──
+    uuid: str
+    planche_uuid: str | None = None
+    aero: str | None = None
+    source_snapshot_uuid: str | None = None
+
+    # ── Date & Aéronef ──
+    jour: date | None = None
+    asset_code: str | None = None
+    glider_erp_id: str | None = None
+
+    # ── Pilotes & Facturation ──
+    pilot_erp_id: str | None = None
+    pilot_name: str | None = None
+    pilot_compta_id: str | None = None
+    second_pilot_erp_id: str | None = None
+    second_pilot_name: str | None = None
+    second_pilot_id: str | None = None
+    charge_to_erp_id: str | None = None
+    charge_to_name: str | None = None
+    charge_to_compta_id: str | None = None
+    charge_comment: str | None = None
+    instruction_split: int = 0
+    vi_erp_id: str | None = None
+    vi_name: str | None = None
+
+    # ── Type de vol & Lancement ──
+    type_of_flight: int | None = None
+    type_label: str | None = None
+    launch_method: int | None = None
+    launch_method_label: str | None = None
+    launch_type: int | None = None
+
+    # ── Machine de lancement ──
+    launch_asset_code: str | None = None
+    launch_machine_erp_id: str | None = None
+    launch_pilot_trigram: str | None = None
+    launch_instructor_trigram: str | None = None
+
+    # ── Temps & Mesures ──
+    takeoff_time: str | None = None
+    landing_time: str | None = None
+    start_index: float | None = None
+    stop_index: float | None = None
+    engine_time: float | None = None
+    landing_count: int = 1
+    flight_km: float | None = None
+    takeoff_location: str | None = None
+    landed_location: str | None = None
+    observations: str | None = None
+
+    # ── Statut ERP ──
+    erp_status: int = 0
+    erp_status_label: str | None = None
+    validated_at: datetime | None = None
+    validated_by: str | None = None
+    transferred_at: datetime | None = None
+    transferred_by: str | None = None
+    revision: int = 1
+    source_status: str = "active"
+    corrected_at: datetime | None = None
+    corrected_by: str | None = None
+    correction_reason: str | None = None
+    last_export_hash: str | None = None
+
+    # ── Comptabilité ──
+    accounting_entry_uuid: str | None = None
+    billing_quote_state: str | None = None
+    has_discount: bool = False
+
+
+@router.get("/{flight_uuid}/raw-details", response_model=RawFlightDetailsResponse)
+async def get_flight_raw_details(
+    flight_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = flights_guard,
+):
+    """Return the complete ValidatedFlight record as-is with decoded enum labels."""
+    result = await db.execute(select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid))
+    flight = result.scalar_one_or_none()
+    if flight is None:
+        raise HTTPException(status_code=404, detail="Flight not found")
+
+    # Resolve member names
+    member_uuids: set[str] = set()
+    if flight.pilot_erp_id:
+        member_uuids.add(flight.pilot_erp_id)
+    if flight.second_pilot_erp_id:
+        member_uuids.add(flight.second_pilot_erp_id)
+    if flight.charge_to_erp_id:
+        member_uuids.add(flight.charge_to_erp_id)
+    if flight.vi_erp_id:
+        member_uuids.add(flight.vi_erp_id)
+
+    member_map: dict[str, str | None] = {}
+    if member_uuids:
+        member_result = await db.execute(
+            select(Member.account_id, Member.first_name, Member.last_name).where(
+                Member.account_id.in_(list(member_uuids))
+            )
+        )
+        for row in member_result.all():
+            uid = str(row.account_id)
+            name = f"{row.first_name} {row.last_name}" if row.first_name and row.last_name else None
+            member_map[uid] = name
+
+    return RawFlightDetailsResponse(
+        # ── Identification ──
+        uuid=str(flight.uuid),
+        planche_uuid=flight.planche_uuid,
+        aero=flight.aero,
+        source_snapshot_uuid=str(flight.source_snapshot_uuid) if flight.source_snapshot_uuid else None,
+        # ── Date & Aéronef ──
+        jour=flight.jour,
+        asset_code=flight.asset_code,
+        glider_erp_id=flight.glider_erp_id,
+        # ── Pilotes & Facturation ──
+        pilot_erp_id=flight.pilot_erp_id,
+        pilot_name=member_map.get(flight.pilot_erp_id) if flight.pilot_erp_id else None,
+        pilot_compta_id=flight.pilot_compta_id,
+        second_pilot_erp_id=flight.second_pilot_erp_id,
+        second_pilot_name=member_map.get(flight.second_pilot_erp_id) if flight.second_pilot_erp_id else None,
+        second_pilot_id=flight.second_pilot_id,
+        charge_to_erp_id=flight.charge_to_erp_id,
+        charge_to_name=member_map.get(flight.charge_to_erp_id) if flight.charge_to_erp_id else None,
+        charge_to_compta_id=flight.charge_to_compta_id,
+        charge_comment=flight.charge_comment,
+        instruction_split=flight.instruction_split or 0,
+        vi_erp_id=flight.vi_erp_id,
+        vi_name=member_map.get(flight.vi_erp_id) if flight.vi_erp_id else None,
+        # ── Type de vol & Lancement ──
+        type_of_flight=flight.type_of_flight,
+        type_label=TYPE_OF_FLIGHT_LABELS.get(flight.type_of_flight) if flight.type_of_flight is not None else None,
+        launch_method=flight.launch_method,
+        launch_method_label=LAUNCH_METHOD_LABELS.get(flight.launch_method) if flight.launch_method is not None else None,
+        launch_type=flight.launch_type,
+        # ── Machine de lancement ──
+        launch_asset_code=flight.launch_asset_code,
+        launch_machine_erp_id=flight.launch_machine_erp_id,
+        launch_pilot_trigram=flight.launch_pilot_trigram,
+        launch_instructor_trigram=flight.launch_instructor_trigram,
+        # ── Temps & Mesures ──
+        takeoff_time=flight.takeoff_time,
+        landing_time=flight.landing_time,
+        start_index=flight.start_index,
+        stop_index=flight.stop_index,
+        engine_time=flight.engine_time,
+        landing_count=flight.landing_count or 1,
+        flight_km=flight.flight_km,
+        takeoff_location=flight.takeoff_location,
+        landed_location=flight.landed_location,
+        observations=flight.observations,
+        # ── Statut ERP ──
+        erp_status=flight.erp_status,
+        erp_status_label=ERP_STATUS_LABELS.get(flight.erp_status),
+        validated_at=flight.validated_at,
+        validated_by=flight.validated_by,
+        transferred_at=flight.transferred_at,
+        transferred_by=flight.transferred_by,
+        revision=flight.revision or 1,
+        source_status=flight.source_status or "active",
+        corrected_at=flight.corrected_at,
+        corrected_by=flight.corrected_by,
+        correction_reason=flight.correction_reason,
+        last_export_hash=flight.last_export_hash,
+        # ── Comptabilité ──
+        accounting_entry_uuid=str(flight.accounting_entry_uuid) if flight.accounting_entry_uuid else None,
+        billing_quote_state=flight.billing_quote_state,
+        has_discount=flight.has_discount or False,
     )
