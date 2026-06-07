@@ -246,6 +246,7 @@ export type LogbookItem = {
   landing_time: string | null
   duration_minutes: number | null
   flight_km: number | null
+  engine_time: number | null
   billing_quote_state: string | null
   has_discount: boolean
   gross_amount: string | null

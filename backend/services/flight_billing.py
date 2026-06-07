@@ -146,19 +146,29 @@ def _flight_duration_minutes(flight: ValidatedFlight) -> Decimal | None:
     return Decimal(str(int((landing - takeoff).total_seconds() // 60)))
 
 
+def _resolve_engine_time(flight: ValidatedFlight) -> Decimal | None:
+    """Return engine_time in 1/100th hours, computing from index difference if needed."""
+    raw = flight.engine_time
+    if raw is None and flight.start_index is not None and flight.stop_index is not None:
+        raw = round(flight.stop_index - flight.start_index, 2)
+    return _dec(raw) if raw is not None else None
+
+
 def _quantity_for_item(item: PricingItem, flight: ValidatedFlight) -> Decimal | None:
     if item.unit in {UNIT_FLIGHT_TIME_HOURS, UNIT_FLIGHT_DURATION}:
         return _flight_duration_hours(flight)
     if item.unit == UNIT_FIXED_DURATION_TRANCHE:
         return _flight_duration_minutes(flight)
     if item.unit == UNIT_ENGINE_TIME_MINUTE:
-        if flight.engine_time is None:
+        raw = _resolve_engine_time(flight)
+        if raw is None:
             return None
-        return (_dec(flight.engine_time) * Decimal("100") * Decimal("60")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return (raw * Decimal("100") * Decimal("60")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     if item.unit == UNIT_ENGINE_TIME_1_100H:
-        if flight.engine_time is None:
+        raw = _resolve_engine_time(flight)
+        if raw is None:
             return None
-        return (_dec(flight.engine_time)* Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return (raw * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     if item.unit in {UNIT_PER_FLIGHT, UNIT_FIXED}:
         return Decimal("1")
     return None
@@ -891,10 +901,13 @@ class FlightBillingPreviewService:
             return [(quantity, normal_price, normal_price, None, before, Decimal("0"), before)]
         used = min(before, quantity)
         after = before - used
+
+        # Track pack consumption for later REM adjustment, but bill at gross price
         pack_balances[key] = after
         result: list[tuple[Decimal, Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal | None]] = []
         if used > 0:
-            result.append((used, normal_price, discounted_price, "pack", before, used, after))
+            # applied_price = normal_price (gross billing), pack info tracked for REM
+            result.append((used, normal_price, normal_price, "pack", before, used, after))
         remainder = quantity - used
         if remainder > 0:
             result.append((remainder, normal_price, normal_price, None, after, Decimal("0"), after))
@@ -934,7 +947,7 @@ class FlightBillingPreviewService:
                     break
             can_use_pack = pack_type is not None and discounted_price is not None
 
-        # Process brackets (handles pack consumption correctly per bracket)
+        # Process brackets — bill at gross price, track pack consumption for REM
         raw_lines: list[tuple[Decimal, Decimal, str | None, Decimal | None, Decimal, Decimal, Decimal | None]] = []
         for bracket_qty, bracket_rate in brackets:
             normal_price = _money(bracket_rate)
@@ -945,7 +958,8 @@ class FlightBillingPreviewService:
                     used = min(before, bracket_qty)
                     after = before - used
                     pack_balances[key] = after
-                    raw_lines.append((used, discounted_price, "pack", before, used, after, normal_price))
+                    # Use normal_price for billing, track pack info for later REM
+                    raw_lines.append((used, normal_price, "pack", before, used, after, normal_price))
                     remainder = bracket_qty - used
                     if remainder > 0:
                         raw_lines.append((remainder, normal_price, None, after, Decimal("0"), after, normal_price))

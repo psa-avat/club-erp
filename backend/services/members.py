@@ -1434,6 +1434,11 @@ async def list_member_logbook(
         second_name = member_map.get(f.second_pilot_erp_id) if f.second_pilot_erp_id else None
         duration = _flight_duration_minutes(f)
         role = _member_role(member.account_id, f)
+        # Compute engine time: use provided value, or derive from index difference
+        engine_time = f.engine_time
+        if engine_time is None and f.start_index is not None and f.stop_index is not None:
+            engine_time = round(f.stop_index - f.start_index, 2)
+
         items.append(LogbookItemResponse(
             flight_uuid=f.uuid,
             flight_date=f.jour,
@@ -1449,6 +1454,7 @@ async def list_member_logbook(
             landing_time=f.landing_time,
             duration_minutes=duration,
             flight_km=f.flight_km,
+            engine_time=engine_time,
             billing_quote_state=f.billing_quote_state,
             has_discount=f.has_discount or False,
             gross_amount=None,
@@ -1520,10 +1526,11 @@ async def list_member_account_entries(
     ).where(*filters)
     total = (await db.execute(count_q)).scalar() or 0
 
-    # Fetch entries (distinct, ordered by date DESC)
+    # Fetch entries (distinct, ordered by date DESC) with journal code
     stmt = (
-        select(AccountingEntry)
+        select(AccountingEntry, AccountingJournal.code)
         .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .join(AccountingJournal, AccountingJournal.uuid == AccountingEntry.journal_uuid)
         .where(*filters)
         .order_by(AccountingEntry.entry_date.desc(), AccountingEntry.created_at.desc())
         .offset(offset)
@@ -1531,11 +1538,11 @@ async def list_member_account_entries(
         .distinct()
     )
     result = await db.execute(stmt)
-    entries = result.scalars().all()
+    rows = result.all()
 
     # For each entry, sum the member's debit/credit lines
     items: list[AccountEntryItem] = []
-    for entry in entries:
+    for entry, journal_code in rows:
         line_sum = await db.execute(
             select(
                 func.coalesce(func.sum(AccountingLine.debit), 0),
@@ -1550,7 +1557,7 @@ async def list_member_account_entries(
         items.append(AccountEntryItem(
             entry_uuid=entry.uuid,
             entry_date=entry.entry_date,
-            journal_code=entry.journal_code,
+            journal_code=journal_code,
             description=entry.description,
             reference=entry.reference,
             state=entry.state,

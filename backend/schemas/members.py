@@ -363,6 +363,7 @@ class LogbookItemResponse(BaseModel):
     landing_time: Optional[str] = None
     duration_minutes: Optional[int] = None
     flight_km: Optional[float] = None
+    engine_time: Optional[float] = None
     billing_quote_state: Optional[str] = None
     has_discount: bool = False
     gross_amount: Optional[Decimal] = None

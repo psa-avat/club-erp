@@ -13,6 +13,7 @@ import { DataTable } from '../../../components/ui/data-table'
 import type { ColumnDef } from '../../../components/ui/data-table'
 import { useMemberAccountSummaryQuery, useMemberAccountEntriesQuery, useCreateMemberDepositMutation } from '../api'
 import { useMemberPortalAccountSummaryQuery, useMemberPortalAccountEntriesQuery, useMemberPortalDepositMutation } from '../../member-portal/api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import type { AccountEntryItem, AccountSummary } from '../types'
 import type { WorkspaceMode } from '../types/workspace'
 
@@ -135,12 +136,14 @@ function DepositSection({ memberUuid, mode }: { memberUuid: string; mode: Worksp
 }
 
 export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
-  const clubSummary = useMemberAccountSummaryQuery(memberUuid)
-  const portalSummary = useMemberPortalAccountSummaryQuery()
+  const { activeFiscalYearUuid } = useFiscalYearStore()
+
+  const clubSummary = useMemberAccountSummaryQuery(memberUuid, activeFiscalYearUuid)
+  const portalSummary = useMemberPortalAccountSummaryQuery(activeFiscalYearUuid)
   const summary = mode === 'portal' ? portalSummary.data : clubSummary.data
 
-  const clubEntries = useMemberAccountEntriesQuery(memberUuid, { limit: 50 })
-  const portalEntries = useMemberPortalAccountEntriesQuery({ limit: 50 })
+  const clubEntries = useMemberAccountEntriesQuery(memberUuid, { fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 })
+  const portalEntries = useMemberPortalAccountEntriesQuery({ fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 })
   const entries = mode === 'portal' ? portalEntries.data : clubEntries.data
 
   const columns: ColumnDef<AccountEntryItem>[] = [

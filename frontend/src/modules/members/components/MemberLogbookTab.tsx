@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 
@@ -26,7 +26,7 @@ import { DataTable } from '../../../components/ui/data-table'
 import type { ColumnDef } from '../../../components/ui/data-table'
 import { useMemberLogbookQuery } from '../api'
 import { useMemberPortalLogbookQuery } from '../../member-portal/api'
-import { useMembersStore } from '../store'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import type { LogbookItem, LogbookFilters } from '../types'
 import type { WorkspaceMode } from '../types/workspace'
 
@@ -117,6 +117,10 @@ function ExpandedRowContent({ flight }: { flight: LogbookItem }) {
           <span className="text-slate-800">{flight.flight_km != null ? `${flight.flight_km} km` : '—'}</span>
         </div>
         <div>
+          <span className="font-medium text-slate-500">Temps moteur :</span>{' '}
+          <span className="text-slate-800">{flight.engine_time != null ? `${flight.engine_time} h` : '—'}</span>
+        </div>
+        <div>
           <span className="font-medium text-slate-500">Lancement :</span>{' '}
           <span className="text-slate-800">{flight.launch_label ?? `type ${flight.launch_method}`}</span>
         </div>
@@ -146,16 +150,22 @@ function ExpandedRowContent({ flight }: { flight: LogbookItem }) {
 
 export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
   const navigate = useNavigate()
-  const { selectedYear } = useMembersStore()
+  const { activeFiscalYearData } = useFiscalYearStore()
+  const fy = activeFiscalYearData
 
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState(fy?.start_date ?? '')
+  const [dateTo, setDateTo] = useState(fy?.end_date ?? '')
   const [expandedPilot, setExpandedPilot] = useState<string | null>(null)
   const [expandedInstructor, setExpandedInstructor] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'machine' | 'type' | 'launch' | ''>('')
 
+  // Sync date inputs when fiscal year changes
+  useEffect(() => {
+    if (fy?.start_date && !dateFrom) setDateFrom(fy.start_date)
+    if (fy?.end_date && !dateTo) setDateTo(fy.end_date)
+  }, [fy?.start_date, fy?.end_date])
+
   const filters: LogbookFilters = {
-    year: selectedYear,
     ...(dateFrom && { date_from: dateFrom }),
     ...(dateTo && { date_to: dateTo }),
     ...(groupBy && { group_by: groupBy }),
