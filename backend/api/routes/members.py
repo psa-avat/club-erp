@@ -4,6 +4,7 @@
     Copyright (C) 2026  SAFORCADA Patrick
 """
 
+from datetime import date
 from typing import Optional
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from schemas.members import (
     CommitteeUpdateRequest,
     ExpenseAccessResponse,
     ImportResultResponse,
+    LogbookListResponse,
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
@@ -53,6 +55,7 @@ from services.members import (
     get_member_sheet_or_404,
     import_members_from_csv,
     list_committees,
+    list_member_logbook,
     list_member_registrations,
     list_member_options,
     list_member_sheets,
@@ -385,6 +388,31 @@ async def complete_member_registration_endpoint(
         updated_by_user_id=current_user.id,
     )
     return await serialize_member_detail(db=db, member=member)
+
+
+# ── Logbook ──────────────────────────────────────────────────────────────
+
+@router.get("/{member_uuid:uuid}/logbook", response_model=LogbookListResponse)
+async def list_member_logbook_endpoint(
+    member_uuid: UUID,
+    year: Optional[int] = Query(default=None, ge=2000, le=9999),
+    date_from: Optional[date] = Query(default=None),
+    date_to: Optional[date] = Query(default=None),
+    limit: Optional[int] = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    _: User = members_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return paginated logbook entries for a member (flight history + billing status)."""
+    return await list_member_logbook(
+        db=db,
+        member_uuid=member_uuid,
+        year=year,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{member_uuid:uuid}/registrations", response_model=list[MemberRegistrationResponse])

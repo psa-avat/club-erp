@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -47,6 +48,7 @@ from schemas.member_portal import (
     MemberPortalProfile,
     MemberPortalTaxExpenseListResponse,
 )
+from schemas.members import LogbookListResponse
 from services.member_portal import (
     authenticate_member,
     declare_expense,
@@ -60,6 +62,7 @@ from services.member_portal import (
     list_tax_expenses,
     record_deposit,
 )
+from services.members import list_member_logbook
 
 router = APIRouter(prefix="/api/v1/member-portal", tags=["member-portal"])
 
@@ -127,6 +130,28 @@ async def member_portal_flight_billing(
     if detail is None:
         raise HTTPException(status_code=404, detail="Vol introuvable")
     return detail
+
+
+@router.get("/logbook", response_model=LogbookListResponse)
+async def member_portal_logbook(
+    year: int | None = Query(default=None, ge=2000, le=9999),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    member: Member = Depends(get_member_portal_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return paginated logbook entries for the authenticated member."""
+    return await list_member_logbook(
+        db=db,
+        member_uuid=member.uuid,
+        year=year,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ── Account ────────────────────────────────────────────────────────────────────

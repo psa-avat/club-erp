@@ -66,6 +66,15 @@ CAP_SYNC_VI_PLANCHE = "SYNC_VI_PLANCHE"
 CAP_MANAGE_PLANCHE = "MANAGE_PLANCHE"
 CAP_HELLOASSO = "HELLOASSO"
 
+# Flight type labels (Planche enum)
+TYPE_OF_FLIGHT_LABELS: dict[int, str] = {
+    0: "instruction", 1: "solo", 2: "initiation", 3: "partage",
+    4: "passager", 5: "lacher", 6: "supervise", 7: "essai",
+}
+LAUNCH_METHOD_LABELS: dict[int, str] = {
+    0: "exterieur", 1: "treuil", 2: "remorqueur", 3: "autonome",
+}
+
 CAPABILITY_SEEDS = (
     (CAP_EDIT_FLIGHTS, "Gestion des vols"),
     (CAP_MANAGE_PRICES, "Gestion des tarifs"),

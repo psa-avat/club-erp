@@ -18,12 +18,14 @@ from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants import LAUNCH_METHOD_LABELS, TYPE_OF_FLIGHT_LABELS
 from models import (
     AccountingAccount,
     AccountingEntry,
     AccountingEntryTemplate,
     AccountingFiscalYear,
     AccountingJournal,
+    Asset,
     Committee,
     CommitteeMember,
     Member,
@@ -32,6 +34,7 @@ from models import (
     PricingItem,
     PricingVersion,
     SystemSetting,
+    ValidatedFlight,
 )
 from schemas.accounting import AccountingEntryCreateRequest, AccountingLineCreateRequest
 from schemas.members import (
@@ -44,6 +47,8 @@ from schemas.members import (
     ExpenseAccessResponse,
     ImportResultResponse,
     ImportRowError,
+    LogbookItemResponse,
+    LogbookListResponse,
     MemberCreateRequest,
     MemberDetailResponse,
     MemberListFilters,
@@ -1289,6 +1294,112 @@ async def disable_member_sheet_expense_access(
         expense_access_enabled=False,
         generated_token=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Logbook
+# ---------------------------------------------------------------------------
+
+async def list_member_logbook(
+    db: AsyncSession,
+    member_uuid: UUID,
+    *,
+    year: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> LogbookListResponse:
+    """Return paginated logbook entries for a member.
+
+    Matches flights where pilot_erp_id equals the member's account_id.
+    """
+    member = await get_member_or_404(db, member_uuid)
+
+    filters = [ValidatedFlight.pilot_erp_id == member.account_id]
+
+    if year is not None:
+        filters.append(
+            func.extract("year", ValidatedFlight.jour) == year
+        )
+    if date_from is not None:
+        filters.append(ValidatedFlight.jour >= date_from)
+    if date_to is not None:
+        filters.append(ValidatedFlight.jour <= date_to)
+
+    # Count total matching
+    count_q = select(func.count(ValidatedFlight.uuid)).where(*filters)
+    total = (await db.execute(count_q)).scalar() or 0
+
+    # Fetch flights ordered by date DESC
+    stmt = (
+        select(ValidatedFlight)
+        .where(*filters)
+        .order_by(ValidatedFlight.jour.desc(), ValidatedFlight.takeoff_time.desc())
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    flights = result.scalars().all()
+
+    # Batch-fetch member names for pilot and second pilot
+    member_uuids: set[str] = set()
+    for f in flights:
+        if f.pilot_erp_id:
+            member_uuids.add(f.pilot_erp_id)
+        if f.second_pilot_erp_id:
+            member_uuids.add(f.second_pilot_erp_id)
+
+    member_map: dict[str, str | None] = {}
+    if member_uuids:
+        member_result = await db.execute(
+            select(Member.account_id, Member.first_name, Member.last_name)
+            .where(Member.account_id.in_(list(member_uuids)))
+        )
+        for row in member_result.all():
+            uid = str(row.account_id)
+            name = f"{row.first_name} {row.last_name}" if row.first_name and row.last_name else None
+            member_map[uid] = name
+
+    # Build response items
+    items: list[LogbookItemResponse] = []
+    for f in flights:
+        pilot_name = member_map.get(f.pilot_erp_id) if f.pilot_erp_id else None
+        second_name = member_map.get(f.second_pilot_erp_id) if f.second_pilot_erp_id else None
+
+        # Compute duration in minutes
+        duration: int | None = None
+        if f.takeoff_time and f.landing_time:
+            try:
+                th, tm = f.takeoff_time.split(":")
+                lh, lm = f.landing_time.split(":")
+                takeoff_min = int(th) * 60 + int(tm)
+                landing_min = int(lh) * 60 + int(lm)
+                if landing_min >= takeoff_min:
+                    duration = landing_min - takeoff_min
+            except (ValueError, AttributeError):
+                pass
+
+        items.append(LogbookItemResponse(
+            flight_uuid=f.uuid,
+            flight_date=f.jour,
+            type_of_flight=f.type_of_flight,
+            type_label=TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else None,
+            launch_method=f.launch_method,
+            launch_label=LAUNCH_METHOD_LABELS.get(f.launch_method) if f.launch_method is not None else None,
+            pilot_name=pilot_name,
+            second_pilot_name=second_name,
+            asset_code=f.asset_code or f.glider_erp_id,
+            takeoff_time=f.takeoff_time,
+            landing_time=f.landing_time,
+            duration_minutes=duration,
+            billing_quote_state=f.billing_quote_state,
+            has_discount=f.has_discount or False,
+            gross_amount=None,   # Computed in Phase 3 via billing preview
+            net_amount=None,     # Computed in Phase 3 via billing preview
+        ))
+
+    return LogbookListResponse(items=items, total=total)
 
 
 # ---------------------------------------------------------------------------

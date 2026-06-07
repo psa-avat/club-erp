@@ -25,11 +25,14 @@ import { Button } from '../../../components/ui/button';
 import { InitialsAvatar } from './MemberRowBadges';
 import { memberCategoryLabel } from './membersShared';
 import { useMemberQuery } from '../api';
+import { getPortalProfile } from '../../member-portal/api/client';
+import { MemberLogbookTab } from './MemberLogbookTab';
 import type {
   WorkspaceMode,
   WorkspaceTab,
   WorkspaceTabDefinition,
 } from '../types/workspace';
+import type { MemberPortalProfile } from '../../member-portal/types';
 
 // ---------------------------------------------------------------------------
 // Tab definitions
@@ -108,8 +111,13 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('logbook');
 
-  const memberQuery = useMemberQuery(memberUuid);
-  const member = memberQuery.data;
+  // In club mode, fetch member detail from the main API.
+  // In portal mode, use the profile cached in sessionStorage to avoid
+  // calling the main API with a portal JWT (which would cause a 401 redirect).
+  const memberQuery = useMemberQuery(mode === 'club' ? memberUuid : null);
+  const portalProfile = getPortalProfile<MemberPortalProfile>();
+
+  const member = mode === 'club' ? memberQuery.data : portalProfile;
 
   return (
     <section className="space-y-6">
@@ -141,10 +149,10 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
                   </div>
                   <p className="font-mono text-sm text-slate-500">
                     {member.account_id}
-                    {member.trigram && (
+                    {mode === 'club' && (member as { trigram?: string | null }).trigram && (
                       <>
                         {' '}
-                        <span className="text-slate-300">|</span> {member.trigram}
+                        <span className="text-slate-300">|</span> {(member as { trigram?: string | null }).trigram}
                       </>
                     )}
                   </p>
@@ -209,7 +217,7 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
 
       {/* ── Tab content ── */}
       <div>
-        {activeTab === 'logbook' && <TabPlaceholder tab="logbook" />}
+        {activeTab === 'logbook' && <MemberLogbookTab memberUuid={memberUuid} mode={mode} />}
         {activeTab === 'balance' && <TabPlaceholder tab="balance" />}
         {activeTab === 'club-expenses' && <TabPlaceholder tab="club-expenses" />}
         {activeTab === 'volunteer-fiscal' && <TabPlaceholder tab="volunteer-fiscal" />}

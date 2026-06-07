@@ -8,6 +8,8 @@ import type {
   CreateMemberPayload,
   ExpenseAccessResponse,
   ImportResult,
+  LogbookFilters,
+  LogbookResponse,
   MemberDetail,
   MemberFilters,
   MemberOption,
@@ -415,5 +417,28 @@ export async function exportMembersToCSV(
 
     throw error
   }
+}
+
+// ── Logbook ──────────────────────────────────────────────────────────────
+
+export const logbookQueryKeys = {
+  list: (memberUuid: string, filters: LogbookFilters) => ['members', 'logbook', memberUuid, filters] as const,
+}
+
+export function useMemberLogbookQuery(memberUuid: string | null, filters: LogbookFilters = {}) {
+  return useQuery({
+    queryKey: logbookQueryKeys.list(memberUuid ?? 'none', filters),
+    enabled: Boolean(memberUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<LogbookResponse>(
+        `/api/v1/members/${memberUuid}/logbook`,
+        {
+          ...getAuthRequestConfig(),
+          params: compactParams(filters as unknown as Record<string, unknown>),
+        },
+      )
+      return data
+    },
+  })
 }
 

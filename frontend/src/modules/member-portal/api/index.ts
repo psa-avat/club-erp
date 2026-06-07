@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { portalApiClient, setPortalToken, setPortalProfile, clearPortalToken } from './client'
 export { getPortalToken, getPortalProfile, clearPortalToken, isPortalAuthenticated } from './client'
+import type { LogbookFilters, LogbookResponse } from '../../members/types'
 import type {
   MemberPortalLoginResponse,
   MemberPortalFlightListResponse,
@@ -181,5 +182,21 @@ export function useMemberPortalTaxExpenses() {
   return useQuery({
     queryKey: ['member-portal', 'tax-expenses'],
     queryFn: fetchTaxExpenses,
+  })
+}
+
+// ── Logbook ───────────────────────────────────────────────────────────────────
+
+async function fetchPortalLogbook(filters: LogbookFilters) {
+  const { data } = await portalApiClient.get<LogbookResponse>('/api/v1/member-portal/logbook', {
+    params: filters,
+  })
+  return data
+}
+
+export function useMemberPortalLogbookQuery(filters: LogbookFilters = {}) {
+  return useQuery({
+    queryKey: ['member-portal', 'logbook', filters],
+    queryFn: () => fetchPortalLogbook(filters),
   })
 }

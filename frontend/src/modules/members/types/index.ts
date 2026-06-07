@@ -225,3 +225,38 @@ export type ImportResult = {
   skipped: number
   errors: ImportRowError[]
 }
+
+// ── Logbook ──────────────────────────────────────────────────────────────
+
+export type LogbookFilters = {
+  year?: number
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
+}
+
+export type LogbookItem = {
+  flight_uuid: string
+  flight_date: string
+  type_of_flight: number
+  type_label: string | null
+  launch_method: number
+  launch_label: string | null
+  pilot_name: string | null
+  second_pilot_name: string | null
+  asset_code: string | null
+  takeoff_time: string | null
+  landing_time: string | null
+  duration_minutes: number | null
+  billing_quote_state: string | null
+  has_discount: boolean
+  gross_amount: string | null
+  net_amount: string | null
+  errors: string[]
+}
+
+export type LogbookResponse = {
+  items: LogbookItem[]
+  total: number
+}

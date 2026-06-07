@@ -346,3 +346,36 @@ class AnonymizationResultResponse(BaseModel):
 
     anonymized: int
     threshold_year: int
+
+
+# ---------------------------------------------------------------------------
+# Logbook
+# ---------------------------------------------------------------------------
+
+class LogbookItemResponse(BaseModel):
+    """Single logbook entry for a member."""
+
+    flight_uuid: UUID
+    flight_date: date
+    type_of_flight: int
+    type_label: Optional[str] = None
+    launch_method: int
+    launch_label: Optional[str] = None
+    pilot_name: Optional[str] = None
+    second_pilot_name: Optional[str] = None
+    asset_code: Optional[str] = None
+    takeoff_time: Optional[str] = None
+    landing_time: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    billing_quote_state: Optional[str] = None
+    has_discount: bool = False
+    gross_amount: Optional[Decimal] = None
+    net_amount: Optional[Decimal] = None
+    errors: list[str] = Field(default_factory=list)
+
+
+class LogbookListResponse(BaseModel):
+    """Paginated logbook response."""
+
+    items: list[LogbookItemResponse]
+    total: int
