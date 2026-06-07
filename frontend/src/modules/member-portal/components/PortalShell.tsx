@@ -9,6 +9,7 @@ export function PortalShell() {
   const profile = getPortalProfile<MemberPortalProfile>()
 
   const navItems = [
+    { to: '/member-portal/workspace', label: 'Espace membre', icon: '👤' },
     { to: '/member-portal/dashboard', label: 'Tableau de bord', icon: '📊' },
     { to: '/member-portal/flights', label: 'Mes vols', icon: '✈️' },
     { to: '/member-portal/account', label: 'Compte', icon: '💰' },

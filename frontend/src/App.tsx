@@ -1,14 +1,11 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 
 import { LoginPage, ProtectedRoute, PublicOnlyRoute } from './auth'
 import {
   LoginPage as MemberPortalLoginPage,
   PortalShell,
-  DashboardPage as MemberPortalDashboardPage,
-  FlightsPage as MemberPortalFlightsPage,
-  AccountPage as MemberPortalAccountPage,
-  ExpensesPage as MemberPortalExpensesPage,
 } from './modules/member-portal'
+import { getPortalProfile } from './modules/member-portal/api/client'
 import { AdminPage } from './modules/admin'
 import {
   BanquePage,
@@ -30,8 +27,7 @@ import {
   PackDefinitionEditPage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
-import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage } from './modules/members'
-import { MemberPilotSheetPage } from './modules/members'
+import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage, MemberWorkspaceShell } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
@@ -40,6 +36,20 @@ import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage
 import { ViEntitlementsPage, ViPlanningPage, ViTypesPage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
 import { AppShell } from './shell/components'
+
+// ── Route wrappers for MemberWorkspaceShell ──
+
+function MemberWorkspaceClubRoute() {
+  const { memberUuid } = useParams<{ memberUuid: string }>()
+  if (!memberUuid) return null
+  return <MemberWorkspaceShell mode="club" memberUuid={memberUuid} />
+}
+
+function MemberWorkspacePortalRoute() {
+  const profile = getPortalProfile<{ uuid: string }>()
+  if (!profile) return null
+  return <MemberWorkspaceShell mode="portal" memberUuid={profile.uuid} />
+}
 
 function App() {
   return (
@@ -53,11 +63,8 @@ function App() {
       {/* Member portal — standalone, outside the ERP auth guard */}
       <Route path="/member-portal/login" element={<MemberPortalLoginPage />} />
       <Route element={<PortalShell />}>
-        <Route path="/member-portal/dashboard" element={<MemberPortalDashboardPage />} />
-        <Route path="/member-portal/flights" element={<MemberPortalFlightsPage />} />
-        <Route path="/member-portal/account" element={<MemberPortalAccountPage />} />
-        <Route path="/member-portal/expenses" element={<MemberPortalExpensesPage />} />
-        <Route path="/member-portal" element={<Navigate to="/member-portal/dashboard" replace />} />
+        <Route path="/member-portal/workspace" element={<MemberWorkspacePortalRoute />} />
+        <Route path="/member-portal" element={<Navigate to="/member-portal/workspace" replace />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
@@ -68,7 +75,7 @@ function App() {
           <Route path="/club/members/:screen" element={<MembersListPage />} />
           <Route path="/club/members/new" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/edit" element={<MemberFormPage />} />
-          <Route path="/club/members/:memberUuid/pilot-sheet" element={<MemberPilotSheetPage />} />
+          <Route path="/club/members/:memberUuid/workspace" element={<MemberWorkspaceClubRoute />} />
           <Route path="/club/commissions" element={<CommitteesManagementPage />} />
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
           <Route path="/planning" element={<PlanningPage />} />

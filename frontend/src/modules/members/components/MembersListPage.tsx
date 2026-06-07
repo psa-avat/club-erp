@@ -208,7 +208,7 @@ export function MembersListPage() {
   }
 
   function handleOpenPilotSheet(memberUuid: string) {
-    navigate(`/club/members/${memberUuid}/pilot-sheet`)
+    navigate(`/club/members/${memberUuid}/workspace`)
   }
 
   async function handleExportMembers() {
