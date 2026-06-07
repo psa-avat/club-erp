@@ -306,10 +306,11 @@ def _apply_member_filters(
         )
 
     # balance_min / balance_max: filter members whose accounting balance falls within range.
-    # Uses a correlated subquery to sum(AccountingLine.debit - AccountingLine.credit).
+    # Uses a correlated subquery to sum(AccountingLine.credit - AccountingLine.debit).
+    # Positive = member has credit (money with club), negative = member owes money.
     if filters.balance_min is not None or filters.balance_max is not None:
         balance_subq = (
-            select(func.coalesce(func.sum(AccountingLine.debit - AccountingLine.credit), 0).label("balance"))
+            select(func.coalesce(func.sum(AccountingLine.credit - AccountingLine.debit), 0).label("balance"))
             .where(AccountingLine.member_uuid == Member.uuid)
             .correlate(Member)
             .scalar_subquery()
@@ -533,8 +534,8 @@ async def _serialize_member_summary(
     last_flight_date: Optional[date] = None
 
     if include_balance:
-        # Sum of accounting_lines for this member (debit - credit)
-        balance_query = select(func.coalesce(func.sum(AccountingLine.debit - AccountingLine.credit), 0)).where(
+        # Sum of accounting_lines for this member (credit - debit) — positive = member has credit
+        balance_query = select(func.coalesce(func.sum(AccountingLine.credit - AccountingLine.debit), 0)).where(
             AccountingLine.member_uuid == member.uuid
         )
         if fiscal_year_uuid is not None:
@@ -1573,7 +1574,7 @@ async def get_member_account_summary(
         row = await db.execute(stmt)
         debit, credit = row.one()
         total = getattr(summary, target_field)
-        setattr(summary, target_field, total + debit - credit)
+        setattr(summary, target_field, total + credit - debit)
 
     summary.current_balance = summary.posted_total
     return summary

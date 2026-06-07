@@ -154,9 +154,14 @@ export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
     { key: 'description', header: t('balanceDescription'), className: 'min-w-[200px]', cell: (r) => <span className="text-sm text-slate-700">{r.description ?? '—'}</span> },
     { key: 'reference', header: t('balanceRef'), className: 'min-w-[100px]', cell: (r) => <span className="text-sm font-mono text-slate-600">{r.reference ?? '—'}</span> },
     { key: 'state', header: t('balanceState'), className: 'min-w-[90px]', cell: (r) => { const b = stateBadge(r.state, t); return <span className={`rounded px-2 py-0.5 text-xs font-medium ${b.class}`}>{b.label}</span> } },
-    { key: 'debit', header: t('balanceDebit'), className: 'min-w-[90px] text-right', cell: (r) => <span className="text-sm text-slate-700">{formatEuro(r.debit)}</span> },
-    { key: 'credit', header: t('balanceCredit'), className: 'min-w-[90px] text-right', cell: (r) => <span className="text-sm text-slate-700">{formatEuro(r.credit)}</span> },
+    { key: 'debit', header: t('balanceDebit'), className: 'min-w-[90px] text-right', cell: (r) => <span className="text-sm text-slate-700">{formatEuro(Math.abs(Number(r.debit)))}</span> },
+    { key: 'credit', header: t('balanceCredit'), className: 'min-w-[90px] text-right', cell: (r) => <span className="text-sm text-slate-700">{formatEuro(Math.abs(Number(r.credit)))}</span> },
   ]
+
+  // Compute debit/credit totals from the displayed entries
+  const items = entries?.items ?? []
+  const totalDebit = items.reduce((sum, r) => sum + Math.abs(Number(r.debit)), 0)
+  const totalCredit = items.reduce((sum, r) => sum + Math.abs(Number(r.credit)), 0)
 
   return (
     <div className="space-y-4">
@@ -165,11 +170,21 @@ export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <DataTable
           columns={columns}
-          data={entries?.items ?? []}
+          data={items}
           getRowKey={(r) => r.entry_uuid}
           defaultSortKey="date"
           emptyState={<div className="p-8 text-center text-sm text-slate-500">{t('balanceEmpty')}</div>}
         />
+        {items.length > 0 && (
+          <div className="border-t border-slate-200 px-4 py-2.5 text-sm">
+            <div className="flex items-center justify-end gap-6">
+              <span className="font-medium text-slate-500">{t('balanceTotal')} :</span>
+              <span className="min-w-[90px] text-right font-semibold text-slate-800">{formatEuro(totalDebit)}</span>
+              <span className="min-w-[90px] text-right font-semibold text-slate-800">{formatEuro(totalCredit)}</span>
+              <span className="min-w-[20px]" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -676,3 +676,289 @@ Costs advanced by members must be reimbursed through the expense-report (`note d
 | `MANAGE_VI` | Manage VI type catalog (including `charge_account_uuid`) |
 
 The member portal uses **token-based auth** (not capabilities) — a valid expense access token grants read-only access to the member's own data.
+
+---
+
+## 14. Scheduled Accounting Operations
+
+### 14.1 Purpose
+
+Automate repetitive accounting tasks — monthly membership fees, quarterly VAT declarations, depreciation runs, fiscal year closing entries — through reusable entry templates with recurrence schedules. Reduce manual effort and prevent missed deadlines.
+
+### 14.2 Core Concepts
+
+| Concept | Description |
+|---|---|
+| **Recurring template** | Predefined journal entry with formulas for line amounts, scheduled to generate at regular intervals |
+| **Recurrence type** | Monthly / Quarterly / Yearly / Custom cron |
+| **Next scheduled date** | Calculated from recurrence; advanced after each successful generation |
+| **Task/reminder** | A manual or auto-generated to-do item with due date, assignee, and status |
+| **Scheduler** | Background job (APScheduler) that checks due templates and generates entries daily |
+
+### 14.3 Template Model
+
+Extends the existing `JournalEntryTemplate` model:
+
+| Field | Type | Notes |
+|---|---|---|
+| `uuid` | UUID | PK |
+| `fiscal_year_uuid` | UUID | FK → accounting_fiscal_years |
+| `journal_uuid` | UUID | FK → accounting_journals |
+| `label` | varchar(200) | Display name (e.g. "Cotisation mensuelle 2026") |
+| `recurrence_type` | varchar(20) | `monthly` / `quarterly` / `yearly` / `custom` |
+| `cron_expression` | varchar(50)? | Override for custom schedules (e.g. `0 8 1 * *`) |
+| `next_scheduled_date` | date | When the next entry is due |
+| `template_lines` | jsonb | Array of line definitions (see below) |
+| `is_active` | boolean | Soft disable without deleting |
+| `last_generated_date` | date? | When the last entry was generated |
+| `created_at` | timestamptz | |
+| `updated_at` | timestamptz | |
+
+**Template line definition** (jsonb):
+
+```json
+{
+  "account_uuid": "uuid",
+  "debit_formula": { "type": "fixed", "value": "100.00" },
+  "credit_formula": { "type": "fixed", "value": "0" },
+  "analytical_dimensions": {
+    "member_uuid": null,
+    "analytical_asset_uuid": null
+  }
+}
+```
+
+**Formula types:**
+
+| Type | `value` | Behavior |
+|---|---|---|
+| `fixed` | Decimal string | Always uses this amount |
+| `previous_period` | Account UUID | Copies the total from the same account in the previous period's entry |
+| `percentage_of` | `{ "account_uuid": "...", "percentage": 20 }` | Computes a percentage of another line's amount |
+| `balance` | Account UUID | Uses the current balance of the account (for closing entries) |
+
+### 14.4 Generation Flow
+
+```
+generate_entry(template_uuid, target_date):
+  1. Load template + resolve all account UUIDs
+  2. For each template_line:
+     - Evaluate formula → compute debit and credit amounts
+     - Validate account exists and is active
+  3. Verify balanced entry (total_debit == total_credit)
+  4. Create Draft accounting entry in the configured journal
+     - Reference: "{template.label} — {target_date}"
+     - Lines: computed amounts with dimensions
+     - entry_hash: deterministic hash of content
+  5. Advance next_scheduled_date per recurrence rule
+  6. Log generation to audit_log
+  → Returns the new Draft entry UUID
+```
+
+### 14.5 API Surface
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/accounting/templates` | List recurring entry templates |
+| `POST` | `/api/v1/accounting/templates` | Create a template |
+| `PATCH` | `/api/v1/accounting/templates/{uuid}` | Update a template |
+| `DELETE` | `/api/v1/accounting/templates/{uuid}` | Delete a template |
+| `POST` | `/api/v1/accounting/templates/{uuid}/generate` | Manually trigger generation |
+| `POST` | `/api/v1/accounting/scheduler/run` | Run the due-entry check (manual trigger) |
+| `GET` | `/api/v1/accounting/tasks` | List tasks with filters |
+| `POST` | `/api/v1/accounting/tasks` | Create a manual task/reminder |
+| `PATCH` | `/api/v1/accounting/tasks/{uuid}` | Update task status |
+
+### 14.6 Task & Reminder Model
+
+```sql
+CREATE TABLE accounting_tasks (
+    uuid            UUID PRIMARY KEY,
+    fiscal_year_uuid UUID NOT NULL REFERENCES accounting_fiscal_years(uuid),
+    assigned_to_uuid UUID REFERENCES users(uuid),
+    task_type       VARCHAR(50) NOT NULL,  -- 'recurring_entry' / 'rem_period' / 'fy_close' / 'reconciliation' / 'manual'
+    description     TEXT NOT NULL,
+    due_date        DATE NOT NULL,
+    priority        SMALLINT DEFAULT 0,     -- 0=normal, 1=high, 2=critical
+    status          VARCHAR(20) DEFAULT 'pending',  -- pending / completed / deferred / cancelled
+    related_entry_uuid UUID REFERENCES accounting_entries(uuid),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ
+);
+```
+
+### 14.7 Scheduler Jobs
+
+| Job | Frequency | Behavior |
+|---|---|---|
+| `check_due_entries` | Daily (06:00) | `generate_due_entries()` for all active templates |
+| `check_rem_deadlines` | Daily (06:00) | Create tasks when REM period ≤ 3 days from closing |
+| `check_pending_approvals` | Weekly (Mon 08:00) | Flag Draft entries with age > 7 days |
+| `generate_task_notifications` | Daily (07:00) | Notify assigned users of upcoming/past-due tasks |
+
+### 14.8 Permissions
+
+| Capability | Operations |
+|---|---|
+| `POST_ACCOUNTING_ENTRIES` | Create/edit/delete recurring templates, manually trigger generation |
+| `VIEW_FINANCIALS` | View templates, view task list |
+| `MANAGE_USERS` | Assign tasks to users |
+
+---
+
+## 15. Bank Reconciliation & Alignment
+
+### 15.1 Purpose
+
+Match imported bank statements against the ERP general ledger to ensure the 411 (receivable) and bank accounts are consistent. Detect discrepancies, suggest corrections, and produce a reconciliation report for audit.
+
+### 15.2 Core Concepts
+
+| Concept | Description |
+|---|---|
+| **Bank statement** | Imported file (CSV/OFX/QIF/MT940) representing a period's bank transactions |
+| **Statement line** | One row in the statement: date, description, amount, reference, counterparty |
+| **Match** | A link between a bank statement line and an accounting entry (GL line) |
+| **Confidence score** | 0.0–1.0 indicating match reliability; auto-accepted above threshold |
+| **Discrepancy** | A bank line with no good match, or a match with amount variance |
+| **Reconciliation period** | A closed date range — once locked, no re-matching allowed |
+
+### 15.3 Data Model
+
+#### 15.3.1 `bank_statements`
+
+| Column | Type | Notes |
+|---|---|---|
+| `uuid` | UUID | PK |
+| `fiscal_year_uuid` | UUID | FK → accounting_fiscal_years |
+| `account_uuid` | UUID | FK → accounting_accounts (the bank GL account) |
+| `import_date` | timestamptz | When the file was uploaded |
+| `statement_period_start` | date | Start of the statement period |
+| `statement_period_end` | date | End of the statement period |
+| `opening_balance` | Numeric(10,2) | Balance at period start (from file header) |
+| `closing_balance` | Numeric(10,2) | Balance at period end (from file header) |
+| `currency` | varchar(3) | Default 'EUR' |
+| `source_format` | varchar(10) | `csv` / `ofx` / `qif` / `mt940` |
+| `raw_filename` | varchar(255) | Original uploaded filename |
+| `status` | varchar(20) | `imported` / `matched` / `reconciled` / `flagged` |
+| `created_at` | timestamptz | |
+| `updated_at` | timestamptz | |
+
+#### 15.3.2 `bank_statement_lines`
+
+| Column | Type | Notes |
+|---|---|---|
+| `uuid` | UUID | PK |
+| `statement_uuid` | UUID | FK → bank_statements |
+| `line_date` | date | Transaction date |
+| `description` | text | From the statement |
+| `amount` | Numeric(10,2) | Positive = debit, negative = credit |
+| `reference` | varchar(100)? | Check number, transfer reference, etc. |
+| `counterparty` | varchar(200)? | Other party name |
+| `match_status` | varchar(20) | `unmatched` / `auto_matched` / `manually_matched` / `excluded` |
+| `matched_entry_uuid` | UUID? | FK → accounting_entries |
+| `confidence_score` | Numeric(3,2)? | 0.00–1.00 |
+| `matched_at` | timestamptz? | When the match was established |
+| `matched_by` | UUID? | FK → users (who confirmed the match) |
+| `created_at` | timestamptz | |
+
+### 15.4 Matching Engine
+
+#### 15.4.1 Matching Pass
+
+```
+match_statements(fiscal_year_uuid, account_uuid):
+  For each unmatched bank_statement_line:
+    1. EXACT MATCH
+       - Find accounting_lines where:
+         amount == bank_line.amount
+         AND entry.reference == bank_line.reference
+         AND entry.journal.account_uuid == account_uuid
+       - Score: 1.00 → auto-match
+
+    2. FUZZY DATE MATCH (if exact failed)
+       - Find accounting_lines where:
+         amount == bank_line.amount
+         AND entry.date BETWEEN bank_line.date - 3d AND bank_line.date + 3d
+         AND entry.journal.account_uuid == account_uuid
+       - Score: 0.85 → flag for manual review (or auto-accept if threshold ≤ 0.85)
+
+    3. AMOUNT-ONLY MATCH (if fuzzy failed)
+       - Find accounting_lines where:
+         amount == bank_line.amount
+         AND entry.journal.account_uuid == account_uuid
+       - Score: 0.60 → always flag for manual review
+
+    4. If no match found:
+       - Set match_status = 'unmatched'
+       - Create discrepancy: "missing_entry"
+```
+
+#### 15.4.2 Confidence Thresholds
+
+| Score Range | Behavior |
+|---|---|
+| ≥ 0.95 | Auto-match (configurable in settings) |
+| 0.70 – 0.94 | Flag for manual review (yellow) |
+| < 0.70 | No match / low confidence (red) |
+
+### 15.5 Discrepancy Types
+
+| Type | Condition | Suggested Action |
+|---|---|---|
+| `missing_entry` | Bank line with 0 matches | Create a correction entry or exclude the line |
+| `amount_variance` | Matched but amounts differ by > 0.01 | Create adjustment entry for the difference |
+| `timing_difference` | Matched but bank date vs entry date > 7 days | Accept as timing (no action) |
+| `duplicate` | Two bank lines match the same entry | Flag, user decides which to keep |
+
+### 15.6 Reconciliation Report
+
+For a given fiscal year + bank account:
+
+```
+Reconciliation Report — 2026
+Account: 512100 (Banque)
+Period: 01/01/2026 – 31/03/2026
+
+Opening balance (GL):            5,000.00 €
+Opening balance (statement):     5,000.00 €  ✓
+
+Total debits matched:           12,340.00 €
+Total credits matched:           8,210.00 €
+Unmatched debits:                  120.00 €  → 1 missing entry
+Unmatched credits:                  50.00 €  → 1 timing difference
+
+Closing balance (GL):            9,200.00 €
+Closing balance (statement):     9,170.00 €
+Difference:                         30.00 €
+
+Discrepancies:
+  • 2026-03-15  +120.00 €  Virement Dupont  →  No matching entry  [Create entry]
+  • 2026-03-20   -50.00 €  Prélèvement assurance → Timing (+9d)  [Accept]
+
+Status: ⚠️ Unresolved discrepancies (2)
+```
+
+### 15.7 API Surface
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/accounting/reconciliation/import` | Upload a statement file |
+| `GET` | `/api/v1/accounting/reconciliation/statements` | List imported statements |
+| `GET` | `/api/v1/accounting/reconciliation/statements/{uuid}` | Statement detail with lines |
+| `DELETE` | `/api/v1/accounting/reconciliation/statements/{uuid}` | Remove a statement |
+| `POST` | `/api/v1/accounting/reconciliation/match` | Run automated matching pass |
+| `POST` | `/api/v1/accounting/reconciliation/manual-match` | Confirm a manual match |
+| `POST` | `/api/v1/accounting/reconciliation/unmatch` | Break an incorrect match |
+| `GET` | `/api/v1/accounting/reconciliation/discrepancies` | List discrepancies |
+| `POST` | `/api/v1/accounting/reconciliation/resolve-discrepancy` | Resolve a discrepancy |
+| `GET` | `/api/v1/accounting/reconciliation/report` | Generate reconciliation report |
+| `POST` | `/api/v1/accounting/reconciliation/close-period` | Lock a reconciled period |
+
+### 15.8 Permissions
+
+| Capability | Operations |
+|---|---|
+| `VIEW_FINANCIALS` | View statements, matches, discrepancies, reports |
+| `POST_ACCOUNTING_ENTRIES` | Confirm manual matches, resolve discrepancies, create correction entries |
+| `MANAGE_USERS` | Configure reconciliation settings (thresholds, default accounts) |

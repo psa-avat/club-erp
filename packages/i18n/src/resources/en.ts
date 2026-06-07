@@ -225,6 +225,7 @@ export const en = {
     balanceDebit: 'Debit',
     balanceCredit: 'Credit',
     balanceEmpty: 'No accounting entries.',
+    balanceTotal: 'Total',
     // State badges
     statePending: 'Pending',
     stateDraft: 'Draft',

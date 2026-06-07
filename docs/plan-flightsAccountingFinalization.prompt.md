@@ -689,9 +689,9 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 ---
 
-### Phase 8 — Member External Access (Self-Service Portal)
+### Phase 8 — Member External Access (Self-Service Portal) ✅ DONE
 
-**Steps** (depends on Phase 3, parallel with Phase 4-7):
+**All steps implemented** — full backend API + frontend module with login, flights, account, expenses, deposits, packs.
 
 **Context**: The ERP already has a token-based `expense_access` mechanism on `MemberSheet`. This phase extends that concept into a full self-service view where members can manage their account without needing an ERP user account.
 
@@ -782,6 +782,164 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 
 ---
 
+### Phase 10 — Scheduled Accounting Operations
+
+**Steps** (depends on Phase 3, parallel with Phase 6-9):
+
+**Context**: Many accounting tasks are repetitive — monthly membership fee entries, quarterly REM period closures, VAT declarations, depreciation runs, fiscal year closing entries. Instead of relying on the accountant to remember each task, the system should automate them: define reusable entry templates with recurrence schedules, generate draft entries automatically, and remind the user before critical deadlines.
+
+1. **Backend — Recurring entry templates** (new service `backend/services/scheduled_entries.py`):
+   - `JournalEntryTemplate` model already exists in `models.py` with `recurrence_type` (Monthly/Quarterly/Yearly), `next_scheduled_date`, `template_config`
+   - Build CRUD service: create/list/update/delete templates
+   - Template fields: `journal_uuid`, `fiscal_year_uuid`, `label`, `recurrence_type`, `cron_expression` (optional override), `template_lines` (array of `{account_uuid, debit_formula, credit_formula, analytical_dimensions}`)
+   - Formulas support: fixed amount, percentage of another line, previous period value
+   - `generate_entry(template_uuid, target_date)` — creates a Draft accounting entry from the template, applying formulas to compute line amounts
+   - `generate_due_entries(fiscal_year_uuid)` — finds all templates where `next_scheduled_date <= target_date` and generates draft entries, advancing `next_scheduled_date`
+
+2. **Backend — Scheduler integration**:
+   - Integrate APScheduler (preferred, no extra infra) or Celery beat
+   - Daily job: `check_due_entries()` — runs `generate_due_entries()` and creates draft entries
+   - Daily job: `check_rem_period_deadline()` — alerts when REM period is near closing
+   - Weekly job: `check_pending_approvals()` — flags entries awaiting posting for >7 days
+
+3. **Backend — Task & reminder system**:
+   - New model `accounting_tasks` (uuid, fiscal_year_uuid, assigned_to_uuid, task_type, description, due_date, status, related_entry_uuid)
+   - `POST /api/v1/accounting/tasks` — create a manual task
+   - `GET /api/v1/accounting/tasks?status=pending&due_before=` — list tasks
+   - `PATCH /api/v1/accounting/tasks/{uuid}` — update status (complete/defer)
+   - Automated task generation on triggers: "REM period closes in 3 days", "Fiscal year end in 30 days", "Draft entry pending > 7 days"
+
+4. **Backend — API endpoints**:
+   - `GET /api/v1/accounting/templates` — list recurring entry templates
+   - `POST /api/v1/accounting/templates` — create template
+   - `PATCH /api/v1/accounting/templates/{uuid}` — update template
+   - `DELETE /api/v1/accounting/templates/{uuid}` — delete template
+   - `POST /api/v1/accounting/templates/{uuid}/generate` — manually trigger generation
+   - `GET /api/v1/accounting/tasks` — list tasks with filters
+   - `POST /api/v1/accounting/tasks` — create a reminder/task
+   - `PATCH /api/v1/accounting/tasks/{uuid}` — update task status
+
+5. **Frontend — Template management UI**:
+   - New component: `frontend/src/modules/banque/components/RecurringEntryTemplatesPage.tsx`
+   - Table of templates with next scheduled date, recurrence, last generated
+   - Create/edit dialog: select journal, define lines with account picker, set recurrence pattern, set formula type
+   - "Generate now" button on each template
+   - **Navigation**: link from accounting settings sidebar
+
+6. **Frontend — Task dashboard panel**:
+   - New component: `frontend/src/modules/banque/components/AccountingTasksPanel.tsx`
+   - Widget showing pending tasks count, sorted by due date
+   - Expandable list with mark-complete, defer, snooze actions
+   - Integrate into `BanqueDailyOpsPage.tsx` as a sidebar panel or tab
+   - Badge on navigation icon when tasks are overdue
+
+7. **Seed data**:
+   - Pre-populate common templates: monthly membership fee, quarterly VAT, annual fiscal year closing
+   - Pre-populate recurring tasks: monthly bank reconciliation, quarterly financial review
+
+**Verification**:
+- Create a monthly template → "Generate now" → Draft entry created in correct journal with correct amounts
+- Template generates entry on schedule (APScheduler job runs)
+- Task appears when REM period is 3 days from closing
+- Task dashboard shows pending tasks, marking complete updates status
+- Overdue tasks show visual badge
+
+---
+
+### Phase 11 — Bank Reconciliation & Alignment
+
+**Steps** (depends on Phase 3, can start after billing apply works):
+
+**Context**: The club's bank account must be reconciled with the ERP ledger periodically. Currently this is done manually outside the ERP. This phase adds structured bank statement import, automated matching of bank transactions to accounting entries, discrepancy detection, and a reconciliation workspace.
+
+1. **Backend — Bank statement import** (new service `backend/services/bank_reconciliation.py`):
+   - Support CSV import with configurable column mapping (user maps CSV columns to: date, description, amount, reference, counterparty)
+   - Support OFX/QIF/MT940 formats via a parsing abstraction layer
+   - Store imported statements in `bank_statements` table:
+     - `uuid`, `fiscal_year_uuid`, `account_uuid` (FK → accounting_accounts, the bank GL account)
+     - `import_date`, `statement_period_start`, `statement_period_end`, `closing_balance`, `currency`
+     - `source_format` (csv/ofx/qif/mt940), `raw_filename`
+     - `status` (imported / matched / reconciled / flagged)
+   - Store individual lines in `bank_statement_lines`:
+     - `uuid`, `statement_uuid`, `line_date`, `description`, `amount` (positive=debit, negative=credit), `reference`, `counterparty`
+     - `match_status` (unmatched / auto_matched / manually_matched / excluded)
+     - `matched_entry_uuid` (FK → accounting_entries, nullable)
+
+2. **Backend — Matching engine**:
+   - `match_statements(fiscal_year_uuid, account_uuid)` — automated matching pass:
+     1. **Exact match**: bank line amount = accounting line amount AND reference matches entry reference
+     2. **Fuzzy date match**: amount matches AND bank line date ±3 days of entry date
+     3. **Amount-only match**: amount matches but no reference — flags for manual review
+     4. **Negative match**: bank line with no corresponding entry → potential missing entry
+   - Scoring system: each match candidate gets a confidence score (0.0–1.0)
+   - Auto-accept matches above threshold (configurable, default 0.95); flag lower scores for manual review
+   - `POST /api/v1/accounting/reconciliation/match` — run matching pass
+   - `POST /api/v1/accounting/reconciliation/manual-match` — user confirms a match
+   - `POST /api/v1/accounting/reconciliation/unmatch` — user breaks an incorrect match
+
+3. **Backend — Discrepancy handling**:
+   - `GET /api/v1/accounting/reconciliation/discrepancies` — list unmatched/flagged lines
+   - Discrepancy types:
+     - **Missing entry** — bank line with no matching entry (amount mismatch or orphan)
+     - **Amount variance** — matched but amounts differ → suggest correction entry
+     - **Timing difference** — bank date vs entry date > 7 days → flag as timing
+     - **Duplicate** — two bank lines matching one entry → flag for review
+   - `POST /api/v1/accounting/reconciliation/resolve-discrepancy` — user action: create correcting entry, exclude line, accept timing difference
+   - Auto-suggest correction entry for amount variances (debit/credit the difference on a configurable adjustment account)
+
+4. **Backend — Reconciliation report**:
+   - `GET /api/v1/accounting/reconciliation/report?fiscal_year_uuid=&account_uuid=` — full report:
+     - Statement period, opening balance, closing balance
+     - Total debits matched, total credits matched, unmatched total
+     - Discrepancy list with suggested actions
+     - Reconciled balance (GL balance + timing differences - missing entries)
+   - `POST /api/v1/accounting/reconciliation/close-period` — lock reconciliation for a period (prevents re-matching closed periods)
+
+5. **Backend — API endpoints**:
+   - `POST /api/v1/accounting/reconciliation/import` — upload statement file
+   - `GET /api/v1/accounting/reconciliation/statements` — list imported statements
+   - `GET /api/v1/accounting/reconciliation/statements/{uuid}` — statement detail with lines
+   - `DELETE /api/v1/accounting/reconciliation/statements/{uuid}` — remove a statement
+   - `POST /api/v1/accounting/reconciliation/match` — run automated matching
+   - `POST /api/v1/accounting/reconciliation/manual-match` — confirm a manual match
+   - `POST /api/v1/accounting/reconciliation/unmatch` — break a match
+   - `GET /api/v1/accounting/reconciliation/discrepancies` — list discrepancies
+   - `POST /api/v1/accounting/reconciliation/resolve-discrepancy` — resolve a discrepancy
+   - `GET /api/v1/accounting/reconciliation/report` — reconciliation report
+   - `POST /api/v1/accounting/reconciliation/close-period` — lock a period
+
+6. **Frontend — Reconciliation workspace**:
+   - New module: `frontend/src/modules/reconciliation/`
+   - **Statement import page**: drag-and-drop file upload, column mapping wizard for CSV, format detection
+   - **Statement list**: table of imported statements with period, status, match progress bar
+   - **Reconciliation workspace** (main view):
+     - Split panel: left = bank statement lines, right = matched accounting entries
+     - Color coding: green (matched), yellow (low confidence), red (unmatched), blue (manually matched)
+     - Click a bank line → show suggested matches from GL entries
+     - Confirm/match button to link
+     - Filter: show all / unmatched / flagged / matched
+   - **Discrepancy panel**: list of discrepancies with suggested resolution actions
+   - **Reconciliation report view**: printable summary with balance confirmation
+   - **Period close button**: with confirmation dialog, locks the period
+   - **Navigation**: add "Reconciliation" entry in the accounting/navigation sidebar
+   - i18n: all labels in `reconciliation` namespace
+
+7. **Notifications**:
+   - Dashboard widget: "Bank reconciliation overdue (last: DD/MM/YYYY)" when no reconciliation in >30 days
+   - Badge on reconciliation nav icon when discrepancies exist
+
+**Verification**:
+- Import a CSV bank statement → lines appear in workspace with correct amounts
+- Run automated matching → some lines auto-match (green), some flagged (yellow)
+- Manually match an unmatched line → status changes to blue
+- Create a discrepancy → appears in discrepancy panel
+- Resolve a discrepancy → correction entry draft created
+- Reconciliation report shows correct totals and matched/unmatched counts
+- Close period → new imports for that period are rejected
+- Overdue reconciliation shows dashboard warning
+
+---
+
 ## Migrations
 
 | File | Description |
@@ -831,15 +989,18 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 | File | Phase | Description |
 |---|---|---|
 | `backend/services/flight_billing.py` | Phase 6 | Add `recalculate_pack_consumptions()`, `batch_recalculate()`, `handle_post_purchase_pack()`, `discount_review()` |
-| `backend/services/flight_packs.py` | Phase 6 | Add `discount_review(fiscal_year_uuid)` — applies pack discounts to all eligible billed flights |
+| `backend/services/flight_packs.py` | Phase 6 | Add `discount_review(fiscal_year_uuid)`, `update_rem_after_valid_from_change()` |
 | `backend/api/routes/packs.py` | Phase 6 | Add `POST /api/v1/packs/discount-review` endpoint |
 | `backend/api/routes/integrations.py` | Phase 6 | Add GESASSO and OSRT sync endpoints (stubs) |
-| `frontend/src/modules/banque/components/PackPurchaseDialog.tsx` | Phase 5 | Modal for quick pack purchase |
-| `frontend/src/modules/banque/components/RemPeriodPanel.tsx` | Phase 5 | REM period management (view Drafts, close period) |
-| `frontend/src/modules/banque/components/OpsFlightsTab.tsx` | Phase 5 | Wire batch apply/post buttons, add pack purchase modal |
-| `backend/api/routes/member_portal.py` | Phase 8 | Public token-authenticated endpoints for member self-service |
-| `frontend/src/modules/member-portal/` | Phase 8 | Standalone member self-service module |
+| `frontend/src/modules/members/components/` | Phase 7 | Editable date picker for `valid_from` in consumption views |
+| `frontend/src/modules/members/components/` | Phase 7 | Inline date edit in flight detail panel |
+| `frontend/src/modules/members/components/` | Phase 7 | Show "Consumption excluded" when `valid_from` is after flight date |
 | `frontend/src/modules/banque/components/MachineFinancialDashboard.tsx` | Phase 9 | Per-machine financial summary with drill-down |
+| _New_ | Phase 10 | Scheduled Accounting Operations (recurring entries, reminders, task generation) |
+| _New_ | Phase 10 | Backend scheduler service + celery/apscheduler integration |
+| _New_ | Phase 10 | Frontend recurring entry templates UI |
+| _New_ | Phase 11 | Bank Reconciliation & Alignment (statement matching, discrepancy handling) |
+| _New_ | Phase 11 | Backend reconciliation engine + frontend reconciliation workspace |
 
 ---
 
@@ -877,10 +1038,11 @@ When `status=all`, the endpoint returns flights regardless of `accounting_entry_
 - Billing configuration UI per fiscal year
 - Member self-service portal (token-based, read-only: flights, discounts, account)
 - Machine financial dashboard (credit/debit per asset, pack purchases, consumed quantities, drill-down)
+- Scheduled accounting operations (recurring entry templates, APScheduler integration, task & reminder system)
+- Bank reconciliation & alignment (statement import, automated matching engine, discrepancy handling, reconciliation workspace)
 
 **Excluded** (future):
 - Batch pricing version management within the flights tab
-- Automated recurrent (monthly) billing runs
 - Member invoice PDF generation (separate feature)
 - Integration with helloasso for pack purchase payment collection
 - Cost provision rules per flight (provision for tow/glider costs)

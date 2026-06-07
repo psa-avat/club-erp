@@ -44,9 +44,28 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
+### Implementation Status Summary
+
+| Phase | Status | Progress |
+|-------|--------|----------|
+| **1** — Foundation: Shared Workspace | ✅ DONE | ██████████ |
+| **2** — Logbook Tab | ✅ DONE | ██████████ |
+| **3** — Balance & Deposits Tab | ✅ DONE | ██████████ |
+| **4a** — Club Expenses Tab | ❌ NOT STARTED | ░░░░░░░░░░ |
+| **4b** — Volunteer Fiscal Tab | ❌ NOT STARTED | ░░░░░░░░░░ |
+| **5** — Documents Tab | ❌ NOT STARTED | ░░░░░░░░░░ |
+| **6** — Pack Cleanup | ⚠️ PARTIAL | █████░░░░░ |
+| **7** — Pilot List Enhancement | ✅ DONE | ██████████ |
+| **8** — Key Access & Email | ⚠️ PARTIAL | █████░░░░░ |
+| **9** — Migrations & Cleanup | ⚠️ PARTIAL | ████░░░░░░ |
+
+**Legend**: ✅ DONE = All steps implemented | ⚠️ PARTIAL = Some steps done, some missing | ❌ NOT STARTED = No code written
+
+---
+
 ### Phases & Steps
 
-#### Phase 1 — Foundation: Shared Member Workspace Architecture
+#### Phase 1 — Foundation: Shared Member Workspace Architecture ✅ DONE
 
 **Steps**:
 1. **Define the "workspace context" contract** in `frontend/src/modules/members/types/workspace.ts`:
@@ -84,7 +103,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 2 — Tab: Logbook (Carnet de Vol)
+#### Phase 2 — Tab: Logbook (Carnet de Vol) ✅ DONE
 
 **Steps**:
 1. **Backend — Logbook endpoint** `GET /api/v1/members/{member_uuid}/logbook`:
@@ -125,7 +144,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 3 — Tab: Balance & Deposits
+#### Phase 3 — Tab: Balance & Deposits ✅ DONE
 
 **Steps**:
 1. **Backend — Balance endpoint** `GET /api/v1/members/{member_uuid}/account-summary`:
@@ -191,7 +210,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 4a — Tab: Club Expenses
+#### Phase 4a — Tab: Club Expenses ❌ NOT STARTED
 
 **Steps**:
 1. **Backend — Expense model** `backend/models.py`: new `MemberExpense` table:
@@ -251,7 +270,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 4b — Tab: Volunteer Fiscal Declarations
+#### Phase 4b — Tab: Volunteer Fiscal Declarations ❌ NOT STARTED
 
 **Concept**: Members declare donations or volunteer mileage (km) for fiscal year N-1, to receive a tax reduction receipt. This is a **neutral** accounting operation — the total amount is recorded on dedicated pass-through accounts. No club expense or income is generated.
 
@@ -334,7 +353,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 5 — Tab: Document Management
+#### Phase 5 — Tab: Document Management ❌ NOT STARTED
 
 **Steps**:
 1. **Backend — Document model** `backend/models.py`: new `MemberDocument` table:
@@ -384,7 +403,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 6 — Pilot Sheet Redesign (Pack Cleanup)
+#### Phase 6 — Pilot Sheet Redesign (Pack Cleanup) ⚠️ PARTIAL
 
 **Steps**:
 1. **Backend — Migration** to remove pack fields from `member_sheets`:
@@ -420,9 +439,15 @@ Unify the club member pages and the member portal into a single set of shared pa
 - Daily Ops packs tab still shows all pack data correctly
 - Existing sheets retain pack data columns (if kept, just unused)
 
+**Audit notes**:
+- ✅ Migration `045_member_portal_deposits.sql` drops `packs_bought_count`, `hours_done_in_pack`, `remaining_hours_in_pack` from `member_sheets`
+- ✅ Backend model `MemberSheet` has pack fields removed
+- ❌ `MemberPilotSheetPage.tsx` still renders the old page — needs redirect to `/club/members/{uuid}/workspace`
+- ⚠️ `MemberSheetsPage.tsx` form — needs verification of pack field removal in forms
+
 ---
 
-#### Phase 7 — Pilot List Enhancement
+#### Phase 7 — Pilot List Enhancement ✅ DONE
 
 **Steps**:
 1. **Backend — New computed fields on member list**:
@@ -469,7 +494,7 @@ Unify the club member pages and the member portal into a single set of shared pa
 
 ---
 
-#### Phase 8 — Key Access Automation & Email
+#### Phase 8 — Key Access Automation & Email ⚠️ PARTIAL
 
 **Steps**:
 1. **Backend — Email service** `backend/services/email.py`:
@@ -532,9 +557,16 @@ Unify the club member pages and the member portal into a single set of shared pa
 - Member without email → warning shown, button disabled
 - Portal login with new token works
 
+**Audit notes**:
+- ✅ `backend/services/email.py` exists with `load_config()`, `send_pin_email()` functions
+- ✅ `PATCH /api/v1/member-portal/password` endpoint exists with `change_portal_password()` service
+- ✅ Frontend password change dialog implemented in `MemberWorkspaceShell` with `useChangePortalPasswordMutation()` hook
+- ❌ `POST /api/v1/members/{uuid}/send-portal-access` endpoint **not implemented** — button handler in UI is still a `TODO` comment
+- ❌ Email sending for portal access not wired (button exists, API endpoint missing)
+
 ---
 
-#### Phase 9 — Migration & Cleanup
+#### Phase 9 — Migration & Cleanup ⚠️ PARTIAL
 
 **Steps**:
 1. **Migration scripts** in `docs/migrations/`:
@@ -571,6 +603,15 @@ Unify the club member pages and the member portal into a single set of shared pa
 - All new tests pass
 - Old pilot sheet route redirects to workspace
 - i18n keys resolve correctly in both languages
+
+**Audit notes**:
+- ✅ `045_member_portal_deposits.sql` exists (deposit settings + pack field removal)
+- ❌ `046_member_expenses.sql` — missing
+- ❌ `047_member_volunteer_fiscal.sql` — missing
+- ❌ `048_member_documents.sql` — missing
+- ❌ `049_member_workspace_views.sql` — missing (vw_member_financial_summary, vw_member_last_flight)
+- ❌ No dedicated test files for logbook, expenses, documents, deposit, portal key change
+- ⚠️ i18n keys partially done — workspace basics exist, expense/document/volunteer keys missing
 
 ---
 
