@@ -21,6 +21,8 @@ export type MemberSummary = {
   committee_count: number
   has_member_sheet_for_year: boolean
   is_registered_for_year: boolean
+  last_flight_date?: string | null
+  balance?: string | number | null
 }
 
 export type MemberOption = {
@@ -132,6 +134,12 @@ export type MemberFilters = {
   registration_state?: 'registered' | 'unregistered'
   limit?: number
   offset?: number
+  include_balance?: boolean
+  include_last_flight?: boolean
+  has_flown_since?: string
+  balance_min?: string
+  balance_max?: string
+  fiscal_year_uuid?: string
 }
 
 export type CreateMemberPayload = {

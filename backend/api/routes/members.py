@@ -7,6 +7,7 @@
 from datetime import date
 from typing import Optional
 from uuid import UUID
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi import HTTPException, status as http_status
@@ -96,8 +97,14 @@ async def list_members_endpoint(
     last_registration_year: Optional[int] = Query(default=None, ge=2000, le=9999),
     year: Optional[int] = Query(default=None, ge=2000, le=9999),
     registration_state: Optional[str] = Query(default=None, pattern="^(registered|unregistered)$"),
+    has_flown_since: Optional[date] = Query(default=None, description="Only members with a flight on or after this date"),
+    balance_min: Optional[Decimal] = Query(default=None, description="Minimum account balance filter"),
+    balance_max: Optional[Decimal] = Query(default=None, description="Maximum account balance filter"),
     limit: Optional[int] = Query(default=None, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    include_balance: bool = Query(default=False, description="Compute current account balance for each member"),
+    include_last_flight: bool = Query(default=False, description="Include date of the member's last flight"),
+    fiscal_year_uuid: Optional[UUID] = Query(default=None, description="Scope balance computation to this fiscal year"),
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
 ):
@@ -131,8 +138,16 @@ async def list_members_endpoint(
         last_registration_year=last_registration_year,
         year=year,
         registration_state=registration_state,
+        has_flown_since=has_flown_since,
+        balance_min=balance_min,
+        balance_max=balance_max,
     )
-    return await list_members(db=db, filters=filters, limit=limit, offset=offset)
+    return await list_members(
+        db=db, filters=filters, limit=limit, offset=offset,
+        include_balance=include_balance,
+        include_last_flight=include_last_flight,
+        fiscal_year_uuid=fiscal_year_uuid,
+    )
 
 
 @router.get("/count")

@@ -18,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState, Fragment } from 'react'
-import { Calculator, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { Calculator, ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
@@ -35,6 +35,7 @@ import {
   type FlightListFilters,
   type ValidatedFlightItem,
 } from '../api'
+import { FlightDetailDialog } from '../../banque/components/FlightDetailDialog'
 
 const FLIGHT_TYPE_LABELS: Record<number, string> = {
   0: 'Instruction',
@@ -345,6 +346,7 @@ export function FlightsPage() {
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const billingPreviewMutation = useFlightBillingPreviewMutation()
   const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
+  const [detailFlightUuid, setDetailFlightUuid] = useState<string | null>(null)
   const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
 
   function toggleExpand(flight: ValidatedFlightItem) {
@@ -555,6 +557,14 @@ export function FlightsPage() {
                                 ✏️
                               </span>
                             )}
+                            <button
+                              type="button"
+                              className="rounded p-1.5 text-slate-400 hover:text-slate-700 transition-colors"
+                              title="Détails bruts (BDD)"
+                              onClick={() => setDetailFlightUuid(flight.uuid)}
+                            >
+                              <Info className="h-4 w-4" />
+                            </button>
                             <Button
                               type="button"
                               size="sm"
@@ -652,6 +662,11 @@ export function FlightsPage() {
           </>
         )}
       </div>
+
+      <FlightDetailDialog
+        flightUuid={detailFlightUuid}
+        onClose={() => setDetailFlightUuid(null)}
+      />
 
     </section>
   )

@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useMemberPortalFlights,
   useMemberPortalFlightBilling,
 } from '../api'
 
 export function FlightsPage() {
+  const { t } = useTranslation('common')
   const [expandedFlight, setExpandedFlight] = useState<string | null>(null)
   const { data, isLoading } = useMemberPortalFlights()
 
@@ -14,13 +16,13 @@ export function FlightsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-800">Mes vols</h1>
+      <h1 className="text-2xl font-bold text-slate-800">{t('portal.myFlights')}</h1>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Chargement…</p>
+        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
       ) : !data || data.items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 py-12 text-center">
-          <p className="text-sm text-slate-400">Aucun vol trouvé</p>
+          <p className="text-sm text-slate-400">{t('portal.noFlights')}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -56,7 +58,7 @@ export function FlightsPage() {
                   }`}
                 >
                   {flight.billing_quote_state === 'posted'
-                    ? 'Comptabilisé'
+                    ? t('portal.billingPosted')
                     : flight.billing_quote_state === 'applied'
                       ? 'Brouillon'
                       : 'En attente'}

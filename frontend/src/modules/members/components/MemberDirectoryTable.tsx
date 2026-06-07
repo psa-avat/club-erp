@@ -107,6 +107,8 @@ type Props = {
   onEditMember: (uuid: string) => void
   onFinalizeRegistration: (uuid: string) => void
   onOpenPilotSheet: (uuid: string) => void
+  onOpenLogbook?: (uuid: string) => void
+  onOpenBalance?: (uuid: string) => void
 }
 
 const PAGE_SIZE = 25
@@ -133,6 +135,8 @@ export function MemberDirectoryTable({
   onEditMember,
   onFinalizeRegistration,
   onOpenPilotSheet,
+  onOpenLogbook,
+  onOpenBalance,
 }: Props) {
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -237,6 +241,54 @@ export function MemberDirectoryTable({
       headerClassName: 'hidden md:table-cell',
       className: 'hidden md:table-cell min-w-[100px]',
       cell: (row) => <CommissionBadge committeeCount={row.committee_count} />,
+    },
+    {
+      key: 'last-flight',
+      header: 'Dernier vol',
+      sortable: true,
+      headerClassName: 'hidden lg:table-cell',
+      className: 'hidden lg:table-cell min-w-[110px]',
+      cell: (row) => {
+        if (!row.last_flight_date) return <span className="text-sm text-slate-400">—</span>;
+        const fd = new Date(row.last_flight_date);
+        const label = Number.isNaN(fd.getTime()) ? row.last_flight_date : fd.toLocaleDateString('fr-FR');
+        return (
+          <button
+            type="button"
+            onClick={() => onOpenLogbook?.(row.uuid)}
+            className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+            title="Voir le carnet de vol"
+          >
+            {label}
+          </button>
+        );
+      },
+    },
+    {
+      key: 'balance',
+      header: 'Solde',
+      sortable: true,
+      headerClassName: 'hidden lg:table-cell',
+      className: 'hidden lg:table-cell min-w-[110px] font-mono text-sm',
+      cell: (row) => {
+        if (row.balance === null || row.balance === undefined) return <span className="text-slate-400">—</span>;
+        const num = Number(row.balance);
+        if (!Number.isFinite(num)) return <span className="text-slate-400">{String(row.balance)}</span>;
+        const formatted = num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const isNegative = num < 0;
+        return (
+          <button
+            type="button"
+            onClick={() => onOpenBalance?.(row.uuid)}
+            className={`transition-colors hover:underline ${
+              isNegative ? 'text-red-600 hover:text-red-800' : 'text-emerald-600 hover:text-emerald-800'
+            }`}
+            title="Voir le solde du compte"
+          >
+            {isNegative ? '−' : ''}{formatted} €
+          </button>
+        );
+      },
     },
   ]
 

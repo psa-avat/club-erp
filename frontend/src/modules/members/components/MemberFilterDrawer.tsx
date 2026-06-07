@@ -206,6 +206,57 @@ export function MemberFilterDrawer({
               />
             </div>
           </section>
+
+          {/* Activity & Balance section */}
+          <section className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              Activité &amp; Solde
+            </p>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="filter-has-flown-since">A volé depuis le</Label>
+              <input
+                id="filter-has-flown-since"
+                type="date"
+                value={draft.has_flown_since ?? ''}
+                onChange={(e) =>
+                  setDraft({ ...draft, has_flown_since: e.target.value || undefined })
+                }
+                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-balance-min">Solde min (€)</Label>
+                <input
+                  id="filter-balance-min"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={draft.balance_min ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, balance_min: e.target.value || undefined })
+                  }
+                  className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-balance-max">Solde max (€)</Label>
+                <input
+                  id="filter-balance-max"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={draft.balance_max ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, balance_max: e.target.value || undefined })
+                  }
+                  className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                />
+              </div>
+            </div>
+          </section>
         </div>
 
         {/* Footer */}

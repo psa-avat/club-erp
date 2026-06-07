@@ -37,6 +37,7 @@ import {
   useMembersQuery,
 } from '../api'
 import { useMembersStore } from '../store'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
   SelectField,
   toErrorMessage,
@@ -137,9 +138,18 @@ export function MembersListPage() {
     return rest
   }, [scopedFilters])
 
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+
   const pagedFilters = useMemo(
-    () => ({ ...countFilters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
-    [countFilters, page],
+    () => ({
+      ...countFilters,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+      include_balance: true,
+      include_last_flight: true,
+      fiscal_year_uuid: activeFiscalYearUuid ?? undefined,
+    }),
+    [countFilters, page, activeFiscalYearUuid],
   )
 
   const membersQuery = useMembersQuery(pagedFilters)
@@ -209,6 +219,14 @@ export function MembersListPage() {
 
   function handleOpenPilotSheet(memberUuid: string) {
     navigate(`/club/members/${memberUuid}/workspace`)
+  }
+
+  function handleOpenLogbook(memberUuid: string) {
+    navigate(`/club/members/${memberUuid}/workspace?tab=logbook`)
+  }
+
+  function handleOpenBalance(memberUuid: string) {
+    navigate(`/club/members/${memberUuid}/workspace?tab=balance`)
   }
 
   async function handleExportMembers() {
@@ -406,6 +424,8 @@ export function MembersListPage() {
         onEditMember={handleEditMember}
         onFinalizeRegistration={handleFinalizeRegistration}
         onOpenPilotSheet={handleOpenPilotSheet}
+        onOpenLogbook={handleOpenLogbook}
+        onOpenBalance={handleOpenBalance}
       />
 
       {totalMembers > PAGE_SIZE ? (

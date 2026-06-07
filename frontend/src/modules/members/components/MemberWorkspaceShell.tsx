@@ -112,7 +112,16 @@ function TabButton({
 
 export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellProps) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('logbook');
+
+  // Read initial tab from URL search param ?tab= (no useSearchParams — avoids react-router type resolution in pnpm)
+  const initialTab = (() => {
+    if (typeof window === 'undefined') return 'logbook' as WorkspaceTab;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') as WorkspaceTab | null;
+    return tab && ALL_TABS.some((t) => t.id === tab) ? tab : 'logbook' as WorkspaceTab;
+  })();
+
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');

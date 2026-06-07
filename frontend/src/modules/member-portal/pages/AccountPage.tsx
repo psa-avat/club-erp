@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMemberPortalAccount, useMemberPortalAccountEntries, useMemberPortalDeposit } from '../api'
 
 export function AccountPage() {
+  const { t } = useTranslation('common')
   const { data: account, isLoading } = useMemberPortalAccount()
   const { data: entries, isLoading: entriesLoading } = useMemberPortalAccountEntries()
   const depositMutation = useMemberPortalDeposit()
@@ -23,42 +25,42 @@ export function AccountPage() {
       setShowDeposit(false)
       setDepositAmount('')
     } catch {
-      setDepositMsg('Erreur lors de l\'enregistrement du dépôt')
+      setDepositMsg(t('portal.depositError'))
     }
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Mon compte</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{t('portal.myAccount')}</h1>
         <button
           type="button"
           onClick={() => setShowDeposit(!showDeposit)}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
-          {showDeposit ? 'Annuler' : 'Faire un dépôt'}
+          {showDeposit ? t('portal.cancel') : t('portal.makeDeposit')}
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Chargement…</p>
+        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
       ) : account ? (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs font-medium text-slate-500">Solde</p>
+              <p className="text-xs font-medium text-slate-500">{t('portal.balance')}</p>
               <p className="mt-1 text-2xl font-bold text-slate-800">
                 {account.current_balance} €
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs font-medium text-slate-500">En attente</p>
+              <p className="text-xs font-medium text-slate-500">{t('portal.pendingEntries')}</p>
               <p className="mt-1 text-2xl font-bold text-amber-600">
                 {account.pending_entries_count}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs font-medium text-slate-500">Comptabilisées</p>
+              <p className="text-xs font-medium text-slate-500">{t('portal.postedEntries')}</p>
               <p className="mt-1 text-2xl font-bold text-green-600">
                 {account.posted_entries_count}
               </p>
@@ -67,13 +69,13 @@ export function AccountPage() {
 
           {account.active_packs.length > 0 && (
             <section>
-              <h2 className="mb-2 text-lg font-semibold text-slate-700">Forfaits actifs</h2>
+              <h2 className="mb-2 text-lg font-semibold text-slate-700">{t('portal.myPacks')}</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 {account.active_packs.map((pack) => (
                   <div key={pack.pack_type} className="rounded-lg border border-slate-200 bg-white p-3">
                     <p className="text-sm font-medium text-slate-700">{pack.pack_type_label}</p>
                     <p className="text-xs text-slate-500">
-                      Restant: {pack.units_remaining} / {pack.total_purchased}
+                      {pack.units_remaining} / {pack.total_purchased}
                     </p>
                   </div>
                 ))}
@@ -86,10 +88,10 @@ export function AccountPage() {
       {/* Deposit form */}
       {showDeposit && (
         <form onSubmit={handleDeposit} className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Enregistrer un dépôt</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('portal.depositTitle')}</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600">Montant</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portal.depositAmount')}</label>
               <input
                 type="number"
                 step="0.01"
@@ -101,16 +103,16 @@ export function AccountPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600">Mode de paiement</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portal.depositMethod')}</label>
               <select
                 value={depositMethod}
                 onChange={(e) => setDepositMethod(e.target.value)}
                 className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               >
-                <option value="bank_transfer">Virement bancaire</option>
-                <option value="check">Chèque</option>
-                <option value="cash">Espèces</option>
-                <option value="card">Carte bancaire</option>
+                <option value="bank_transfer">{t('portal.depositBankTransfer')}</option>
+                <option value="check">{t('portal.depositCheck')}</option>
+                <option value="cash">{t('portal.depositCash')}</option>
+                <option value="card">{t('portal.depositCard')}</option>
               </select>
             </div>
             <button
@@ -118,7 +120,7 @@ export function AccountPage() {
               disabled={depositMutation.isPending}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {depositMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+              {depositMutation.isPending ? `${t('portal.depositSubmit')}…` : t('portal.depositSubmit')}
             </button>
             {depositMsg && <p className="text-sm text-green-600">{depositMsg}</p>}
           </div>

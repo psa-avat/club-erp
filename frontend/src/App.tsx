@@ -27,7 +27,7 @@ import {
   PackDefinitionEditPage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
-import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage, MemberWorkspaceShell } from './modules/members'
+import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage, MemberWorkspaceShell, MemberPilotSheetPage } from './modules/members'
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
@@ -64,7 +64,7 @@ function App() {
       <Route path="/member-portal/login" element={<MemberPortalLoginPage />} />
       <Route element={<PortalShell />}>
         <Route path="/member-portal/workspace" element={<MemberWorkspacePortalRoute />} />
-        <Route path="/member-portal" element={<Navigate to="/member-portal/workspace" replace />} />
+        <Route path="/member-portal/*" element={<Navigate to="/member-portal/workspace" replace />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
@@ -76,6 +76,7 @@ function App() {
           <Route path="/club/members/new" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/edit" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/workspace" element={<MemberWorkspaceClubRoute />} />
+          <Route path="/club/members/:memberUuid/pilot-sheet" element={<MemberPilotSheetPage />} />
           <Route path="/club/commissions" element={<CommitteesManagementPage />} />
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
           <Route path="/planning" element={<PlanningPage />} />

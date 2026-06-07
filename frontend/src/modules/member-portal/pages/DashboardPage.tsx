@@ -1,31 +1,33 @@
+import { useTranslation } from 'react-i18next'
 import { useMemberPortalAccount, useMemberPortalPacks } from '../api'
 
 export function DashboardPage() {
+  const { t } = useTranslation('common')
   const { data: account, isLoading: accountLoading } = useMemberPortalAccount()
   const { data: packs, isLoading: packsLoading } = useMemberPortalPacks()
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-800">Tableau de bord</h1>
+      <h1 className="text-2xl font-bold text-slate-800">{t('portal.dashboard')}</h1>
 
       {accountLoading ? (
-        <p className="text-sm text-slate-400">Chargement…</p>
+        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
       ) : account ? (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs font-medium text-slate-500">Solde compte</p>
+            <p className="text-xs font-medium text-slate-500">{t('portal.balanceAccount')}</p>
             <p className="mt-1 text-2xl font-bold text-slate-800">
               {account.current_balance} €
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs font-medium text-slate-500">Écritures en attente</p>
+            <p className="text-xs font-medium text-slate-500">{t('portal.pendingEntries')}</p>
             <p className="mt-1 text-2xl font-bold text-amber-600">
               {account.pending_entries_count}
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs font-medium text-slate-500">Écritures comptabilisées</p>
+            <p className="text-xs font-medium text-slate-500">{t('portal.postedEntries')}</p>
             <p className="mt-1 text-2xl font-bold text-green-600">
               {account.posted_entries_count}
             </p>
@@ -34,9 +36,9 @@ export function DashboardPage() {
       ) : null}
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-slate-700">Mes forfaits</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-700">{t('portal.myPacks')}</h2>
         {packsLoading ? (
-          <p className="text-sm text-slate-400">Chargement…</p>
+          <p className="text-sm text-slate-400">{t('portal.loading')}</p>
         ) : packs && packs.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {packs.map((pack) => (

@@ -97,6 +97,9 @@ class MemberListFilters(BaseModel):
     last_registration_year: Optional[int] = Field(default=None, ge=2000, le=9999)
     year: Optional[int] = Field(default=None, ge=2000, le=9999)
     registration_state: Optional[str] = Field(default=None, pattern="^(registered|unregistered)$")
+    has_flown_since: Optional[date] = None
+    balance_min: Optional[Decimal] = None
+    balance_max: Optional[Decimal] = None
 
 
 class CommitteeCreateRequest(BaseModel):
@@ -260,6 +263,8 @@ class MemberSummaryResponse(BaseModel):
     committee_count: int = 0
     has_member_sheet_for_year: bool = False
     is_registered_for_year: bool = False
+    last_flight_date: Optional[date] = None
+    balance: Optional[Decimal] = None
 
 
 class MemberOptionResponse(BaseModel):

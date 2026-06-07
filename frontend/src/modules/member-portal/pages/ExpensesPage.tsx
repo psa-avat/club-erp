@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMemberPortalExpenses, useMemberPortalDeclareExpense } from '../api'
 
 export function ExpensesPage() {
+  const { t } = useTranslation('common')
   const { data, isLoading, refetch } = useMemberPortalExpenses()
   const declareMutation = useMemberPortalDeclareExpense()
 
@@ -16,44 +18,44 @@ export function ExpensesPage() {
     setError(null)
     setMsg(null)
     if (!amount || Number(amount) <= 0) {
-      setError('Montant invalide')
+      setError(t('portal.expenseAmountInvalid'))
       return
     }
     if (!reason.trim()) {
-      setError('Motif requis')
+      setError(t('portal.expenseReasonRequired'))
       return
     }
     try {
       await declareMutation.mutateAsync({ amount, reason })
-      setMsg('Dépense enregistrée')
+      setMsg(t('portal.expenseSaved'))
       setShowForm(false)
       setAmount('')
       setReason('')
       refetch()
     } catch {
-      setError('Erreur lors de l\'enregistrement')
+      setError(t('portal.expenseError'))
     }
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">Dépenses</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{t('portal.expenses')}</h1>
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
-          {showForm ? 'Annuler' : 'Déclarer une dépense'}
+          {showForm ? t('portal.cancel') : t('portal.declareExpense')}
         </button>
       </div>
 
       {showForm && (
         <form onSubmit={handleSubmit} className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Nouvelle dépense</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t('portal.newExpense')}</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600">Montant (€)</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portal.expenseAmount')}</label>
               <input
                 type="number"
                 step="0.01"
@@ -65,7 +67,7 @@ export function ExpensesPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600">Motif</label>
+              <label className="block text-xs font-medium text-slate-600">{t('portal.expenseReason')}</label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
@@ -80,7 +82,7 @@ export function ExpensesPage() {
               disabled={declareMutation.isPending}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {declareMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+              {declareMutation.isPending ? `${t('portal.depositSubmit')}…` : t('portal.depositSubmit')}
             </button>
             {msg && <p className="text-sm text-green-600">{msg}</p>}
           </div>
@@ -88,7 +90,7 @@ export function ExpensesPage() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Chargement…</p>
+        <p className="text-sm text-slate-400">{t('portal.loading')}</p>
       ) : data && data.items.length > 0 ? (
         <div className="space-y-2">
           {data.items.map((expense) => (
@@ -112,10 +114,10 @@ export function ExpensesPage() {
                     }`}
                   >
                     {expense.status === 'approved'
-                      ? 'Approuvé'
+                      ? t('portal.expenseApproved')
                       : expense.status === 'rejected'
-                        ? 'Refusé'
-                        : 'En attente'}
+                        ? t('portal.expenseRejected')
+                        : t('portal.expensePending')}
                   </span>
                 </div>
               </div>
@@ -124,7 +126,7 @@ export function ExpensesPage() {
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-slate-300 py-12 text-center">
-          <p className="text-sm text-slate-400">Aucune dépense déclarée</p>
+          <p className="text-sm text-slate-400">{t('portal.expenseEmpty')}</p>
         </div>
       )}
     </div>

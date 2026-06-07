@@ -294,6 +294,31 @@ def _apply_member_filters(
         if year is not None:
             query = query.where(CommitteeMember.membership_year == year)
 
+    # has_flown_since: only members with at least one validated_flight >= this date
+    if filters.has_flown_since is not None:
+        query = query.where(
+            exists(
+                select(ValidatedFlight.uuid).where(
+                    ValidatedFlight.pilot_erp_id == Member.account_id,
+                    ValidatedFlight.jour >= filters.has_flown_since,
+                )
+            )
+        )
+
+    # balance_min / balance_max: filter members whose accounting balance falls within range.
+    # Uses a correlated subquery to sum(AccountingLine.debit - AccountingLine.credit).
+    if filters.balance_min is not None or filters.balance_max is not None:
+        balance_subq = (
+            select(func.coalesce(func.sum(AccountingLine.debit - AccountingLine.credit), 0).label("balance"))
+            .where(AccountingLine.member_uuid == Member.uuid)
+            .correlate(Member)
+            .scalar_subquery()
+        )
+        if filters.balance_min is not None:
+            query = query.where(balance_subq >= filters.balance_min)
+        if filters.balance_max is not None:
+            query = query.where(balance_subq <= filters.balance_max)
+
     return query
 
 
@@ -466,6 +491,9 @@ async def _serialize_member_summary(
     member: Member,
     *,
     year: Optional[int] = None,
+    include_balance: bool = False,
+    include_last_flight: bool = False,
+    fiscal_year_uuid: Optional[UUID] = None,
 ) -> MemberSummaryResponse:
     committee_count_query = select(func.count()).select_from(CommitteeMember).where(CommitteeMember.member_uuid == member.uuid)
     if year is not None:
@@ -500,6 +528,28 @@ async def _serialize_member_summary(
 
     last_registration_year = member.last_registration_date.year if member.last_registration_date is not None else None
 
+    # ── Computed fields (optional, expensive) ──
+    balance: Optional[Decimal] = None
+    last_flight_date: Optional[date] = None
+
+    if include_balance:
+        # Sum of accounting_lines for this member (debit - credit)
+        balance_query = select(func.coalesce(func.sum(AccountingLine.debit - AccountingLine.credit), 0)).where(
+            AccountingLine.member_uuid == member.uuid
+        )
+        if fiscal_year_uuid is not None:
+            balance_query = balance_query.where(AccountingLine.fiscal_year_uuid == fiscal_year_uuid)
+        balance_result = await db.execute(balance_query)
+        balance = balance_result.scalar()
+
+    if include_last_flight:
+        last_flight_result = await db.execute(
+            select(func.max(ValidatedFlight.jour)).where(
+                ValidatedFlight.pilot_erp_id == member.account_id
+            )
+        )
+        last_flight_date = last_flight_result.scalar()
+
     return MemberSummaryResponse(
         uuid=member.uuid,
         account_id=member.account_id,
@@ -521,6 +571,8 @@ async def _serialize_member_summary(
         committee_count=committee_count,
         has_member_sheet_for_year=has_member_sheet,
         is_registered_for_year=is_registered,
+        last_flight_date=last_flight_date,
+        balance=balance,
     )
 
 
@@ -630,6 +682,9 @@ async def list_members(
     filters: Optional[MemberListFilters] = None,
     limit: Optional[int] = None,
     offset: int = 0,
+    include_balance: bool = False,
+    include_last_flight: bool = False,
+    fiscal_year_uuid: Optional[UUID] = None,
 ) -> list[MemberSummaryResponse]:
     """List members with optional filters."""
 
@@ -643,7 +698,16 @@ async def list_members(
 
     result = await db.execute(query)
     members = result.scalars().unique().all()
-    return [await _serialize_member_summary(db, member, year=filters.year) for member in members]
+    return [
+        await _serialize_member_summary(
+            db, member,
+            year=filters.year,
+            include_balance=include_balance,
+            include_last_flight=include_last_flight,
+            fiscal_year_uuid=fiscal_year_uuid,
+        )
+        for member in members
+    ]
 
 
 async def count_members(
