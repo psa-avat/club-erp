@@ -146,6 +146,7 @@ class FlightBillingAppliedLinePreview(BaseModel):
     asset_uuid: str | None = None
     asset_code: str | None = None
     quantity: Decimal
+    unit: int | None = None  # PricingItem.unit: 1=flight_hours, 2=engine_min, 3=engine_1/100h, 4=duration, 5=per_flight, 6=fixed, 7=tranche
     normal_unit_price: Decimal
     applied_unit_price: Decimal
     discount_reason: str | None = None

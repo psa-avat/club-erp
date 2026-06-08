@@ -51,6 +51,21 @@ function formatMoney(amount: string | number | null | undefined): string {
   return formatted === '—' ? formatted : `${formatted} EUR`
 }
 
+/** Format decimal hours to hh:mm (e.g. 1.5 → 1h30). Keep other units as decimal. */
+function formatQuantity(value: string, unit: number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—'
+  // unit=1 → flight hours (decimal hours → hh:mm)
+  if (unit === 1) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return value
+    const totalMinutes = Math.round(numeric * 60)
+    const h = Math.floor(totalMinutes / 60)
+    const m = totalMinutes % 60
+    return `${h}h${m.toString().padStart(2, '0')}`
+  }
+  return formatDecimal(value, 4)
+}
+
 function shortHash(hash: string | null | undefined): string {
   return hash ? hash.slice(0, 12) : '—'
 }
@@ -148,9 +163,9 @@ function FlightPreviewPanel({ preview }: FlightPreviewPanelProps) {
                 <tr key={`${line.pricing_item_uuid}-${line.payer_member_uuid}-${index}`}>
                   <td className="px-3 py-2 text-slate-800">{line.pricing_item_name ?? '—'}<br /><span className="text-slate-500">{line.source} · {line.asset_code ?? '—'}</span></td>
                   <td className="px-3 py-2 text-slate-700">{line.payer_member_account_id ?? line.payer_role}</td>
-                  <td className="px-3 py-2 text-right text-slate-700">{formatDecimal(line.quantity, 4)}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{formatQuantity(line.quantity, line.unit)}</td>
                   <td className="px-3 py-2 text-right text-slate-700">{formatMoney(line.applied_unit_price)}</td>
-                  <td className="px-3 py-2 text-right text-slate-700">{line.discount_reason ? formatDecimal(line.pack_hours_used, 2) : '—'}</td>
+                  <td className="px-3 py-2 text-right text-slate-700">{line.discount_reason ? formatQuantity(line.pack_hours_used, 1) : '—'}</td>
                   <td className="px-3 py-2 text-right font-medium text-slate-900">{formatMoney(line.amount)}</td>
                 </tr>
               ))}

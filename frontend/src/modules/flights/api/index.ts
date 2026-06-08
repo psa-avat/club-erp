@@ -125,6 +125,7 @@ export type FlightBillingAppliedLinePreview = {
   asset_uuid: string | null
   asset_code: string | null
   quantity: string
+  unit: number | null  // 1=flight_hours, 2=engine_min, 3=engine_1/100h, 4=duration, etc.
   normal_unit_price: string
   applied_unit_price: string
   discount_reason: string | null
