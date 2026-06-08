@@ -26,30 +26,23 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models import (
-    AccountingAccount,
     AccountingEntry,
     AccountingLine,
     AccountingJournal,
     FlightBillingSettings,
-    MemberPackConsumption,
-    PackDefinition,
     ValidatedFlight,
 )
 from schemas.flight_billing import CloseRemPeriodResponse
 from services.flight_billing import _dec, _money, FlightBillingPreviewService
 from services.flight_packs import (
-    compute_rem_adjustment,
     create_pack_purchase_entry,
-    get_account_by_code,
     record_consumption,
-    upsert_rem_entry,
 )
-from schemas.flight_packs import MemberPackConsumptionCreate
 
 logger = logging.getLogger(__name__)
 
@@ -123,13 +116,31 @@ class FlightBillingApplyService:
 
         # ── Create Draft FL entry (gross amounts) ──────────────────────
         entry_uuid = uuid4()
+
+        # Build human-readable description: Vol {date} {machine} {pilot} {duration}
+        flight_date = flight.jour.strftime("%d/%m/%Y") if flight.jour else ""
+        flight_duration = ""
+        if flight.takeoff_time and flight.landing_time:
+            try:
+                th, tm = flight.takeoff_time.split(":")
+                lh, lm = flight.landing_time.split(":")
+                start_min = int(th) * 60 + int(tm)
+                end_min = int(lh) * 60 + int(lm)
+                if end_min >= start_min:
+                    diff = end_min - start_min
+                    flight_duration = f"{diff // 60}h{diff % 60:02d}"
+            except (ValueError, TypeError):
+                flight_duration = ""
+        desc_parts = [flight_date, flight.asset_code or "", flight.pilot_erp_id or "", flight_duration]
+        description = "Vol " + " ".join(p for p in desc_parts if p)
+
         entry = AccountingEntry(
             uuid=entry_uuid,
             fiscal_year_uuid=fiscal_year_uuid,
             journal_uuid=settings.fl_journal_uuid,
             entry_date=flight.jour or datetime.now(timezone.utc),
             reference=f"FL-{flight.planche_uuid or flight_uuid}",
-            description=f"Vol {flight.planche_uuid or flight_uuid}",
+            description=description,
             state=1,  # Draft
             created_by=user_id,
         )
@@ -152,50 +163,8 @@ class FlightBillingApplyService:
         flight.accounting_entry_uuid = entry_uuid
         flight.billing_quote_state = "applied"
 
-        # ── Record pack consumptions ───────────────────────────────────
-        for applied_line in preview.applied_lines:
-            if applied_line.discount_reason == "pack" and applied_line.payer_member_uuid:
-                consumption = MemberPackConsumption(
-                    uuid=uuid4(),
-                    member_uuid=UUID(applied_line.payer_member_uuid),
-                    flight_uuid=flight_uuid,
-                    pack_type="flight_hours",
-                    valid_from=datetime.now(timezone.utc),
-                    quantity_consumed=_money(applied_line.pack_hours_used),
-                    discount_unit_price=applied_line.normal_unit_price - applied_line.applied_unit_price,
-                    total_discount_amount=_money(
-                        applied_line.pack_hours_used * (applied_line.normal_unit_price - applied_line.applied_unit_price)
-                    ),
-                    accounting_entry_uuid=entry_uuid,
-                )
-                self.db.add(consumption)
-
-        # ── Upsert REM entry for the member/period ─────────────────────
-        member_uuids = set()
-        for al in preview.applied_lines:
-            if al.discount_reason == "pack" and al.payer_member_uuid:
-                member_uuids.add(UUID(al.payer_member_uuid))
-
-        period_start = datetime(flight.jour.year, flight.jour.month, 1, tzinfo=timezone.utc)
-        period_end = datetime.now(timezone.utc)
-
-        for muuid in member_uuids:
-            total_discount = await compute_rem_adjustment(
-                self.db, muuid, fiscal_year_uuid, period_start, period_end,
-            )
-            # Resolve discount account: pack definition → settings default → 658
-            discount_account_uuid = settings.default_pack_discount_expense_account_uuid
-            if discount_account_uuid:
-                acct = await self.db.get(AccountingAccount, discount_account_uuid)
-                discount_account = acct
-            else:
-                discount_account = await get_account_by_code(self.db, "658")
-
-            await upsert_rem_entry(
-                self.db, muuid, fiscal_year_uuid, settings.rem_journal_uuid,
-                discount_account.uuid, total_discount,
-                period_start, period_end, user_id,
-            )
+        # Note: Pack consumptions and REM adjustment are handled separately
+        # in a dedicated discount review step — NOT during billing apply.
 
         await self.db.commit()
         await self.db.refresh(entry)
@@ -263,7 +232,7 @@ class FlightBillingApplyService:
                 posted_count += 1
                 # Sum debit amounts from the REM entry
                 lines_result = await self.db.execute(
-                    select(text("COALESCE(SUM(debit), 0)")).select_from(AccountingLine).where(
+                    select(func.coalesce(func.sum(AccountingLine.debit), 0)).where(
                         AccountingLine.entry_uuid == draft.uuid
                     )
                 )

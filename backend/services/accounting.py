@@ -1443,6 +1443,23 @@ async def list_accounting_entries(
                 line.member_first_name = line.member.first_name
                 line.member_last_name = line.member.last_name
     
+    # Batch-fetch asset codes/names for all lines across all entries
+    all_asset_uuids = set()
+    for entry in entries:
+        for line in entry.lines:
+            if line.analytical_asset_uuid:
+                all_asset_uuids.add(line.analytical_asset_uuid)
+    if all_asset_uuids:
+        from models import Asset
+        asset_result = await db.execute(
+            select(Asset.uuid, Asset.code, Asset.name).where(Asset.uuid.in_(list(all_asset_uuids)))
+        )
+        asset_map = {row.uuid: (row.code, row.name) for row in asset_result.all()}
+        for entry in entries:
+            for line in entry.lines:
+                if line.analytical_asset_uuid and line.analytical_asset_uuid in asset_map:
+                    line.analytical_asset_code, line.analytical_asset_name = asset_map[line.analytical_asset_uuid]
+    
     return entries
 
 async def count_accounting_entries(
@@ -1840,6 +1857,19 @@ async def get_accounting_entry(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Entry {entry_uuid} not found in fiscal year {fiscal_year_uuid}",
         )
+
+    # Batch-fetch asset codes/names for lines with analytical_asset_uuid
+    asset_uuids = {line.analytical_asset_uuid for line in entry.lines if line.analytical_asset_uuid}
+    if asset_uuids:
+        from models import Asset
+        asset_result = await db.execute(
+            select(Asset.uuid, Asset.code, Asset.name).where(Asset.uuid.in_(list(asset_uuids)))
+        )
+        asset_map = {row.uuid: (row.code, row.name) for row in asset_result.all()}
+        for line in entry.lines:
+            if line.analytical_asset_uuid and line.analytical_asset_uuid in asset_map:
+                line.analytical_asset_code, line.analytical_asset_name = asset_map[line.analytical_asset_uuid]
+
     return entry
 
 
@@ -1848,7 +1878,11 @@ async def delete_accounting_entry(
     entry_uuid: UUID,
     fiscal_year_uuid: UUID,
 ) -> None:
-    """Delete a Draft accounting entry and all its lines."""
+    """Delete a Draft accounting entry and all its lines.
+
+    Note: validated_flights referencing this entry are auto-unlinked by
+    database trigger trg_unlink_flights_on_entry_delete on accounting_entries.
+    """
     entry = await get_accounting_entry(db, entry_uuid, fiscal_year_uuid)
     if entry.state != 1:
         raise HTTPException(

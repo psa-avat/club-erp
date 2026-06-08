@@ -176,12 +176,16 @@ export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
           emptyState={<div className="p-8 text-center text-sm text-slate-500">{t('balanceEmpty')}</div>}
         />
         {items.length > 0 && (
-          <div className="border-t border-slate-200 px-4 py-2.5 text-sm">
-            <div className="flex items-center justify-end gap-6">
-              <span className="font-medium text-slate-500">{t('balanceTotal')} :</span>
-              <span className="min-w-[90px] text-right font-semibold text-slate-800">{formatEuro(totalDebit)}</span>
-              <span className="min-w-[90px] text-right font-semibold text-slate-800">{formatEuro(totalCredit)}</span>
-              <span className="min-w-[20px]" />
+          <div className="border-t border-slate-100 bg-slate-50 p-3">
+            <div className="flex items-center justify-end gap-2">
+              <div className="rounded-md border border-slate-200 bg-white px-4 py-1.5">
+                <p className="text-xs font-medium text-slate-500">{t('balanceDebit')}</p>
+                <p className="text-sm font-semibold text-slate-800">{formatEuro(totalDebit)}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white px-4 py-1.5">
+                <p className="text-xs font-medium text-slate-500">{t('balanceCredit')}</p>
+                <p className="text-sm font-semibold text-slate-800">{formatEuro(totalCredit)}</p>
+              </div>
             </div>
           </div>
         )}

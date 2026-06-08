@@ -26,7 +26,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,6 +49,7 @@ from schemas.flight_packs import (
     MemberPackConsumptionCreate,
 )
 from schemas.accounting import AccountingLineCreateRequest, AccountingEntryCreateRequest
+from services.flight_billing import _dec
 
 logger = logging.getLogger(__name__)
 
@@ -488,8 +489,7 @@ async def compute_rem_adjustment(
 ) -> Decimal:
     """Sum total_discount_amount for non-frozen consumptions in the period."""
     result = await db.execute(
-        select(text("COALESCE(SUM(total_discount_amount), 0)"))
-        .select_from(MemberPackConsumption)
+        select(func.coalesce(func.sum(MemberPackConsumption.total_discount_amount), 0))
         .where(
             MemberPackConsumption.member_uuid == member_uuid,
             MemberPackConsumption.created_at >= period_start,

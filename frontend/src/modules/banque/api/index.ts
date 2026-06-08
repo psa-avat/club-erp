@@ -229,6 +229,8 @@ export type AccountingEntryLine = AccountingEntryLinePayload & {
   fiscal_year_uuid: string
   member_first_name?: string | null
   member_last_name?: string | null
+  analytical_asset_code?: string | null
+  analytical_asset_name?: string | null
 }
 
 export type AccountingEntry = {
@@ -1544,7 +1546,7 @@ export function useFlightBillingApplyMutation() {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueFlightsKeys.billable() })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'flights', 'billable'] })
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
     },
   })
@@ -1568,7 +1570,7 @@ export function useFlightBillingPostMutation() {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueFlightsKeys.billable() })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'flights', 'billable'] })
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
     },
   })
@@ -1589,7 +1591,7 @@ export function useFlightBillingBatchApplyMutation() {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueFlightsKeys.billable() })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'flights', 'billable'] })
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
     },
   })

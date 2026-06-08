@@ -133,6 +133,8 @@ class AccountingLineResponse(AccountingLineBase):
     member_first_name: Optional[str] = None
     member_last_name: Optional[str] = None
     analytical_asset_uuid: Optional[UUID] = None
+    analytical_asset_code: Optional[str] = None
+    analytical_asset_name: Optional[str] = None
     tax_code: Optional[str] = None
     tax_rate: Optional[Decimal] = None
     tax_base: Optional[Decimal] = None

@@ -524,7 +524,7 @@ async def list_billable_flights(
             type_of_flight=f.type_of_flight,
             type_label=TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else None,
             total_preview=None,
-            status="pending",
+            status=f.billing_quote_state or "pending",
             has_discount=f.has_discount or False,
             observations=f.observations,
             correction_reason=f.correction_reason,
