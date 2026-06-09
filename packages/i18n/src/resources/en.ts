@@ -38,34 +38,70 @@ export const en = {
       },
     },
     nav: {
+      // Business groups (workflow)
+      dailyOps: 'Daily Operations',
+      members: 'Members 360',
+      finance: 'Finance',
+      assets: 'Fleet',
+      salesSuppliers: 'Sales & Suppliers',
+      integrations: 'Integrations',
+      reporting: 'Reporting & Budgets',
+      administration: 'Administration',
+
+      // Dashboard
       dashboard: 'Dashboard',
-      club: 'Club',
-      clubMembers: 'Members',
-      clubCommittees: 'Committees',
-      clubCommissionsManagement: 'Committee management',
-      clubSheets: 'Flight sheets',
+
+      // Daily Operations
+      flights: 'Flights',
+      packs: 'Packs',
       planning: 'Planning',
-      helloasso: 'HelloAsso',
-      helloassoIntegration: 'Setup',
-      helloassoPurchases: 'Purchases',
-      planche: 'Planche',
-      plancheIntegration: 'Integration',
-      plancheMembersPush: 'Members push',
-      plancheMachinesPush: 'Machines push',
-      plancheViSync: 'VI sync',
-      plancheFlightsFetch: 'Fetch flights',
-      storage: 'Storage',
-      storageSettings: 'Settings',
-      banque: 'Accounting',
+      alerts: 'Alerts & Tasks',
+
+      // Members 360
+      directory: 'Directory',
+      committees: 'Committees',
+      sheets: 'Sheets',
+      onlineRenewal: 'Renewal',
+
+      // Finance
       banqueOverview: 'Overview',
       banqueOps: 'Operations',
       banqueJournal: 'Journal',
       banquePricing: 'Pricing',
       banqueFiscalYears: 'Fiscal years',
       banquePcg: 'Chart of accounts',
+      banqueReports: 'Reports',
       banqueSettings: 'Settings',
-      assets: 'Equipment',
+
+      // Assets (Fleet)
+      equipment: 'Equipment',
+      assetTypes: 'Types',
+      assetPricing: 'Machine pricing',
+
+      // Sales & Suppliers
+      memberSales: 'Member sales',
+      supplierInvoices: 'Supplier invoices',
+
+      // Integrations
+      helloasso: 'HelloAsso',
+      helloassoPurchases: 'Purchases',
+      helloassoViImport: 'VI import',
+      planche: 'Planche',
+      plancheMembersPush: 'Members push',
+      plancheMachinesPush: 'Machines push',
+      plancheViSync: 'VI sync',
+      plancheFlightsFetch: 'Fetch flights',
+      gesassoSync: 'Gesasso',
+      osrtSync: 'OSRT',
+
+      // Administration
       admin: 'Admin',
+      configHelloasso: 'HelloAsso',
+      configPlanche: 'Planche',
+      configStorage: 'Storage',
+      configBanque: 'Accounting',
+
+      // UI
       modules: 'Modules',
       openMenu: 'Open menu',
       closeMenu: 'Close',

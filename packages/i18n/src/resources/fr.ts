@@ -38,44 +38,70 @@ export const fr = {
       },
     },
     nav: {
+      // Groupes métier (workflow)
+      dailyOps: 'Opérations du jour',
+      members: 'Membres 360',
+      finance: 'Finance',
+      assets: 'Flotte',
+      salesSuppliers: 'Ventes & Fournisseurs',
+      integrations: 'Intégrations',
+      reporting: 'Budgets',
+      administration: 'Administration',
+
+      // Dashboard
       dashboard: 'Dashboard',
-      club: 'Club',
-      clubMembers: 'Membres',
-      clubCommittees: 'Commissions',
-      clubCommissionsManagement: 'Gestion commissions',
-      clubSheets: 'Fiches pilotes',
-      planning: 'Planning',
-      helloasso: 'HelloAsso',
-      helloassoIntegration: 'Configuration',
-      helloassoPurchases: 'Achats',
-      helloassoViImport: 'Import VI',
+
+      // Daily Operations
       flights: 'Vols',
-      planche: 'Planche',
-      plancheIntegration: 'Intégration',
-      plancheMembersPush: 'Mise à jour des pilotes',
-      plancheMachinesPush: 'Mise à jour des machines',
-      plancheViSync: 'Sync VI',
-      plancheFlightsFetch: 'Récupération vols',
-      vi: 'VI',
-      viEntitlements: 'Bons VI',
-      viTypes: 'Types VI',
-      viPlanning: 'Planning VI',
-      storage: 'Stockage',
-      storageSettings: 'Configuration',
-      banque: 'Banque',
+      packs: 'Packs',
+      planning: 'Planning',
+      alerts: 'Alertes & Tâches',
+
+      // Members 360
+      directory: 'Annuaire',
+      committees: 'Commissions',
+      sheets: 'Fiches',
+      onlineRenewal: 'Réinscription',
+
+      // Finance
       banqueOverview: 'Aperçu',
       banqueOps: 'Opérations',
       banqueJournal: 'Journal',
       banquePricing: 'Tarification',
       banqueFiscalYears: 'Exercices',
       banquePcg: 'Plan comptable',
+      banqueReports: 'Rapports',
       banqueSettings: 'Paramètres',
+
+      // Assets (Flotte)
+      equipment: 'Équipements',
+      assetTypes: 'Types',
+      assetPricing: 'Tarifs machine',
+
+      // Sales & Suppliers
+      memberSales: 'Ventes membres',
+      supplierInvoices: 'Factures fournisseurs',
+
+      // Integrations
+      helloasso: 'HelloAsso',
+      helloassoPurchases: 'Achats',
+      helloassoViImport: 'Import VI',
+      planche: 'Planche',
+      plancheMembersPush: 'Mise à jour des pilotes',
+      plancheMachinesPush: 'Mise à jour des machines',
+      plancheViSync: 'Sync VI',
+      plancheFlightsFetch: 'Récupération vols',
+      gesassoSync: 'Gesasso',
+      osrtSync: 'OSRT',
+
+      // Administration
+      admin: 'Admin',
       configHelloasso: 'HelloAsso',
       configPlanche: 'Planche',
       configStorage: 'Stockage',
       configBanque: 'Banque',
-      assets: 'Équipements',
-      admin: 'Admin',
+
+      // UI
       modules: 'Modules',
       openMenu: 'Ouvrir le menu',
       closeMenu: 'Fermer',
