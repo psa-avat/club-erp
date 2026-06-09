@@ -115,9 +115,9 @@ app = FastAPI(
     description=APP_DESCRIPTION,
     version=API_VERSION,
     lifespan=lifespan,
-    docs_url=None if is_production else "/docs",
-    redoc_url=None if is_production else "/redoc",
-    openapi_url=None if is_production else "/openapi.json",
+    docs_url=None if is_production else "/api/v1/docs",
+    redoc_url=None if is_production else "/api/v1/redoc",
+    openapi_url=None if is_production else "/api/v1/openapi.json",
 )
 
 # CORS middleware
@@ -154,7 +154,7 @@ from api.dependencies import get_db
 
 # --- API ENDPOINTS ---
 
-@app.get("/")
+@app.get("/api/v1/")
 async def read_root():
     """Root endpoint with API information"""
     return {
@@ -163,7 +163,7 @@ async def read_root():
         "description": APP_DESCRIPTION,
         "license": LICENSE,
         "environment": env_mode,
-        "docs": "/docs" if not is_production else None,
+        "docs": "/api/v1/docs" if not is_production else None,
     }
 
 
