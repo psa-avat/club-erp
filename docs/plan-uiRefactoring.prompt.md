@@ -1,6 +1,6 @@
 # Plan de Refactoring UI — ERP Club — V2 Révisée
 
-> **TL;DR** — Évolution pragmatique de la navigation (14 modules techniques) vers un cockpit orienté workflows, **sans renommer les dossiers modules** et en **capitalisant sur l'existant**. 8 phases, ~12-14 semaines. Le chantier clé est **l'enrichissement de `banque/` et `flights/`** plutôt que leur démantèlement, l'ajout du système d'alertes, du reporting, et la finalisation du workspace membre unifié.
+> **TL;DR** — Évolution pragmatique de la navigation (14 modules techniques) vers un cockpit orienté workflows, **sans renommer les dossiers modules** et en **capitalisant sur l'existant**. 10 phases, ~14-16 semaines. Le chantier clé est **l'enrichissement de `banque/` et `flights/`** plutôt que leur démantèlement, l'ajout du système d'alertes, du reporting, l'intégration des envois fédéraux (Gesasso/OSRT), le module de réinscription dans le portail membre, et la finalisation du workspace membre unifié.
 
 ---
 
@@ -15,6 +15,9 @@
 | **Suppressions prouvées** | Un module n'est supprimé qu'après vérification `grep` garantissant zéro référence. |
 | **Mobile-first pour le portail** | Le portail membre responsive ; l'ERP reste desktop-first avec adaptation tablette. |
 | **A11y par défaut** | Navigation clavier, contraste minimum, attributs ARIA, focus visible. |
+| **Menu adaptatif aux rôles** | La sidebar et les pages accessibles s'adaptent aux capabilities de l'utilisateur connecté (déjà en place via `requiredCapability` dans `shellNavItems`). |
+| **Pas de rétrocompatibilité frontend** | L'application n'étant pas déployée, les routes et structures existantes peuvent être modifiées librement. Aucune redirection 301 ni ré-export temporaire nécessaire. |
+| **Migration BD avec préservation des données** | Tout changement de schéma de table doit être accompagné d'un script de migration SQL preservant l'intégrité des données existantes. |
 
 ---
 
@@ -49,11 +52,15 @@ frontend/src/modules/
 
 **Règle** : Aucun déplacement de code d'un module existant vers un nouveau module. Les nouvelles fonctionnalités (alertes, reporting) s'ajoutent dans les nouveaux modules. Les pages existantes restent dans leurs modules et sont simplement ré-exposées via la nouvelle navigation.
 
+> **Note** : L'application n'étant pas encore déployée en production, les modifications de chemins et de structure sont possibles sans contrainte de rétrocompatibilité. En revanche, les scripts de migration SQL sont obligatoires pour tout changement de schéma.
+
 ---
 
 ## Navigation cible — ERP Club
 
 Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` actuelle est déjà générique — seuls `shell/navigation.ts` et les `labelKey` i18n changent.
+
+> **Adaptation aux rôles** : chaque entrée de navigation peut être conditionnée par une `requiredCapability` (ex: `VIEW_FINANCIALS`, `MANAGE_USERS`). Le mécanisme est déjà implémenté dans `Sidebar.tsx` et `Header.tsx` via le filtre sur les capabilities de l'utilisateur connecté. La nouvelle navigation conserve et enrichit ce principe — un membre non-admin ne verra que les sections auxquelles il a accès.
 
 ```
 📊 Dashboard
@@ -68,7 +75,8 @@ Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` a
 ├── Directory         → /club/members (exist.)
 ├── Member workspace  → /club/members/:uuid/workspace (exist.)
 ├── Committees        → /club/commissions (exist.)
-└── Sheets            → /club/sheets (exist.)
+├── Sheets            → /club/sheets (exist.)
+└── Online renewal    → /member-portal/renewal (NOUVEAU)
 
 💰 Finance & Accounting
 ├── Overview          → /banque (exist.)
@@ -92,7 +100,9 @@ Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` a
 
 🔌 Integrations
 ├── Planche           → /planche (exist.)
-└── HelloAsso         → /helloasso (exist.)
+├── HelloAsso         → /helloasso (exist.)
+├── Gesasso sync      → /integrations/gesasso (NOUVEAU)
+└── OSRT sync         → /integrations/osrt (NOUVEAU)
 
 📈 Reporting          → /reporting (NOUVEAU)
 
@@ -195,6 +205,40 @@ Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` a
 - `AlertsPage` : page dédiée avec liste exhaustive, acquittement, report
 - Hook `useAlerts` : polling 5 min ou SSE
 - Types d'alertes : vols non facturés (>7j), vols modifiés après facturation, tarification manquante, solde membre négatif, pack incohérent, erreurs sync Planche/HelloAsso
+
+### 4b. HelloAsso — Achats & Synchronisation
+
+**Rôle** : HelloAsso est utilisé pour trois types d'achats :
+1. **Vols d'initiation (VI)** — achetés par des tiers (non-membres) via un billet HelloAsso
+2. **Souscriptions membres** — adhésions annuelles, packs, recharges de compte
+3. **Paiements divers** — toute transaction membre passant par HelloAsso
+
+**Existant** : Module `helloasso/` avec `HelloAssoPurchasesPage`, `HelloAssoViImportPage`, `HelloAssoIntegrationPage`.
+
+**Δ à faire** (Phase 5) :
+- Créer un module de **réinscription en ligne** dans le portail membre (renouvellement annuel) :
+  - Détection membre existant vs nouveau
+  - Sélection de la catégorie d'adhésion
+  - Paiement via HelloAsso (redirection ou embed)
+  - Confirmation + mise à jour statut membre dans l'ERP
+- Consolider les pages de vues des achats (VI + membres) dans une interface unique
+- Rafraîchir les écrans d'intégration (paramètres de connexion, mapping comptable)
+
+### 4c. Gesasso & OSRT — Envois fédéraux
+
+**Rôle** : Après facturation et validation, les vols doivent être transmis aux systèmes fédéraux :
+- **Gesasso** : licence pilote — chaque vol validé est envoyé pour mettre à jour les heures de vol du pilote (obligatoire pour le suivi de licence)
+- **OSRT** : navigabilité machine — chaque vol validé est transmis pour le suivi du temps de vol par machine (obligatoire pour le maintien de la navigabilité)
+
+**Existant** : Rien. Nouveau module à créer.
+
+**Δ à faire** (Phase 9) :
+- Créer le module `integrations/` avec deux sous-sections :
+  - **Gesasso sync** : envoi des vols vers l'API Gesasso, dashboard d'état (succès/échec), historique des envois, file de rattrapage
+  - **OSRT sync** : envoi des temps machines vers l'API OSRT, dashboard d'état, file de rattrapage
+- Logique d'envoi : déclenché automatiquement après le posting des écritures de vol, avec file de réessai et alerte en cas d'échec
+- Configuration des endpoints, clés d'API et mapping dans la page de paramètres d'intégration
+- Page de statut des synchronisations (dernier envoi, nombre de vols en attente, échecs)
 
 ### 5. Sales & Suppliers
 
@@ -312,33 +356,50 @@ Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` a
 | 7.4 | Déplacer `FinancialReportsPage` de `banque/` vers `reporting/` | `reporting/components/FinancialReportsPage.tsx` |
 | 7.5 | Ré-export temporaire depuis `banque/` | `banque/index.ts` |
 
-### Phase 8 — Portail Membre (semaine 10-12)
+### Phase 8 — Portail Membre & Réinscription (semaine 10-12)
 
 | # | Action | Fichiers |
 |---|--------|----------|
 | 8.1 | Réconcilier le portail avec le design system partagé | `member-portal/components/` |
 | 8.2 | Navigation responsive (tabs bas mobile, latéral desktop) | `member-portal/components/PortalShell.tsx` |
 | 8.3 | Finaliser les écrans (compte, documents, disponibilité) | `member-portal/pages/` |
+| 8.4 | **Créer le module de réinscription en ligne** : détection membre existant/nouveau, sélection catégorie, paiement HelloAsso, confirmation + mise à jour statut | `member-portal/pages/RenewalPage.tsx` + `member-portal/api/renewal.ts` |
+| 8.5 | Workflow renouvellement : notification par email avant échéance, lien direct vers le formulaire | `member-portal/api/renewal.ts`, backend endpoint |
 
-### Phase 9 — Nettoyage & Finalisation (semaine 12-14)
+### Phase 9 — Intégrations Gesasso & OSRT (semaine 12-14)
+
+**Objectif** : Envoyer les vols validés aux systèmes fédéraux.
+
+| # | Action | Fichiers |
+|---|--------|----------|
+| 9.1 | Créer le module `integrations/` (api, components, types, index.ts) | `frontend/src/modules/integrations/` |
+| 9.2 | Créer la page **Gesasso sync** : dashboard envois, historique, file de rattrapage | `integrations/components/GesassoSyncPage.tsx` |
+| 9.3 | Créer la page **OSRT sync** : dashboard envois temps machine, historique | `integrations/components/OsrtSyncPage.tsx` |
+| 9.4 | Créer le hook `useGesassoSync` / `useOsrtSync` (TanStack Query) | `integrations/api/sync.ts` |
+| 9.5 | Page de configuration des endpoints et clés d'API | `integrations/components/SyncSettingsPage.tsx` |
+| 9.6 | Alerte automatique en cas d'échec de synchronisation (intégré au système d'alertes Phase 4) | `integrations/api/sync.ts` + `daily-ops/api/alerts.ts` |
+| 9.7 | Routes dans `App.tsx` | `frontend/src/App.tsx` |
+
+### Phase 10 — Nettoyage & Finalisation (semaine 14-16)
 
 | # | Action | Fichiers | Condition |
 |---|--------|----------|-----------|
-| 9.1 | Vérifier `grep -r` pour chaque module candidat à la suppression | — | Aucune référence |
-| 9.2 | Supprimer `pricing/` si aucune référence | `frontend/src/modules/pricing/` | Vérifié 9.1 |
-| 9.3 | Supprimer `vi/` si aucune référence | `frontend/src/modules/vi/` | Vérifié 9.1 |
-| 9.4 | Supprimer `storage/` si aucune référence | `frontend/src/modules/storage/` | Vérifié 9.1 |
-| 9.5 | Supprimer `club/` si aucune référence (shell uniquement) | `frontend/src/modules/club/` | Vérifié 9.1 |
-| 9.6 | Nettoyer les clés i18n obsolètes | `packages/i18n/src/resources/` | — |
-| 9.7 | Supprimer les ré-exports temporaires | `banque/index.ts`, `assets/index.ts` | — |
-| 9.8 | Validation finale : `tsc --noEmit` + `vite build` + test toutes les routes | — | — |
+| 10.1 | Vérifier `grep -r` pour chaque module candidat à la suppression | — | Aucune référence |
+| 10.2 | Supprimer `pricing/` si aucune référence | `frontend/src/modules/pricing/` | Vérifié 10.1 |
+| 10.3 | Supprimer `vi/` si aucune référence | `frontend/src/modules/vi/` | Vérifié 10.1 |
+| 10.4 | Supprimer `storage/` si aucune référence | `frontend/src/modules/storage/` | Vérifié 10.1 |
+| 10.5 | Supprimer `club/` si aucune référence (shell uniquement) | `frontend/src/modules/club/` | Vérifié 10.1 |
+| 10.6 | Nettoyer les clés i18n obsolètes | `packages/i18n/src/resources/` | — |
+| 10.7 | Supprimer les ré-exports temporaires (si encore présents) | `banque/index.ts`, `assets/index.ts` | — |
+| 10.8 | Générer les scripts de migration DB pour les changements de schéma intervenus | `deploy/migrations/` | — |
+| 10.9 | Validation finale : `tsc --noEmit` + `vite build` + test toutes les routes + test envoi Gesasso/OSRT | — | — |
 
 ---
 
 ## Calendrier révisé
 
 ```
-Semaine  1  2  3  4  5  6  7  8  9  10 11 12 13 14
+Semaine  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16
 Phase 0  ██
 Phase 1     ██
 Phase 2        ███
@@ -348,19 +409,25 @@ Phase 5                  ██
 Phase 6                    ██
 Phase 7                      ███
 Phase 8                         ███
-Phase 9                            ███
+Phase 9                              ███
+Phase 10                                ███
 ```
 
 ---
 
-## Stratégie de migration sans casse
+## Stratégie de migration
 
-1. **Aucune route existante ne change** pendant les phases 0-8. Les URLs restent identiques.
-2. **Phase 1 uniquement** : la sidebar change, mais les liens pointent vers les mêmes routes.
-3. **Pour les déplacements de code** (Phase 7, Phase 9) : les anciens modules ré-exportent temporairement depuis les nouveaux via leur `index.ts`.
-4. **Feature flags** : hook `useFeatureFlag(key: string)` basé sur `localStorage` pour déployer progressivement les nouvelles pages (cockpit flights, reporting).
-5. **Mise à jour i18n** : les anciennes clés sont conservées dans les fichiers de traduction pendant toute la durée du refactoring. Les nouvelles clés (`nav.*`) sont ajoutées sans supprimer les anciennes.
-6. **Rollback plan** : chaque phase doit pouvoir être revert en ≤ 1h (une seule PR par phase).
+L'application n'étant **pas encore déployée en production** (aucun utilisateur actif), la contrainte de rétrocompatibilité est fortement réduite. Cela permet des modifications plus franches sans risque de régression utilisateur.
+
+1. **Routes et structure** : Les chemins et l'organisation des fichiers peuvent être modifiés librement. Aucune redirection 301 ni ré-export temporaire n'est nécessaire. **Cependant**, il est impératif de mettre à jour tous les imports et références internes simultanément.
+2. **Scripts de migration DB** : Tout changement de schéma de table (ajout/suppression de colonne, modification de contrainte, renommage) doit être accompagné d'un script SQL versionné dans `deploy/migrations/`, exécutable à l'ordre et préservant l'intégrité des données existantes.
+3. **Données existantes** : Les scripts de migration doivent :
+   - Préserver toutes les données existantes (pas de `DROP TABLE` ou `TRUNCATE` non justifié)
+   - Fournir des valeurs par défaut pour les nouvelles colonnes
+   - Inclure un rollback script (down migration) pour chaque up migration
+4. **Feature flags** : hook `useFeatureFlag(key: string)` basé sur `localStorage` pour déployer progressivement les nouvelles pages (cockpit flights, reporting) — optionnel mais recommandé.
+5. **Mise à jour i18n** : les nouvelles clés (`nav.*`) sont ajoutées à mesure. Les anciennes clés peuvent être supprimées immédiatement (pas de déploiement en cours). Nettoyage final en Phase 10.
+6. **Rollback plan** : chaque phase doit pouvoir être revert en ≤ 1h (une seule PR par phase). Les migrations DB doivent avoir leur down migration associée.
 
 ---
 
@@ -382,9 +449,13 @@ Phase 9                            ███
 | `banque/components/SalesPage.tsx` | Nouveau | 5 |
 | `planning/components/PlanningPage.tsx` | Enrichissement calendrier | 6 |
 | `reporting/` (4 fichiers) | Nouveau module | 7 |
-| `member-portal/` | Réconciliation design system | 8 |
-| `frontend/src/modules/{pricing,vi,storage,club}` | Suppression (après vérification) | 9 |
-| `banque/index.ts` | Ré-exports temporaires puis cleanup | 7→9 |
+| `member-portal/` | Réconciliation design system + module réinscription | 8 |
+| `member-portal/pages/RenewalPage.tsx` | Nouveau — réinscription en ligne | 8 |
+| `member-portal/api/renewal.ts` | Nouveau — API réinscription | 8 |
+| `integrations/` (5+ fichiers) | Nouveau module — Gesasso + OSRT | 9 |
+| `frontend/src/modules/{pricing,vi,storage,club}` | Suppression (après vérification) | 10 |
+| `deploy/migrations/` | Scripts de migration DB | 10 |
+| `banque/index.ts` | Ré-exports temporaires puis cleanup | 7→10 |
 
 ---
 
@@ -399,20 +470,50 @@ Phase 9                            ███
 | V5 | Les pages Ventes et Factures fournisseurs sont accessibles et produisent les écritures attendues | 5 |
 | V6 | Le planning affiche créneaux + disponibilités, les actions de base fonctionnent | 6 |
 | V7 | Les graphiques KPI sont chargés avec données réelles, aucun export CSV régressé | 7 |
-| V8 | Le portail membre (nouvelle UI) est responsive, permet logbook/solde/dépôt/doc/changement token | 8 |
-| V9 | Aucune régression sur Planche, HelloAsso, exports, intégrations | 9 |
-| V10 | a11y : navigation clavier possible, contraste minimum respecté, lecteur d'écran navigable | 0, 9 |
-| V11 | Build production : `vite build` OK, pas de warning, pas de clé i18n manquante | 9 |
+| V8 | Le portail membre (nouvelle UI) est responsive, permet logbook/solde/dépôt/doc/changement token **et réinscription en ligne** | 8 |
+| V9 | Les synchronisations Gesasso et OSRT fonctionnent : envoi automatique après posting, dashboard d'état, file de rattrapage | 9 |
+| V10 | Aucune régression sur Planche, HelloAsso, exports, intégrations existantes | 10 |
+| V11 | a11y : navigation clavier possible, contraste minimum respecté, lecteur d'écran navigable | 0, 10 |
+| V12 | Build production : `vite build` OK, pas de warning, pas de clé i18n manquante | 10 |
+| V13 | Les scripts de migration DB s'exécutent sans perte de données et sont réversibles | 10 |
 
 ---
 
 ## Dépendances backend
 
-Ce plan est **uniquement frontend**. Les routes API backend restent inchangées. Aucune nouvelle API n'est requise pour :
+Ce plan est **majoritairement frontend**. Les routes API backend existantes restent inchangées. Cependant, certaines fonctionnalités nécessitent des endpoints ou modifications backend :
+
+### APIs existantes (inchangées)
 - Vols : `/api/v1/flights/*` (existe)
 - Membres : `/api/v1/members/*` (existe)
 - Écritures : `/api/v1/accounting/entries/*` (existe)
-- Alertes : endpoint à créer (GET /api/v1/alerts) — nécessite implémentation backend
-- Reporting : endpoints à créer ou réutiliser (GET /api/v1/reports/kpi) — nécessite implémentation backend
+- Planche : `/api/v1/planche/*` (existe)
+- HelloAsso : `/api/v1/helloasso/*` (existe)
+
+### APIs à créer
+
+| Endpoint | Usage | Phase |
+|----------|-------|-------|
+| `GET /api/v1/alerts` | Lister les alertes opérationnelles (vols non facturés, soldes négatifs, incohérences) | 4 |
+| `POST /api/v1/alerts/:id/ack` | Acquitter une alerte | 4 |
+| `GET /api/v1/reports/kpi` | Agrégats KPI (revenus vols, usage machines, tendances comptes) | 7 |
+| `POST /api/v1/members/renewal` | Déclencher la réinscription d'un membre (vérification éligibilité, création adhésion) | 8 |
+| `GET /api/v1/members/renewal/status` | Vérifier le statut de renouvellement d'un membre | 8 |
+| `POST /api/v1/integrations/gesasso/sync` | Déclencher l'envoi des vols vers Gesasso | 9 |
+| `GET /api/v1/integrations/gesasso/status` | Statut de la synchro Gesasso (dernier envoi, file d'attente, échecs) | 9 |
+| `POST /api/v1/integrations/osrt/sync` | Déclencher l'envoi des temps machines vers OSRT | 9 |
+| `GET /api/v1/integrations/osrt/status` | Statut de la synchro OSRT | 9 |
+| `PUT /api/v1/integrations/settings` | Configuration des endpoints et clés API Gesasso/OSRT | 9 |
+
+### Modifications backend (schéma DB)
+
+| Modification | Raison | Migration requise |
+|-------------|--------|-------------------|
+| Table `member_renewals` (nouvelle) | Suivi des réinscriptions en ligne (date, statut, référence HelloAsso) | Oui |
+| Table `integration_logs` (nouvelle) | Historique des envois Gesasso/OSRT avec statut et message d'erreur | Oui |
+| Table `integration_settings` (nouvelle) | Configuration des endpoints et clés API (chiffrée) | Oui |
+| Colonne `last_renewal_date` sur `members` (optionnelle) | Cache de la date de dernière réinscription pour le portail | Oui |
 
 ---
+
+
