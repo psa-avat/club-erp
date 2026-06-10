@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Header } from './Header'
 import { MobileDrawer } from './MobileDrawer'
 import { Sidebar } from './Sidebar'
+import { AlertsBanner } from './AlertsBanner'
 
 export function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -15,6 +16,7 @@ export function AppShell() {
       <div className="mx-auto flex w-full">
         <Sidebar />
         <main className="min-h-[calc(100vh-4rem)] flex-1 p-4 md:p-6">
+          <AlertsBanner />
           <Outlet />
         </main>
       </div>

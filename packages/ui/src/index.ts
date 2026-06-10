@@ -5,6 +5,7 @@
  *   - Skeleton          → placeholder de chargement (pulse animation)
  *   - ErrorBoundary     → capture d'erreurs React avec fallback UI
  *   - EmptyState        → vue vide avec titre, description et CTA
+ *   - PageHeader        → entête de page unifié (breadcrumbs + titre + actions)
  *   - cn                → utilitaire de fusion de classes Tailwind
  *   - Button            → bouton avec variantes (default, secondary, ghost, destructive)
  *   - Alert             → alertes avec variantes (error, success, warning, info)
@@ -19,6 +20,9 @@ export { ErrorBoundary } from './ErrorBoundary'
 
 export { EmptyState } from './EmptyState'
 export type { EmptyStateProps } from './EmptyState'
+
+export { PageHeader } from './page-header'
+export type { PageHeaderProps, BreadcrumbItem } from './page-header'
 
 export { Button } from './button'
 export type { ButtonProps } from './button'
