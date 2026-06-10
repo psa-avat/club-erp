@@ -35,6 +35,7 @@ import { FlightsPage } from './modules/flights'
 import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
 import { ViEntitlementsPage, ViPlanningPage, ViTypesPage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
+import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
 
 // ── Route wrappers for MemberWorkspaceShell ──
@@ -82,6 +83,8 @@ function App() {
           <Route path="/club/members/:memberUuid/pilot-sheet" element={<MemberPilotSheetPage />} />
           <Route path="/club/commissions" element={<CommitteesManagementPage />} />
           <Route path="/club/sheets" element={<MemberSheetsPage />} />
+          <Route path="/daily-ops/alerts" element={<PlaceholderPage title="Alertes & Tâches" description="Tableau de bord des alertes, notifications et tâches en attente." eta="Phase 10" />} />
+          <Route path="/member-portal/renewal" element={<PlaceholderPage title="Réinscription en ligne" description="Module de réinscription pour les membres. Accessible depuis l'espace membre." eta="Phase 10" />} />
 
           {/* ── 3. Sales (MVP) ── */}
           <Route path="/sales" element={<Navigate replace to="/banque/operations" />} />
@@ -103,6 +106,7 @@ function App() {
 
           {/* ── 5. Flights & Planche (Planche sync included) ── */}
           <Route path="/flights" element={<FlightsPage />} />
+          <Route path="/flights/billing" element={<PlaceholderPage title="Facturation des vols" description="Historique et suivi de la facturation des vols. Disponible dans une phase ultérieure." eta="Phase 6" />} />
           <Route path="/planche" element={<Navigate replace to="/planche/members-push" />} />
           <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
@@ -116,6 +120,8 @@ function App() {
           <Route path="/helloasso/integration" element={<HelloAssoIntegrationPage />} />
           <Route path="/helloasso/purchases" element={<HelloAssoPurchasesPage />} />
           <Route path="/helloasso/vi-import" element={<HelloAssoViImportPage />} />
+          <Route path="/integrations/gesasso" element={<PlaceholderPage title="Gesasso" description="Synchronisation avec Gesasso pour la gestion des envois postaux." eta="Phase 8" />} />
+          <Route path="/integrations/osrt" element={<PlaceholderPage title="OSRT" description="Synchronisation avec OSRT pour les temps machine." eta="Phase 8" />} />
 
           {/* ── 7. Finance & Accounting ── */}
           <Route path="/banque" element={<BanquePage />} />
@@ -133,11 +139,13 @@ function App() {
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
           <Route path="/banque/reports" element={<FinancialReportsPage />} />
+          <Route path="/banque/reconciliation" element={<PlaceholderPage title="Rapprochement bancaire" description="Import relevé bancaire, matching avec les écritures, et résolution des écarts." eta="Phase 9" />} />
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/pricing" element={<Navigate replace to="/banque/pricing" />} />
 
           {/* ── 8. Admin ── */}
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/audit" element={<PlaceholderPage title="Journal d'audit" description="Consultez l'historique complet des actions et modifications dans le système." eta="Phase 11" />} />
           <Route path="/storage" element={<Navigate replace to="/storage/settings" />} />
           <Route path="/storage/settings" element={<StorageSettingsPage />} />
         </Route>

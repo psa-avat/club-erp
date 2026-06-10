@@ -24,6 +24,9 @@ export type { EmptyStateProps } from './EmptyState'
 export { PageHeader } from './page-header'
 export type { PageHeaderProps, BreadcrumbItem } from './page-header'
 
+export { Tabs } from './tabs'
+export type { TabsProps, TabItem } from './tabs'
+
 export { Button } from './button'
 export type { ButtonProps } from './button'
 

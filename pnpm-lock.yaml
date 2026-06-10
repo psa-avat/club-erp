@@ -168,6 +168,12 @@ importers:
       '@storybook/test':
         specifier: ^8.6.12
         version: 8.6.15(storybook@8.6.18)
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
       storybook:
         specifier: ^8.6.12
         version: 8.6.18

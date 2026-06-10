@@ -13,14 +13,21 @@ export type ShellNavItem = {
  * le user.capabilities inclut la capability requise.
  *
  * Groupes :
- *   Daily Operations  → cockpit des vols, packs, planning, alertes
+ *   Dashboard         → tableau de bord
+ *   Daily Operations  → cockpit des vols, planning, alertes
  *   Members 360       → annuaire, workspace, commissions, fiches
  *   Finance           → banque, journal, exercices, PCG, tarifs, rapports
- *   Assets (Flotte)   → équipements, types, tarifs machine
+ *   Assets & Pricing  → flotte, types, tarifs machine, packs definitions (packs = pricing)
  *   Sales & Suppliers → ventes membres, factures fournisseurs
  *   Integrations      → Planche, HelloAsso, Gesasso, OSRT
  *   Reporting         → KPIs, budgets, rapports financiers
  *   Administration    → utilisateurs, paramètres, audit
+ *
+ * Note : L'ancienne page /banque/operations (daily ops) est éclatée :
+ *   - les vols → Daily Operations / Flights
+ *   - les ventes → Sales & Suppliers
+ *   - les packs → Assets & Pricing
+ *   - les fournisseurs → Sales & Suppliers
  */
 export const shellNavItems: ShellNavItem[] = [
   // ── Tableau de bord ───────────────────────────────────────────────────────
@@ -33,6 +40,7 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'EDIT_FLIGHTS',
     children: [
       { to: '/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
+      { to: '/flights/billing', labelKey: 'nav.flightsBilling', requiredCapability: 'VIEW_FINANCIALS' },
       { to: '/banque/packs', labelKey: 'nav.packs', requiredCapability: 'MANAGE_PRICES' },
       { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
       { to: '/daily-ops/alerts', labelKey: 'nav.alerts', requiredCapability: 'EDIT_FLIGHTS' },
@@ -65,6 +73,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/banque/pcg', labelKey: 'nav.banquePcg' },
       { to: '/banque/pricing', labelKey: 'nav.banquePricing' },
       { to: '/banque/reports', labelKey: 'nav.banqueReports' },
+      { to: '/banque/reconciliation', labelKey: 'nav.banqueReconciliation' },
       { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
     ],
   },
@@ -118,6 +127,7 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'MANAGE_USERS',
     children: [
       { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
+      { to: '/admin/audit', labelKey: 'nav.adminAudit', requiredCapability: 'MANAGE_USERS' },
       { to: '/helloasso/integration', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/planche/integration', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/storage/settings', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },

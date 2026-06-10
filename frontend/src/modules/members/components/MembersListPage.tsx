@@ -28,7 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
-import { PageHeader } from '../../../components/ui/page-header'
+import { PageHeader } from '@club-erp/ui'
 import {
   exportMembersToCSV,
   useImportMembersMutation,

@@ -36,7 +36,7 @@ Deux applications partageant le même design system (`packages/ui/`) :
 frontend/src/modules/
 ├── admin/          ← conserve (paramètres système)
 ├── assets/         ← MVP : création, pricing, packs, sync Planche
-├── banque/         ← MVP + Next : ledger, PCG, entries, reports, bank reconciliation
+├── banque/         ← MVP + Next : ledger, PCG, entries, reports, reconciliation, settings (daily ops éclaté dans flights/sales/assets)
 ├── club/           ← conservé temporairement
 ├── dashboard/      ← conserve
 ├── flights/        ← MVP : planche pull + billing cockpit
@@ -79,7 +79,6 @@ Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` a
 
 💰 Sales
 ├── Member Sales        → /sales (MVP — nouvelle page standalone)
-├── Packs               → /banque/packs (MVP)
 └── Supplier Invoices   → /banque/factures-fournisseurs (Next)
 
 🛠️ Assets
@@ -102,13 +101,14 @@ Menu latéral **collapsible** structuré par groupes métier. La `Sidebar.tsx` a
 
 💰 Finance & Accounting
 ├── Overview            → /banque (MVP)
-├── Operations          → /banque/operations (MVP)
 ├── Journal             → /banque/journal (MVP)
 ├── Chart of Accounts   → /banque/pcg (MVP)
 ├── Fiscal Years        → /banque/fiscal-years (MVP)
 ├── Reports             → /banque/reports (MVP)
 ├── Bank reconciliation → /banque/reconciliation (Next)
 └── Settings            → /banque/settings (MVP)
+
+> **Note :** L'ancienne page `/banque/operations` (Daily Ops) est éclatée dans les menus métier : les vols dans ✈️ Flights, les ventes dans 💰 Sales, les packs dans 🛠️ Assets/Pricing, les fournisseurs dans 💰 Sales.
 
 📈 Reporting            → /reporting (Next)
 
@@ -285,6 +285,33 @@ La sidebar utilise déjà le mécanisme `requiredCapability`. Cette matrice éte
 
 ---
 
+### Phase 1b — Menu Définitif & Placeholders (semaine 2-3) — 🟢 MVP
+
+**Objectif** : Rendre le menu définitif fonctionnel à 100 % — toutes les entrées de la navigation cible sont accessibles, même les fonctions pas encore implémentées, via des pages vides génériques. Permet de valider la structure, les capabilities, et de naviguer dans toute l'application dès le début.
+
+| # | Action | Fichiers |
+|---|--------|----------|
+| 1b.1 | Compléter `navigation.ts` avec **toutes** les entrées du menu définitif (y compris Next/Cleanup) — chaque groupe et sous-groupe de la cible | `frontend/src/shell/navigation.ts` |
+| 1b.2 | Créer un composant `PlaceholderPage` réutilisable (titre, description, badge "À venir / Coming soon") | `frontend/src/components/ui/PlaceholderPage.tsx` |
+| 1b.3 | Ajouter les routes manquantes dans `App.tsx` (toutes les entrées Next/Cleanup) pointant vers `PlaceholderPage` avec un `requiredCapability` cohérent | `frontend/src/App.tsx` |
+| 1b.4 | Vérifier que tous les liens du menu naviguent sans erreur 404 — test manuel de chaque groupe | — |
+
+---
+
+### Phase 1c — Homogénéisation des pages & Tabs (semaine 3) — 🟢 MVP — ✅ FAITE
+
+**Objectif** : Uniformiser la présentation de toutes les pages existantes — PageHeader, breadcrumbs, tabs de navigation interne, layout standard. Chaque page doit ressembler à la cible finale (même si le contenu est encore partiel).
+
+| # | Action | Fichiers | Statut |
+|---|--------|----------|--------|
+| 1c.1 | Migrer tous les imports `PageHeader` du chemin local `../../../components/ui/page-header` vers `@club-erp/ui` — supprimer l'ancien composant | Toutes les pages + `frontend/src/components/ui/page-header.tsx` | ✅ |
+| 1c.2 | Ajouter `PageHeader` (titre + supportingText + breadcrumbs + actions) sur les pages principales (Dashboard, BanqueOverview, Admin) — ajout progressif dans les phases suivantes pour les autres pages | Modules `dashboard`, `banque`, `admin` | ✅ partiel |
+| 1c.3 | Normaliser les tabs : ajouter `Tabs` dans `@club-erp/ui`, migrer `AdminPage` (TabButton → Tabs), migrer `MemberWorkspaceShell` dans Phase 2 | `packages/ui/src/tabs.tsx`, `admin/components/AdminPage.tsx` | ✅ |
+| 1c.4 | Créer les sous-pages manquantes pour les entrées du menu Next/Cleanup — déjà fait en Phase 1b (PlaceholderPage) | — | ⏭️ fait en 1b |
+| 1c.5 | Vérifier la cohérence : `tsc --noEmit` ✅ + `vite build` ✅ + test manuel des pages modifiées | — | ✅ |
+
+---
+
 ### Phase 2 — Membres + Portail (semaine 3-5) — 🟢 MVP
 
 **Objectif** : Annuaire membres complet, création, workspace logbook/balance/packs, portail membre.
@@ -305,7 +332,9 @@ La sidebar utilise déjà le mécanisme `requiredCapability`. Cette matrice éte
 
 ### Phase 3 — Sales (semaine 5-6) — 🟢 MVP
 
-**Objectif** : Page ventes aux membres standalone, gestion des packs.
+**Objectif** : Page ventes aux membres standalone.
+
+> **Note :** La définition des packs (`/banque/packs`) relève du **pricing** — traitée en Phase 4 (Assets). La **vente** (achat/consommation) d'un pack reste dans Sales.
 
 | # | Action | Fichiers | Priorité |
 |---|--------|----------|----------|
@@ -317,20 +346,21 @@ La sidebar utilise déjà le mécanisme `requiredCapability`. Cette matrice éte
 
 ---
 
-### Phase 4 — Assets + VI (semaine 6-8) — 🟢 MVP
+### Phase 4 — Assets + Pricing + VI (semaine 6-8) — 🟢 MVP
 
-**Objectif** : Gestion de flotte complète (création asset, types, pricing, packs, VI types, sync Planche).
+**Objectif** : Gestion de flotte complète + tarifs (création asset, types, pricing versions, pack definitions, VI types, sync Planche).
 
 | # | Action | Fichiers | Priorité |
 |---|--------|----------|----------|
 | 4.1 | Ajouter la création d'asset (formulaire complet) | `assets/components/AssetFormPage.tsx` | 🟢 |
 | 4.2 | Asset pricing : page dédiée par asset | `assets/components/AssetPricingPage.tsx` | 🟢 |
 | 4.3 | Asset packs : associer des packs à un asset | `assets/components/AssetPacksTab.tsx` | 🟢 |
-| 4.4 | Asset Status Manager : liste de tous les assets avec statut, filtre, transition rapide | `assets/components/AssetStatusManager.tsx` | 🟢 |
-| 4.5 | VI Types : consolidation dans assets (transfert depuis `vi/`) | `assets/components/ViTypeList.tsx` | 🟢 |
-| 4.6 | Indicateur visuel de statut dans la liste des assets | `assets/components/AssetListPage.tsx` | 🟢 |
-| 4.7 | Badge statut dans `FlightDetailDialog` | `banque/components/FlightDetailDialog.tsx` | 🔵 |
-| 4.8 | Synchronisation Planche : pousser les assets créés/modifiés | `planche/api/sync.ts` | 🟢 |
+| 4.4 | **Pack definitions** (page `/banque/packs`) : lister, créer, éditer les packs — fait partie du pricing, pas des sales | `banque/components/PackDefinitionsPage.tsx` | 🟢 |
+| 4.5 | Asset Status Manager : liste de tous les assets avec statut, filtre, transition rapide | `assets/components/AssetStatusManager.tsx` | 🟢 |
+| 4.6 | VI Types : consolidation dans assets (transfert depuis `vi/`) | `assets/components/ViTypeList.tsx` | 🟢 |
+| 4.7 | Indicateur visuel de statut dans la liste des assets | `assets/components/AssetListPage.tsx` | 🟢 |
+| 4.8 | Badge statut dans `FlightDetailDialog` | `banque/components/FlightDetailDialog.tsx` | 🔵 |
+| 4.9 | Synchronisation Planche : pousser les assets créés/modifiés | `planche/api/sync.ts` | 🟢 |
 
 ---
 
@@ -456,6 +486,8 @@ La sidebar utilise déjà le mécanisme `requiredCapability`. Cette matrice éte
 Semaine  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21
 Phase 0  ██  ← ✅ FAITE
 Phase 1     ██ ← ✅ FAITE
+Phase 1b     ██ ← 🆕
+Phase 1c      ██ ← ✅
 Phase 2        █████
 Phase 3              ██
 Phase 4                ███
@@ -469,7 +501,7 @@ Phase 11                                ██
 Phase 12                                  ██
 ```
 
-MVP (Phases 1-7) : semaines 2-14 — Phases 0-1 ✅ FAITES
+MVP (Phases 1-7) : semaines 2-14 — Phases 0-1 ✅ FAITES · Phases 1b-1c ✅ FAITES
 Next (Phases 8-11) : semaines 15-20
 Cleanup (Phase 12) : semaines 20-21
 

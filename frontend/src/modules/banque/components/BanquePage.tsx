@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { PageHeader } from '@club-erp/ui'
 
 const SETTINGS_SECTIONS = ['accounting', 'pricing', 'budget', 'integrations'] as const
 
@@ -8,10 +9,10 @@ export function BanquePage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">{t('home.title')}</h1>
-        <p className="text-sm text-slate-600">{t('home.description')}</p>
-      </div>
+      <PageHeader
+        title={t('home.title')}
+        supportingText={t('home.description')}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <header className="space-y-2">

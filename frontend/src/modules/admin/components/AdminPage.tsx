@@ -5,6 +5,7 @@ import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { PageHeader, Tabs } from '@club-erp/ui'
 import {
   useAdminCapabilitiesQuery,
   useAdminRolesQuery,
@@ -69,22 +70,20 @@ export function AdminPage() {
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-slate-900">{t('management.title')}</h1>
-        <p className="text-sm text-slate-600">{t('management.description')}</p>
-      </header>
+      <PageHeader
+        title={t('management.title')}
+        supportingText={t('management.description')}
+      />
 
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-        <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')}>
-          {t('tabs.users')}
-        </TabButton>
-        <TabButton active={activeTab === 'roles'} onClick={() => setActiveTab('roles')}>
-          {t('tabs.roles')}
-        </TabButton>
-        <TabButton active={activeTab === 'capabilities'} onClick={() => setActiveTab('capabilities')}>
-          {t('tabs.capabilities')}
-        </TabButton>
-      </div>
+      <Tabs
+        items={[
+          { key: 'users', label: t('tabs.users') },
+          { key: 'roles', label: t('tabs.roles') },
+          { key: 'capabilities', label: t('tabs.capabilities') },
+        ]}
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as AdminTab)}
+      />
 
       {loading ? <p className="text-sm text-slate-600">{t('loading')}</p> : null}
 
@@ -110,29 +109,6 @@ export function AdminPage() {
         </>
       ) : null}
     </section>
-  )
-}
-
-function TabButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      className={[
-        'rounded-md px-3 py-2 text-sm font-medium transition-colors',
-        active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-      ].join(' ')}
-      type="button"
-      onClick={onClick}
-    >
-      {children}
-    </button>
   )
 }
 

@@ -53,6 +53,7 @@ export const en = {
 
       // Daily Operations
       flights: 'Flights',
+      flightsBilling: 'Billing history',
       packs: 'Packs',
       planning: 'Planning',
       alerts: 'Alerts & Tasks',
@@ -71,6 +72,7 @@ export const en = {
       banqueFiscalYears: 'Fiscal years',
       banquePcg: 'Chart of accounts',
       banqueReports: 'Reports',
+      banqueReconciliation: 'Reconciliation',
       banqueSettings: 'Settings',
 
       // Assets (Fleet)
@@ -96,6 +98,7 @@ export const en = {
 
       // Administration
       admin: 'Admin',
+      adminAudit: 'Audit',
       configHelloasso: 'HelloAsso',
       configPlanche: 'Planche',
       configStorage: 'Storage',
