@@ -57,8 +57,10 @@ function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
+  const [activeIndex, setActiveIndex] = React.useState(0)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const searchRef = React.useRef<HTMLInputElement>(null)
+  const listRef = React.useRef<HTMLUListElement>(null)
 
   const selected = options.find(o => o.value === value)
   const filtered = search.trim()
@@ -86,21 +88,62 @@ function SearchableSelect({
     }
   }, [open])
 
-  const close = () => { setOpen(false); setSearch('') }
+  // Reset active index when filtered options change
+  React.useEffect(() => {
+    setActiveIndex(0)
+  }, [filtered.length])
+
+  const close = () => { setOpen(false); setSearch(''); setActiveIndex(0) }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      close()
+      return
+    }
+    if (!open) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(prev => Math.min(prev + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(prev => Math.max(prev - 1, 0))
+    } else if (e.key === 'Enter' && filtered[activeIndex] && !filtered[activeIndex].disabled) {
+      e.preventDefault()
+      onChange(filtered[activeIndex].value)
+      close()
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      setActiveIndex(0)
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      setActiveIndex(filtered.length - 1)
+    }
+  }
+
+  // Scroll active option into view
+  React.useEffect(() => {
+    if (!open || !listRef.current) return
+    const activeEl = listRef.current.querySelector<HTMLElement>(`[data-option-index="${activeIndex}"]`)
+    activeEl?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, open])
 
   return (
     <div
       ref={containerRef}
       className={cn('relative', className)}
-      onKeyDown={e => { if (e.key === 'Escape') close() }}
+      onKeyDown={handleKeyDown}
     >
       {/* Trigger */}
       <button
         type="button"
         id={id}
         disabled={disabled}
+        role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? `${id}-listbox` : undefined}
+        aria-activedescendant={open && filtered[activeIndex] ? `${id}-option-${filtered[activeIndex].value}` : undefined}
         onClick={() => { if (!disabled) setOpen(v => !v) }}
         className={cn(
           'flex w-full items-center justify-between rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm transition-colors',
@@ -161,6 +204,7 @@ function SearchableSelect({
       {open && (
         <div
           role="listbox"
+          id={`${id}-listbox`}
           className={cn(
             'absolute z-50 mt-1 flex w-full flex-col rounded-shape-md border border-outline-variant bg-surface shadow-surface-3',
             'max-h-64 overflow-hidden',
@@ -182,14 +226,16 @@ function SearchableSelect({
           </div>
 
           {/* Options */}
-          <ul className="overflow-y-auto py-1">
+          <ul ref={listRef} className="overflow-y-auto py-1">
             {filtered.length === 0 ? (
               <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
             ) : (
-              filtered.map(opt => (
+              filtered.map((opt, index) => (
                 <li
                   key={opt.value}
+                  id={`${id}-option-${opt.value}`}
                   role="option"
+                  data-option-index={index}
                   aria-selected={opt.value === value}
                   aria-disabled={opt.disabled}
                   onClick={() => {
@@ -204,6 +250,7 @@ function SearchableSelect({
                       ? 'bg-primary-container text-on-primary-container'
                       : 'text-on-surface hover:bg-surface-container',
                     opt.disabled && 'cursor-not-allowed opacity-40',
+                    index === activeIndex && 'bg-surface-container-high',
                   )}
                 >
                   {/* Check mark for selected */}

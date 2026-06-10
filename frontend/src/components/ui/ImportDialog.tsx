@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from './button'
@@ -74,6 +74,17 @@ export function ImportDialog({
     setUploadError(null)
   }
 
+  const titleId = useRef(`import-dialog-title-${Math.random().toString(36).slice(2, 9)}`).current
+
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose()
+  }, [onClose])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [handleEscape])
+
   const handleUpload = async () => {
     if (!selectedFile) return
     setIsUploading(true)
@@ -95,10 +106,15 @@ export function ImportDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-2xl rounded-shape-md bg-surface p-6 shadow-surface-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-2xl rounded-shape-md bg-surface p-6 shadow-surface-4"
+      >
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-on-surface">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold text-on-surface">{title}</h2>
           <button
             className="text-on-surface-variant hover:text-on-surface"
             onClick={onClose}
@@ -167,7 +183,7 @@ export function ImportDialog({
 
         {/* Results */}
         {result && (
-          <div className="mb-4 space-y-2">
+          <div className="mb-4 space-y-2" aria-live="polite" role="status">
             <p className="text-sm text-on-surface">
               <span className="font-medium text-success">{t('import.created')}: {result.created}</span>
               {typeof result.updated === 'number' && (

@@ -81,7 +81,7 @@ function DataTable<T>({
   return (
     <div className={cn('w-full overflow-x-auto', className)}>
       <table className="w-full border-collapse text-sm">
-        <thead>
+        <thead role="rowgroup">
           <tr className="border-b border-outline-variant">
             {columns.map(col => (
               <th
@@ -133,7 +133,7 @@ function DataTable<T>({
             )}
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {data.map(row => {
             const rowKey = getRowKey(row)
             return (

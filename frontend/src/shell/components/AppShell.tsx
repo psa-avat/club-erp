@@ -12,7 +12,7 @@ export function AppShell() {
     <div className="min-h-screen bg-slate-50">
       <Header onOpenMobileMenu={() => setMobileMenuOpen(true)} />
       <MobileDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
-      <div className="mx-auto flex w-full w-full">
+      <div className="mx-auto flex w-full">
         <Sidebar />
         <main className="min-h-[calc(100vh-4rem)] flex-1 p-4 md:p-6">
           <Outlet />

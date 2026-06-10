@@ -38,7 +38,7 @@ function EmptyState({ icon, title, description, action, className }: EmptyStateP
           {icon}
         </div>
       )}
-      <p className="text-sm font-medium text-on-surface">{title}</p>
+      <h3 className="text-sm font-medium text-on-surface">{title}</h3>
       {description && (
         <p className="mt-1 max-w-xs text-sm text-on-surface-variant">{description}</p>
       )}

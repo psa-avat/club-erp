@@ -347,16 +347,18 @@ RGPD Lifecycle :
 | # | Action | Fichiers | Statut |
 |---|--------|----------|--------|
 | 0.1 | ✅ Peupler `packages/ui/` avec composants partagés + tokens CSS | `packages/ui/src/` | ✅ Fait |
-| 0.2 | Installer Storybook, cataloguer les composants existants | `packages/ui/.storybook/` | ❌ À faire |
+| 0.2 | Installer Storybook, cataloguer les composants existants | `packages/ui/.storybook/` | ✅ Fait |
 | 0.3 | ✅ Créer `Skeleton`, `ErrorBoundary`, `EmptyState` génériques | `packages/ui/src/` | ✅ Fait |
-| 0.4 | Audit a11y : focus ring, contraste, rôles ARIA sur tous les composants | `packages/ui/src/*` | ❌ À faire |
+| 0.4 | Audit a11y : focus ring, contraste, rôles ARIA sur tous les composants | `packages/ui/src/*` | ✅ Fait |
 | 0.5 | ✅ Ajouter les clés i18n `nav.*` pour la nouvelle navigation (fr + en) | `packages/i18n/src/resources/{fr,en}.ts` | ✅ Fait |
 | 0.6 | ✅ Réécrire `shell/navigation.ts` — 14 modules techniques → 9 espaces workflow | `frontend/src/shell/navigation.ts` | ✅ Fait |
 | 0.7 | ✅ Créer les modules vides (`daily-ops/`, `reporting/`, `integrations/`) | `frontend/src/modules/{daily-ops,reporting,integrations}/` | ✅ Fait |
 
 > **Réalisé (Phase 0)** :
-> - `packages/ui/src/` : design tokens (`tokens.css`), utilitaire `cn`, composants génériques `Skeleton`, `ErrorBoundary`, `EmptyState` — le tout exporté depuis `index.ts` et référençable via `@club-erp/ui`
-> - `packages/ui/package.json` : dépendances `clsx`, `tailwind-merge`, peer dep `react`, tsconfig étendu depuis le frontend
+> - `packages/ui/src/` : design tokens (`tokens.css`), utilitaire `cn`, composants génériques `Skeleton`, `ErrorBoundary`, `EmptyState`, `Button`, `Alert` — le tout exporté depuis `index.ts` et référençable via `@club-erp/ui`
+> - `packages/ui/package.json` : dépendances `clsx`, `tailwind-merge`, `class-variance-authority`, peer dep `react`/`react-dom`, devDeps Storybook v8.6
+> - `packages/ui/.storybook/` : Storybook configuré avec addons essentiels + a11y + interactions, alias `@` → frontend/src. **9 stories** créées (Button, Alert, Dialog, Tabs, DataTable, SearchableSelect, Skeleton, EmptyState, ErrorBoundary)
+> - `docs/a11y-audit-phase0.md` : Audit complet des 18 composants. Correctifs appliqués : ImportDialog (role dialog, aria-modal, aria-labelledby, Escape), SearchableSelect (combobox role, aria-activedescendant, arrow key nav), DataTable (role rowgroup), EmptyState (h3), AppShell (bug fix duplicate w-full)
 > - `shell/navigation.ts` : réécrit pour regrouper les 14 anciens modules en 9 groupes orientés workflow, chaque entrée filtrée par `requiredCapability` via la `Sidebar.tsx` déjà générique
 > - Clés i18n `nav.*` ajoutées en français et anglais (`packages/i18n/src/resources/{fr,en}.ts`)
 > - Modules vides créés : `daily-ops/`, `reporting/`, `integrations/` (seront peuplés dans les phases ultérieures)
