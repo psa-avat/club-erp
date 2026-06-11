@@ -30,7 +30,7 @@
 frontend/src/modules/
 ├── admin/          ← Utilisateurs, rôles, audit, S3 storage
 ├── assets/         ← Flotte, maintenance, pricing, packs, VI types
-├── banque/         ← Journal, PCG, écritures, rapprochement, reports
+├── banque/         ← MVP + Next : journal, PCG, entries, ventes, fournisseurs, reports, reconciliation
 ├── club/           ← Temporaire (à fondre dans members/)
 ├── committees/     ← NOUVEAU : comités, budgets, validation dépenses
 ├── dashboard/      ← Page d'accueil KPIs, alertes, activité récente
@@ -44,7 +44,7 @@ frontend/src/modules/
 ├── planning/       ← Next step : vue informative
 ├── pricing/        ← À absorber par assets/
 ├── reporting/      ← KPI, graphiques, rapports financiers
-├── sales/          ← NOUVEAU : ventes aux membres
+├── sales/          ← NOUVEAU : ventes aux membres (reprend OpsSalesTab)
 ├── storage/        ← À absorber par admin/
 └── vi/             ← À absorber par assets/
 ```
@@ -71,7 +71,7 @@ frontend/src/modules/
 │ 📊 Tableau de bord│
 ├──────────────────┤
 │ ✈️ Vols          │
-│   ├── Facturer   │
+│   ├── Cockpit    │
 │   └── Historique │
 ├──────────────────┤
 │ 👥 Membres       │
@@ -82,13 +82,13 @@ frontend/src/modules/
 ├──────────────────┤
 │ 🛠️ Actifs        │
 │   ├── Flotte     │
-│   ├── Tarifs     │
-│   ├── Packs      │
+│   ├── Tarifs     │ ← pricing + packs (annuel)
 │   └── Maintenance│
 ├──────────────────┤
 │ 💰 Finances      │
 │   ├── Journal    │
-│   ├── Pointage   │
+│   ├── Ventes     │ ← ex-OpsSalesTab
+│   ├── Fournisseur│ ← ex-OpsSupplierTab
 │   ├── PCG        │
 │   ├── Exercices  │
 │   └── Rapports   │
@@ -110,7 +110,7 @@ frontend/src/modules/
 | Persona | Tâches principales |
 |---------|-------------------|
 | **Secrétaire** | Facturation vols (Planche → écritures), gestion membres, imports HelloAsso |
-| **Trésorier** | Pointage bancaire, validation écritures, clôture exercice, reporting |
+| **Trésorier** | Ventes, fournisseurs, pointage bancaire, validation écritures, clôture exercice, reporting |
 | **Responsable maintenance** | Suivi actifs (état, inspections), heures vol par machine |
 | **Président de comité** | Consultation budget, validation dépenses comité |
 | **Membre (portail)** | Solde, achat pack, déclaration frais, réinscription |
@@ -193,14 +193,21 @@ Légende : 🟢 **MVP** · 🔵 **Next** · ⚪ **Cleanup**
 
 ---
 
-### Phase 1b — Placeholders & Routes Manquantes (semaine 2-3) — 🟢 MVP
+### Phase 1b — Réorganisation Pages & Routes (semaine 2-3) — 🟢 MVP
+
+**Objectif** : Mettre chaque page existante à sa place dans la nouvelle arborescence. Les tabs de `/banque/operations` (Pointage) sont éclatés en pages autonomes dans les modules métier. Suppression des doublons (Vols). Les packs sont repositionnés comme tarifs (opération annuelle).
 
 | # | Action | Fichiers |
 |---|--------|----------|
-| 1b.1 | Compléter `navigation.ts` avec toutes les entrées Next + Cleanup | `shell/navigation.ts` |
-| 1b.2 | Créer `PlaceholderPage` (titre, description, "À venir") | `components/ui/PlaceholderPage.tsx` |
-| 1b.3 | Ajouter routes Next/Cleanup → PlaceholderPage dans App.tsx | `frontend/src/App.tsx` |
-| 1b.4 | Vérification manuelle : tous les liens naviguent sans 404 | — |
+| 1b.1 | **Éclater `BanqueDailyOpsPage`** : chaque tab devient une page autonome | — |
+| 1b.2 | OpsFlightsTab → fusionner dans `FlightsPage` (supprimer le doublon) | `flights/components/FlightsPage.tsx`, `banque/components/OpsFlightsTab.tsx` |
+| 1b.3 | OpsSalesTab → migrer dans `sales/` comme composant de `SalesPage` | `sales/components/SalesPage.tsx`, `banque/components/OpsSalesTab.tsx` |
+| 1b.4 | OpsPacksTab → migrer dans `assets/` comme vue « utilisation des packs » (distincte de la définition) | `assets/components/AssetPacksUsage.tsx`, `banque/components/OpsPacksTab.tsx` |
+| 1b.5 | OpsSupplierTab → migrer dans `banque/` comme page fournisseurs autonome | `banque/components/SupplierInvoicePage.tsx`, `banque/components/OpsSupplierTab.tsx` |
+| 1b.6 | Supprimer `BanqueDailyOpsPage.tsx` et rediriger `/banque/operations` → `/banque/journal` | `frontend/src/App.tsx` |
+| 1b.7 | Compléter `navigation.ts` avec toutes les entrées Next + Placeholder | `shell/navigation.ts` |
+| 1b.8 | Créer `PlaceholderPage` (titre, description, "À venir") + routes manquantes | `components/ui/PlaceholderPage.tsx`, `frontend/src/App.tsx` |
+| 1b.9 | Vérification manuelle : tous les liens naviguent sans 404 | — |
 
 ### Phase 1c — Homogénéisation Pages (semaine 3) — 🟢 MVP — ✅ FAITE
 
@@ -265,6 +272,10 @@ ACTIVITÉ RÉCENTE
 
 ### Phase 4 — Sales (semaine 7-8) — 🟢 MVP
 
+**Objectif** : Page ventes aux membres (reprend OpsSalesTab de l'ancien Pointage).
+
+> **Note :** La **définition** des packs (`/banque/packs`) relève du pricing → traitée en Phase 5 (Assets). La **vente** (achat/consommation) d'un pack reste dans Sales (PackPurchaseForm). L'**historique** d'utilisation des packs (ex-OpsPacksTab) va dans Assets.
+
 | # | Action | Fichiers | Priorité |
 |---|--------|----------|----------|
 | 4.1 | SalesPage (ventes : article → écriture → compte) | `sales/components/SalesPage.tsx` | 🟢 |
@@ -277,18 +288,24 @@ ACTIVITÉ RÉCENTE
 
 ### Phase 5 — Assets + Pricing + Maintenance (semaine 8-10) — 🟢 MVP
 
+**Objectif** : Gestion de flotte, tarifs (opération annuelle), packs (définition), maintenance.
+
+> **Note :** Les packs sont une **définition de tarifs** (prix forfaitaire), pas une opération quotidienne. La page `/banque/packs` est déplacée ici comme partie du pricing. L'utilisation des packs (consommation, suivi) est distincte et vient de l'ex-OpsPacksTab.
+
 | # | Action | Fichiers | Priorité |
 |---|--------|----------|----------|
 | 5.1 | AssetFormPage complète | `assets/components/AssetFormPage.tsx` | 🟢 |
 | 5.2 | AssetPricingPage | `assets/components/AssetPricingPage.tsx` | 🟢 |
 | 5.3 | AssetPacksTab | `assets/components/AssetPacksTab.tsx` | 🟢 |
-| 5.4 | PackDefinitionsPage (banque/packs) | `banque/components/PackDefinitionsPage.tsx` | 🟢 |
+| 5.4 | **PackDefinitionsPage** (page `/banque/packs`) — définition des packs (tarifs forfaitaires, opération annuelle) | `banque/components/PackDefinitionsPage.tsx` | 🟢 |
+| 5.5 | **AssetPackUsage** (ex-OpsPacksTab) — suivi consommation des packs par asset/membre | `assets/components/AssetPackUsage.tsx` | 🟢 |
 | 5.5 | AssetStatusManager (liste + statut + transition) | `assets/components/AssetStatusManager.tsx` | 🟢 |
-| 5.6 | **AssetMaintenanceLog (journal interventions)** | `assets/components/AssetMaintenanceLog.tsx` | 🟢 |
-| 5.7 | Calcul échéances auto (100h, etc.) | `assets/api/maintenance.ts` | 🔵 |
-| 5.8 | VI Types consolidation | `assets/components/ViTypeList.tsx` | 🟢 |
-| 5.9 | Planche sync : push assets | `planche/api/sync.ts` | 🟢 |
-| 5.10 | **DB : maintenance_log table** | `deploy/migrations/` | 🟢 |
+| 5.6 | AssetStatusManager (liste + statut + transition) | `assets/components/AssetStatusManager.tsx` | 🟢 |
+| 5.7 | **AssetMaintenanceLog (journal interventions)** | `assets/components/AssetMaintenanceLog.tsx` | 🟢 |
+| 5.8 | Calcul échéances auto (100h, etc.) | `assets/api/maintenance.ts` | 🔵 |
+| 5.9 | VI Types consolidation | `assets/components/ViTypeList.tsx` | 🟢 |
+| 5.10 | Planche sync : push assets | `planche/api/sync.ts` | 🟢 |
+| 5.11 | **DB : maintenance_log table** | `deploy/migrations/` | 🟢 |
 
 ---
 
@@ -304,6 +321,10 @@ ACTIVITÉ RÉCENTE
 ---
 
 ### Phase 7 — Flights Cockpit (semaine 11-13) — 🟢 MVP
+
+**Objectif** : Cockpit de facturation unique. L'ex-OpsFlightsTab (doublon dans l'ancien Pointage) est fusionné ici — une seule page pour les vols, pas de duplication.
+
+> **Note :** Le cockpit Vols est l'unique page pour la facturation des vols. L'OpsFlightsTab de l'ancien Pointage est supprimé (contenu fusionné). Les 2 cas d'usage (facturation quotidienne + historique) sont gérés par les onglets de statut (pending→posted) et le filtre de date.
 
 | # | Action | Fichiers | Priorité |
 |---|--------|----------|----------|
@@ -324,6 +345,10 @@ ACTIVITÉ RÉCENTE
 
 ### Phase 8 — Finance (semaine 13-15) — 🟢 MVP
 
+**Objectif** : Plan comptable, écritures, journal, ventes, fournisseurs, rapports.
+
+> **Note :** Les pages « Ventes » et « Fournisseurs » étaient les tabs OpsSalesTab et OpsSupplierTab de l'ancien Pointage. Elles deviennent des pages autonomes dans Finance.
+
 | # | Action | Fichiers | Priorité |
 |---|--------|----------|----------|
 | 8.1 | PCG finalisé | `banque/components/PcgPage.tsx` | 🟢 |
@@ -331,9 +356,11 @@ ACTIVITÉ RÉCENTE
 | 8.3 | Journal (chronologique, filtres) | `banque/components/BanqueJournalEntriesPage.tsx` | 🟢 |
 | 8.4 | Grand-livre par compte + solde cumulé | `banque/components/BanqueLedgerPage.tsx` | 🟢 |
 | 8.5 | Balance comptable par exercice | `banque/components/BanqueBalancePage.tsx` | 🟢 |
-| 8.6 | Reporting module (KPI + graphiques) | `reporting/` | 🟢 |
-| 8.7 | FiscalYearProvider (localStorage wrapper) | `shell/contexts/FiscalYearProvider.tsx` | 🟢 |
-| 8.8 | Templates écritures (abonnements) | `banque/components/BanqueJournalTemplatesPage.tsx` | 🔵 |
+| 8.6 | **Page Ventes** (ex-OpsSalesTab) — listing ventes, filtres | `banque/components/BanqueSalesPage.tsx` | 🟢 |
+| 8.7 | **Page Fournisseurs** (ex-OpsSupplierTab) — factures fournisseurs | `banque/components/BanqueSupplierPage.tsx` | 🟢 |
+| 8.8 | Reporting module (KPI + graphiques) | `reporting/` | 🟢 |
+| 8.9 | FiscalYearProvider (localStorage wrapper) | `shell/contexts/FiscalYearProvider.tsx` | 🟢 |
+| 8.10 | Templates écritures (abonnements) | `banque/components/BanqueJournalTemplatesPage.tsx` | 🔵 |
 
 ---
 
@@ -398,9 +425,12 @@ ACTIVITÉ RÉCENTE
 | 13.4 | Supprimer storage/ | `modules/storage/` | Vérifié |
 | 13.5 | Supprimer club/ | `modules/club/` | Vérifié |
 | 13.6 | Supprimer daily-ops/ (contenu migré Phase 11) | `modules/daily-ops/` | Vérifié |
-| 13.7 | Nettoyer clés i18n obsolètes | `packages/i18n/src/resources/` | — |
-| 13.8 | Supprimer ré-exports temporaires | `banque/index.ts`, `assets/index.ts` | — |
-| 13.9 | Audit final RGPD | tous les modules | — |
+| 13.7 | Supprimer OpsTabs résiduels (OpsFlightsTab, OpsSalesTab, OpsPacksTab, OpsSupplierTab) | `banque/components/` | Vérifié Phase 1b |
+| 13.8 | Nettoyer clés i18n obsolètes | `packages/i18n/src/resources/` | — |
+| 13.9 | Supprimer ré-exports temporaires | `banque/index.ts`, `assets/index.ts` | — |
+| 13.10 | Audit final RGPD | tous les modules | — |
+| 13.11 | Scripts migration DB finaux | `deploy/migrations/` | — |
+| 13.12 | Validation : tsc + build + test toutes routes | — | — |
 | 13.10 | Scripts migration DB finaux | `deploy/migrations/` | — |
 | 13.11 | Validation : tsc + build + test toutes routes | — | — |
 
@@ -412,7 +442,7 @@ ACTIVITÉ RÉCENTE
 Semaine  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20
 Phase 0  ██  ← FAITE
 Phase 1     ██ ← FAITE
-Phase 1b     ██
+Phase 1b     ███ ← réorganisation pages
 Phase 1c      ██ ← FAITE
 Phase 2         ██
 Phase 3           █████
@@ -440,3 +470,4 @@ Phase 13                                      ██
 4. **Feature flags** : Hook `useFeatureFlag(key)` basé sur localStorage pour déploiement progressif.
 5. **i18n** : Nouvelles clés ajoutées, anciennes supprimées immédiatement.
 6. **Rollback** : Une PR par phase. Migrations DB avec down associé.
+7. **Pages de tarifs (pricing, packs)** : Opérations annuelles, pas quotidiennes. Leur UI est simplifiée (pas de workflow complexe, juste CRUD). Placées dans Assets/Pricing, pas dans le flux de travail quotidien.
