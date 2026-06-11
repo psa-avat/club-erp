@@ -1,3 +1,23 @@
+/*
+    ERP-CLUB - ERP pour Club de vol à voile
+    - Logiciel libre de gestion d'un club de vol à voile
+    - Drawer: menu de navigation en tiroir (side drawer) — remplace Sidebar + MobileDrawer
+    Copyright (C) 2026  SAFORCADA Patrick
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -8,12 +28,12 @@ const linkBase = 'block rounded-shape-sm px-3 py-2 text-sm font-medium transitio
 const linkActive = 'bg-primary text-on-primary'
 const linkIdle = 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
 
-type MobileDrawerProps = {
+type DrawerProps = {
   open: boolean
   onClose: () => void
 }
 
-export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
+export function Drawer({ open, onClose }: DrawerProps) {
   const { t } = useTranslation('common')
   const capabilities = useAuthStore((state) => state.user?.capabilities ?? [])
   const location = useLocation()
@@ -36,12 +56,12 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-primary/20 md:hidden"
+      className="fixed inset-0 z-50 bg-primary/20"
       role="dialog"
       aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="h-full w-72 bg-surface p-3 shadow-surface-4">
+      <div className="h-full w-72 overflow-y-auto bg-surface p-3 shadow-surface-4">
         <div className="mb-3 flex items-center justify-between border-b border-outline-variant pb-3">
           <p className="text-sm font-semibold text-on-surface">{t('nav.modules')}</p>
           <button
@@ -50,7 +70,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
             type="button"
             onClick={onClose}
           >
-            {t('nav.closeMenu')}
+            ✕
           </button>
         </div>
 
@@ -66,6 +86,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
                       location.pathname === child.to || location.pathname.startsWith(child.to + '/'),
                   )
 
+            // Expandable group: show section header + children when active
             if (link.children && link.children.length > 0 && isGroupActive) {
               return (
                 <div key={link.to} className="space-y-0.5">
@@ -91,6 +112,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
               )
             }
 
+            // Regular flat link (or collapsed group)
             return (
               <NavLink
                 key={link.to}
