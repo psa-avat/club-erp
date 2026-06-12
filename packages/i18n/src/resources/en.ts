@@ -273,8 +273,8 @@ export const en = {
   },
   dashboard: {
     home: {
-      title: 'Dashboard',
-      description: 'Club overview with key indicators, notifications and cross-module search.',
+      title: 'Daily Operations',
+      description: 'Today\'s cockpit — flights, billing, accounting.',
       kpi: {
         pendingRevenue: 'Pending Revenue',
         pendingRevenueHint: 'Flights awaiting billing',
@@ -282,6 +282,41 @@ export const en = {
         unbilledFlightsHint: 'Days backlog',
         flightsToday: "Today's Flights",
         availableAircraft: 'Aircraft Available',
+      },
+      unbilledTable: {
+        title: 'Unbilled Flights',
+        source: 'Source: Planche — read-only',
+        selected: 'selected',
+        viewAll: 'View all',
+        colFlight: 'Flight',
+        colPilot: 'Pilot',
+        colAircraft: 'Aircraft',
+        colType: 'Type',
+        colDuration: 'Duration',
+        colAmount: 'Amount',
+      },
+      pipeline: {
+        title: 'Daily Flow',
+        description: 'Planche → Invoice → Accounting pipeline',
+        steps: {
+          planche: 'Flights received from Planche',
+          preview: 'Preview generated',
+          billed: 'Invoiced',
+          posted: 'Posted',
+        },
+      },
+      alerts: {
+        title: 'To Process',
+        items: {
+          noPilot: 'Unidentified pilot flights',
+          inconsistency: 'Hobbs inconsistency',
+          packs: 'Packs to apply (post-billing)',
+        },
+        severity: {
+          blocking: 'Blocking',
+          alert: 'Alert',
+          info: 'Info',
+        },
       },
     },
   },

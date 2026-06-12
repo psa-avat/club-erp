@@ -273,8 +273,8 @@ export const fr = {
   },
   dashboard: {
     home: {
-      title: 'Dashboard',
-      description: "Vue d'ensemble du club avec indicateurs clefs, notifications et recherche transverse.",
+      title: 'Daily Operations',
+      description: 'Cockpit du jour — vols, facturation, comptabilisation.',
       kpi: {
         pendingRevenue: 'Chiffre à facturer',
         pendingRevenueHint: 'Vols en attente de facturation',
@@ -282,6 +282,41 @@ export const fr = {
         unbilledFlightsHint: "Jours d'arriéré",
         flightsToday: 'Vols du jour',
         availableAircraft: 'Appareils disponibles',
+      },
+      unbilledTable: {
+        title: 'Vols non facturés',
+        source: 'Source : Planche — lecture seule',
+        selected: 'sélectionnés',
+        viewAll: 'Voir tout',
+        colFlight: 'Vol',
+        colPilot: 'Pilote',
+        colAircraft: 'Appareil',
+        colType: 'Type',
+        colDuration: 'Durée',
+        colAmount: 'Montant',
+      },
+      pipeline: {
+        title: 'Flux du jour',
+        description: 'Pipeline Planche → Facture → Compta',
+        steps: {
+          planche: 'Vols reçus de Planche',
+          preview: 'Aperçu généré',
+          billed: 'Facturés',
+          posted: 'Comptabilisés',
+        },
+      },
+      alerts: {
+        title: 'À traiter',
+        items: {
+          noPilot: 'Vols sans pilote identifié',
+          inconsistency: 'Incohérence horamètre',
+          packs: 'Packs à appliquer (post-facturation)',
+        },
+        severity: {
+          blocking: 'Bloquant',
+          alert: 'Alerte',
+          info: 'Info',
+        },
       },
     },
   },
