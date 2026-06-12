@@ -1,102 +1,53 @@
-/*
-    ERP-CLUB - ERP pour Club de vol à voile
-    - Logiciel libre de gestion d'un club de vol à voile
-    - Shared UI: accessible tab bar with keyboard navigation (Arrow keys) and animated indicator
-    Copyright (C) 2026  SAFORCADA Patrick
+import * as React from "react";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published
-    by the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+import { cn } from "@/lib/utils";
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
+const Tabs = TabsPrimitive.Root;
 
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+const TabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.List
+    ref={ref}
+    className={cn(
+      "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+      className,
+    )}
+    {...props}
+  />
+));
+TabsList.displayName = TabsPrimitive.List.displayName;
 
-import * as React from 'react'
+const TabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow",
+      className,
+    )}
+    {...props}
+  />
+));
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
 
-import { cn } from '../../lib/utils'
+const TabsContent = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Content
+    ref={ref}
+    className={cn(
+      "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      className,
+    )}
+    {...props}
+  />
+));
+TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-interface TabItem {
-  key: string
-  label: string
-  disabled?: boolean
-}
-
-interface TabsProps {
-  items: TabItem[]
-  activeKey: string
-  onChange: (key: string) => void
-  className?: string
-}
-
-function Tabs({ items, activeKey, onChange, className }: TabsProps) {
-  const listRef = React.useRef<HTMLDivElement>(null)
-  const enabled = items.filter(t => !t.disabled)
-
-  const focusTab = (key: string) => {
-    ;(listRef.current?.querySelector<HTMLElement>(`[data-key="${key}"]`))?.focus()
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent, key: string) => {
-    const idx = enabled.findIndex(t => t.key === key)
-    if (e.key === 'ArrowRight') {
-      const next = enabled[(idx + 1) % enabled.length]
-      onChange(next.key)
-      focusTab(next.key)
-    } else if (e.key === 'ArrowLeft') {
-      const prev = enabled[(idx - 1 + enabled.length) % enabled.length]
-      onChange(prev.key)
-      focusTab(prev.key)
-    } else if (e.key === 'Home') {
-      onChange(enabled[0].key)
-      focusTab(enabled[0].key)
-    } else if (e.key === 'End') {
-      onChange(enabled[enabled.length - 1].key)
-      focusTab(enabled[enabled.length - 1].key)
-    }
-  }
-
-  return (
-    <div
-      ref={listRef}
-      role="tablist"
-      className={cn('flex gap-1 border-b border-outline-variant', className)}
-    >
-      {items.map(item => {
-        const isActive = activeKey === item.key
-        return (
-          <button
-            key={item.key}
-            role="tab"
-            data-key={item.key}
-            aria-selected={isActive}
-            disabled={item.disabled}
-            tabIndex={isActive ? 0 : -1}
-            onKeyDown={e => handleKeyDown(e, item.key)}
-            onClick={() => !item.disabled && onChange(item.key)}
-            className={cn(
-              'relative px-4 py-2 text-sm font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-              'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:transition-colors',
-              isActive
-                ? 'text-on-surface after:bg-primary'
-                : 'text-on-surface-variant hover:text-on-surface after:bg-transparent',
-              item.disabled && 'cursor-not-allowed opacity-40',
-            )}
-          >
-            {item.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-export { Tabs }
-export type { TabsProps, TabItem }
+export { Tabs, TabsList, TabsTrigger, TabsContent };
