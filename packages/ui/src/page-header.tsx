@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - PageHeader: unified page-level header with breadcrumbs, title, supporting text, and actions
+    - PageHeader: unified page-level header (shadcn style)
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -31,8 +31,10 @@ export interface BreadcrumbItem {
 export interface PageHeaderProps {
   /** Page title */
   title: string
-  /** Optional supporting text below the title */
+  /** Optional supporting text below the title (alias: description) */
   supportingText?: string
+  /** Optional description text (Lovable compat) */
+  description?: string
   /** Action buttons rendered on the right */
   actions?: React.ReactNode
   /** Breadcrumb trail */
@@ -41,51 +43,45 @@ export interface PageHeaderProps {
 }
 
 /**
- * PageHeader — unified page-level header.
+ * PageHeader — unified page-level header (shadcn style).
  *
- * Provides a consistent layout for breadcrumbs, title, supporting text,
- * and action buttons across all ERP and Portal pages.
- *
- * @example
- *   <PageHeader
- *     title="Members Directory"
- *     supportingText="View and manage all club members"
- *     breadcrumb={[{ label: 'Members', href: '/club/members' }, { label: 'Directory' }]}
- *     actions={<Button>Add Member</Button>}
- *   />
+ * API rétrocompatible : accepte `supportingText` (ancien) et `description`
+ * (Lovable). Affiche le breadcrumb, le titre, le texte secondaire et les actions.
  */
-function PageHeader({ title, supportingText, actions, breadcrumb, className }: PageHeaderProps) {
+function PageHeader({ title, supportingText, description, actions, breadcrumb, className }: PageHeaderProps) {
+  const desc = supportingText ?? description
+
   return (
-    <div className={cn('mb-6', className)}>
+    <div className={cn('mb-6 border-b pb-5', className)}>
       {breadcrumb && breadcrumb.length > 0 && (
-        <nav aria-label="Breadcrumb" className="mb-1 flex items-center gap-1 text-xs text-on-surface-variant">
+        <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           {breadcrumb.map((item, i) => (
             <React.Fragment key={i}>
-              {i > 0 && <span aria-hidden="true" className="select-none">/</span>}
+              {i > 0 && <span aria-hidden="true" className="select-none text-muted-foreground/50">/</span>}
               {item.href || item.onClick ? (
                 <a
                   href={item.href}
                   onClick={item.onClick ? (e) => { e.preventDefault(); item.onClick?.() } : undefined}
-                  className="cursor-pointer transition-colors hover:text-on-surface"
+                  className="cursor-pointer transition-colors hover:text-foreground"
                 >
                   {item.label}
                 </a>
               ) : (
-                <span className="text-on-surface">{item.label}</span>
+                <span className="text-foreground">{item.label}</span>
               )}
             </React.Fragment>
           ))}
         </nav>
       )}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-on-surface">{title}</h1>
-          {supportingText && (
-            <p className="mt-0.5 text-sm text-on-surface-variant">{supportingText}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+          {desc && (
+            <p className="mt-1 text-sm text-muted-foreground">{desc}</p>
           )}
         </div>
         {actions && (
-          <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
         )}
       </div>
     </div>

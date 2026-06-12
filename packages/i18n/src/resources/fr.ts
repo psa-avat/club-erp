@@ -275,6 +275,14 @@ export const fr = {
     home: {
       title: 'Dashboard',
       description: "Vue d'ensemble du club avec indicateurs clefs, notifications et recherche transverse.",
+      kpi: {
+        pendingRevenue: 'Chiffre à facturer',
+        pendingRevenueHint: 'Vols en attente de facturation',
+        unbilledFlights: 'Vols non facturés',
+        unbilledFlightsHint: "Jours d'arriéré",
+        flightsToday: 'Vols du jour',
+        availableAircraft: 'Appareils disponibles',
+      },
     },
   },
   members: {

@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - Shared UI: intra-page section header with title, supporting text, optional action
+    - Shared UI: intra-page section header (shadcn style)
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@
 
 import * as React from 'react'
 
-import { cn } from '../../lib/utils'
+import { cn } from '@/lib/utils'
 
 interface SectionHeaderProps {
   title: string
@@ -33,9 +33,9 @@ function SectionHeader({ title, supportingText, action, className }: SectionHead
   return (
     <div className={cn('mb-3 flex items-start justify-between gap-4', className)}>
       <div>
-        <h2 className="text-base font-semibold text-on-surface">{title}</h2>
+        <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
         {supportingText && (
-          <p className="mt-0.5 text-sm text-on-surface-variant">{supportingText}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{supportingText}</p>
         )}
       </div>
       {action && <div className="shrink-0">{action}</div>}

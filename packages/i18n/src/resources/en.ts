@@ -275,6 +275,14 @@ export const en = {
     home: {
       title: 'Dashboard',
       description: 'Club overview with key indicators, notifications and cross-module search.',
+      kpi: {
+        pendingRevenue: 'Pending Revenue',
+        pendingRevenueHint: 'Flights awaiting billing',
+        unbilledFlights: 'Unbilled Flights',
+        unbilledFlightsHint: 'Days backlog',
+        flightsToday: "Today's Flights",
+        availableAircraft: 'Aircraft Available',
+      },
     },
   },
   members: {
