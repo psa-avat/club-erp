@@ -53,6 +53,16 @@ UI maison `@club-erp/ui`) vers le design d'une maquette générée par Lovable
 - **Le portail membre** utilise le path `/member-portal/*` côté club-erp, alors que
   Lovable utilise `/portal/*`. La migration traduit les routes Lovable mais conserve
   le chemin `/member-portal/*` existant (inchangé).
+- **Architecture Workspace + Tabs** : chaque groupe métier de la sidebar correspond
+  à une **page unique** avec des **tabs de sous-navigation** (shadcn `Tabs`), plutôt
+  qu'une route dédiée par sous-tâche. Les actions CRUD (création, édition) utilisent
+  des **Modals/Drawers** (shadcn `Dialog`, `Sheet`, `Drawer`) au lieu de pages séparées.
+  Les sous-vues complexes (ex: Journal Banque, Saisie d'écriture) conservent leur propre
+  route si leur contenu ne peut pas tenir dans un modal.
+  - L'état des tabs est persistant via l'URL (`?tab=xxx`) pour permettre les liens directs
+    et le partage.
+  - Ce pattern réduit le nombre de routes de ~80 à ~10, améliore la conservation de l'état
+    et la navigation responsive.
 
 ---
 
@@ -356,52 +366,124 @@ shadcn autour de Recharts. Il peut être adopté pour les graphiques dans :
 ---
 
 **Livrable Étape 2 :** composants transverses migrés et utilisés au moins sur
-le dashboard principal (préparation Étape 3.1).
+le dashboard principal (préparation Étape 3).
 
 ---
 
-## Étape 3 — Migration des pages, module par module
+## Étape 2.5 — Composant WorkspaceShell (layout à tabs)
 
-**Méthode pour chaque page** :
+**Prérequis** : shadcn `Tabs`, `PageHeader`, `KpiCard`, `DataTable`, `FilterBar`, `SearchableSelect`.
+
+### Architecture
+
+Chaque groupe métier de la sidebar devient une **page unique** avec un layout
+commun `WorkspaceShell` qui intègre :
+
+```
+┌─ PageHeader (titre, description, actions globales) ────────────────────┐
+├─ Tabs de navigation ──────────────────────────────────────────────────┤
+│  [Tab 1] [Tab 2] [Tab 3] [Tab 4]                                      │
+├─ Contenu du tab actif ────────────────────────────────────────────────┤
+│  • Liste (DataTable + FilterBar + SearchableSelect)                    │
+│  • Actions CRUD via Dialog/Sheet/Drawer (pas de route dédiée)          │
+│  • Métriques KpiCard en haut du tab si pertinent                       │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Règles d'implémentation
+
+1. **Un composable `useActiveTab`** (Zustand ou URL search params) :
+   - Lit/écrit `?tab=xxx` dans l'URL via `useSearchParams()`
+   - Défaut au premier tab si aucun paramètre
+   - Permet les liens directs : `/banque?tab=journal`
+
+2. **Le WorkspaceShell** reçoit en props :
+   ```tsx
+   interface WorkspaceShellProps {
+     title: string
+     description?: string
+     actions?: ReactNode          // boutons globaux (ex: Nouveau, Exporter)
+     tabs: Array<{
+       value: string              // identifiant du tab (ex: "vols")
+       label: string              // libellé affiché (ex: "Vols")
+       icon?: LucideIcon
+       content: ReactNode
+     }>
+   }
+   ```
+
+3. **Actions CRUD** :
+   - **Création / Édition rapide** → `Dialog` (shadcn) pour les formulaires < 10 champs
+   - **Création / Édition complexe** → `Sheet` (shadcn, drawer latéral) pour les formulaires longs
+   - **Confirmation destructive** → `AlertDialog` (shadcn)
+   - **Détail en lecture seule** → `Dialog` ou inline expand sur la DataTable
+
+4. **Données** :
+   - Chaque tab utilise ses propres queryKeys TanStack Query
+   - Le cache est conservé quand on change de tab (TanStack Query `gcTime` par défaut)
+   - Le Data fetching est déclenché au montage du tab (`enabled: tab === 'xxx'`)
+
+### Fichier cible
+
+Créer `frontend/src/components/ui/workspace-shell.tsx` :
+```tsx
+// WorkspaceShell — layout à tabs pour les pages workspace
+// Props: title, description?, actions?, tabs[]
+// URL: ?tab=<value> pour la persistance et les liens directs
+```
+
+---
+
+**Livrable Étape 2.5 :** composant `WorkspaceShell` disponible, prêt à être
+utilisé par les workspaces de l'Étape 3.
+
+---
+
+## Étape 3 — Migration des workspaces (un workspace = une page = des tabs)
+
+**Méthode pour chaque workspace** :
 1. Ouvrir la page Lovable correspondante (`ask-create-glow/src/routes/*.tsx`)
-   et la page existante (`club-erp/frontend/src/modules/.../components/*.tsx`).
-2. Identifier dans la version existante : hooks de données (React Query),
+   et les pages existantes du module (`club-erp/frontend/src/modules/.../components/*.tsx`).
+2. Identifier dans la version existante : hooks de données (TanStack Query),
    store Zustand, handlers d'action, validations, i18n, routes/liens internes,
    composants `@club-erp/ui` utilisés.
-3. Reconstruire le JSX en suivant la structure visuelle/layout Lovable
-   (grilles, cards, espacements, composants shadcn), en réinjectant les
-   données et handlers réels de la version existante.
-4. Remplacer les composants `@club-erp/ui` par leur équivalent shadcn
-   **uniquement si un équivalent existe et couvre le besoin** (Button, Card,
-   Tabs, Dialog, Input, Label, Badge, Select...). Garder DataTable,
-   FilterBar, StickyActionBar, SearchableSelect, EmptyState,
-   ConfirmationDialog, SegmentedButton, ListItem tels quels (juste restylés
-   si besoin via classes Tailwind/tokens).
-5. Ne pas adopter **react-hook-form + zod** de Lovable — conserver le système
-   de formulaire existant. Les formulaires Lovable ne servent que de référence
-   visuelle (layout des champs, grilles, spacing).
-6. Vérifier i18n : tout texte en dur dans le JSX Lovable doit passer par
-   `useTranslation()` / clés existantes dans `@club-erp/i18n` (ajouter les
-   clés manquantes).
-7. Tester la page : rendu, responsive, actions fonctionnelles inchangées.
+3. **Regrouper les pages** du module en tabs logiques. Exemple :
+   - `/flights` + `/flights/billing` + `/banque/packs` → tabs `vols`, `facturation`, `packs`
+   - `/club/members/core` + `/club/commissions` + `/club/sheets` → tabs `annuaire`, `commissions`, `fiches`
+4. **Créer le Workspace** :
+   - Une route unique (ex: `/workspace/flights`) au lieu de 4 routes
+   - `<WorkspaceShell>` + `<PageHeader>` en haut
+   - Chaque tab contient le contenu de l'écran correspondant
+   - Les actions CRUD (création/édition) utilisent `Dialog`/`Sheet` au lieu de `Navigate`
+5. **Remplacer les composants `@club-erp/ui`** par leur équivalent shadcn
+   **uniquement si un équivalent existe** (Button, Card, Tabs, Dialog, Input, Label,...).
+   Garder DataTable, FilterBar, StickyActionBar, SearchableSelect, EmptyState,
+   ConfirmationDialog, SegmentedButton, ListItem.
+6. **Ne pas adopter react-hook-form/zod** — conserver le système de formulaire existant.
+7. **Vérifier i18n** : tout texte en dur dans le JSX Lovable → `useTranslation()`.
+8. **Tester** : rendu, responsive, changement de tabs, CRUD, navigation, liens directs `?tab=`
 
-**Ordre de traitement** (du plus simple au plus complexe) :
+**Cas particuliers** (conserver une route dédiée) :
+- **Saisie d'écriture** (`/banque/journal/entry/:entryUuid`) — éditeur complexe, conserve sa route
+- **Édition de version de tarifs** (`/banque/pricing/versions/:fy/:ve/edit`) — workflow wizard
+- **Formulaire membre** (`/club/members/:uuid/edit`) — formulaire long (> 20 champs), peut être Sheet
+- **Workspace membre** (`/club/members/:uuid/workspace`) — page complexe avec sous-sections, conserve sa route
 
-| # | Module / pages existantes | Page(s) Lovable de référence | Notes |
-|---|---|---|---|
-| # | Priorité métier | Module / pages existantes | Page(s) Lovable de référence | Notes |
-|---|---|---|---|---|
-| 3.1 | #1 Facturation | `modules/dashboard/components/DashboardPage.tsx` *(fait)* | `routes/index.tsx` (DailyOps) | Pilote : déjà migré |
-| 3.2 | #1 Facturation | `modules/flights/components/FlightsPage.tsx`, `modules/discovery/*` | `routes/discovery.tsx` | Vols + packs + récupération Planche |
-| 3.3 | #2 VI | `modules/vi/components/*`, `modules/helloasso/components/*` (achats, import VI) | `routes/assets.tsx` (partiel), `routes/integrations.tsx` (partiel) | VI + HelloAsso groupé |
-| 3.4 | #3 Planning | `modules/planning/components/PlanningPage.tsx` | `routes/planning.tsx` | |
-| 3.5 | #4 Membres | `modules/members/components/MembersListPage.tsx`, `MemberFormPage.tsx`, `MemberWorkspaceShell.tsx`, `MemberPilotSheetPage.tsx`, `CommitteesManagementPage.tsx`, `MemberSheetsPage.tsx` | `routes/members.tsx` | Plusieurs écrans à dériver d'une seule page Lovable |
-| 3.6 | #5 Portail | `modules/member-portal/pages/*` (Dashboard, Flights, Account, Expenses, Logbook, Workspace) + `PortalShell.tsx` | `routes/portal.tsx`, `portal.index.tsx`, `portal.account.tsx`, `portal.availability.tsx`, `portal.logbook.tsx`, `portal.packs.tsx` | Attention au path : `/member-portal/*` vs `/portal/*` |
-| 3.7 | #6-7 Ventes & Achats | `modules/banque/components/MemberBulkBillingPage.tsx`, `SupplierInvoicePage.tsx`, `BanqueDailyOpsPage.tsx` | `routes/sales.tsx` | Ventes membres + factures fournisseurs |
-| 3.8 | #8,10,13 Banque & Compta | `modules/banque/components/*` (25+ écrans : dashboard, journal, journal entry workspace, templates, COA, PCG, fiscal years, pricing, reports, reconciliation, settings) | `routes/finance.tsx`, `routes/pricing.tsx`, `routes/reporting.tsx` | **Lot le plus lourd** — découper en sous-lots (3.8a journal, 3.8b pricing, 3.8c reports) |
-| 3.9 | #11-12 Machines & Tarifs | `modules/assets/components/*` (Assets*, AssetTypes, AssetPricing) | `routes/assets.tsx` | |
-| 3.10 | #9 RH | `modules/rh/*` (nouveau module à créer) | Aucune page Lovable | Placeholder pour l'instant |
-| 3.11 | #14 Admin | `modules/admin/components/AdminPage.tsx`, `modules/storage/components/StorageSettingsPage.tsx`, configurations | `routes/administration.tsx` | Intégrations techniques (Planche push, Gesasso, OSRT) incluses |
+**Ordre de traitement** (par priorité métier, un workspace = une PR) :
+
+| # | Priorité | Workspace | Routes actuelles → Tabs | Pages Lovable | Actions CRUD |
+|---|----------|-----------|-------------------------|---------------|--------------|
+| **3.Pilote** | — | Dashboard *(fait)* | `/dashboard` | `routes/index.tsx` | — |
+| **3.1** | #1 **Facturation & Vols** | `/workspace/flights` | Vols → tab `vols`<br/>Facturation → tab `facturation`<br/>Packs → tab `packs`<br/>Sync Planche → tab `sync` | `routes/discovery.tsx`, `routes/assets.tsx` | Dialog nouveau vol<br/>Dialog création pack |
+| **3.2** | #2 **VI & HelloAsso** | `/workspace/vi` | VI droits → tab `droits`<br/>VI types → tab `types`<br/>VI planning → tab `planning`<br/>HelloAsso achats → tab `achats`<br/>Import VI → tab `import`<br/>Sync VI → tab `sync` | `routes/assets.tsx` (partiel) | Dialog nouveau type VI<br/>Sheet import HelloAsso |
+| **3.3** | #3 **Planning** | `/planning` *(page simple)* | Planning → vue calendrier unique | `routes/planning.tsx` | Dialog création événement |
+| **3.4** | #4 **Membres** | `/workspace/members` | Annuaire → tab `annuaire`<br/>Commissions → tab `commissions`<br/>Fiches → tab `fiches`<br/>Réinscription → tab `reinscription` | `routes/members.tsx` | Sheet édition membre<br/>Dialog commission |
+| **3.5** | #5 **Portail** | `/member-portal/*` *(shell séparé)* | Dashboard, Logbook, Compte, Packs, Disponibilités | `routes/portal*.tsx` | Dialog achat pack<br/>Sheet déclaration vol |
+| **3.6** | #6-7 **Ventes & Achats** | `/workspace/sales` | Ventes → tab `ventes`<br/>Factures fournisseurs → tab `fournisseurs` | `routes/sales.tsx` | Dialog nouvelle vente<br/>Sheet facture fournisseur |
+| **3.7** | #8,10,13 **Banque & Compta** | `/workspace/banque` | Aperçu → tab `apercu`<br/>Opérations → tab `operations`<br/>Journal → tab `journal`<br/>Exercices → tab `exercices`<br/>PCG → tab `pcg`<br/>Rapports → tab `rapports`<br/>Rapprochement → tab `rapprochement`<br/>Paramètres → tab `parametres` | `routes/finance.tsx`, `routes/pricing.tsx`, `routes/reporting.tsx` | **Conserve routes dédiées** :<br/>`/banque/journal/entry/:uuid`<br/>`/banque/pricing/versions/:fy/:ve/edit` |
+| **3.8** | #11-12 **Machines & Tarifs** | `/workspace/machines` | Équipements → tab `equipements`<br/>Types → tab `types`<br/>Tarifs machine → tab `tarifs` | `routes/assets.tsx` | Dialog nouvel équipement<br/>Sheet édition tarif |
+| **3.9** | #9 **RH** | `/workspace/rh` | Planning congés → tab `congés`<br/>Présences → tab `presences` | Aucune (création ad hoc) | — |
+| **3.10** | #14 **Admin** | `/admin` *(page unique)* | Admin, Audit, Configs HelloAsso/Planche/Stockage/Banque | `routes/administration.tsx` | Dialog configuration |
 
 ---
 
@@ -454,3 +536,19 @@ le dashboard principal (préparation Étape 3.1).
 - Attention à la différence de version TypeScript (~6.0 vs ~5.8) — des erreurs de
   type peuvent survenir sur les packages Radix. Les signaler sans bloquer la
   migration (solution : `// @ts-expect-error` ou déclaration de types).
+- **Architecture Workspace + Tabs** : chaque workspace remplace plusieurs routes
+  par une page unique avec des tabs. Ne pas créer de nouvelle route pour une
+  sous-vue si elle peut tenir dans un `Dialog`/`Sheet`.
+- **State des tabs** : utiliser `useSearchParams()` de `react-router-dom` pour
+  persister le tab actif dans l'URL (`?tab=xxx`). Fournir un fallback au premier tab.
+- **Data fetching par tab** : utiliser TanStack Query avec `enabled: tab === 'xxx'`
+  pour ne charger les données que quand le tab est actif. Chaque tab a ses propres
+  queryKeys (`[workspace, tab, params]`).
+- **Conservation de l'état** : TanStack Query conserve le cache des tabs précédents
+  via `gcTime` (par défaut 5 min). Aucun store Zustand supplémentaire nécessaire
+  pour le state des données.
+- **Actions CRUD** : privilégier `Dialog` (formulaire simple), `Sheet` (formulaire
+  long) ou `AlertDialog` (confirmation destructive). N'ouvrir une route dédiée que
+  si le formulaire dépasse 20 champs ou nécessite un workflow multi-étapes.
+- **Liens directs** : un workspace est accessible via `/workspace/xxx?tab=yyy`.
+  Valider que tous les tabs sont accessibles par URL directe.
