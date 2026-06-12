@@ -389,15 +389,19 @@ le dashboard principal (préparation Étape 3.1).
 
 | # | Module / pages existantes | Page(s) Lovable de référence | Notes |
 |---|---|---|---|
-| 3.1 | `modules/dashboard/components/DashboardPage.tsx` | `routes/index.tsx` (DailyOps) | Pilote : peu de logique, beaucoup de KPI/charts. Lovable affiche 4 KPI cards + actions — challenger contre les vrais indicateurs du dashboard |
-| 3.2 | `modules/members/components/MembersListPage.tsx`, `MemberFormPage.tsx`, `MemberWorkspaceShell.tsx`, `MemberPilotSheetPage.tsx`, `CommitteesManagementPage.tsx`, `MemberSheetsPage.tsx` | `routes/members.tsx` | Plusieurs écrans à dériver d'une seule page Lovable — challenger fortement le contenu (Lovable est un tableau + stats très générique) |
-| 3.3 | `modules/planning/components/PlanningPage.tsx` | `routes/planning.tsx` | Vérifier si la page Lovable apporte une structure calendrier exploitable |
-| 3.4 | `modules/assets/components/*` (Assets*, AssetTypes, AssetPricing) + `modules/vi/components/*` | `routes/assets.tsx` | Page Lovable unique à décliner en plusieurs écrans (liste, détail, types, pricing, VI) |
-| 3.5 | `modules/flights/components/FlightsPage.tsx`, `modules/discovery/components/*` (si existant) | `routes/discovery.tsx` (Vols d'initiation) + `routes/assets.tsx` (utilisation appareils) | Lovable a une page dédiée `discovery.tsx` pour les "Vols d'initiation". Si `modules/discovery` n'existe pas, utiliser uniquement le style de layout (cartes, timeline). Pour les vols classiques, design ad hoc depuis `assets.tsx` / `planning.tsx` |
-| 3.6 | `modules/banque/components/*` (25+ écrans : dashboard, journal, journal entry workspace, templates, COA, PCG, fiscal years, pricing, pricing version edit, reports, daily ops, member bulk billing, supplier invoice, pack definitions) | `routes/finance.tsx`, `routes/sales.tsx`, `routes/pricing.tsx`, `routes/reporting.tsx` | **Lot le plus lourd** — découper en sous-lots par sous-module (ex: 3.6a journal, 3.6b pricing, 3.6c reports, 3.6d daily-ops/billing). Les pages Lovable sont des dashboards génériques : décomposer leur structure visuelle en plusieurs écrans réels, ne pas chercher une correspondance 1:1 |
-| 3.7 | `modules/member-portal/pages/*` (Dashboard, Flights, Account, Expenses, Logbook, Workspace) + `PortalShell.tsx` | `routes/portal.tsx`, `portal.index.tsx`, `portal.account.tsx`, `portal.availability.tsx`, `portal.logbook.tsx`, `portal.packs.tsx` | Portail séparé, son propre shell. **Attention au path** : Lovable utilise `/portal/*`, club-erp utilise `/member-portal/*`. Traduire les liens mais conserver `/member-portal/*`. Challenger le layout `PortalShell` avec celui de `routes/portal.tsx` |
-| 3.8 | `modules/planche/components/*`, `modules/helloasso/components/*` | `routes/integrations.tsx` | Pages très spécifiques métier — Lovable est générique, s'en inspirer pour le style de cards/listes uniquement |
-| 3.9 | `modules/admin/components/AdminPage.tsx`, `modules/storage/components/StorageSettingsPage.tsx` | `routes/administration.tsx` | |
+| # | Priorité métier | Module / pages existantes | Page(s) Lovable de référence | Notes |
+|---|---|---|---|---|
+| 3.1 | #1 Facturation | `modules/dashboard/components/DashboardPage.tsx` *(fait)* | `routes/index.tsx` (DailyOps) | Pilote : déjà migré |
+| 3.2 | #1 Facturation | `modules/flights/components/FlightsPage.tsx`, `modules/discovery/*` | `routes/discovery.tsx` | Vols + packs + récupération Planche |
+| 3.3 | #2 VI | `modules/vi/components/*`, `modules/helloasso/components/*` (achats, import VI) | `routes/assets.tsx` (partiel), `routes/integrations.tsx` (partiel) | VI + HelloAsso groupé |
+| 3.4 | #3 Planning | `modules/planning/components/PlanningPage.tsx` | `routes/planning.tsx` | |
+| 3.5 | #4 Membres | `modules/members/components/MembersListPage.tsx`, `MemberFormPage.tsx`, `MemberWorkspaceShell.tsx`, `MemberPilotSheetPage.tsx`, `CommitteesManagementPage.tsx`, `MemberSheetsPage.tsx` | `routes/members.tsx` | Plusieurs écrans à dériver d'une seule page Lovable |
+| 3.6 | #5 Portail | `modules/member-portal/pages/*` (Dashboard, Flights, Account, Expenses, Logbook, Workspace) + `PortalShell.tsx` | `routes/portal.tsx`, `portal.index.tsx`, `portal.account.tsx`, `portal.availability.tsx`, `portal.logbook.tsx`, `portal.packs.tsx` | Attention au path : `/member-portal/*` vs `/portal/*` |
+| 3.7 | #6-7 Ventes & Achats | `modules/banque/components/MemberBulkBillingPage.tsx`, `SupplierInvoicePage.tsx`, `BanqueDailyOpsPage.tsx` | `routes/sales.tsx` | Ventes membres + factures fournisseurs |
+| 3.8 | #8,10,13 Banque & Compta | `modules/banque/components/*` (25+ écrans : dashboard, journal, journal entry workspace, templates, COA, PCG, fiscal years, pricing, reports, reconciliation, settings) | `routes/finance.tsx`, `routes/pricing.tsx`, `routes/reporting.tsx` | **Lot le plus lourd** — découper en sous-lots (3.8a journal, 3.8b pricing, 3.8c reports) |
+| 3.9 | #11-12 Machines & Tarifs | `modules/assets/components/*` (Assets*, AssetTypes, AssetPricing) | `routes/assets.tsx` | |
+| 3.10 | #9 RH | `modules/rh/*` (nouveau module à créer) | Aucune page Lovable | Placeholder pour l'instant |
+| 3.11 | #14 Admin | `modules/admin/components/AdminPage.tsx`, `modules/storage/components/StorageSettingsPage.tsx`, configurations | `routes/administration.tsx` | Intégrations techniques (Planche push, Gesasso, OSRT) incluses |
 
 ---
 

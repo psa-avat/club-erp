@@ -38,14 +38,15 @@ export const en = {
       },
     },
     nav: {
-      // Business groups (workflow)
-      dailyOps: 'Daily Operations',
+      // Business groups (workflow) — ordered by usage frequency
+      billingFlights: 'Billing & Flights',
+      viHelloasso: 'VI & HelloAsso',
       members: 'Members 360',
-      finance: 'Finance',
-      assets: 'Fleet',
-      salesSuppliers: 'Sales & Suppliers',
+      salesSuppliers: 'Sales & Purchases',
+      bankingAccounting: 'Bank & Accounting',
+      machinesTarifs: 'Machines & Pricing',
+      rh: 'HR',
       integrations: 'Integrations',
-      reporting: 'Reporting & Budgets',
       administration: 'Administration',
 
       // Dashboard
@@ -84,15 +85,20 @@ export const en = {
       memberSales: 'Member sales',
       supplierInvoices: 'Supplier invoices',
 
-      // Integrations
+      // VI & HelloAsso
+      viEntitlements: 'VI Rights',
+      viTypes: 'VI Types',
+      viPlanning: 'VI Planning',
       helloasso: 'HelloAsso',
       helloassoPurchases: 'Purchases',
       helloassoViImport: 'VI import',
+      plancheViSync: 'VI sync',
+      plancheFlightsFetch: 'Fetch flights',
+
+      // Integrations (technical settings)
       planche: 'Planche',
       plancheMembersPush: 'Members push',
       plancheMachinesPush: 'Machines push',
-      plancheViSync: 'VI sync',
-      plancheFlightsFetch: 'Fetch flights',
       gesassoSync: 'Gesasso',
       osrtSync: 'OSRT',
 

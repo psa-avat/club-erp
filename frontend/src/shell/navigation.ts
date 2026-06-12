@@ -7,47 +7,62 @@ export type ShellNavItem = {
 }
 
 /**
- * Navigation structure regroupant les 14 modules techniques en 9 espaces
- * orientés workflow. Chaque entrée peut être filtrée dynamiquement par
- * requiredCapability — la Sidebar.tsx ne montre que les entrées dont
- * le user.capabilities inclut la capability requise.
+ * Navigation structure ordonnée par fréquence d'usage métier
+ * (déclarée par les utilisateurs — voir docs/PROMPT_MIGRATION_DESIGN.md).
  *
- * Groupes :
- *   Dashboard         → tableau de bord
- *   Daily Operations  → cockpit des vols, planning, alertes
- *   Members 360       → annuaire, workspace, commissions, fiches
- *   Finance           → banque, journal, exercices, PCG, tarifs, rapports
- *   Assets & Pricing  → flotte, types, tarifs machine, packs definitions (packs = pricing)
- *   Sales & Suppliers → ventes membres, factures fournisseurs
- *   Integrations      → Planche, HelloAsso, Gesasso, OSRT
- *   Reporting         → KPIs, budgets, rapports financiers
- *   Administration    → utilisateurs, paramètres, audit
+ * Fréquence décroissante :
+ *   1. Facturation des vols (Packs, Gesasso, OSRT)
+ *   2. Gestion des VI (HelloAsso)
+ *   3. Planning activité
+ *   4. Gestion des membres (adhésions)
+ *   5. Portail membres (logbooks / balance / dépenses)
+ *   6. Ventes
+ *   7. Achats
+ *   8. Banque / écritures récurrentes
+ *   9. RH (planning / congés)
+ *  10. Compta (états / écritures)
+ *  11. Machines (gestion de la dispo)
+ *  12. Gestion des tarifs
+ *  13. Bilans
+ *  14. Admin / Configurations
  *
- * Note : L'ancienne page /banque/operations (daily ops) est éclatée :
- *   - les vols → Daily Operations / Flights
- *   - les ventes → Sales & Suppliers
- *   - les packs → Assets & Pricing
- *   - les fournisseurs → Sales & Suppliers
+ * Chaque entrée peut être filtrée dynamiquement par requiredCapability.
  */
 export const shellNavItems: ShellNavItem[] = [
-  // ── Tableau de bord ───────────────────────────────────────────────────────
+  // ── 0. Tableau de bord ────────────────────────────────────────────────────
   { to: '/dashboard', labelKey: 'nav.dashboard' },
 
-  // ── Daily Operations (Cockpit des vols) ───────────────────────────────────
+  // ── 1. Facturation & Vols (priorité #1) ───────────────────────────────────
   {
     to: '/flights',
-    labelKey: 'nav.dailyOps',
+    labelKey: 'nav.billingFlights',
     requiredCapability: 'EDIT_FLIGHTS',
     children: [
       { to: '/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
       { to: '/flights/billing', labelKey: 'nav.flightsBilling', requiredCapability: 'VIEW_FINANCIALS' },
       { to: '/banque/packs', labelKey: 'nav.packs', requiredCapability: 'MANAGE_PRICES' },
-      { to: '/planning', labelKey: 'nav.planning', requiredCapability: 'EDIT_FLIGHTS' },
-      { to: '/daily-ops/alerts', labelKey: 'nav.alerts', requiredCapability: 'EDIT_FLIGHTS' },
+      { to: '/planche/flights-fetch', labelKey: 'nav.plancheFlightsFetch', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
 
-  // ── Members 360 ───────────────────────────────────────────────────────────
+  // ── 2. VI & HelloAsso (priorité #2) ───────────────────────────────────────
+  {
+    to: '/vi',
+    labelKey: 'nav.viHelloasso',
+    children: [
+      { to: '/vi/entitlements', labelKey: 'nav.viEntitlements' },
+      { to: '/vi/types', labelKey: 'nav.viTypes' },
+      { to: '/vi/planning', labelKey: 'nav.viPlanning' },
+      { to: '/helloasso/purchases', labelKey: 'nav.helloassoPurchases', requiredCapability: 'HELLOASSO' },
+      { to: '/helloasso/vi-import', labelKey: 'nav.helloassoViImport', requiredCapability: 'HELLOASSO' },
+      { to: '/planche/vi-sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
+    ],
+  },
+
+  // ── 3. Planning (priorité #3) ──────────────────────────────────────────────
+  { to: '/planning', labelKey: 'nav.planning' },
+
+  // ── 4. Membres (priorité #4) ──────────────────────────────────────────────
   {
     to: '/club/members',
     labelKey: 'nav.members',
@@ -60,37 +75,7 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── Finance ───────────────────────────────────────────────────────────────
-  {
-    to: '/banque',
-    labelKey: 'nav.finance',
-    requiredCapability: 'VIEW_FINANCIALS',
-    children: [
-      { to: '/banque', labelKey: 'nav.banqueOverview' },
-      { to: '/banque/operations', labelKey: 'nav.banqueOps' },
-      { to: '/banque/journal', labelKey: 'nav.banqueJournal' },
-      { to: '/banque/fiscal-years', labelKey: 'nav.banqueFiscalYears' },
-      { to: '/banque/pcg', labelKey: 'nav.banquePcg' },
-      { to: '/banque/pricing', labelKey: 'nav.banquePricing' },
-      { to: '/banque/reports', labelKey: 'nav.banqueReports' },
-      { to: '/banque/reconciliation', labelKey: 'nav.banqueReconciliation' },
-      { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
-    ],
-  },
-
-  // ── Assets (Flotte) ───────────────────────────────────────────────────────
-  {
-    to: '/assets',
-    labelKey: 'nav.assets',
-    requiredCapability: 'MANAGE_ASSETS',
-    children: [
-      { to: '/assets', labelKey: 'nav.equipment', requiredCapability: 'MANAGE_ASSETS' },
-      { to: '/assets/types', labelKey: 'nav.assetTypes', requiredCapability: 'MANAGE_ASSETS' },
-      { to: '/assets/types', labelKey: 'nav.assetPricing', requiredCapability: 'MANAGE_PRICES' },
-    ],
-  },
-
-  // ── Sales & Suppliers ─────────────────────────────────────────────────────
+  // ── 5. Ventes & Achats (priorités #6, #7) ─────────────────────────────────
   {
     to: '/banque/operations',
     labelKey: 'nav.salesSuppliers',
@@ -101,26 +86,51 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── Integrations ──────────────────────────────────────────────────────────
+  // ── 6. Banque & Compta (priorités #8, #10, #13) ────────────────────────────
+  {
+    to: '/banque',
+    labelKey: 'nav.bankingAccounting',
+    requiredCapability: 'VIEW_FINANCIALS',
+    children: [
+      { to: '/banque', labelKey: 'nav.banqueOverview' },
+      { to: '/banque/operations', labelKey: 'nav.banqueOps' },
+      { to: '/banque/journal', labelKey: 'nav.banqueJournal' },
+      { to: '/banque/fiscal-years', labelKey: 'nav.banqueFiscalYears' },
+      { to: '/banque/pcg', labelKey: 'nav.banquePcg' },
+      { to: '/banque/reports', labelKey: 'nav.banqueReports' },
+      { to: '/banque/reconciliation', labelKey: 'nav.banqueReconciliation' },
+      { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+    ],
+  },
+
+  // ── 7. Machines & Tarifs (priorités #11, #12) ──────────────────────────────
+  {
+    to: '/assets',
+    labelKey: 'nav.machinesTarifs',
+    requiredCapability: 'MANAGE_ASSETS',
+    children: [
+      { to: '/assets', labelKey: 'nav.equipment', requiredCapability: 'MANAGE_ASSETS' },
+      { to: '/assets/types', labelKey: 'nav.assetTypes', requiredCapability: 'MANAGE_ASSETS' },
+      { to: '/assets/types', labelKey: 'nav.assetPricing', requiredCapability: 'MANAGE_PRICES' },
+    ],
+  },
+
+  // ── 8. RH (priorité #9, placeholder) ──────────────────────────────────────
+  { to: '/rh', labelKey: 'nav.rh' },
+
+  // ── 9. Intégrations techniques (Planche push, Gesasso, OSRT) ──────────────
   {
     to: '/planche',
     labelKey: 'nav.integrations',
     children: [
       { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_PLANCHE' },
       { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_PLANCHE' },
-      { to: '/planche/vi-sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
-      { to: '/planche/flights-fetch', labelKey: 'nav.plancheFlightsFetch', requiredCapability: 'MANAGE_PLANCHE' },
-      { to: '/helloasso/purchases', labelKey: 'nav.helloassoPurchases', requiredCapability: 'HELLOASSO' },
-      { to: '/helloasso/vi-import', labelKey: 'nav.helloassoViImport', requiredCapability: 'HELLOASSO' },
       { to: '/integrations/gesasso', labelKey: 'nav.gesassoSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/integrations/osrt', labelKey: 'nav.osrtSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 
-  // ── Reporting (Budgets) ───────────────────────────────────────────────────
-  { to: '/banque/reports', labelKey: 'nav.reporting', requiredCapability: 'VIEW_FINANCIALS' },
-
-  // ── Administration ────────────────────────────────────────────────────────
+  // ── 10. Administration (priorité #14) ─────────────────────────────────────
   {
     to: '/admin',
     labelKey: 'nav.administration',
