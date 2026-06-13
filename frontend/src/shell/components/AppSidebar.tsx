@@ -18,6 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -49,6 +50,7 @@ import {
   BookOpen,
   Repeat,
   CalendarDays,
+  ChevronRight,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -57,12 +59,16 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useAuthStore } from "@/auth/store/authStore";
 import { shellNavItems, type ShellNavItem } from "@/shell/navigation";
 
@@ -75,13 +81,17 @@ const sectionIcons: Record<string, LucideIcon> = {
   '/workspace/vi': Ticket,
   '/vi': Ticket,
   '/planning': Calendar,
+  '/workspace/members': Users,
   '/club/members': Users,
   '/workspace/finance': Wallet,
+  '/workspace/sales': Receipt,
+  '/workspace/banque': Wallet,
   '/banque/operations': ShoppingCart,
   '/workspace/purchases': ShoppingBag,
   '/workspace/rh': Clock,
   '/workspace/accounting': FileText,
   '/banque': Wallet,
+  '/workspace/machines': Wrench,
   '/assets': Wrench,
   '/pricing': Tags,
   '/banque/reports': BarChart3,
@@ -146,11 +156,15 @@ const childIcons: Record<string, LucideIcon> = {
 }
 
 function getSectionIcon(to: string): LucideIcon {
-  return sectionIcons[to] ?? LayoutDashboard
+  return sectionIcons[to.split('?')[0]] ?? LayoutDashboard
 }
 
 function getChildIcon(labelKey: string): LucideIcon {
   return childIcons[labelKey] ?? FileText
+}
+
+function getItemKey(item: ShellNavItem): string {
+  return `${item.labelKey}:${item.to}`
 }
 
 // ── Capability filter ─────────────────────────────────────────────────────────
@@ -189,21 +203,42 @@ export function AppSidebar() {
 
   const search = location.search;
 
-  // Active check: supports both plain paths and paths with ?tab= query params
-  const isActive = (url: string) => {
+  // Active check: supports both plain paths and paths with ?tab= query params.
+  const isActive = (url: string, includeDescendants = true) => {
     const [urlPath, urlSearch] = url.split("?");
     if (urlSearch) {
       return pathname === urlPath && search === `?${urlSearch}`;
     }
-    return pathname === urlPath || pathname.startsWith(urlPath + "/");
+    if (pathname !== urlPath && (!includeDescendants || !pathname.startsWith(urlPath + "/"))) {
+      return false;
+    }
+    return search === "";
   };
 
-  const visibleItems = filterNavItems(shellNavItems, capabilities);
+  const visibleItems = useMemo(
+    () => filterNavItems(shellNavItems, capabilities),
+    [capabilities],
+  );
+  const activeSectionKeys = useMemo(
+    () =>
+      visibleItems
+        .filter((item) => (item.children ?? []).some((child) => isActive(child.to, false)))
+        .map(getItemKey),
+    [visibleItems, pathname, search],
+  );
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    () => new Set(activeSectionKeys),
+  );
 
-  // Root sections that have children are shown as group labels
-  // Flat sections (like Dashboard) are shown as menu items
-  const flatItems = visibleItems.filter((s) => !s.children || s.children.length === 0);
-  const groupItems = visibleItems.filter((s) => s.children && s.children.length > 0);
+  useEffect(() => {
+    if (activeSectionKeys.length === 0) return;
+    setOpenSections((current) => {
+      if (activeSectionKeys.every((key) => current.has(key))) return current;
+      const next = new Set(current);
+      activeSectionKeys.forEach((key) => next.add(key));
+      return next;
+    });
+  }, [activeSectionKeys]);
 
   return (
     <Sidebar collapsible="icon">
@@ -220,58 +255,81 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Flat items (uncategorized) */}
-        {flatItems.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {flatItems.map((item) => {
-                  const Icon = getSectionIcon(item.to);
-                  return (
-                    <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild isActive={isActive(item.to)} tooltip={t(item.labelKey)}>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {visibleItems.map((item) => {
+                const Icon = getSectionIcon(item.to);
+                const children = item.children ?? [];
+                const itemKey = getItemKey(item);
+                const isOpen = openSections.has(itemKey);
+                const setIsOpen = (open: boolean) => {
+                  setOpenSections((current) => {
+                    const next = new Set(current);
+                    if (open) {
+                      next.add(itemKey);
+                    } else {
+                      next.delete(itemKey);
+                    }
+                    return next;
+                  });
+                };
+
+                return (
+                  <Collapsible key={itemKey} asChild open={isOpen} onOpenChange={setIsOpen}>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive(item.to, children.length === 0)}
+                        tooltip={t(item.labelKey)}
+                      >
                         <Link to={item.to}>
                           <Icon />
                           <span>{t(item.labelKey)}</span>
                         </Link>
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
 
-        {/* Grouped items by section */}
-        {groupItems.map((section) => {
-          const Icon = getSectionIcon(section.to);
-          return (
-            <SidebarGroup key={section.to}>
-              <SidebarGroupLabel>
-                <Icon className="mr-2 h-4 w-4" />
-                {t(section.labelKey)}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {section.children!.map((child) => {
-                    const ChildIcon = getChildIcon(child.labelKey);
-                    return (
-                      <SidebarMenuItem key={child.to}>
-                        <SidebarMenuButton asChild isActive={isActive(child.to)} tooltip={t(child.labelKey)}>
-                          <Link to={child.to}>
-                            <ChildIcon />
-                            <span>{t(child.labelKey)}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          );
-        })}
+                      {children.length > 0 && (
+                        <>
+                          <CollapsibleTrigger asChild>
+                            <SidebarMenuAction
+                              aria-label={isOpen ? t("nav.collapseSection") : t("nav.expandSection")}
+                              className="data-[state=open]:rotate-90"
+                            >
+                              <ChevronRight />
+                            </SidebarMenuAction>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <SidebarMenuSub>
+                              {children.map((child) => {
+                                const ChildIcon = getChildIcon(child.labelKey);
+
+                                return (
+                                  <SidebarMenuSubItem key={`${itemKey}:${child.to}:${child.labelKey}`}>
+                                    <SidebarMenuSubButton
+                                      asChild
+                                      isActive={isActive(child.to, false)}
+                                      size="sm"
+                                    >
+                                      <Link to={child.to} title={t(child.labelKey)}>
+                                        <ChildIcon />
+                                        <span>{t(child.labelKey)}</span>
+                                      </Link>
+                                    </SidebarMenuSubButton>
+                                  </SidebarMenuSubItem>
+                                );
+                              })}
+                            </SidebarMenuSub>
+                          </CollapsibleContent>
+                        </>
+                      )}
+                    </SidebarMenuItem>
+                  </Collapsible>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">

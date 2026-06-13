@@ -85,7 +85,7 @@ export function BanqueSettingsPage() {
     () => SETTINGS_SECTIONS.find((section) => section.moduleName === params.section) ?? SETTINGS_SECTIONS[0],
     [params.section],
   )
-  const shouldRedirect = !SETTINGS_SECTIONS.some((section) => section.moduleName === params.section)
+  const shouldRedirect = Boolean(params.section) && !SETTINGS_SECTIONS.some((section) => section.moduleName === params.section)
 
   const moduleSettingsQuery = useBanqueModuleSettingsQuery(activeSection.moduleName, canManageSettings)
   const upsertMutation = useUpsertBanqueModuleSettingsMutation(activeSection.moduleName)

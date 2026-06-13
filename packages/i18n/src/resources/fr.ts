@@ -45,12 +45,32 @@ export const fr = {
       salesSuppliers: 'Ventes & Achats',
       bankingAccounting: 'Banque & Compta',
       machinesTarifs: 'Machines & Tarifs',
+      memberPortal: 'Portail membres',
+      sales: 'Ventes',
+      purchases: 'Achats',
+      banking: 'Banque',
+      accounting: 'Comptabilité',
+      machines: 'Machines',
+      pricing: 'Tarifs',
+      reports: 'Bilans',
+      salesInvoices: 'Factures clients',
+      salesPayments: 'Paiements clients',
+      supplierDirectory: 'Fournisseurs',
+      banqueRecurring: 'Écritures récurrentes',
+      rhPlanning: 'Planning RH',
+      rhAttendance: 'Présences',
+      rhTeam: 'Équipe',
+      portalDashboard: 'Tableau de bord',
+      portalLogbook: 'Carnet de vol',
+      portalAccount: 'Compte',
+      portalPacks: 'Packs',
+      portalAvailability: 'Disponibilités',
       rh: 'RH',
       integrations: 'Intégrations',
       administration: 'Administration',
 
       // Dashboard
-      dashboard: 'Dashboard',
+      dashboard: 'Tableau de bord',
 
       // Daily Operations
       flights: 'Vols',
@@ -114,6 +134,8 @@ export const fr = {
       modules: 'Modules',
       openMenu: 'Ouvrir le menu',
       closeMenu: 'Fermer',
+      collapseSection: 'Replier la section',
+      expandSection: 'Déplier la section',
     },
     import: {
       button: 'Importer CSV',
@@ -327,6 +349,22 @@ export const fr = {
     },
   },
   members: {
+    workspace: {
+      members: {
+        title: 'Membres',
+        description: 'Annuaire, commissions, fiches pilotes et reinscription.',
+        tabs: {
+          directory: 'Annuaire',
+          committees: 'Commissions',
+          sheets: 'Fiches',
+          renewal: 'Reinscription',
+        },
+        renewal: {
+          title: 'Reinscription en ligne',
+          description: "Module de reinscription pour les membres. Accessible depuis l'espace membre.",
+        },
+      },
+    },
     hero: {
       kicker: 'Module membres',
       title: 'Gestion des adherents, comites et fiches annuelles de vol',
@@ -1154,6 +1192,34 @@ export const fr = {
     },
   },
   banque: {
+    workspace: {
+      sales: {
+        title: 'Ventes & Achats',
+        description: 'Facturation membres et factures fournisseurs.',
+        tabs: {
+          sales: 'Ventes',
+          suppliers: 'Factures fournisseurs',
+        },
+      },
+      banque: {
+        title: 'Banque & Comptabilite',
+        description: 'Apercu, operations, journal comptable, exercices, rapports et parametres.',
+        tabs: {
+          overview: 'Apercu',
+          operations: 'Operations',
+          journal: 'Journal',
+          fiscalYears: 'Exercices',
+          pcg: 'Plan comptable',
+          reports: 'Rapports',
+          reconciliation: 'Rapprochement',
+          settings: 'Parametres',
+        },
+        reconciliation: {
+          title: 'Rapprochement bancaire',
+          description: 'Import releve bancaire, matching avec les ecritures et resolution des ecarts.',
+        },
+      },
+    },
     home: {
       title: 'Module Banque',
       description: 'Comptes adhérents, facturation des vols et réconciliation bancaire seront consolidés ici.',
@@ -2065,6 +2131,21 @@ export const fr = {
     empty: 'Aucune donnée',
   },
   assets: {
+    workspace: {
+      machines: {
+        title: 'Machines',
+        description: 'Equipements, types de machines et tarifs machine.',
+        tabs: {
+          equipment: 'Equipements',
+          types: 'Types',
+          pricing: 'Tarifs machine',
+        },
+        pricing: {
+          title: 'Tarifs machine',
+          description: "Selectionnez une machine depuis l'onglet equipements pour gerer ses tarifs dedies.",
+        },
+      },
+    },
     noPermission: "Vous n'avez pas les droits pour accéder à ce module.",
     delete: 'Supprimer',
     list: {

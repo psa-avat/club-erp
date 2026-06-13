@@ -6,3 +6,4 @@ export { MemberSheetsPage } from './components/MemberSheetsPage'
 export { MemberPilotSheetPage } from './components/MemberPilotSheetPage'
 export { MemberWorkspaceShell } from './components/MemberWorkspaceShell'
 
+export { MembersWorkspacePage } from './components/MembersWorkspacePage'

@@ -45,6 +45,26 @@ export const en = {
       salesSuppliers: 'Sales & Purchases',
       bankingAccounting: 'Bank & Accounting',
       machinesTarifs: 'Machines & Pricing',
+      memberPortal: 'Member portal',
+      sales: 'Sales',
+      purchases: 'Purchases',
+      banking: 'Banking',
+      accounting: 'Accounting',
+      machines: 'Machines',
+      pricing: 'Pricing',
+      reports: 'Reports',
+      salesInvoices: 'Customer invoices',
+      salesPayments: 'Customer payments',
+      supplierDirectory: 'Suppliers',
+      banqueRecurring: 'Recurring entries',
+      rhPlanning: 'HR planning',
+      rhAttendance: 'Attendance',
+      rhTeam: 'Team',
+      portalDashboard: 'Dashboard',
+      portalLogbook: 'Logbook',
+      portalAccount: 'Account',
+      portalPacks: 'Packs',
+      portalAvailability: 'Availability',
       rh: 'HR',
       integrations: 'Integrations',
       administration: 'Administration',
@@ -114,6 +134,8 @@ export const en = {
       modules: 'Modules',
       openMenu: 'Open menu',
       closeMenu: 'Close',
+      collapseSection: 'Collapse section',
+      expandSection: 'Expand section',
     },
     import: {
       button: 'Import CSV',
@@ -327,6 +349,22 @@ export const en = {
     },
   },
   members: {
+    workspace: {
+      members: {
+        title: 'Members',
+        description: 'Directory, committees, pilot sheets and renewal.',
+        tabs: {
+          directory: 'Directory',
+          committees: 'Committees',
+          sheets: 'Sheets',
+          renewal: 'Renewal',
+        },
+        renewal: {
+          title: 'Online renewal',
+          description: 'Renewal module for members. Available from the member portal.',
+        },
+      },
+    },
     hero: {
       kicker: 'Members module',
       title: 'Membership operations, committee assignments, and annual flying sheets',
@@ -1158,6 +1196,34 @@ export const en = {
     },
   },
   banque: {
+    workspace: {
+      sales: {
+        title: 'Sales & Purchases',
+        description: 'Member billing and supplier invoices.',
+        tabs: {
+          sales: 'Sales',
+          suppliers: 'Supplier invoices',
+        },
+      },
+      banque: {
+        title: 'Banking & Accounting',
+        description: 'Overview, operations, accounting journal, fiscal years, reports and settings.',
+        tabs: {
+          overview: 'Overview',
+          operations: 'Operations',
+          journal: 'Journal',
+          fiscalYears: 'Fiscal years',
+          pcg: 'Chart of accounts',
+          reports: 'Reports',
+          reconciliation: 'Reconciliation',
+          settings: 'Settings',
+        },
+        reconciliation: {
+          title: 'Bank reconciliation',
+          description: 'Import bank statements, match entries and resolve discrepancies.',
+        },
+      },
+    },
     home: {
       title: 'Accounting Module',
       description: 'Member ledgers, flight billing and bank reconciliation will be consolidated here.',
@@ -2048,6 +2114,21 @@ export const en = {
     empty: 'No data',
   },
   assets: {
+    workspace: {
+      machines: {
+        title: 'Machines',
+        description: 'Equipment, machine types and machine pricing.',
+        tabs: {
+          equipment: 'Equipment',
+          types: 'Types',
+          pricing: 'Machine pricing',
+        },
+        pricing: {
+          title: 'Machine pricing',
+          description: 'Select a machine from the equipment tab to manage its dedicated pricing.',
+        },
+      },
+    },
     noPermission: 'You do not have permission to access this module.',
     delete: 'Delete',
     list: {

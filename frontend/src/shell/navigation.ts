@@ -66,14 +66,14 @@ export const shellNavItems: ShellNavItem[] = [
 
   // ── 4. Membres (priorité #4) ──────────────────────────────────────────────
   {
-    to: '/club/members',
+    to: '/workspace/members',
     labelKey: 'nav.members',
     requiredCapability: 'MANAGE_USERS',
     children: [
-      { to: '/club/members/core', labelKey: 'nav.directory', requiredCapability: 'MANAGE_USERS' },
-      { to: '/club/commissions', labelKey: 'nav.committees', requiredCapability: 'MANAGE_USERS' },
-      { to: '/club/sheets', labelKey: 'nav.sheets', requiredCapability: 'MANAGE_USERS' },
-      { to: '/member-portal/renewal', labelKey: 'nav.onlineRenewal', requiredCapability: 'MANAGE_USERS' },
+      { to: '/workspace/members', labelKey: 'nav.directory', requiredCapability: 'MANAGE_USERS' },
+      { to: '/workspace/members?tab=commissions', labelKey: 'nav.committees', requiredCapability: 'MANAGE_USERS' },
+      { to: '/workspace/members?tab=fiches', labelKey: 'nav.sheets', requiredCapability: 'MANAGE_USERS' },
+      { to: '/workspace/members?tab=reinscription', labelKey: 'nav.onlineRenewal', requiredCapability: 'MANAGE_USERS' },
     ],
   },
 
@@ -92,38 +92,37 @@ export const shellNavItems: ShellNavItem[] = [
 
   // ── 6. Ventes (priorité #6) ────────────────────────────────────────────────
   {
-    to: '/workspace/finance',
+    to: '/workspace/sales',
     labelKey: 'nav.sales',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/finance?tab=operations', labelKey: 'nav.memberSales' },
-      { to: '/workspace/finance?tab=operations', labelKey: 'nav.salesInvoices' },
-      { to: '/workspace/finance?tab=operations', labelKey: 'nav.salesPayments' },
+      { to: '/workspace/sales', labelKey: 'nav.memberSales' },
+      { to: '/workspace/sales', labelKey: 'nav.salesInvoices' },
+      { to: '/workspace/sales', labelKey: 'nav.salesPayments' },
     ],
   },
 
   // ── 7. Achats (priorité #7) ────────────────────────────────────────────────
   {
-    to: '/workspace/purchases',
+    to: '/workspace/sales?tab=fournisseurs',
     labelKey: 'nav.purchases',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/purchases', labelKey: 'nav.supplierInvoices' },
-      { to: '/workspace/purchases?tab=fournisseurs', labelKey: 'nav.supplierDirectory' },
+      { to: '/workspace/sales?tab=fournisseurs', labelKey: 'nav.supplierInvoices' },
+      { to: '/workspace/sales?tab=fournisseurs', labelKey: 'nav.supplierDirectory' },
     ],
   },
 
   // ── 8. Banque (priorité #8) ────────────────────────────────────────────────
   {
-    to: '/workspace/finance',
+    to: '/workspace/banque',
     labelKey: 'nav.banking',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/finance', labelKey: 'nav.banqueOverview' },
-      { to: '/workspace/finance?tab=operations', labelKey: 'nav.banqueOps' },
-      { to: '/workspace/finance?tab=packs', labelKey: 'nav.packs' },
-      { to: '/workspace/finance?tab=recurring', labelKey: 'nav.banqueRecurring' },
-      { to: '/workspace/finance?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
+      { to: '/workspace/banque', labelKey: 'nav.banqueOverview' },
+      { to: '/workspace/banque?tab=operations', labelKey: 'nav.banqueOps' },
+      { to: '/workspace/banque?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
+      { to: '/workspace/banque?tab=parametres', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 
@@ -140,26 +139,26 @@ export const shellNavItems: ShellNavItem[] = [
 
   // ── 10. Comptabilité (priorité #10) ────────────────────────────────────────
   {
-    to: '/workspace/accounting',
+    to: '/workspace/banque?tab=journal',
     labelKey: 'nav.accounting',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/accounting', labelKey: 'nav.banqueJournal' },
-      { to: '/workspace/accounting?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
-      { to: '/workspace/accounting?tab=pcg', labelKey: 'nav.banquePcg' },
-      { to: '/workspace/accounting?tab=rapports', labelKey: 'nav.banqueReports' },
+      { to: '/workspace/banque?tab=journal', labelKey: 'nav.banqueJournal' },
+      { to: '/workspace/banque?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
+      { to: '/workspace/banque?tab=pcg', labelKey: 'nav.banquePcg' },
+      { to: '/workspace/banque?tab=rapports', labelKey: 'nav.banqueReports' },
     ],
   },
 
-  // ── 11. Machines & Tarifs (priorités #11, #12) ─────────────────────────────
+  // ── 11. Machines (priorité #11) ────────────────────────────────────────────
   {
-    to: '/assets',
-    labelKey: 'nav.machinesTarifs',
+    to: '/workspace/machines',
+    labelKey: 'nav.machines',
     requiredCapability: 'MANAGE_ASSETS',
     children: [
-      { to: '/assets', labelKey: 'nav.equipment', requiredCapability: 'MANAGE_ASSETS' },
-      { to: '/assets/types', labelKey: 'nav.assetTypes', requiredCapability: 'MANAGE_ASSETS' },
-      { to: '/assets/types', labelKey: 'nav.assetPricing', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/machines', labelKey: 'nav.equipment', requiredCapability: 'MANAGE_ASSETS' },
+      { to: '/workspace/machines?tab=types', labelKey: 'nav.assetTypes', requiredCapability: 'MANAGE_ASSETS' },
+      { to: '/workspace/machines?tab=tarifs', labelKey: 'nav.assetPricing', requiredCapability: 'MANAGE_PRICES' },
     ],
   },
 
@@ -167,7 +166,7 @@ export const shellNavItems: ShellNavItem[] = [
   { to: '/pricing', labelKey: 'nav.pricing' },
 
   // ── 13. Bilans (priorité #13) ──────────────────────────────────────────────
-  { to: '/banque/reports', labelKey: 'nav.reports' },
+  { to: '/workspace/banque?tab=rapports', labelKey: 'nav.reports' },
 
   // ── 14. Intégrations techniques ────────────────────────────────────────────
   {
@@ -192,7 +191,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/helloasso/integration', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/planche/integration', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/storage/settings', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/banque/settings/journals', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/workspace/banque?tab=parametres', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 ]
