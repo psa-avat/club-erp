@@ -45,6 +45,10 @@ import {
   Receipt,
   Ticket,
   Clock,
+  ShoppingBag,
+  BookOpen,
+  Repeat,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -72,10 +76,17 @@ const sectionIcons: Record<string, LucideIcon> = {
   '/vi': Ticket,
   '/planning': Calendar,
   '/club/members': Users,
+  '/workspace/finance': Wallet,
   '/banque/operations': ShoppingCart,
+  '/workspace/purchases': ShoppingBag,
+  '/workspace/rh': Clock,
+  '/workspace/accounting': FileText,
   '/banque': Wallet,
   '/assets': Wrench,
+  '/pricing': Tags,
+  '/banque/reports': BarChart3,
   '/rh': Clock,
+  '/member-portal/workspace': BookOpen,
   '/planche': Plug,
   '/admin': Settings,
 }
@@ -96,7 +107,10 @@ const childIcons: Record<string, LucideIcon> = {
   'nav.sheets': FileText,
   'nav.onlineRenewal': CreditCard,
   'nav.memberSales': CreditCard,
+  'nav.salesInvoices': FileText,
+  'nav.salesPayments': CreditCard,
   'nav.supplierInvoices': FileText,
+  'nav.supplierDirectory': Building2,
   'nav.banqueOverview': LayoutDashboard,
   'nav.banqueOps': ArrowLeftRight,
   'nav.banqueJournal': FileText,
@@ -104,10 +118,21 @@ const childIcons: Record<string, LucideIcon> = {
   'nav.banquePcg': TableProperties,
   'nav.banqueReports': BarChart3,
   'nav.banqueReconciliation': ArrowLeftRight,
+  'nav.banqueRecurring': Repeat,
   'nav.banqueSettings': Settings,
+  'nav.rhPlanning': CalendarDays,
+  'nav.rhAttendance': Clock,
+  'nav.rhTeam': Users,
+  'nav.portalDashboard': LayoutDashboard,
+  'nav.portalLogbook': FileText,
+  'nav.portalAccount': CreditCard,
+  'nav.portalPacks': Tags,
+  'nav.portalAvailability': Plane,
   'nav.equipment': Wrench,
   'nav.assetTypes': TableProperties,
   'nav.assetPricing': Tags,
+  'nav.pricing': Tags,
+  'nav.reports': BarChart3,
   'nav.plancheMembersPush': Users,
   'nav.plancheMachinesPush': Wrench,
   'nav.gesassoSync': Plug,
@@ -162,8 +187,16 @@ export function AppSidebar() {
   const capabilities = useAuthStore((state) => state.user?.capabilities ?? []);
   const user = useAuthStore((state) => state.user);
 
-  const isActive = (url: string) =>
-    pathname === url || pathname.startsWith(url + "/")
+  const search = location.search;
+
+  // Active check: supports both plain paths and paths with ?tab= query params
+  const isActive = (url: string) => {
+    const [urlPath, urlSearch] = url.split("?");
+    if (urlSearch) {
+      return pathname === urlPath && search === `?${urlSearch}`;
+    }
+    return pathname === urlPath || pathname.startsWith(urlPath + "/");
+  };
 
   const visibleItems = filterNavItems(shellNavItems, capabilities);
 

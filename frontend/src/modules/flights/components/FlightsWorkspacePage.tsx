@@ -19,7 +19,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Plane, FileText, Tags, Database } from "lucide-react";
+import { Plane, FileText, Tags, Database, ArrowLeftRight, Plug } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
@@ -31,9 +31,11 @@ import { PlancheFlightsPullPage } from "../../planche";
  * FlightsWorkspacePage — Workspace Facturation & Vols.
  *
  * Regroupe en une seule page avec tabs :
- * - vols       → Liste des vols validés (FlightsPage)
+ * - vols        → Liste des vols validés (FlightsPage)
  * - facturation → Facturation & aperçu (placeholder, Phase 6)
  * - packs       → Définitions des packs (PackDefinitionsPage)
+ * - gesasso     → Envoi Gesasso (placeholder, Phase 8)
+ * - osrt        → Envoi OSRT (placeholder, Phase 8)
  * - sync        → Import vols depuis Planche (PlancheFlightsPullPage)
  */
 export function FlightsWorkspacePage() {
@@ -44,8 +46,11 @@ export function FlightsWorkspacePage() {
       title={t("workspace.title", "Facturation & Vols")}
       description={t(
         "workspace.description",
-        "Gestion des vols, facturation, packs et synchronisation Planche.",
+        "Saisie des vols, facturation OSRT/Gesasso, packs et import Planche.",
       )}
+      actions={
+        <span />
+      }
       tabs={[
         {
           value: "vols",
@@ -62,7 +67,7 @@ export function FlightsWorkspacePage() {
               title={t("workspace.billing.title", "Facturation des vols")}
               description={t(
                 "workspace.billing.description",
-                "Historique et suivi de la facturation des vols. Disponible dans une phase ultérieure.",
+                "Lignes de facturation à valider — disponible dans une phase ultérieure.",
               )}
               eta="Phase 6"
             />
@@ -73,6 +78,36 @@ export function FlightsWorkspacePage() {
           label: t("workspace.tabs.packs", "Packs"),
           icon: Tags,
           content: <PackDefinitionsPage />,
+        },
+        {
+          value: "gesasso",
+          label: t("workspace.tabs.gesasso", "Envoi Gesasso"),
+          icon: ArrowLeftRight,
+          content: (
+            <PlaceholderPage
+              title={t("workspace.gesasso.title", "Envoi Gesasso")}
+              description={t(
+                "workspace.gesasso.description",
+                "Envoi des données vers Gesasso pour la gestion des envois postaux.",
+              )}
+              eta="Phase 8"
+            />
+          ),
+        },
+        {
+          value: "osrt",
+          label: t("workspace.tabs.osrt", "Envoi OSRT"),
+          icon: Plug,
+          content: (
+            <PlaceholderPage
+              title={t("workspace.osrt.title", "Envoi OSRT")}
+              description={t(
+                "workspace.osrt.description",
+                "Envoi des temps machine vers OSRT.",
+              )}
+              eta="Phase 8"
+            />
+          ),
         },
         {
           value: "sync",

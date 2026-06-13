@@ -38,10 +38,12 @@ export const shellNavItems: ShellNavItem[] = [
     labelKey: 'nav.billingFlights',
     requiredCapability: 'EDIT_FLIGHTS',
     children: [
-      { to: '/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
-      { to: '/flights/billing', labelKey: 'nav.flightsBilling', requiredCapability: 'VIEW_FINANCIALS' },
-      { to: '/banque/packs', labelKey: 'nav.packs', requiredCapability: 'MANAGE_PRICES' },
-      { to: '/planche/flights-fetch', labelKey: 'nav.plancheFlightsFetch', requiredCapability: 'MANAGE_PLANCHE' },
+      { to: '/workspace/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
+      { to: '/workspace/flights?tab=facturation', labelKey: 'nav.flightsBilling', requiredCapability: 'VIEW_FINANCIALS' },
+      { to: '/workspace/flights?tab=packs', labelKey: 'nav.packs', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/flights?tab=gesasso', labelKey: 'nav.gesassoSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/workspace/flights?tab=osrt', labelKey: 'nav.osrtSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/workspace/flights?tab=sync', labelKey: 'nav.plancheFlightsFetch', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
 
@@ -50,12 +52,12 @@ export const shellNavItems: ShellNavItem[] = [
     to: '/workspace/vi',
     labelKey: 'nav.viHelloasso',
     children: [
-      { to: '/vi/entitlements', labelKey: 'nav.viEntitlements' },
-      { to: '/vi/types', labelKey: 'nav.viTypes' },
-      { to: '/vi/planning', labelKey: 'nav.viPlanning' },
-      { to: '/helloasso/purchases', labelKey: 'nav.helloassoPurchases', requiredCapability: 'HELLOASSO' },
-      { to: '/helloasso/vi-import', labelKey: 'nav.helloassoViImport', requiredCapability: 'HELLOASSO' },
-      { to: '/planche/vi-sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
+      { to: '/workspace/vi', labelKey: 'nav.viEntitlements' },
+      { to: '/workspace/vi?tab=types', labelKey: 'nav.viTypes' },
+      { to: '/workspace/vi?tab=planning', labelKey: 'nav.viPlanning' },
+      { to: '/workspace/vi?tab=achats', labelKey: 'nav.helloassoPurchases', requiredCapability: 'HELLOASSO' },
+      { to: '/workspace/vi?tab=import', labelKey: 'nav.helloassoViImport', requiredCapability: 'HELLOASSO' },
+      { to: '/workspace/vi?tab=sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
 
@@ -75,35 +77,81 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── 5. Ventes & Achats (priorités #6, #7) ─────────────────────────────────
+  // ── 5. Portail membres (priorité #5) ───────────────────────────────────────
   {
-    to: '/banque/operations',
-    labelKey: 'nav.salesSuppliers',
-    requiredCapability: 'VIEW_FINANCIALS',
+    to: '/member-portal/workspace',
+    labelKey: 'nav.memberPortal',
     children: [
-      { to: '/banque/operations', labelKey: 'nav.memberSales' },
-      { to: '/banque/factures-fournisseurs', labelKey: 'nav.supplierInvoices' },
+      { to: '/member-portal/workspace', labelKey: 'nav.portalDashboard' },
+      { to: '/member-portal/workspace?tab=logbook', labelKey: 'nav.portalLogbook' },
+      { to: '/member-portal/workspace?tab=account', labelKey: 'nav.portalAccount' },
+      { to: '/member-portal/workspace?tab=packs', labelKey: 'nav.portalPacks' },
+      { to: '/member-portal/workspace?tab=availability', labelKey: 'nav.portalAvailability' },
     ],
   },
 
-  // ── 6. Banque & Compta (priorités #8, #10, #13) ────────────────────────────
+  // ── 6. Ventes (priorité #6) ────────────────────────────────────────────────
   {
-    to: '/banque',
-    labelKey: 'nav.bankingAccounting',
+    to: '/workspace/finance',
+    labelKey: 'nav.sales',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/banque', labelKey: 'nav.banqueOverview' },
-      { to: '/banque/operations', labelKey: 'nav.banqueOps' },
-      { to: '/banque/journal', labelKey: 'nav.banqueJournal' },
-      { to: '/banque/fiscal-years', labelKey: 'nav.banqueFiscalYears' },
-      { to: '/banque/pcg', labelKey: 'nav.banquePcg' },
-      { to: '/banque/reports', labelKey: 'nav.banqueReports' },
-      { to: '/banque/reconciliation', labelKey: 'nav.banqueReconciliation' },
-      { to: '/banque/settings/journals', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_ACCOUNTING_SETTINGS' },
+      { to: '/workspace/finance?tab=operations', labelKey: 'nav.memberSales' },
+      { to: '/workspace/finance?tab=operations', labelKey: 'nav.salesInvoices' },
+      { to: '/workspace/finance?tab=operations', labelKey: 'nav.salesPayments' },
     ],
   },
 
-  // ── 7. Machines & Tarifs (priorités #11, #12) ──────────────────────────────
+  // ── 7. Achats (priorité #7) ────────────────────────────────────────────────
+  {
+    to: '/workspace/purchases',
+    labelKey: 'nav.purchases',
+    requiredCapability: 'VIEW_FINANCIALS',
+    children: [
+      { to: '/workspace/purchases', labelKey: 'nav.supplierInvoices' },
+      { to: '/workspace/purchases?tab=fournisseurs', labelKey: 'nav.supplierDirectory' },
+    ],
+  },
+
+  // ── 8. Banque (priorité #8) ────────────────────────────────────────────────
+  {
+    to: '/workspace/finance',
+    labelKey: 'nav.banking',
+    requiredCapability: 'VIEW_FINANCIALS',
+    children: [
+      { to: '/workspace/finance', labelKey: 'nav.banqueOverview' },
+      { to: '/workspace/finance?tab=operations', labelKey: 'nav.banqueOps' },
+      { to: '/workspace/finance?tab=packs', labelKey: 'nav.packs' },
+      { to: '/workspace/finance?tab=recurring', labelKey: 'nav.banqueRecurring' },
+      { to: '/workspace/finance?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
+    ],
+  },
+
+  // ── 9. RH (priorité #9) ────────────────────────────────────────────────────
+  {
+    to: '/workspace/rh',
+    labelKey: 'nav.rh',
+    children: [
+      { to: '/workspace/rh', labelKey: 'nav.rhPlanning' },
+      { to: '/workspace/rh?tab=presences', labelKey: 'nav.rhAttendance' },
+      { to: '/workspace/rh?tab=equipe', labelKey: 'nav.rhTeam' },
+    ],
+  },
+
+  // ── 10. Comptabilité (priorité #10) ────────────────────────────────────────
+  {
+    to: '/workspace/accounting',
+    labelKey: 'nav.accounting',
+    requiredCapability: 'VIEW_FINANCIALS',
+    children: [
+      { to: '/workspace/accounting', labelKey: 'nav.banqueJournal' },
+      { to: '/workspace/accounting?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
+      { to: '/workspace/accounting?tab=pcg', labelKey: 'nav.banquePcg' },
+      { to: '/workspace/accounting?tab=rapports', labelKey: 'nav.banqueReports' },
+    ],
+  },
+
+  // ── 11. Machines & Tarifs (priorités #11, #12) ─────────────────────────────
   {
     to: '/assets',
     labelKey: 'nav.machinesTarifs',
@@ -115,10 +163,13 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── 8. RH (priorité #9, placeholder) ──────────────────────────────────────
-  { to: '/rh', labelKey: 'nav.rh' },
+  // ── 12. Tarifs (priorité #12) ──────────────────────────────────────────────
+  { to: '/pricing', labelKey: 'nav.pricing' },
 
-  // ── 9. Intégrations techniques (Planche push, Gesasso, OSRT) ──────────────
+  // ── 13. Bilans (priorité #13) ──────────────────────────────────────────────
+  { to: '/banque/reports', labelKey: 'nav.reports' },
+
+  // ── 14. Intégrations techniques ────────────────────────────────────────────
   {
     to: '/planche',
     labelKey: 'nav.integrations',
@@ -130,7 +181,7 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── 10. Administration (priorité #14) ─────────────────────────────────────
+  // ── 15. Administration (priorité #14) ─────────────────────────────────────
   {
     to: '/admin',
     labelKey: 'nav.administration',

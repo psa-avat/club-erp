@@ -25,6 +25,9 @@ import {
   SupplierInvoicePage,
   PackDefinitionsPage,
   PackDefinitionEditPage,
+  FinanceWorkspacePage,
+  AccountingWorkspacePage,
+  PurchasesWorkspacePage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheetsPage, MemberWorkspaceShell, MemberPilotSheetPage } from './modules/members'
@@ -35,6 +38,7 @@ import { FlightsPage, FlightsWorkspacePage } from './modules/flights'
 import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
 import { ViEntitlementsPage, ViPlanningPage, ViTypesPage, ViWorkspacePage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
+import { RhWorkspacePage } from './modules/rh'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
 
@@ -149,6 +153,10 @@ function App() {
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/audit" element={<PlaceholderPage title="Journal d'audit" description="Consultez l'historique complet des actions et modifications dans le système." eta="Phase 11" />} />
           <Route path="/rh" element={<PlaceholderPage title="RH" description="Planning des congés, gestion des présences et tableau de bord RH." eta="Phase 10" />} />
+          <Route path="/workspace/rh" element={<RhWorkspacePage />} />
+          <Route path="/workspace/finance" element={<FinanceWorkspacePage />} />
+          <Route path="/workspace/accounting" element={<AccountingWorkspacePage />} />
+          <Route path="/workspace/purchases" element={<PurchasesWorkspacePage />} />
           <Route path="/storage" element={<Navigate replace to="/storage/settings" />} />
           <Route path="/storage/settings" element={<StorageSettingsPage />} />
         </Route>
