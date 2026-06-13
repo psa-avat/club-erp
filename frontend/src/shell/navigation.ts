@@ -34,7 +34,7 @@ export const shellNavItems: ShellNavItem[] = [
 
   // ── 1. Facturation & Vols (priorité #1) ───────────────────────────────────
   {
-    to: '/flights',
+    to: '/workspace/flights',
     labelKey: 'nav.billingFlights',
     requiredCapability: 'EDIT_FLIGHTS',
     children: [
@@ -47,7 +47,7 @@ export const shellNavItems: ShellNavItem[] = [
 
   // ── 2. VI & HelloAsso (priorité #2) ───────────────────────────────────────
   {
-    to: '/vi',
+    to: '/workspace/vi',
     labelKey: 'nav.viHelloasso',
     children: [
       { to: '/vi/entitlements', labelKey: 'nav.viEntitlements' },

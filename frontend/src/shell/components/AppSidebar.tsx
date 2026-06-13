@@ -66,7 +66,9 @@ import { shellNavItems, type ShellNavItem } from "@/shell/navigation";
 
 const sectionIcons: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
+  '/workspace/flights': Receipt,
   '/flights': Receipt,
+  '/workspace/vi': Ticket,
   '/vi': Ticket,
   '/planning': Calendar,
   '/club/members': Users,

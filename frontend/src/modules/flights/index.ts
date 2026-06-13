@@ -19,3 +19,4 @@
  */
 
 export { FlightsPage } from './components/FlightsPage'
+export { FlightsWorkspacePage } from './components/FlightsWorkspacePage'

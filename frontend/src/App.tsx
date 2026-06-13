@@ -31,9 +31,9 @@ import { MembersListPage, MemberFormPage, CommitteesManagementPage, MemberSheets
 import { AssetsListPage, AssetDetailPage, AssetFormPage, AssetPricingPage, AssetTypesPage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
-import { FlightsPage } from './modules/flights'
+import { FlightsPage, FlightsWorkspacePage } from './modules/flights'
 import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
-import { ViEntitlementsPage, ViPlanningPage, ViTypesPage } from './modules/vi'
+import { ViEntitlementsPage, ViPlanningPage, ViTypesPage, ViWorkspacePage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
@@ -103,10 +103,12 @@ function App() {
           <Route path="/vi/entitlements" element={<ViEntitlementsPage />} />
           <Route path="/vi/types" element={<ViTypesPage />} />
           <Route path="/vi/planning" element={<ViPlanningPage />} />
+          <Route path="/workspace/vi" element={<ViWorkspacePage />} />
 
           {/* ── 5. Flights & Planche (Planche sync included) ── */}
           <Route path="/flights" element={<FlightsPage />} />
           <Route path="/flights/billing" element={<PlaceholderPage title="Facturation des vols" description="Historique et suivi de la facturation des vols. Disponible dans une phase ultérieure." eta="Phase 6" />} />
+          <Route path="/workspace/flights" element={<FlightsWorkspacePage />} />
           <Route path="/planche" element={<Navigate replace to="/planche/members-push" />} />
           <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
