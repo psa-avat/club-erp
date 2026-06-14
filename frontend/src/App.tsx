@@ -14,7 +14,6 @@ import {
   BankPricingPage,
   BankPricingVersionEditPage,
   SupplierInvoicePage,
-  PackDefinitionsPage,
   PackDefinitionEditPage,
   SalesWorkspacePage,
   BanqueWorkspacePage,
@@ -26,10 +25,10 @@ import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, MemberWorkspaceShell, MemberPilotSheetPage, MembersWorkspacePage } from './modules/members'
 import { AssetDetailPage, AssetFormPage, AssetPricingPage, MachinesWorkspacePage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
-import { HelloAssoIntegrationPage, HelloAssoPurchasesPage, HelloAssoViImportPage } from './modules/helloasso'
-import { FlightsPage, FlightsWorkspacePage } from './modules/flights'
-import { PlancheFlightsPullPage, PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage, PlancheViSyncPage } from './modules/planche'
-import { ViEntitlementsPage, ViPlanningPage, ViTypesPage, ViWorkspacePage } from './modules/vi'
+import { HelloAssoIntegrationPage } from './modules/helloasso'
+import { FlightsWorkspacePage } from './modules/flights'
+import { PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
+import { ViWorkspacePage } from './modules/vi'
 import { StorageSettingsPage } from './modules/storage'
 import { RhWorkspacePage } from './modules/rh'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
@@ -87,7 +86,7 @@ function App() {
           {/* ── 3. Sales (MVP) ── */}
           <Route path="/sales" element={<Navigate replace to="/workspace/sales" />} />
           <Route path="/workspace/sales" element={<SalesWorkspacePage />} />
-          <Route path="/banque/packs" element={<PackDefinitionsPage />} />
+          <Route path="/banque/packs" element={<Navigate replace to="/pricing" />} />
           <Route path="/banque/packs/:packUuid" element={<PackDefinitionEditPage />} />
           <Route path="/banque/factures-fournisseurs/new" element={<SupplierInvoicePage />} />
 
@@ -100,28 +99,28 @@ function App() {
           <Route path="/assets/:uuid/edit" element={<AssetFormPage />} />
           <Route path="/assets/:uuid/pricing" element={<AssetPricingPage />} />
           <Route path="/vi" element={<Navigate replace to="/vi/entitlements" />} />
-          <Route path="/vi/entitlements" element={<ViEntitlementsPage />} />
-          <Route path="/vi/types" element={<ViTypesPage />} />
-          <Route path="/vi/planning" element={<ViPlanningPage />} />
+          <Route path="/vi/entitlements" element={<Navigate replace to="/workspace/vi" />} />
+          <Route path="/vi/types" element={<Navigate replace to="/workspace/vi?tab=types" />} />
+          <Route path="/vi/planning" element={<Navigate replace to="/workspace/vi?tab=planning" />} />
           <Route path="/workspace/vi" element={<ViWorkspacePage />} />
 
           {/* ── 5. Flights & Planche (Planche sync included) ── */}
-          <Route path="/flights" element={<FlightsPage />} />
-          <Route path="/flights/billing" element={<PlaceholderPage title="Facturation des vols" description="Historique et suivi de la facturation des vols. Disponible dans une phase ultérieure." eta="Phase 6" />} />
+          <Route path="/flights" element={<Navigate replace to="/workspace/flights" />} />
+          <Route path="/flights/billing" element={<Navigate replace to="/workspace/flights?tab=facturation" />} />
           <Route path="/workspace/flights" element={<FlightsWorkspacePage />} />
           <Route path="/planche" element={<Navigate replace to="/planche/members-push" />} />
           <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
           <Route path="/planche/machines-push" element={<PlancheMachinesPushPage />} />
-          <Route path="/planche/vi-sync" element={<PlancheViSyncPage />} />
-          <Route path="/planche/flights-fetch" element={<PlancheFlightsPullPage />} />
+          <Route path="/planche/vi-sync" element={<Navigate replace to="/workspace/vi?tab=sync" />} />
+          <Route path="/planche/flights-fetch" element={<Navigate replace to="/workspace/flights?tab=sync" />} />
           <Route path="/planning" element={<PlanningPage />} />
 
           {/* ── 6. Integrations (HelloAsso, Gesasso, OSRT) ── */}
           <Route path="/helloasso" element={<Navigate replace to="/helloasso/purchases" />} />
           <Route path="/helloasso/integration" element={<HelloAssoIntegrationPage />} />
-          <Route path="/helloasso/purchases" element={<HelloAssoPurchasesPage />} />
-          <Route path="/helloasso/vi-import" element={<HelloAssoViImportPage />} />
+          <Route path="/helloasso/purchases" element={<Navigate replace to="/workspace/vi?tab=achats" />} />
+          <Route path="/helloasso/vi-import" element={<Navigate replace to="/workspace/vi?tab=import" />} />
           <Route path="/integrations/gesasso" element={<PlaceholderPage title="Gesasso" description="Synchronisation avec Gesasso pour la gestion des envois postaux." eta="Phase 8" />} />
           <Route path="/integrations/osrt" element={<PlaceholderPage title="OSRT" description="Synchronisation avec OSRT pour les temps machine." eta="Phase 8" />} />
 
