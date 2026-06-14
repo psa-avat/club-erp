@@ -4,60 +4,6 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =============================================================
-   Design tokens hérités (Material 3) — préfixés `old-`
-   Disponibles en CSS pour rétrocompatibilité pendant la migration.
-   Utilisation temporaire : bg-old-primary, text-old-on-surface, etc.
-   Supprimer après migration complète des pages (Étape 4).
-   ============================================================= */
-@theme {
-  --color-old-primary:                  #0f172a;
-  --color-old-primary-hover:            #1e293b;
-  --color-old-on-primary:               #ffffff;
-  --color-old-primary-container:        #f1f5f9;
-  --color-old-on-primary-container:     #1e293b;
-
-  --color-old-secondary:                #475569;
-  --color-old-secondary-hover:          #334155;
-  --color-old-on-secondary:             #ffffff;
-  --color-old-secondary-container:      #e2e8f0;
-  --color-old-on-secondary-container:   #334155;
-
-  --color-old-surface:                  #ffffff;
-  --color-old-surface-variant:          #f8fafc;
-  --color-old-surface-container:        #f1f5f9;
-  --color-old-surface-container-high:   #e2e8f0;
-  --color-old-on-surface:               #0f172a;
-  --color-old-on-surface-variant:       #64748b;
-
-  --color-old-outline:                  #cbd5e1;
-  --color-old-outline-variant:          #e2e8f0;
-
-  --color-old-error:                    #e11d48;
-  --color-old-error-hover:              #f43f5e;
-  --color-old-on-error:                 #ffffff;
-  --color-old-error-container:          #fff1f2;
-  --color-old-on-error-container:       #be123c;
-
-  --color-old-success:                  #15803d;
-  --color-old-on-success:               #ffffff;
-  --color-old-success-container:        #f0fdf4;
-  --color-old-on-success-container:     #166534;
-
-  --color-old-warning:                  #b45309;
-  --color-old-on-warning:               #ffffff;
-  --color-old-warning-container:        #fffbeb;
-  --color-old-on-warning-container:     #92400e;
-
-  --color-old-info:                     #0369a1;
-  --color-old-on-info:                  #ffffff;
-  --color-old-info-container:           #f0f9ff;
-  --color-old-on-info-container:        #075985;
-
-  --color-old-border:                   #e2e8f0;
-  --color-old-ring:                     #0f172a;
-}
-
-/* =============================================================
    Thème shadcn/ui (OKLCH) — New York style
    https://ui.shadcn.com/themes
    ============================================================= */

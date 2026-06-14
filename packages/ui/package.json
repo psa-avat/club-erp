@@ -4,12 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./tokens.css": "./src/tokens.css"
-  },
-  "scripts": {
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    ".": "./src/index.ts"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
