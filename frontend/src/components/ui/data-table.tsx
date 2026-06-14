@@ -82,7 +82,7 @@ function DataTable<T>({
     <div className={cn('w-full overflow-x-auto', className)}>
       <table className="w-full border-collapse text-sm">
         <thead role="rowgroup">
-          <tr className="border-b border-outline-variant">
+          <tr className="border-b border-border">
             {columns.map(col => (
               <th
                 key={col.key}
@@ -98,8 +98,8 @@ function DataTable<T>({
                 }
                 onClick={col.sortable ? () => handleSort(col.key) : undefined}
                 className={cn(
-                  'px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-on-surface-variant',
-                  col.sortable && 'cursor-pointer select-none hover:text-on-surface',
+                  'px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground',
+                  col.sortable && 'cursor-pointer select-none hover:text-foreground',
                   col.headerClassName,
                 )}
               >
@@ -141,12 +141,12 @@ function DataTable<T>({
                 <tr
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    'border-b border-outline-variant last:border-0',
-                    onRowClick && 'cursor-pointer transition-colors hover:bg-surface-container',
+                    'border-b border-border last:border-0',
+                    onRowClick && 'cursor-pointer transition-colors hover:bg-muted',
                   )}
                 >
                   {columns.map(col => (
-                    <td key={col.key} className={cn('px-3 py-3 text-on-surface', col.className)}>
+                    <td key={col.key} className={cn('px-3 py-3 text-foreground', col.className)}>
                       {col.cell(row)}
                     </td>
                   ))}
@@ -157,7 +157,7 @@ function DataTable<T>({
                   )}
                 </tr>
                 {expandedRow === rowKey && renderExpanded && (
-                  <tr className="border-b border-outline-variant">
+                  <tr className="border-b border-border">
                     <td colSpan={columns.length + (actions ? 1 : 0)} className="p-0">
                       {renderExpanded(row)}
                     </td>

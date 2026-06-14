@@ -22,3 +22,8 @@ Applies to: frontend/**
 - Prefer accessible forms and clear error states.
 - Keep route protection logic in shell-level auth components.
 - Keep styling consistent with existing design tokens and utility patterns.
+
+## Design System
+> Consulter `frontend/DESIGN_SYSTEM.md` pour les patterns de layout,
+> composants et conventions visuelles (WorkspaceShell, KpiCard, InfoBanner,
+> ActionCard, DataTable, grilles responsives, tokens, badges statut, etc.).

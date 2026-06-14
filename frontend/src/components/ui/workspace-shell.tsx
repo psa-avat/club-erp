@@ -23,6 +23,7 @@ import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import type { LucideIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@club-erp/ui";
 
@@ -131,10 +132,10 @@ export function WorkspaceShell({
   const [activeTab, setActiveTab] = useActiveTab(tabs, defaultTab);
 
   return (
-    <div className={className}>
+    <div className={cn("mx-auto flex max-w-7xl flex-col gap-6", className)}>
       <PageHeader title={title} description={description} actions={actions} />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           {tabs.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">

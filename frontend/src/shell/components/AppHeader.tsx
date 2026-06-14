@@ -44,9 +44,9 @@ import type { FiscalYear } from "@/modules/banque/api";
 // ── Fiscal Year widgets ───────────────────────────────────────────────────────
 
 function fyStateBadgeClass(state: number): string {
-  if (state === 1) return "bg-teal-100 text-teal-800";
-  if (state === 3) return "bg-amber-100 text-amber-800";
-  return "bg-slate-100 text-slate-600";
+  if (state === 1) return "badge-success";
+  if (state === 3) return "badge-warning";
+  return "badge-info";
 }
 
 function fyStateLabel(state: number): string {

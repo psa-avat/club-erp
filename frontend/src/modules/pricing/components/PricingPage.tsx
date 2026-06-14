@@ -24,12 +24,13 @@ import { AxiosError } from 'axios'
 import Decimal from 'decimal.js'
 import { Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
 
-import { Alert } from '../../../components/ui/alert'
-import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
-import { Label } from '../../../components/ui/label'
-import { useCapability } from '../../../auth/hooks/useCapability'
-import { apiClient, getAuthRequestConfig } from '../../../api/client'
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { PageHeader } from '@club-erp/ui'
+import { useCapability } from '@/auth/hooks/useCapability'
+import { apiClient, getAuthRequestConfig } from '@/api/client'
 import {
   useFiscalYearsQuery,
   useAccountsQuery,
@@ -104,9 +105,9 @@ function getFromQtyPlaceholder(unit: number): string {
 }
 
 function versionStatusClass(status: number): string {
-  if (status === VERSION_STATUS_DRAFT) return 'bg-yellow-100 text-yellow-800'
-  if (status === VERSION_STATUS_ACTIVE) return 'bg-green-100 text-green-800'
-  return 'bg-slate-100 text-slate-500'
+  if (status === VERSION_STATUS_DRAFT) return 'badge-warning'
+  if (status === VERSION_STATUS_ACTIVE) return 'badge-success'
+  return 'badge-info'
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -897,9 +898,9 @@ export function PricingPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-slate-500">{t('noPermission')}</p>
-      </section>
+      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+        <p className="text-sm text-muted-foreground">{t('noPermission')}</p>
+      </div>
     )
   }
 
@@ -913,22 +914,19 @@ export function PricingPage() {
   }
 
   return (
-    <section className="space-y-5">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{t('pricing.title')}</h1>
-          {isFyClosed && (
-            <p className="mt-1 text-xs text-amber-600">{t('pricing.fyClosedWarning')}</p>
-          )}
-        </div>
-        {canEdit && !showNewVersionForm && (
-          <Button onClick={() => setShowNewVersionForm(true)}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            {t('pricing.newVersion')}
-          </Button>
-        )}
-      </div>
+    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+      <PageHeader
+        title={t('pricing.title')}
+        description={isFyClosed ? t('pricing.fyClosedWarning') : undefined}
+        actions={
+          canEdit && !showNewVersionForm ? (
+            <Button onClick={() => setShowNewVersionForm(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              {t('pricing.newVersion')}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* FY tabs */}
       {allFy.length > 0 && (
@@ -1015,7 +1013,7 @@ export function PricingPage() {
             ))}
         </div>
       )}
-    </section>
+    </div>
   )
 }
 

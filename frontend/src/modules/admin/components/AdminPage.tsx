@@ -1,11 +1,32 @@
+/*
+    ERP-CLUB - ERP pour Club de vol à voile
+    - Logiciel libre de gestion d'un club de vol à voile
+    - admin: Gestion des utilisateurs, rôles et capacités
+    Copyright (C) 2026  SAFORCADA Patrick
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { type ReactNode, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Users, Shield, KeyRound } from 'lucide-react'
 
-import { Alert } from '../../../components/ui/alert'
-import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
-import { Label } from '../../../components/ui/label'
-import { PageHeader, Tabs } from '@club-erp/ui'
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { WorkspaceShell } from '@/components/ui/workspace-shell'
 import {
   useAdminCapabilitiesQuery,
   useAdminRolesQuery,
@@ -20,8 +41,6 @@ import {
   useUpdateAdminRoleMutation,
   useUpdateAdminUserMutation,
 } from '../api'
-
-type AdminTab = 'users' | 'roles' | 'capabilities'
 
 function parseCsvList(value: string): string[] {
   return value
@@ -55,7 +74,6 @@ function toErrorMessage(error: unknown): string {
 
 export function AdminPage() {
   const { t } = useTranslation('admin')
-  const [activeTab, setActiveTab] = useState<AdminTab>('users')
 
   const usersQuery = useAdminUsersQuery()
   const rolesQuery = useAdminRolesQuery()
@@ -68,47 +86,55 @@ export function AdminPage() {
   const loading = usersQuery.isLoading || rolesQuery.isLoading || capabilitiesQuery.isLoading
   const loadingError = usersQuery.error ?? rolesQuery.error ?? capabilitiesQuery.error
 
+  const LoadingOrError = ({ children }: { children: ReactNode }) => {
+    if (loading) return <p className="text-sm text-muted-foreground">{t('loading')}</p>
+    if (loadingError) return <Alert>{toErrorMessage(loadingError)}</Alert>
+    return <>{children}</>
+  }
+
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <PageHeader
-        title={t('management.title')}
-        supportingText={t('management.description')}
-      />
-
-      <Tabs
-        items={[
-          { key: 'users', label: t('tabs.users') },
-          { key: 'roles', label: t('tabs.roles') },
-          { key: 'capabilities', label: t('tabs.capabilities') },
-        ]}
-        activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as AdminTab)}
-      />
-
-      {loading ? <p className="text-sm text-slate-600">{t('loading')}</p> : null}
-
-      {loadingError ? <Alert>{toErrorMessage(loadingError)}</Alert> : null}
-
-      {!loading && !loadingError ? (
-        <>
-          {activeTab === 'users' ? (
-            <UsersCrudPanel
-              roles={roles.map((role) => role.slug)}
-              users={users}
-            />
-          ) : null}
-
-          {activeTab === 'roles' ? (
-            <RolesCrudPanel
-              capabilityCodes={capabilities.map((capability) => capability.code)}
-              roles={roles}
-            />
-          ) : null}
-
-          {activeTab === 'capabilities' ? <CapabilitiesCrudPanel capabilities={capabilities} /> : null}
-        </>
-      ) : null}
-    </section>
+    <WorkspaceShell
+      title={t('management.title')}
+      description={t('management.description')}
+      tabs={[
+        {
+          value: 'users',
+          label: t('tabs.users'),
+          icon: Users,
+          content: (
+            <LoadingOrError>
+              <UsersCrudPanel
+                roles={roles.map((role) => role.slug)}
+                users={users}
+              />
+            </LoadingOrError>
+          ),
+        },
+        {
+          value: 'roles',
+          label: t('tabs.roles'),
+          icon: Shield,
+          content: (
+            <LoadingOrError>
+              <RolesCrudPanel
+                capabilityCodes={capabilities.map((capability) => capability.code)}
+                roles={roles}
+              />
+            </LoadingOrError>
+          ),
+        },
+        {
+          value: 'capabilities',
+          label: t('tabs.capabilities'),
+          icon: KeyRound,
+          content: (
+            <LoadingOrError>
+              <CapabilitiesCrudPanel capabilities={capabilities} />
+            </LoadingOrError>
+          ),
+        },
+      ]}
+    />
   )
 }
 

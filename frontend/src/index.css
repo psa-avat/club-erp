@@ -146,6 +146,33 @@
   }
 }
 
+/* =============================================================
+   Status badge utilities — couleurs sémantiques normalisées
+   Usage: <Badge className="badge-success" />
+   ============================================================= */
+@layer utilities {
+  .badge-success {
+    background-color: color-mix(in oklch, var(--success) 15%, transparent);
+    color: var(--success);
+    border-color: color-mix(in oklch, var(--success) 30%, transparent);
+  }
+  .badge-warning {
+    background-color: color-mix(in oklch, var(--warning) 15%, transparent);
+    color: var(--warning);
+    border-color: color-mix(in oklch, var(--warning) 30%, transparent);
+  }
+  .badge-destructive {
+    background-color: color-mix(in oklch, var(--destructive) 15%, transparent);
+    color: var(--destructive);
+    border-color: color-mix(in oklch, var(--destructive) 30%, transparent);
+  }
+  .badge-info {
+    background-color: color-mix(in oklch, var(--accent) 15%, transparent);
+    color: var(--accent);
+    border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+  }
+}
+
 * {
   box-sizing: border-box;
 }
