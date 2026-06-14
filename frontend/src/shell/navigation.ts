@@ -97,19 +97,19 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
       { to: '/workspace/sales', labelKey: 'nav.memberSales' },
-      { to: '/workspace/sales', labelKey: 'nav.salesInvoices' },
-      { to: '/workspace/sales', labelKey: 'nav.salesPayments' },
+      { to: '/workspace/sales?tab=factures', labelKey: 'nav.salesInvoices' },
+      { to: '/workspace/sales?tab=paiements', labelKey: 'nav.salesPayments' },
     ],
   },
 
   // ── 7. Achats (priorité #7) ────────────────────────────────────────────────
   {
-    to: '/workspace/sales?tab=fournisseurs',
+    to: '/workspace/purchases',
     labelKey: 'nav.purchases',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/sales?tab=fournisseurs', labelKey: 'nav.supplierInvoices' },
-      { to: '/workspace/sales?tab=fournisseurs', labelKey: 'nav.supplierDirectory' },
+      { to: '/workspace/purchases', labelKey: 'nav.supplierInvoices' },
+      { to: '/workspace/purchases?tab=fournisseurs', labelKey: 'nav.supplierDirectory' },
     ],
   },
 
@@ -139,14 +139,14 @@ export const shellNavItems: ShellNavItem[] = [
 
   // ── 10. Comptabilité (priorité #10) ────────────────────────────────────────
   {
-    to: '/workspace/banque?tab=journal',
+    to: '/workspace/accounting',
     labelKey: 'nav.accounting',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/banque?tab=journal', labelKey: 'nav.banqueJournal' },
-      { to: '/workspace/banque?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
-      { to: '/workspace/banque?tab=pcg', labelKey: 'nav.banquePcg' },
-      { to: '/workspace/banque?tab=rapports', labelKey: 'nav.banqueReports' },
+      { to: '/workspace/accounting', labelKey: 'nav.banqueJournal' },
+      { to: '/workspace/accounting?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
+      { to: '/workspace/accounting?tab=pcg', labelKey: 'nav.banquePcg' },
+      { to: '/workspace/accounting?tab=rapports', labelKey: 'nav.banqueReports' },
     ],
   },
 
@@ -166,7 +166,7 @@ export const shellNavItems: ShellNavItem[] = [
   { to: '/pricing', labelKey: 'nav.pricing' },
 
   // ── 13. Bilans (priorité #13) ──────────────────────────────────────────────
-  { to: '/workspace/banque?tab=rapports', labelKey: 'nav.reports' },
+  { to: '/workspace/accounting?tab=rapports', labelKey: 'nav.reports' },
 
   // ── 14. Intégrations techniques ────────────────────────────────────────────
   {
