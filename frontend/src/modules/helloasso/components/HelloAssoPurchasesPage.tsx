@@ -236,14 +236,6 @@ export function HelloAssoPurchasesPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-2xl border border-outline-variant bg-gradient-to-r from-sky-950 via-teal-900 to-emerald-800 p-6 text-white shadow-sm">
-        <div className="max-w-3xl space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-100">{t('purchases.hero.kicker')}</p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t('purchases.hero.title')}</h1>
-          <p className="max-w-2xl text-sm text-emerald-50/90">{t('purchases.hero.description')}</p>
-        </div>
-      </div>
-
       <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">

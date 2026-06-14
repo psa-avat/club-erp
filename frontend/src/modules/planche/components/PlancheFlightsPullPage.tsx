@@ -162,17 +162,6 @@ export function PlancheFlightsPullPage() {
 
   return (
     <section className="space-y-4">
-      {/* Hero Banner */}
-      <div className="rounded-2xl border border-outline-variant bg-gradient-to-r from-indigo-950 via-purple-900 to-violet-800 p-6 text-white shadow-sm">
-        <div className="max-w-3xl space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-100">
-            {t('flightsFetch.hero.kicker')}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t('flightsFetch.hero.title')}</h1>
-          <p className="max-w-2xl text-sm text-violet-50/90">{t('flightsFetch.hero.description')}</p>
-        </div>
-      </div>
-
       {/* KPI Dashboard */}
       {statsQuery.isLoading ? (
         <div className="rounded-2xl border border-outline-variant bg-surface p-4 text-sm text-slate-500">

@@ -110,14 +110,6 @@ export function PlancheMembersPushPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-2xl border border-outline-variant bg-gradient-to-r from-cyan-900 via-sky-900 to-blue-900 p-6 text-white shadow-sm">
-        <div className="max-w-3xl space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-100">{t('membersPush.hero.kicker')}</p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t('membersPush.hero.title')}</h1>
-          <p className="max-w-2xl text-sm text-cyan-50/90">{t('membersPush.hero.description')}</p>
-        </div>
-      </div>
-
       <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">{t('membersPush.card.title')}</h2>

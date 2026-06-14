@@ -102,14 +102,6 @@ export function PlancheMachinesPushPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-2xl border border-outline-variant bg-gradient-to-r from-teal-900 via-emerald-900 to-lime-900 p-6 text-white shadow-sm">
-        <div className="max-w-3xl space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-100">{t('machinesPush.hero.kicker')}</p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t('machinesPush.hero.title')}</h1>
-          <p className="max-w-2xl text-sm text-emerald-50/90">{t('machinesPush.hero.description')}</p>
-        </div>
-      </div>
-
       <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">{t('machinesPush.card.title')}</h2>

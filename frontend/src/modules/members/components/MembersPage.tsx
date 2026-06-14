@@ -513,28 +513,29 @@ export function MembersPage() {
 
   return (
     <section className="space-y-6">
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-sky-950 via-teal-900 to-emerald-800 text-white shadow-xl">
-        <div className="grid gap-4 p-6 md:grid-cols-[1.8fr,1fr] md:p-8">
-          <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">{t('hero.kicker')}</p>
-            <h1 className="text-3xl font-semibold tracking-tight">{t('hero.title')}</h1>
-            <p className="max-w-2xl text-sm text-emerald-50/85">{t('hero.description')}</p>
+      <div className="rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-[1.8fr,1fr]">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t('hero.title')}</h1>
+            <p className="max-w-2xl text-sm text-slate-600">{t('hero.description')}</p>
           </div>
-          <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-            <Label className="text-emerald-50" htmlFor="members-year">
-              {t('filters.year')}
-            </Label>
-            <Input
-              id="members-year"
-              className="border-white/20 bg-white/90 text-slate-900"
-              type="number"
-              value={selectedYear}
-              onChange={(event) => setSelectedYear(Number(event.target.value))}
-            />
-            <Button className="w-full" variant="secondary" type="button" onClick={handleNewMember}>
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-slate-500" htmlFor="members-year">
+                {t('filters.year')}
+              </Label>
+              <Input
+                id="members-year"
+                className="h-9"
+                type="number"
+                value={selectedYear}
+                onChange={(event) => setSelectedYear(Number(event.target.value))}
+              />
+            </div>
+            <Button size="sm" variant="secondary" type="button" onClick={handleNewMember}>
               {t('actions.newMember')}
             </Button>
-            <Button className="w-full" variant="secondary" type="button" onClick={() => setShowImportDialog(true)}>
+            <Button size="sm" variant="secondary" type="button" onClick={() => setShowImportDialog(true)}>
               {tCommon('import.button')}
             </Button>
           </div>

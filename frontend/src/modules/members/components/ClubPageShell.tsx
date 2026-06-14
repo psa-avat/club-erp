@@ -44,20 +44,19 @@ export function ClubPageShell({
 
   return (
     <section className="space-y-6">
-      <div className="overflow-hidden rounded-shape-lg border border-outline-variant bg-gradient-to-r from-sky-950 via-teal-900 to-emerald-800 text-white shadow-surface-2">
-        <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between md:p-8">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">{tM('hero.kicker')}</p>
-            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{tM('hero.title')}</h1>
-            <p className="max-w-2xl text-sm text-emerald-50/85">{tM('hero.description')}</p>
+      <div className="rounded-2xl border border-outline-variant bg-surface shadow-sm">
+        <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">{tM('hero.title')}</h1>
+            <p className="max-w-2xl text-sm text-slate-600">{tM('hero.description')}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-            <Label className="whitespace-nowrap text-xs text-emerald-50" htmlFor="club-year">
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <Label className="whitespace-nowrap text-xs text-slate-500" htmlFor="club-year">
               {tM('filters.year')}
             </Label>
             <Input
               id="club-year"
-              className="h-8 w-20 border-white/20 bg-white/90 text-sm text-slate-900"
+              className="h-8 w-20 text-sm"
               type="number"
               value={selectedYear}
               onChange={(event) => setSelectedYear(Number(event.target.value))}
@@ -65,7 +64,7 @@ export function ClubPageShell({
           </div>
         </div>
         <nav
-          className="flex flex-wrap gap-2 border-t border-white/10 bg-slate-950/20 px-6 py-3"
+          className="flex flex-wrap gap-2 border-t border-outline-variant bg-slate-50 px-6 py-3"
           aria-label={t('nav.club')}
         >
           <NavLink

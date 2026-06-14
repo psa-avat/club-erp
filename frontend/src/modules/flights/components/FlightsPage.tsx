@@ -388,17 +388,6 @@ export function FlightsPage() {
 
   return (
     <section className="space-y-4">
-      {/* Hero Banner */}
-      <div className="rounded-2xl border border-outline-variant bg-gradient-to-r from-indigo-950 via-purple-900 to-violet-800 p-6 text-white shadow-sm">
-        <div className="max-w-3xl space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-100">
-            {t('hero.kicker')}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t('hero.title')}</h1>
-          <p className="max-w-2xl text-sm text-violet-50/90">{t('hero.description')}</p>
-        </div>
-      </div>
-
       {/* Filters bar */}
       <div className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
