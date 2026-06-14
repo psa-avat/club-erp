@@ -27,7 +27,7 @@ export function MembersWorkspacePage() {
           value: "annuaire",
           label: t("workspace.members.tabs.directory", "Annuaire"),
           icon: Users,
-          content: <MembersListPage />,
+          content: <MembersListPage defaultScreen="core" />,
         },
         {
           value: "commissions",

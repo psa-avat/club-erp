@@ -92,15 +92,16 @@ function screenTabClass(isActive: boolean) {
   ].join(' ')
 }
 
-export function MembersListPage() {
+export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScreen } = {}) {
   const { t } = useTranslation('members')
   const { t: tCommon } = useTranslation('common')
   const navigate = useNavigate()
   const { screen } = useParams<{ screen: string }>()
   const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
 
-  const activeScreen: MembersScreen = MEMBERS_SCREEN_SET.has((screen ?? 'core') as MembersScreen)
-    ? (screen as MembersScreen)
+  const resolvedScreen = screen ?? defaultScreen ?? 'core'
+  const activeScreen: MembersScreen = MEMBERS_SCREEN_SET.has(resolvedScreen as MembersScreen)
+    ? (resolvedScreen as MembersScreen)
     : 'core'
 
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -163,10 +164,14 @@ export function MembersListPage() {
   const selectedMember = memberDetailQuery.data ?? null
 
   useEffect(() => {
-    if (!screen || !MEMBERS_SCREEN_SET.has(screen as MembersScreen)) {
-      navigate('/club/members/core', { replace: true })
+    // Only redirect to standalone route if we are NOT used inside a workspace tab
+    // (defaultScreen is undefined → standalone /club/members/:screen mode)
+    if (defaultScreen === undefined) {
+      if (!screen || !MEMBERS_SCREEN_SET.has(screen as MembersScreen)) {
+        navigate('/club/members/core', { replace: true })
+      }
     }
-  }, [screen, navigate])
+  }, [screen, navigate, defaultScreen])
 
   useEffect(() => {
     if (filters.member_category !== undefined && !screenCategories.includes(filters.member_category)) {
