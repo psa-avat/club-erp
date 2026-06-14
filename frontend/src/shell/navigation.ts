@@ -119,8 +119,10 @@ export const shellNavItems: ShellNavItem[] = [
     labelKey: 'nav.banking',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/banque', labelKey: 'nav.banqueOverview' },
-      { to: '/workspace/banque?tab=operations', labelKey: 'nav.banqueOps' },
+      { to: '/workspace/banque', labelKey: 'nav.banqueJournal' },
+      { to: '/workspace/banque?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
+      { to: '/workspace/banque?tab=pcg', labelKey: 'nav.banquePcg' },
+      { to: '/workspace/banque?tab=rapports', labelKey: 'nav.banqueReports' },
       { to: '/workspace/banque?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
       { to: '/workspace/banque?tab=parametres', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],

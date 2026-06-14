@@ -474,14 +474,37 @@ utilisé par les workspaces de l'Étape 3.
 | # | Priorité | Workspace | Routes actuelles → Tabs | Pages Lovable | Actions CRUD |
 |---|----------|-----------|-------------------------|---------------|--------------|
 | **3.Pilote** | — | Dashboard *(fait)* | `/dashboard` | `routes/index.tsx` | — |
-| **3.1** | #1 **Facturation & Vols** | `/workspace/flights` | Vols → tab `vols`<br/>Facturation → tab `facturation`<br/>Packs → tab `packs`<br/>Sync Planche → tab `sync` | `routes/discovery.tsx`, `routes/assets.tsx` | Dialog nouveau vol<br/>Dialog création pack |
+| **3.1** | #1 **Facturation & Vols** | `/workspace/flights` | Vols → tab `vols`<br/>Facturation → tab `facturation` (OpsFlightsTab — cockpit facturation)<br/>Packs → tab `packs` (OpsPacksTab — achats/consommation forfaits)<br/>Gesasso → tab `gesasso`<br/>OSRT → tab `osrt`<br/>Sync Planche → tab `sync` | `routes/discovery.tsx`, `routes/assets.tsx` | Dialog nouveau vol<br/>Dialog vente forfait |
 | **3.2** | #2 **VI & HelloAsso** | `/workspace/vi` | VI droits → tab `droits`<br/>VI types → tab `types`<br/>VI planning → tab `planning`<br/>HelloAsso achats → tab `achats`<br/>Import VI → tab `import`<br/>Sync VI → tab `sync` | `routes/assets.tsx` (partiel) | Dialog nouveau type VI<br/>Sheet import HelloAsso |
 | **3.3** | #3 **Planning** | `/planning` *(page simple)* | Planning → vue calendrier unique | `routes/planning.tsx` | Dialog création événement |
 | **3.4** | #4 **Membres** | `/workspace/members` | Annuaire → tab `annuaire`<br/>Commissions → tab `commissions`<br/>Fiches → tab `fiches`<br/>Réinscription → tab `reinscription` | `routes/members.tsx` | Sheet édition membre<br/>Dialog commission |
 | **3.5** | #5 **Portail** | `/member-portal/*` *(shell séparé)* | Dashboard, Logbook, Compte, Packs, Disponibilités | `routes/portal*.tsx` | Dialog achat pack<br/>Sheet déclaration vol |
-| **3.6** | #6-7 **Ventes & Achats** | `/workspace/sales` | Ventes → tab `ventes`<br/>Factures fournisseurs → tab `fournisseurs` | `routes/sales.tsx` | Dialog nouvelle vente<br/>Sheet facture fournisseur |
-| **3.7** | #8,10,13 **Banque & Compta** | `/workspace/banque` | Aperçu → tab `apercu`<br/>Opérations → tab `operations`<br/>Journal → tab `journal`<br/>Exercices → tab `exercices`<br/>PCG → tab `pcg`<br/>Rapports → tab `rapports`<br/>Rapprochement → tab `rapprochement`<br/>Paramètres → tab `parametres` | `routes/finance.tsx`, `routes/pricing.tsx`, `routes/reporting.tsx` | **Conserve routes dédiées** :<br/>`/banque/journal/entry/:uuid`<br/>`/banque/pricing/versions/:fy/:ve/edit` |
+| **3.6a** | #6 **Ventes** | `/workspace/sales` | Ventes → tab `ventes` (MemberBulkBillingPage)<br/>Écritures ventes → tab `ecritures` (OpsSalesTab)<br/>Factures → tab `factures`<br/>Paiements → tab `paiements` | `routes/sales.tsx` | Dialog nouvelle vente<br/>Sheet paiement |
+| **3.6b** | #7 **Achats** | `/workspace/purchases` | Factures fournisseurs → tab `factures` (SupplierInvoicePage)<br/>Fournisseurs → tab `fournisseurs` (OpsSupplierTab) | `routes/purchases.tsx` | Sheet facture fournisseur<br/>Dialog nouvel fournisseur |
+| **3.7** | #8 **Banque** | `/workspace/banque` | Journal → tab `journal`<br/>Exercices → tab `exercices`<br/>PCG → tab `pcg`<br/>Rapports → tab `rapports`<br/>Rapprochement → tab `rapprochement`<br/>Paramètres → tab `parametres` | — | **Conserve routes dédiées** :<br/>`/banque/journal/entry/:uuid`<br/>`/banque/settings/:section` |
 | **3.8** | #11-12 **Machines & Tarifs** | `/workspace/machines` | Équipements → tab `equipements`<br/>Types → tab `types`<br/>Tarifs machine → tab `tarifs` | `routes/assets.tsx` | Dialog nouvel équipement<br/>Sheet édition tarif |
+
+**⚠️ Remarque Tarifs :** Le workspace `/pricing` (route dédiée) doit être créé ou enrichi pour accueillir **PackDefinitionsPage** (définitions des packs, actuellement dans `/workspace/flights?tab=packs`).
+
+---
+
+### Démantèlement de `BanqueDailyOpsPage` (hub opérations)
+
+L'ancien hub central `BanqueDailyOpsPage` (sous-tabs : dashboard, suppliers, sales, flights, packs, payments, payroll) est supprimé. Ses sous-composants sont redistribués dans les workspaces dédiés :
+
+| Sous-tab BanqueDailyOpsPage | Destination | Action |
+|-----------------------------|-------------|--------|
+| `dashboard` (Tableau de bord) | — | **Supprimé** — redondant avec le Dashboard principal |
+| `suppliers` (Fournisseurs) | `/workspace/purchases?tab=fournisseurs` | **Déplacé** — devient `OpsSupplierTab` dans Achats |
+| `sales` (Ventes membres) | `/workspace/sales?tab=ecritures` | **Déplacé** — devient `OpsSalesTab`, nouvel onglet dans Ventes |
+| `flights` (Vols) | `/workspace/flights?tab=facturation` | **Déplacé** — devient `OpsFlightsTab`, remplace le placeholder facturation |
+| `packs` (Forfaits) | `/workspace/flights?tab=packs` | **Déplacé** — devient `OpsPacksTab`, remplace `PackDefinitionsPage` |
+| `payments` (Paiements) | — | **Supprimé** — fonctionnalité non prioritaire |
+| `payroll` (Paie) | — | **Supprimé** — fonctionnalité non prioritaire |
+
+**Conséquence sur le workspace Banque :**
+- Onglets `apercu` (BanqueDashboardPage) et `operations` (BanqueDailyOpsPage) **supprimés**
+- Le workspace Banque se recentre sur le coeur comptable : journal, exercices, PCG, rapports, rapprochement, paramètres
 | **3.9** | #9 **RH** | `/workspace/rh` | Planning congés → tab `congés`<br/>Présences → tab `presences` | Aucune (création ad hoc) | — |
 | **3.10** | #14 **Admin** | `/admin` *(page unique)* | Admin, Audit, Configs HelloAsso/Planche/Stockage/Banque | `routes/administration.tsx` | Dialog configuration |
 

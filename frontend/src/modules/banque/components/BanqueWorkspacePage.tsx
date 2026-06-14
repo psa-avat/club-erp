@@ -9,15 +9,12 @@ import {
   BarChart3,
   Calendar,
   FileText,
-  LayoutDashboard,
   Settings,
   TableProperties,
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
-import { BanqueDashboardPage } from "./BanqueDashboardPage";
-import { BanqueDailyOpsPage } from "./BanqueDailyOpsPage";
 import { BanqueJournalEntriesPage } from "./BanqueJournalEntriesPage";
 import { BanqueFiscalYearsPage } from "./BanqueFiscalYearsPage";
 import { BanquePcgPage } from "./BanquePcgPage";
@@ -29,24 +26,12 @@ export function BanqueWorkspacePage() {
 
   return (
     <WorkspaceShell
-      title={t("workspace.banque.title", "Banque & Comptabilite")}
+      title={t("workspace.banque.title", "Banque")}
       description={t(
         "workspace.banque.description",
-        "Apercu, operations, journal comptable, exercices, rapports et parametres.",
+        "Journal comptable, exercices, plan comptable, rapports et parametres.",
       )}
       tabs={[
-        {
-          value: "apercu",
-          label: t("workspace.banque.tabs.overview", "Apercu"),
-          icon: LayoutDashboard,
-          content: <BanqueDashboardPage />,
-        },
-        {
-          value: "operations",
-          label: t("workspace.banque.tabs.operations", "Operations"),
-          icon: ArrowLeftRight,
-          content: <BanqueDailyOpsPage />,
-        },
         {
           value: "journal",
           label: t("workspace.banque.tabs.journal", "Journal"),

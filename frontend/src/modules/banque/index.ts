@@ -22,3 +22,7 @@ export { PackDefinitionsPage, PackDefinitionEditPage } from './components/PackDe
 export { PackPurchaseDialog } from './components/PackPurchaseDialog'
 export { PackDefinitionForm } from './components/PackDefinitionForm'
 export { FlightDetailDialog } from './components/FlightDetailDialog'
+export { OpsFlightsTab } from './components/OpsFlightsTab'
+export { OpsPacksTab } from './components/OpsPacksTab'
+export { OpsSalesTab } from './components/OpsSalesTab'
+export { OpsSupplierTab } from './components/OpsSupplierTab'

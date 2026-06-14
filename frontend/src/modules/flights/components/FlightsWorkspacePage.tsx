@@ -24,7 +24,7 @@ import { Plane, FileText, Tags, Database, ArrowLeftRight, Plug } from "lucide-re
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { FlightsPage } from "./FlightsPage";
-import { PackDefinitionsPage } from "../../banque";
+import { OpsFlightsTab, OpsPacksTab } from "../../banque";
 import { PlancheFlightsPullPage } from "../../planche";
 
 /**
@@ -32,8 +32,8 @@ import { PlancheFlightsPullPage } from "../../planche";
  *
  * Regroupe en une seule page avec tabs :
  * - vols        → Liste des vols validés (FlightsPage)
- * - facturation → Facturation & aperçu (placeholder, Phase 6)
- * - packs       → Définitions des packs (PackDefinitionsPage)
+ * - facturation → Cockpit facturation OSRT/Gesasso (OpsFlightsTab)
+ * - packs       → Achats et consommation forfaits (OpsPacksTab)
  * - gesasso     → Envoi Gesasso (placeholder, Phase 8)
  * - osrt        → Envoi OSRT (placeholder, Phase 8)
  * - sync        → Import vols depuis Planche (PlancheFlightsPullPage)
@@ -62,22 +62,13 @@ export function FlightsWorkspacePage() {
           value: "facturation",
           label: t("workspace.tabs.billing", "Facturation"),
           icon: FileText,
-          content: (
-            <PlaceholderPage
-              title={t("workspace.billing.title", "Facturation des vols")}
-              description={t(
-                "workspace.billing.description",
-                "Lignes de facturation à valider — disponible dans une phase ultérieure.",
-              )}
-              eta="Phase 6"
-            />
-          ),
+          content: <OpsFlightsTab />,
         },
         {
           value: "packs",
           label: t("workspace.tabs.packs", "Packs"),
           icon: Tags,
-          content: <PackDefinitionsPage />,
+          content: <OpsPacksTab />,
         },
         {
           value: "gesasso",

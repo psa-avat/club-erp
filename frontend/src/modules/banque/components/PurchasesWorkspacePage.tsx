@@ -22,15 +22,21 @@ import { useTranslation } from "react-i18next";
 import { FileText, Building2 } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
-import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
+import { useFiscalYearStore } from "@/store/fiscalYearStore";
 import { SupplierInvoicePage } from "./SupplierInvoicePage";
+import { OpsSupplierTab } from "./OpsSupplierTab";
+
+function SupplierDirectoryTab() {
+  const fiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid) ?? "";
+  return <OpsSupplierTab fiscalYearUuid={fiscalYearUuid} />;
+}
 
 /**
  * PurchasesWorkspacePage — Workspace Achats.
  *
  * Regroupe en une seule page avec tabs :
  * - factures    → Factures fournisseurs (SupplierInvoicePage)
- * - fournisseurs → Annuaire fournisseurs (Placeholder, Phase 9)
+ * - fournisseurs → Annuaire fournisseurs (OpsSupplierTab)
  */
 export function PurchasesWorkspacePage() {
   const { t } = useTranslation("banque");
@@ -53,16 +59,7 @@ export function PurchasesWorkspacePage() {
           value: "fournisseurs",
           label: t("workspace.purchases.tabs.suppliers", "Fournisseurs"),
           icon: Building2,
-          content: (
-            <PlaceholderPage
-              title={t("workspace.purchases.suppliers.title", "Annuaire fournisseurs")}
-              description={t(
-                "workspace.purchases.suppliers.description",
-                "Gestion des fournisseurs et contacts.",
-              )}
-              eta="Phase 9"
-            />
-          ),
+          content: <SupplierDirectoryTab />,
         },
       ]}
     />
