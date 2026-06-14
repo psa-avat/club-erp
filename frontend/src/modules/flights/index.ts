@@ -19,4 +19,5 @@
  */
 
 export { FlightsPage } from './components/FlightsPage'
+export { FlightsBillingPage } from './components/FlightsBillingPage'
 export { FlightsWorkspacePage } from './components/FlightsWorkspacePage'

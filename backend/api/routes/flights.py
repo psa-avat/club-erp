@@ -425,11 +425,20 @@ class BillableFlightItem(BaseModel):
     pilot_name: str | None
     second_pilot_erp_id: str | None = None
     second_pilot_name: str | None = None
+    second_pilot_trigram: str | None = None
     charge_to_erp_id: str | None = None
     charge_to_name: str | None = None
+    charge_comment: str | None = None
     asset_code: str | None
     type_of_flight: int | None
     type_label: str | None
+    takeoff_time: str | None = None
+    landing_time: str | None = None
+    launch_method: int | None = None
+    launch_asset_code: str | None = None
+    launch_pilot_trigram: str | None = None
+    instruction_split: int | None = None
+    aero: str | None = None
     total_preview: str | None
     status: str  # pending | applied | posted
     has_discount: bool = False
@@ -442,6 +451,9 @@ class BillableFlightItem(BaseModel):
 class BillableFlightListResponse(BaseModel):
     items: list[BillableFlightItem]
     total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class PendingBillingSummaryResponse(BaseModel):
@@ -458,6 +470,10 @@ async def list_billable_flights(
     type_of_flight: int | None = Query(None, ge=0, le=7, description="Filter by flight type (0-7)"),
     launch_method: int | None = Query(None, ge=0, le=3, description="Filter by launch method (0-3)"),
     status: str | None = Query(None, pattern="^(pending|applied|posted|all)$", description="Filter by billing status"),
+    pilot_query: str | None = Query(None, description="Search by pilot name or ERP ID"),
+    asset_code: str | None = Query(None, description="Filter by glider asset code"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
 ):
@@ -478,8 +494,54 @@ async def list_billable_flights(
         filters.append(ValidatedFlight.type_of_flight == type_of_flight)
     if launch_method is not None:
         filters.append(ValidatedFlight.launch_method == launch_method)
+    if asset_code is not None:
+        filters.append(ValidatedFlight.asset_code.ilike(f"%{asset_code}%"))
 
-    stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc())
+    # Count total matching (before pagination)
+    count_stmt = select(func.count(ValidatedFlight.uuid)).where(*filters)
+    count_result = await db.execute(count_stmt)
+    total = count_result.scalar() or 0
+
+    # Build paginated query
+    base_stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc())
+
+    # If pilot_query is provided, we need to first find matching member account_ids
+    # then filter flights by those IDs
+    if pilot_query is not None and pilot_query.strip():
+        # Search members matching the query
+        like_pattern = f"%{pilot_query.strip()}%"
+        member_search = await db.execute(
+            select(Member.account_id).where(
+                or_(
+                    Member.first_name.ilike(like_pattern),
+                    Member.last_name.ilike(like_pattern),
+                    Member.account_id.ilike(like_pattern),
+                )
+            )
+        )
+        matching_ids = [str(row.account_id) for row in member_search.all()]
+        if matching_ids:
+            filters.append(
+                or_(
+                    ValidatedFlight.pilot_erp_id.in_(matching_ids),
+                    ValidatedFlight.second_pilot_erp_id.in_(matching_ids),
+                    ValidatedFlight.charge_to_erp_id.in_(matching_ids),
+                )
+            )
+        else:
+            # No matching members → return empty
+            return BillableFlightListResponse(items=[], total=0, page=page, page_size=page_size, total_pages=0)
+
+    # Re-count with pilot filter applied
+    if pilot_query is not None and pilot_query.strip():
+        count_stmt = select(func.count(ValidatedFlight.uuid)).where(*filters)
+        count_result = await db.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+
+    stmt = base_stmt.offset(offset).limit(page_size)
     result = await db.execute(stmt)
     flights = result.scalars().all()
 
@@ -509,6 +571,7 @@ async def list_billable_flights(
     for f in flights:
         pilot_name = member_map.get(f.pilot_erp_id, (None, None))[0] if f.pilot_erp_id else None
         second_name = member_map.get(f.second_pilot_erp_id, (None, None))[0] if f.second_pilot_erp_id else None
+        second_trigram = member_map.get(f.second_pilot_erp_id, (None, None))[1] if f.second_pilot_erp_id else None
         charge_to_name = member_map.get(f.charge_to_erp_id, (None, None))[0] if f.charge_to_erp_id else None
         items.append(BillableFlightItem(
             uuid=str(f.uuid),
@@ -518,11 +581,20 @@ async def list_billable_flights(
             pilot_name=pilot_name,
             second_pilot_erp_id=f.second_pilot_erp_id,
             second_pilot_name=second_name,
+            second_pilot_trigram=second_trigram,
             charge_to_erp_id=f.charge_to_erp_id,
             charge_to_name=charge_to_name,
+            charge_comment=f.charge_comment,
             asset_code=f.asset_code or f.glider_erp_id,
             type_of_flight=f.type_of_flight,
             type_label=TYPE_OF_FLIGHT_LABELS.get(f.type_of_flight) if f.type_of_flight is not None else None,
+            takeoff_time=f.takeoff_time,
+            landing_time=f.landing_time,
+            launch_method=f.launch_method,
+            launch_asset_code=f.launch_asset_code,
+            launch_pilot_trigram=f.launch_pilot_trigram,
+            instruction_split=f.instruction_split,
+            aero=f.aero,
             total_preview=None,
             status=f.billing_quote_state or "pending",
             has_discount=f.has_discount or False,
@@ -530,7 +602,7 @@ async def list_billable_flights(
             correction_reason=f.correction_reason,
         ))
 
-    return BillableFlightListResponse(items=items, total=len(items))
+    return BillableFlightListResponse(items=items, total=total, page=page, page_size=page_size, total_pages=total_pages)
 
 
 @router.get("/billing-summary", response_model=PendingBillingSummaryResponse)

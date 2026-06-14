@@ -19,24 +19,27 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Plane, FileText, Tags, Database, ArrowLeftRight, Plug } from "lucide-react";
+import { Plane, Tags, Database, ArrowLeftRight, Plug } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
-import { FlightsPage } from "./FlightsPage";
-import { OpsFlightsTab, OpsPacksTab } from "../../banque";
+import { FlightsBillingPage } from "./FlightsBillingPage";
+import { OpsPacksTab } from "../../banque";
 import { PlancheFlightsPullPage } from "../../planche";
 
 /**
  * FlightsWorkspacePage — Workspace Facturation & Vols.
  *
  * Regroupe en une seule page avec tabs :
- * - vols        → Liste des vols validés (FlightsPage)
- * - facturation → Cockpit facturation OSRT/Gesasso (OpsFlightsTab)
- * - packs       → Achats et consommation forfaits (OpsPacksTab)
- * - gesasso     → Envoi Gesasso (placeholder, Phase 8)
- * - osrt        → Envoi OSRT (placeholder, Phase 8)
- * - sync        → Import vols depuis Planche (PlancheFlightsPullPage)
+ * - vols      → Cockpit facturation unifié (FlightsBillingPage — fusion vols + facturation)
+ * - packs     → Achats et consommation forfaits (OpsPacksTab)
+ * - gesasso   → Envoi Gesasso (placeholder, Phase 8)
+ * - osrt      → Envoi OSRT (placeholder, Phase 8)
+ * - sync      → Import vols depuis Planche (PlancheFlightsPullPage)
+ *
+ * Note: les tabs "vols" et "facturation" ont été fusionnés en un seul cockpit
+ * facturation (FlightsBillingPage) qui combine la liste détaillée des vols
+ * avec les actions billing (aperçu, appliquer, post, batch).
  */
 export function FlightsWorkspacePage() {
   const { t } = useTranslation("flights");
@@ -56,13 +59,7 @@ export function FlightsWorkspacePage() {
           value: "vols",
           label: t("workspace.tabs.vols", "Vols"),
           icon: Plane,
-          content: <FlightsPage />,
-        },
-        {
-          value: "facturation",
-          label: t("workspace.tabs.billing", "Facturation"),
-          icon: FileText,
-          content: <OpsFlightsTab />,
+          content: <FlightsBillingPage />,
         },
         {
           value: "packs",

@@ -39,7 +39,6 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'EDIT_FLIGHTS',
     children: [
       { to: '/workspace/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
-      { to: '/workspace/flights?tab=facturation', labelKey: 'nav.flightsBilling', requiredCapability: 'VIEW_FINANCIALS' },
       { to: '/workspace/flights?tab=packs', labelKey: 'nav.packs', requiredCapability: 'MANAGE_PRICES' },
       { to: '/workspace/flights?tab=gesasso', labelKey: 'nav.gesassoSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/workspace/flights?tab=osrt', labelKey: 'nav.osrtSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },

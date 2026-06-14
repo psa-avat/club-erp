@@ -1290,8 +1290,8 @@ export function useCloseRemPeriodMutation() {
 // ── Billable Flights (Phase 4/5) ─────────────────────────────────────────
 
 export const banqueFlightsKeys = {
-  billable: (dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, status?: string) =>
-    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all', typeOfFlight ?? 'all', launchMethod ?? 'all', status ?? 'pending'] as const,
+  billable: (dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, status?: string, pilotQuery?: string, assetCode?: string, page?: number, pageSize?: number) =>
+    ['banque', 'flights', 'billable', dateFrom ?? 'all', dateTo ?? 'all', typeOfFlight ?? 'all', launchMethod ?? 'all', status ?? 'pending', pilotQuery ?? 'all', assetCode ?? 'all', page ?? 1, pageSize ?? 50] as const,
 }
 
 export type BillableFlight = {
@@ -1302,11 +1302,20 @@ export type BillableFlight = {
   pilot_name: string | null
   second_pilot_erp_id: string | null
   second_pilot_name: string | null
+  second_pilot_trigram: string | null
   charge_to_erp_id: string | null
   charge_to_name: string | null
+  charge_comment: string | null
   asset_code: string | null
   type_of_flight: number | null
   type_label: string | null
+  takeoff_time: string | null
+  landing_time: string | null
+  launch_method: number | null
+  launch_asset_code: string | null
+  launch_pilot_trigram: string | null
+  instruction_split: number | null
+  aero: string | null
   total_preview: string | null
   status: string
   has_discount: boolean
@@ -1316,9 +1325,28 @@ export type BillableFlight = {
   correction_reason: string | null
 }
 
-export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, typeOfFlight?: number, launchMethod?: number, status?: string, enabled = true) {
+export type BillableFlightListResponse = {
+  items: BillableFlight[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export function useBillableFlightsQuery(
+  dateFrom?: string,
+  dateTo?: string,
+  typeOfFlight?: number,
+  launchMethod?: number,
+  status?: string,
+  pilotQuery?: string,
+  assetCode?: string,
+  page = 1,
+  pageSize = 50,
+  enabled = true,
+) {
   return useQuery({
-    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo, typeOfFlight, launchMethod, status),
+    queryKey: banqueFlightsKeys.billable(dateFrom, dateTo, typeOfFlight, launchMethod, status, pilotQuery, assetCode, page, pageSize),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -1327,12 +1355,16 @@ export function useBillableFlightsQuery(dateFrom?: string, dateTo?: string, type
       if (typeOfFlight !== undefined) params.set('type_of_flight', String(typeOfFlight))
       if (launchMethod !== undefined) params.set('launch_method', String(launchMethod))
       if (status) params.set('status', status)
+      if (pilotQuery) params.set('pilot_query', pilotQuery)
+      if (assetCode) params.set('asset_code', assetCode)
+      params.set('page', String(page))
+      params.set('page_size', String(pageSize))
       const query = params.toString() ? `?${params.toString()}` : ''
-      const { data } = await apiClient.get<{ items: BillableFlight[]; total: number }>(
+      const { data } = await apiClient.get<BillableFlightListResponse>(
         `/api/v1/flights/billable${query}`,
         getAuthRequestConfig(),
       )
-      return data.items
+      return data
     },
   })
 }

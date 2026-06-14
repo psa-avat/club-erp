@@ -229,14 +229,21 @@ export function OpsFlightsTab() {
   const [flightPreviews, setFlightPreviews] = useState<Record<string, FlightBillingPreviewResponse>>({})
   const [batchPreview, setBatchPreview] = useState<FlightBillingBatchPreviewResponse | null>(null)
 
-  const { data: flights = [], isLoading, refetch } = useBillableFlightsQuery(
+  const flightsQuery = useBillableFlightsQuery(
     dateFrom || undefined,
     dateTo || undefined,
     filterType,
     filterLaunch,
-    filterStatus !== 'pending' ? filterStatus : undefined, // null = default pending
+    filterStatus !== 'pending' ? filterStatus : undefined,
+    undefined, // pilotQuery
+    undefined, // assetCode
+    1,         // page
+    500,       // pageSize (large to get all)
     true,
   )
+  const flights = flightsQuery.data?.items ?? []
+  const isLoading = flightsQuery.isLoading
+  const { refetch } = flightsQuery
 
   const previewMutation = useFlightBillingPreviewMutation()
   const applyMutation = useFlightBillingApplyMutation()
