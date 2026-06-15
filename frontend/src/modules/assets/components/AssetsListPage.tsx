@@ -239,29 +239,21 @@ export function AssetsListPage() {
 
   return (
     <section className="space-y-4">
-      {/* Header */}
-      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-on-surface">{t('list.title')}</h1>
-            <p className="mt-1 text-sm text-on-surface-variant">{t('list.description')}</p>
-          </div>
-          {canManage && (
-            <div className="flex shrink-0 gap-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/assets/types')}>
-                {t('assetTypes.title')}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setShowImportDialog(true)}>
-                {tCommon('import.button')}
-              </Button>
-              <Button onClick={() => navigate('/assets/new')} size="sm">
-                <Plus className="mr-1 h-4 w-4" />
-                {t('actions.newAsset')}
-              </Button>
-            </div>
-          )}
+      {/* Actions toolbar */}
+      {canManage && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/assets/types')}>
+            {t('assetTypes.title')}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setShowImportDialog(true)}>
+            {tCommon('import.button')}
+          </Button>
+          <Button onClick={() => navigate('/assets/new')} size="sm">
+            <Plus className="mr-1 h-4 w-4" />
+            {t('actions.newAsset')}
+          </Button>
         </div>
-      </div>
+      )}
 
       {/* Filters */}
       <div className="rounded-shape-lg border border-outline-variant bg-surface p-4 shadow-surface-1">

@@ -157,11 +157,6 @@ export function HelloAssoViImportPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-outline-variant bg-surface p-6">
-        <h1 className="text-xl font-semibold text-slate-900">{t('viImport.hero.title')}</h1>
-        <p className="text-sm text-slate-600">{t('viImport.hero.description')}</p>
-      </div>
-
       <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-4 md:items-end">
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.source')}</label>

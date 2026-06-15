@@ -44,11 +44,6 @@ export function PlancheViSyncPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-outline-variant bg-surface p-6">
-        <h1 className="text-xl font-semibold text-slate-900">Planche VI - Push et rapprochement</h1>
-        <p className="text-sm text-slate-600">Sélectionnez des droits planifiés puis poussez vers Planche. Lancez ensuite le rapprochement.</p>
-      </div>
-
       <div className="rounded-xl border border-outline-variant bg-surface p-4">
         <div className="mb-3 flex flex-wrap gap-2 items-center">
           <Button disabled={selectedIds.length === 0 || pushMutation.isPending} onClick={() => { void runPush() }}>

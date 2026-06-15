@@ -749,6 +749,18 @@ export const en = {
     },
   },
   helloasso: {
+    workspace: {
+      title: 'VI & HelloAsso',
+      description: 'Manage discovery flight vouchers, HelloAsso purchases and Planche synchronization.',
+      tabs: {
+        entitlements: 'VI Vouchers',
+        types: 'VI Types',
+        planning: 'Planning',
+        purchases: 'HelloAsso Purchases',
+        import: 'VI Import',
+        sync: 'Planche Sync',
+      },
+    },
     hero: {
       kicker: 'HelloAsso integration',
       title: 'Configure HelloAsso access before synchronization flows',

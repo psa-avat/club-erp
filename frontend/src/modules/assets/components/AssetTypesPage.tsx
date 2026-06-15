@@ -497,27 +497,22 @@ export function AssetTypesPage() {
   return (
     <section className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <button
-              type="button"
-              onClick={() => navigate('/assets')}
-              className="mb-2 flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
-            >
-              <ArrowLeft className="h-3 w-3" />
-              {t('assetTypes.backToAssets')}
-            </button>
-            <h1 className="text-xl font-semibold text-slate-900">{t('assetTypes.title')}</h1>
-            <p className="mt-1 text-sm text-slate-500">{t('assetTypes.description')}</p>
-          </div>
-          {canManage && !showForm && !editingType && (
-            <Button size="sm" onClick={() => { setShowForm(true); setFormError(null) }}>
-              <Plus className="mr-1 h-4 w-4" />
-              {t('assetTypes.addType')}
-            </Button>
-          )}
-        </div>
+      {/* Actions toolbar */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => navigate('/assets')}
+          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          {t('assetTypes.backToAssets')}
+        </button>
+        {canManage && !showForm && !editingType && (
+          <Button size="sm" onClick={() => { setShowForm(true); setFormError(null) }}>
+            <Plus className="mr-1 h-4 w-4" />
+            {t('assetTypes.addType')}
+          </Button>
+        )}
       </div>
 
       {/* Create form */}

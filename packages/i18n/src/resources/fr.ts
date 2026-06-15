@@ -749,6 +749,18 @@ export const fr = {
     },
   },
   helloasso: {
+    workspace: {
+      title: 'VI & HelloAsso',
+      description: 'Gestion des bons de vol d\'initiation, achats HelloAsso et synchronisation Planche.',
+      tabs: {
+        entitlements: 'Bons VI',
+        types: 'Types VI',
+        planning: 'Planning',
+        purchases: 'Achats HelloAsso',
+        import: 'Import VI',
+        sync: 'Sync Planche',
+      },
+    },
     hero: {
       kicker: 'Intégration HelloAsso',
       title: 'Configurez la connexion HelloAsso avant les synchronisations',

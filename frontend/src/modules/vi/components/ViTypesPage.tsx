@@ -72,11 +72,6 @@ export function ViTypesPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-outline-variant bg-surface p-6">
-        <h1 className="text-xl font-semibold text-slate-900">Catalogue des types VI</h1>
-        <p className="text-sm text-slate-600">Ajoutez ou archivez les types (VI, JD, STAGE, ...).</p>
-      </div>
-
       <form className="grid gap-4 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-4" onSubmit={handleCreate}>
         <div className="space-y-2">
           <Label htmlFor="vi-type-code">Code</Label>

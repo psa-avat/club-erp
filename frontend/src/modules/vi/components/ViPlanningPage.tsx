@@ -53,11 +53,6 @@ export function ViPlanningPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-outline-variant bg-surface p-6">
-        <h1 className="text-xl font-semibold text-slate-900">Planning VI</h1>
-        <p className="text-sm text-slate-600">Assignez une date planifiée en masse et préparez la sélection pour push Planche.</p>
-      </div>
-
       <div className="grid gap-4 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-[1fr_auto_auto] md:items-end">
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700" htmlFor="vi-planning-date">Date planifiée</label>
