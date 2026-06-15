@@ -196,3 +196,31 @@ class PackPurchaseListResponse(BaseModel):
 class ConsumptionValidFromUpdate(BaseModel):
     """Update the valid_from date on a pack consumption."""
     valid_from: datetime
+
+
+# ---------------------------------------------------------------------------
+# Pack Purchase Update (edit a sold pack)
+# ---------------------------------------------------------------------------
+
+class PackPurchaseUpdate(BaseModel):
+    """Update the price of a pack purchase."""
+    price: Decimal = Field(gt=0, decimal_places=2, description="New sale price for the pack")
+    pack_definition_uuid: UUID | None = None
+
+
+# ---------------------------------------------------------------------------
+# Discount Review
+# ---------------------------------------------------------------------------
+
+class DiscountReviewRequest(BaseModel):
+    """Trigger a discount review for all billed flights."""
+    fiscal_year_uuid: UUID
+
+
+class DiscountReviewResponse(BaseModel):
+    """Result summary of a discount review."""
+    members_affected: int = 0
+    flights_recalculated: int = 0
+    total_discount: Decimal = Decimal("0")
+    rem_entries_created: int = 0
+    details: list[dict] = []

@@ -623,10 +623,15 @@ export function FlightsBillingPage() {
   }
 
   function handleBatchPreview() {
+    // Use selected flights if any, otherwise all flights on the current page
+    const uuids =
+      selectedFlights.size > 0
+        ? Array.from(selectedFlights)
+        : flights.map((f) => f.uuid);
+    if (uuids.length === 0) return;
     batchPreviewMutation.mutate(
       {
-        date_from: filterDateFrom || undefined,
-        date_to: filterDateTo || undefined,
+        flight_uuids: uuids,
         fiscal_year_uuid: activeFiscalYearUuid,
       },
       {

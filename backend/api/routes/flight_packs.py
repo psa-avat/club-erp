@@ -23,7 +23,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -33,6 +33,8 @@ from models import AccountingEntry, AccountingLine, PackDefinition, User, Valida
 from schemas.flight_packs import (
     ApplicableItemResponse,
     ConsumptionValidFromUpdate,
+    DiscountReviewRequest,
+    DiscountReviewResponse,
     MemberPackBalanceResponse,
     MemberPackConsumptionCreate,
     MemberPackConsumptionResponse,
@@ -41,12 +43,15 @@ from schemas.flight_packs import (
     PackDefinitionCreate,
     PackPurchaseListResponse,
     PackPurchaseLine,
+    PackPurchaseUpdate,
     PackDefinitionResponse,
     PackDefinitionUpdate,
 )
 from services.flight_packs import (
     buy_pack,
     create_pack_definition,
+    discount_review,
+    discount_review_for_member,
     get_pack_definition,
     list_applicable_items,
     list_consumptions_for_flight,
@@ -56,6 +61,7 @@ from services.flight_packs import (
     record_consumption,
     update_consumption_valid_from,
     update_pack_definition,
+    update_pack_purchase,
     delete_pack_definition,
 )
 
@@ -352,3 +358,106 @@ async def update_consumption_valid_from_endpoint(
 ):
     """Update the valid_from date on a pack consumption (replaces freeze)."""
     return await update_consumption_valid_from(db, consumption_uuid, request.valid_from)
+
+
+# ---------------------------------------------------------------------------
+# Pack Purchase Update (edit a sold pack)
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/purchases/{entry_uuid}",
+    response_model=MemberPackPurchaseResponse,
+)
+async def update_pack_purchase_endpoint(
+    entry_uuid: UUID,
+    request: PackPurchaseUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = prices_guard,
+):
+    """Update the price of a Draft pack purchase entry."""
+    entry = await update_pack_purchase(db, entry_uuid, request.price, user_id=current_user.id)
+    # Find the pack definition for the response
+    pack_result = await db.execute(
+        select(PackDefinition).where(
+            PackDefinition.fiscal_year_uuid == entry.fiscal_year_uuid,
+            PackDefinition.pack_sales_account_uuid.isnot(None),
+        )
+    )
+    pack_defs = list(pack_result.scalars().all())
+    # Get total debit for amount
+    lines_result = await db.execute(
+        select(func.coalesce(func.sum(AccountingLine.debit), 0)).where(
+            AccountingLine.entry_uuid == entry.uuid
+        )
+    )
+    amount = lines_result.scalar() or Decimal("0")
+    return MemberPackPurchaseResponse(
+        entry_uuid=entry.uuid,
+        reference=entry.reference or "",
+        description=entry.description or "",
+        amount=amount,
+        units_purchased=pack_defs[0].quantity_allowance if pack_defs else Decimal("0"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Discount Review
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/discount-review",
+    response_model=DiscountReviewResponse,
+)
+async def discount_review_endpoint(
+    request: DiscountReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = post_guard,
+):
+    """
+    Recalculate pack discounts for ALL billed flights in a fiscal year.
+    Records consumptions and creates/updates REM accounting entries.
+    """
+    result = await discount_review(
+        db=db,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        user_id=current_user.id,
+    )
+    return DiscountReviewResponse(
+        members_affected=result["members_affected"],
+        flights_recalculated=result["flights_recalculated"],
+        total_discount=result["total_discount"],
+        rem_entries_created=result["rem_entries_created"],
+        details=result["details"],
+    )
+
+
+@router.post(
+    "/discount-review/{member_uuid}",
+    response_model=DiscountReviewResponse,
+)
+async def discount_review_member_endpoint(
+    member_uuid: UUID,
+    request: DiscountReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = post_guard,
+):
+    """
+    Recalculate pack discounts for a single member's billed flights.
+    Records consumptions and creates/updates the REM accounting entry.
+    """
+    result = await discount_review_for_member(
+        db=db,
+        member_uuid=member_uuid,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        user_id=current_user.id,
+    )
+    return DiscountReviewResponse(
+        members_affected=1 if result["flights_count"] > 0 else 0,
+        flights_recalculated=result["flights_count"],
+        total_discount=Decimal(result["total_discount"]),
+        rem_entries_created=1 if result["rem_entry_uuid"] else 0,
+        details=[result],
+    )

@@ -502,9 +502,6 @@ async def list_billable_flights(
     count_result = await db.execute(count_stmt)
     total = count_result.scalar() or 0
 
-    # Build paginated query
-    base_stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc())
-
     # If pilot_query is provided, we need to first find matching member account_ids
     # then filter flights by those IDs
     if pilot_query is not None and pilot_query.strip():
@@ -532,11 +529,13 @@ async def list_billable_flights(
             # No matching members → return empty
             return BillableFlightListResponse(items=[], total=0, page=page, page_size=page_size, total_pages=0)
 
-    # Re-count with pilot filter applied
-    if pilot_query is not None and pilot_query.strip():
-        count_stmt = select(func.count(ValidatedFlight.uuid)).where(*filters)
-        count_result = await db.execute(count_stmt)
-        total = count_result.scalar() or 0
+    # Re-count with all filters applied (including pilot_query)
+    count_stmt = select(func.count(ValidatedFlight.uuid)).where(*filters)
+    count_result = await db.execute(count_stmt)
+    total = count_result.scalar() or 0
+
+    # Build paginated query with ALL filters applied
+    base_stmt = select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.asc())
 
     total_pages = max(1, (total + page_size - 1) // page_size)
     offset = (page - 1) * page_size

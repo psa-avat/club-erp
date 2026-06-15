@@ -1244,6 +1244,23 @@ export function usePackPurchasesQuery(fiscalYearUuid: string | null, enabled = t
   })
 }
 
+export function useUpdatePackPurchaseMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { entryUuid: string; price: string }) => {
+      const { data } = await apiClient.patch<{ entry_uuid: string; reference: string; description: string; amount: string; units_purchased: string }>(
+        `/api/v1/packs/purchases/${payload.entryUuid}`,
+        { price: payload.price },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs', 'purchases'] })
+    },
+  })
+}
+
 // ── REM Adjustment Hooks ────────────────────────────────────────────────
 
 export function useRemAdjustmentPreviewMutation() {
@@ -1282,6 +1299,59 @@ export function useCloseRemPeriodMutation() {
       return data
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'entries'] })
+    },
+  })
+}
+
+// ── Discount Review ────────────────────────────────────────────────────
+
+export type DiscountReviewResult = {
+  members_affected: number
+  flights_recalculated: number
+  total_discount: string
+  rem_entries_created: number
+  details: Array<{
+    member_uuid: string
+    member_name: string
+    flights_count: number
+    total_discount: string
+    rem_entry_uuid?: string
+    error?: string
+  }>
+}
+
+export function useDiscountReviewMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { fiscal_year_uuid: string }) => {
+      const { data } = await apiClient.post<DiscountReviewResult>(
+        '/api/v1/packs/discount-review', payload, getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs', 'purchases'] })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'entries'] })
+    },
+  })
+}
+
+export function useMemberDiscountReviewMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { memberUuid: string; fiscal_year_uuid: string }) => {
+      const { data } = await apiClient.post<DiscountReviewResult>(
+        `/api/v1/packs/discount-review/${payload.memberUuid}`,
+        { fiscal_year_uuid: payload.fiscal_year_uuid },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs'] })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'packs', 'purchases'] })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'entries'] })
     },
   })

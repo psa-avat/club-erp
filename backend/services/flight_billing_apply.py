@@ -180,7 +180,7 @@ class FlightBillingApplyService:
         from services.accounting import post_accounting_entry
 
         entry = await self.apply_flight_billing(flight_uuid, fiscal_year_uuid, user_id)
-        return await post_accounting_entry(self.db, entry.uuid, fiscal_year_uuid, user_id)
+        return await post_accounting_entry(self.db, entry.uuid, fiscal_year_uuid)
 
     async def batch_apply(
         self,
