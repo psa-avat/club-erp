@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - banque: PackEditDialog — edit a sold pack price
+    - banque: PackEditDialog — edit a sold pack activation date
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useUpdatePackPurchaseMutation } from '../api'
 
@@ -30,19 +29,19 @@ interface PackEditDialogProps {
   open: boolean
   onClose: () => void
   entryUuid: string
-  currentPrice: string
+  currentValidFrom: string
 }
 
-export function PackEditDialog({ open, onClose, entryUuid, currentPrice }: PackEditDialogProps) {
+export function PackEditDialog({ open, onClose, entryUuid, currentValidFrom }: PackEditDialogProps) {
   const { t } = useTranslation(['banque', 'common'])
-  const [price, setPrice] = useState(currentPrice)
+  const [validFrom, setValidFrom] = useState(currentValidFrom || new Date().toISOString().slice(0, 10))
   const updateMutation = useUpdatePackPurchaseMutation()
 
   if (!open) return null
 
   async function handleSave() {
-    if (!price || Number(price) <= 0) return
-    await updateMutation.mutateAsync({ entryUuid, price })
+    if (!validFrom) return
+    await updateMutation.mutateAsync({ entryUuid, valid_from: validFrom })
     onClose()
   }
 
@@ -53,20 +52,19 @@ export function PackEditDialog({ open, onClose, entryUuid, currentPrice }: PackE
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold text-slate-900">
-          {t('ops.packs.editTitle', 'Modifier le prix')}
+          {t('ops.packs.editTitle', "Modifier la date d'activation")}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          {t('ops.packs.editDescription', 'Modifier le prix de vente du forfait.')}
+          {t('ops.packs.editDescription', "Modifier la date d'activation du forfait (les vols avant cette date ne seront pas remisés).")}
         </p>
 
         <div className="mt-4 space-y-1">
-          <Label>{t('ops.packs.price', 'Prix de vente (EUR)')}</Label>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
+          <Label>{t('ops.packs.activationDate', "Date d'activation")}</Label>
+          <input
+            type="date"
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={validFrom}
+            onChange={(e) => setValidFrom(e.target.value)}
           />
         </div>
 
@@ -74,7 +72,7 @@ export function PackEditDialog({ open, onClose, entryUuid, currentPrice }: PackE
           <Button variant="secondary" onClick={onClose} disabled={updateMutation.isPending}>
             {t('common.cancel', 'Annuler')}
           </Button>
-          <Button onClick={handleSave} disabled={!price || Number(price) <= 0 || updateMutation.isPending}>
+          <Button onClick={handleSave} disabled={!validFrom || updateMutation.isPending}>
             {updateMutation.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             {t('common.save', 'Enregistrer')}
           </Button>

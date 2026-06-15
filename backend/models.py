@@ -1651,6 +1651,10 @@ class MemberPackConsumption(Base):
         UUID(as_uuid=True), ForeignKey("validated_flights.uuid", ondelete="CASCADE"), nullable=False, index=True
     )
     pack_type = Column(String(32), nullable=False)
+    pack_definition_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("pack_definitions.uuid", ondelete="SET NULL"), nullable=True, index=True,
+        comment="Which pack definition this consumption was applied to (for multi-pack sequencing)",
+    )
     valid_from = Column(DateTime(timezone=True), nullable=False, comment="Pack is applicable only to flights on or after this date")
     quantity_consumed = Column(Numeric(10, 2), nullable=False)
     discount_unit_price = Column(Numeric(10, 2), nullable=False)

@@ -119,6 +119,7 @@ class MemberPackConsumptionResponse(BaseModel):
     member_uuid: UUID
     flight_uuid: UUID
     pack_type: str
+    pack_definition_uuid: Optional[UUID] = None
     valid_from: datetime
     quantity_consumed: Decimal
     discount_unit_price: Decimal
@@ -203,9 +204,8 @@ class ConsumptionValidFromUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 class PackPurchaseUpdate(BaseModel):
-    """Update the price of a pack purchase."""
-    price: Decimal = Field(gt=0, decimal_places=2, description="New sale price for the pack")
-    pack_definition_uuid: UUID | None = None
+    """Update the valid_from date of a pack purchase. Price cannot be changed once billed."""
+    valid_from: date = Field(description="New activation date for the pack")
 
 
 # ---------------------------------------------------------------------------

@@ -1191,6 +1191,7 @@ export type PackPurchaseLine = {
   pack_code: string | null
   pack_type: string | null
   amount: string
+  valid_from: string | null
   units_purchased: string
   units_consumed: string
   units_remaining: string
@@ -1203,6 +1204,7 @@ export type PackPurchaseLine = {
     discount_unit_price: string
     total_discount_amount: string
     valid_from: string | null
+    pack_definition_uuid: string | null
   }>
 }
 
@@ -1247,10 +1249,10 @@ export function usePackPurchasesQuery(fiscalYearUuid: string | null, enabled = t
 export function useUpdatePackPurchaseMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { entryUuid: string; price: string }) => {
+    mutationFn: async (payload: { entryUuid: string; valid_from: string }) => {
       const { data } = await apiClient.patch<{ entry_uuid: string; reference: string; description: string; amount: string; units_purchased: string }>(
         `/api/v1/packs/purchases/${payload.entryUuid}`,
-        { price: payload.price },
+        { valid_from: payload.valid_from },
         getAuthRequestConfig(),
       )
       return data

@@ -19,6 +19,7 @@
  """
 
 import logging
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -318,9 +319,21 @@ async def list_pack_purchases(
                 "discount_unit_price": str(c.discount_unit_price),
                 "total_discount_amount": str(c.total_discount_amount),
                 "valid_from": str(c.valid_from.date()) if c.valid_from else None,
+                "pack_definition_uuid": str(c.pack_definition_uuid) if c.pack_definition_uuid else None,
             })
 
         member_name = f"{al.member.first_name} {al.member.last_name}" if al.member else None
+
+        # Parse valid_from from description if present (stored as " | VALID_FROM:YYYY-MM-DD")
+        valid_from = None
+        desc = entry.description or ""
+        import re
+        vf_match = re.search(r'VALID_FROM:(\d{4}-\d{2}-\d{2})', desc)
+        if vf_match:
+            try:
+                valid_from = date.fromisoformat(vf_match.group(1))
+            except (ValueError, TypeError):
+                pass
 
         items.append(PackPurchaseLine(
             entry_uuid=entry.uuid,
@@ -332,6 +345,7 @@ async def list_pack_purchases(
             pack_code=pack_def.code,
             pack_type=pack_def.pack_type,
             amount=al.credit or Decimal("0"),
+            valid_from=valid_from,
             units_purchased=pack_def.quantity_allowance,
             units_consumed=units_consumed,
             units_remaining=pack_def.quantity_allowance - units_consumed,
@@ -375,29 +389,14 @@ async def update_pack_purchase_endpoint(
     current_user: User = Depends(get_current_user),
     _: User = prices_guard,
 ):
-    """Update the price of a Draft pack purchase entry."""
-    entry = await update_pack_purchase(db, entry_uuid, request.price, user_id=current_user.id)
-    # Find the pack definition for the response
-    pack_result = await db.execute(
-        select(PackDefinition).where(
-            PackDefinition.fiscal_year_uuid == entry.fiscal_year_uuid,
-            PackDefinition.pack_sales_account_uuid.isnot(None),
-        )
-    )
-    pack_defs = list(pack_result.scalars().all())
-    # Get total debit for amount
-    lines_result = await db.execute(
-        select(func.coalesce(func.sum(AccountingLine.debit), 0)).where(
-            AccountingLine.entry_uuid == entry.uuid
-        )
-    )
-    amount = lines_result.scalar() or Decimal("0")
+    """Update the valid_from (activation date) of a pack purchase entry. Price is locked."""
+    entry = await update_pack_purchase(db, entry_uuid, request.valid_from, user_id=current_user.id)
     return MemberPackPurchaseResponse(
         entry_uuid=entry.uuid,
         reference=entry.reference or "",
         description=entry.description or "",
-        amount=amount,
-        units_purchased=pack_defs[0].quantity_allowance if pack_defs else Decimal("0"),
+        amount=Decimal("0"),
+        units_purchased=Decimal("0"),
     )
 
 

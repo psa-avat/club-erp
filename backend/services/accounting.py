@@ -1889,6 +1889,18 @@ async def delete_accounting_entry(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot delete entry in state {entry.state} (Draft only)",
         )
+
+    # Clean up member_pack_consumptions rows that reference this entry
+    # (safety net in case DB trigger hasn't been updated yet).
+    from models import MemberPackConsumption
+    existing_consumptions = await db.execute(
+        select(MemberPackConsumption).where(
+            MemberPackConsumption.accounting_entry_uuid == entry_uuid
+        )
+    )
+    for consumption in existing_consumptions.scalars().all():
+        await db.delete(consumption)
+
     await db.delete(entry)
     await db.commit()
 

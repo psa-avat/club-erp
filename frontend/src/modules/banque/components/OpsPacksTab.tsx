@@ -28,7 +28,7 @@ export function OpsPacksTab() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [reviewResult, setReviewResult] = useState<DiscountReviewResult | null>(null)
   const [memberRecalcState, setMemberRecalcState] = useState<Record<string, { status: 'idle' | 'running' | 'done'; result?: DiscountReviewResult }>>({})
-  const [editDialog, setEditDialog] = useState<{ entryUuid: string; price: string } | null>(null)
+  const [editDialog, setEditDialog] = useState<{ entryUuid: string; validFrom: string } | null>(null)
 
   const discountReviewMutation = useDiscountReviewMutation()
   const memberDiscountReviewMutation = useMemberDiscountReviewMutation()
@@ -109,7 +109,7 @@ export function OpsPacksTab() {
         open={editDialog !== null}
         onClose={() => setEditDialog(null)}
         entryUuid={editDialog?.entryUuid ?? ''}
-        currentPrice={editDialog?.price ?? '0'}
+        currentValidFrom={editDialog?.validFrom ?? ''}
       />
 
       {/* Discount Review Result Banner */}
@@ -242,7 +242,7 @@ export function OpsPacksTab() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => setEditDialog({ entryUuid: p.entry_uuid, price: p.amount })}
+                              onClick={() => setEditDialog({ entryUuid: p.entry_uuid, validFrom: p.valid_from ?? '' })}
                               title={t('ops.packs.editPack', 'Modifier le prix')}
                             >
                               <Pencil className="h-3.5 w-3.5 text-slate-400" />
