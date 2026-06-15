@@ -42,7 +42,7 @@ import {
   SelectField,
   toErrorMessage,
 } from './membersShared'
-import { ClubPageShell } from './ClubPageShell'
+
 import { MemberDirectoryTable } from './MemberDirectoryTable'
 import { MemberFilterDrawer } from './MemberFilterDrawer'
 import { MemberKpiStrip } from './MemberKpiStrip'
@@ -97,7 +97,8 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
   const { t: tCommon } = useTranslation('common')
   const navigate = useNavigate()
   const { screen } = useParams<{ screen: string }>()
-  const { selectedMemberId, setSelectedMemberId, selectedYear, filters, setFilters } = useMembersStore()
+  const { selectedMemberId, setSelectedMemberId, filters, setFilters } = useMembersStore()
+  const selectedYear = useFiscalYearStore((s) => s.activeFiscalYearData?.year ?? new Date().getUTCFullYear())
 
   const resolvedScreen = screen ?? defaultScreen ?? 'core'
   const activeScreen: MembersScreen = MEMBERS_SCREEN_SET.has(resolvedScreen as MembersScreen)
@@ -256,7 +257,7 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
     memberDetailQuery.error
 
   return (
-    <ClubPageShell>
+    <section className="space-y-4">
       {/* ── Page header ──────────────────────────────────────────────── */}
       <PageHeader
         title={t('list.title')}
@@ -511,7 +512,7 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
           onClose={() => setShowImportDialog(false)}
         />
       ) : null}
-    </ClubPageShell>
+    </section>
   )
 }
 

@@ -18,8 +18,13 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Dialog } from '../../../components/ui/dialog'
-import { Loader2, AlertCircle, X, Database } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../../../components/ui/dialog'
+import { Loader2, AlertCircle, Database } from 'lucide-react'
 import { useFlightRawDetailsQuery, type RawFlightDetails } from '../api'
 
 interface FlightDetailDialogProps {
@@ -76,24 +81,15 @@ export function FlightDetailDialog({ flightUuid, onClose }: FlightDetailDialogPr
   const { data: flight, isLoading, isError, error } = useFlightRawDetailsQuery(flightUuid)
 
   return (
-    <Dialog open={!!flightUuid} onClose={onClose} className="max-w-3xl">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50 rounded-t-lg">
-        <div className="flex items-center gap-2">
-          <Database className="h-4 w-4 text-slate-500" />
-          <h2 className="text-sm font-semibold text-slate-800">Détails bruts du vol</h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+    <Dialog open={!!flightUuid} onClose={onClose}>
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-slate-500" />
+            Détails bruts du vol
+          </DialogTitle>
+        </DialogHeader>
 
-      {/* Body */}
-      <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">
         {isLoading && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -109,18 +105,7 @@ export function FlightDetailDialog({ flightUuid, onClose }: FlightDetailDialogPr
         )}
 
         {flight && <FlightDetailsContent flight={flight} />}
-      </div>
-
-      {/* Footer */}
-      <div className="flex justify-end px-5 py-3 border-t border-slate-200 bg-slate-50 rounded-b-lg">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md bg-white px-4 py-2 text-xs font-medium text-slate-700 border border-slate-300 hover:bg-slate-50 transition-colors"
-        >
-          Fermer
-        </button>
-      </div>
+      </DialogContent>
     </Dialog>
   )
 }

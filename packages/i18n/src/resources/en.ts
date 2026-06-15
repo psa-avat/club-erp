@@ -2369,6 +2369,10 @@ export const en = {
     },
   },
   flights: {
+    workspace: {
+      title: 'Billing & Flights',
+      description: 'Flight entry, OSRT/Gesasso billing, packs and Planche import.',
+    },
     hero: {
       kicker: 'Flight Management',
       title: 'Validated Flights',

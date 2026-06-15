@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - ViWorkspacePage: Workspace VI & HelloAsso (tabs: droits, types, planning, achats, import, sync)
+    - ViWorkspacePage: Workspace VI & HelloAsso (tabs: bons, types, planning, achats, import, sync)
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -40,9 +40,9 @@ import { PlancheViSyncPage } from "../../planche";
  * ViWorkspacePage — Workspace VI & HelloAsso.
  *
  * Regroupe en une seule page avec tabs :
- * - droits    → Gestion des droits VI (ViEntitlementsPage)
+ * - bons      → Gestion des Bons VI (ViEntitlementsPage)
  * - types     → Catalogue des types VI (ViTypesPage)
- * - planning  → Planification des droits VI (ViPlanningPage)
+ * - planning  → Planification des Bons VI (ViPlanningPage)
  * - achats    → Achats HelloAsso (HelloAssoPurchasesPage)
  * - import    → Import VI depuis HelloAsso (HelloAssoViImportPage)
  * - sync      → Sync VI Planche (PlancheViSyncPage)
@@ -55,12 +55,12 @@ export function ViWorkspacePage() {
       title={t("workspace.title", "VI & HelloAsso")}
       description={t(
         "workspace.description",
-        "Gestion des droits de vol d'initiation, achats HelloAsso et synchronisation Planche.",
+        "Gestion des bons de vol d'initiation, achats HelloAsso et synchronisation Planche.",
       )}
       tabs={[
         {
-          value: "droits",
-          label: t("workspace.tabs.entitlements", "Droits VI"),
+          value: "bons",
+          label: t("workspace.tabs.entitlements", "Bons VI"),
           icon: Ticket,
           content: <ViEntitlementsPage />,
         },

@@ -87,7 +87,7 @@ CAPABILITY_SEEDS = (
     (CAP_MANAGE_ASSETS, "Gestion des aeronefs et equipements"),
     (CAP_MANAGE_PLANCHE, "Gestion Planche (pilotes, machines, VI)"),
     (CAP_HELLOASSO, "Acces HelloAsso"),
-    (CAP_MANAGE_VI, "Gestion des droits VI"),
-    (CAP_PLAN_VI, "Planification des droits VI"),
+    (CAP_MANAGE_VI, "Gestion des Bons VI"),
+    (CAP_PLAN_VI, "Planification des Bons VI"),
     (CAP_SYNC_VI_PLANCHE, "Synchronisation VI vers Planche"),
 )

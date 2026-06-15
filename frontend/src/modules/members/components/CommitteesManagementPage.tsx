@@ -26,6 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { PageHeader } from '@club-erp/ui'
 import {
   useCommitteeMembersQuery,
@@ -35,7 +36,6 @@ import {
   useReplaceCommitteeMembersMutation,
   useUpdateCommitteeMutation,
 } from '../api'
-import { useMembersStore } from '../store'
 import type { Committee, UpdateCommitteePayload } from '../types'
 import {
   CheckboxField,
@@ -46,7 +46,7 @@ import {
   toErrorMessage,
   type CommitteeFormState,
 } from './membersShared'
-import { ClubPageShell } from './ClubPageShell'
+
 
 // ---------------------------------------------------------------------------
 // Roster drawer panel
@@ -387,7 +387,7 @@ function CommitteeAvatarStack({ committeeUuid, year }: CommitteeAvatarStackProps
 export function CommitteesManagementPage() {
   const { t } = useTranslation('members')
   const { t: tCommon } = useTranslation('common')
-  const { selectedYear } = useMembersStore()
+  const selectedYear = useFiscalYearStore((s) => s.activeFiscalYearData?.year ?? new Date().getUTCFullYear())
 
   const [rosterCommittee, setRosterCommittee] = useState<Committee | null>(null)
   const [editingCommittee, setEditingCommittee] = useState<Committee | null | undefined>(undefined)
@@ -403,7 +403,7 @@ export function CommitteesManagementPage() {
   const combinedError = committeesQuery.error ?? membersQuery.error
 
   return (
-    <ClubPageShell>
+    <section className="space-y-4">
       <PageHeader
         title={t('committees.title')}
         supportingText={t('committees.description')}
@@ -612,6 +612,6 @@ export function CommitteesManagementPage() {
         committee={editingCommittee ?? null}
         members={members}
       />
-    </ClubPageShell>
+    </section>
   )
 }

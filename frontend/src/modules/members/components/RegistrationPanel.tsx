@@ -24,7 +24,13 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
-import { Dialog } from '../../../components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
@@ -250,31 +256,20 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
   const isCurrentYearRegistrationActive = currentYearRegistration?.status === 1
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      aria-labelledby="registration-panel-title"
-      className="ml-auto mr-0 flex h-[100vh] max-h-[100vh] max-w-6xl flex-col overflow-hidden rounded-none"
-    >
-      <div className="flex h-full flex-col">
-        <div className="border-b border-outline-variant px-6 py-4">
-          <h2 id="registration-panel-title" className="text-lg font-semibold text-on-surface">
-            {t('registrationPanel.title', { year })}
-          </h2>
+    <Dialog open={open} onClose={onClose}>
+      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t('registrationPanel.title', { year })}</DialogTitle>
           {member ? (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-on-surface-variant">
-              <span>{member.first_name} {member.last_name}</span>
-              <span>•</span>
-              <span>{member.account_id}</span>
-              <span>•</span>
-              <span>{t('registrationPanel.memberSince', { year: member.first_subscription_year ?? '—' })}</span>
-            </div>
+            <DialogDescription>
+              {member.first_name} {member.last_name} • {member.account_id} • {t('registrationPanel.memberSince', { year: member.first_subscription_year ?? '—' })}
+            </DialogDescription>
           ) : (
-            <p className="text-sm text-on-surface-variant">{t('sheet.selectMember')}</p>
+            <DialogDescription>{t('sheet.selectMember')}</DialogDescription>
           )}
-        </div>
+        </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="space-y-6">
               <section className="space-y-3">
@@ -468,36 +463,34 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
           {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
         </div>
 
-        <div className="border-t border-outline-variant px-6 py-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="registration-effective-date">{t('registrationPanel.accounting.effectiveDate')}</Label>
-              <Input
-                id="registration-effective-date"
-                type="date"
-                value={effectiveDate}
-                onChange={(event) => setEffectiveDate(event.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="ghost" onClick={onClose}>
-                {t('registrationPanel.actions.cancel')}
-              </Button>
-              <Button
-                type="button"
-                disabled={!allowWorkflow || !canValidate || completeRegistrationMutation.isPending}
-                onClick={handleValidate}
-              >
-                {!allowWorkflow
-                  ? 'Disabled for this screen'
-                  : completeRegistrationMutation.isPending
-                  ? t('registrationPanel.actions.validating')
-                  : t('registrationPanel.actions.validate')}
-              </Button>
-            </div>
+        <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-outline-variant bg-surface p-4">
+          <div className="space-y-2">
+            <Label htmlFor="registration-effective-date">{t('registrationPanel.accounting.effectiveDate')}</Label>
+            <Input
+              id="registration-effective-date"
+              type="date"
+              value={effectiveDate}
+              onChange={(event) => setEffectiveDate(event.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {t('registrationPanel.actions.cancel')}
+            </Button>
+            <Button
+              type="button"
+              disabled={!allowWorkflow || !canValidate || completeRegistrationMutation.isPending}
+              onClick={handleValidate}
+            >
+              {!allowWorkflow
+                ? 'Disabled for this screen'
+                : completeRegistrationMutation.isPending
+                ? t('registrationPanel.actions.validating')
+                : t('registrationPanel.actions.validate')}
+            </Button>
           </div>
         </div>
-      </div>
+      </DialogContent>
     </Dialog>
   )
 }

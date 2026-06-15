@@ -129,8 +129,8 @@ export function ViEntitlementsPage() {
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-outline-variant bg-surface p-6">
-        <h1 className="text-xl font-semibold text-slate-900">Droits VI</h1>
-        <p className="text-sm text-slate-600">Gestion des droits: création, suivi, et mise à jour des notes opérationnelles.</p>
+        <h1 className="text-xl font-semibold text-slate-900">Bons VI</h1>
+        <p className="text-sm text-slate-600">Gestion des bons VI: création, suivi, et mise à jour des notes opérationnelles.</p>
       </div>
 
       <form className="grid gap-4 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-4" onSubmit={handleCreate}>
