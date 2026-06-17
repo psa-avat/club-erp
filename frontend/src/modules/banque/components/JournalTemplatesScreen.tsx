@@ -38,6 +38,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../components/ui/select'
 import { Switch } from '../../../components/ui/switch'
 import { Separator } from '../../../components/ui/separator'
 import {
@@ -281,8 +288,8 @@ export function JournalTemplatesScreen() {
 
   if (!canView) {
     return (
-      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
-        <p className="text-sm text-on-surface-variant">{t('journal.noPermission')}</p>
+      <section className="rounded-xl border bg-card p-6 shadow-sm">
+        <p className="text-sm text-muted-foreground">{t('journal.noPermission')}</p>
       </section>
     )
   }
@@ -507,30 +514,37 @@ export function JournalTemplatesScreen() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t('journal.entries.journal')}</Label>
-              <select
+              <Select
                 value={modelForm.journal_uuid}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, journal_uuid: e.target.value }))}
-                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                onValueChange={(v) => setModelForm((prev) => ({ ...prev, journal_uuid: v }))}
                 disabled={!canManageModels}
               >
-                <option value="">{t('journal.entries.selectJournal')}</option>
-                {journals.map((j) => (
-                  <option key={j.uuid} value={j.uuid}>{j.code} · {j.name}</option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('journal.entries.selectJournal')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {journals.map((j) => (
+                    <SelectItem key={j.uuid} value={j.uuid}>{j.code} · {j.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t('journal.models.recurrence.label')}</Label>
-              <select
-                value={modelForm.recurrence_type}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, recurrence_type: Number(e.target.value) }))}
-                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              <Select
+                value={String(modelForm.recurrence_type)}
+                onValueChange={(v) => setModelForm((prev) => ({ ...prev, recurrence_type: Number(v) }))}
                 disabled={!canManageModels}
               >
-                {RECURRENCE_OPTIONS.map((value) => (
-                  <option key={value} value={value}>{recurrenceLabel(value, t)}</option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RECURRENCE_OPTIONS.map((value) => (
+                    <SelectItem key={value} value={String(value)}>{recurrenceLabel(value, t)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">{t('journal.models.recurring.validFrom')}</Label>

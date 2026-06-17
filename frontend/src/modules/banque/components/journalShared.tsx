@@ -61,20 +61,20 @@ export function opsStatusBadgeClass(status: OpsStatus): string {
     case 'validated':
     case 'paid':
     case 'matched':
-      return 'bg-success-container text-on-success-container'
+      return 'badge-success'
     case 'overdue':
     case 'blocked':
-      return 'bg-error-container text-on-error-container'
+      return 'badge-destructive'
     case 'pending':
     case 'draft':
-      return 'bg-warning-container text-on-warning-container'
+      return 'badge-warning'
     case 'partial':
     case 'reimbursed':
-      return 'bg-surface-variant text-on-surface-variant'
+      return 'bg-secondary text-secondary-foreground'
     case 'archived':
-      return 'bg-surface-container text-on-surface-variant'
+      return 'bg-muted text-muted-foreground'
     default:
-      return 'bg-surface-variant text-on-surface-variant'
+      return 'bg-muted text-muted-foreground'
   }
 }
 
@@ -307,9 +307,9 @@ export function entryStateLabel(value: number, t: (key: string) => string): stri
 }
 
 export function entryStateBadgeClass(state: number): string {
-  if (state === ENTRY_STATE_POSTED) return 'bg-success-container text-on-success-container'
-  if (state === 3) return 'bg-error-container text-on-error-container'
-  return 'bg-warning-container text-on-warning-container'
+  if (state === ENTRY_STATE_POSTED) return 'badge-success'
+  if (state === 3) return 'badge-destructive'
+  return 'badge-warning'
 }
 
 // ---------------------------------------------------------------------------
@@ -358,31 +358,31 @@ export function LineEditor({
   }))
 
   return (
-    <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
+    <div className="space-y-3 rounded-lg border bg-muted/40 p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-on-surface">{title}</h3>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
-      <div className="overflow-x-auto overflow-y-visible rounded-shape-md border border-outline-variant bg-surface">
-        <table className="min-w-full divide-y divide-outline-variant text-sm">
-          <thead className="bg-surface-container">
+      <div className="overflow-x-auto overflow-y-visible rounded-lg border bg-card">
+        <table className="min-w-full divide-y divide-border text-sm">
+          <thead className="bg-muted">
             <tr>
-              <th className="sticky left-0 z-10 bg-surface-container px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.account')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.amount')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.models.recurring.formulaType.fixed').replace(' fixe', '')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.lineDescription')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.tiers')}</th>
-              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.actions')}</th>
+              <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.account')}</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.amount')}</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.models.recurring.formulaType.fixed').replace(' fixe', '')}</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.lineDescription')}</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.tiers')}</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.actions')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant">
+          <tbody className="divide-y divide-border">
             {lines.map((line, index) => (
               <tr key={index}>
-                <td className="sticky left-0 z-10 bg-surface px-3 py-2">
+                <td className="sticky left-0 z-10 bg-card px-3 py-2">
                   <select
                     value={line.account_uuid}
                     disabled={disabled}
                     onChange={(event) => onChange(index, { account_uuid: event.target.value })}
-                    className="h-9 w-48 min-w-[12rem] rounded-shape-sm border border-outline bg-surface px-2 text-sm"
+                    className="h-9 w-48 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm"
                   >
                     <option value="">{t('journal.forms.selectAccount')}</option>
                     {accounts.map((account) => (
@@ -405,7 +405,7 @@ export function LineEditor({
                     value={line.formula_type}
                     disabled={disabled}
                     onChange={(event) => onChange(index, { formula_type: event.target.value as FormulaType })}
-                    className="h-9 w-36 rounded-shape-sm border border-outline bg-surface px-2 text-sm"
+                    className="h-9 w-36 rounded-md border border-input bg-background px-2 text-sm"
                   >
                     <option value="fixed">{t('journal.models.recurring.formulaType.fixed')}</option>
                     <option value="percentage">{t('journal.models.recurring.formulaType.percentage')}</option>
@@ -449,12 +449,12 @@ export function LineEditor({
                     </div>
                   )}
                   {line.formula_type === 'previous_period' && (
-                    <p className="mt-1 text-[11px] text-on-surface-variant">
-                      {t('journal.models.recurring.previousPeriodHint') || 'Montant basé sur la période précédente'}
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                          {t('journal.models.recurring.previousPeriodHint') || 'Montant basé sur la période précédente'}
                     </p>
                   )}
                   {line.formula_type === 'rounding_adjustment' && (
-                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                    <p className="mt-1 text-[11px] text-muted-foreground">
                       {t('journal.models.recurring.roundingHint') || "Calculé automatiquement pour équilibrer l'écriture"}
                     </p>
                   )}
@@ -488,15 +488,15 @@ export function LineEditor({
               </tr>
             ))}
           </tbody>
-          <tfoot className="bg-surface-container text-xs text-on-surface-variant">
+          <tfoot className="bg-muted text-xs text-muted-foreground">
             <tr>
               <td className="px-3 py-2 font-medium">{t('journal.forms.total')}</td>
               <td colSpan={2} className="px-3 py-2">
-                <span className={`font-mono ${balanced ? 'text-success' : 'text-error'}`}>
+                <span className={`font-mono ${balanced ? 'text-success' : 'text-destructive'}`}>
                   {t('journal.forms.debit')}: {summary.debit} · {t('journal.forms.credit')}: {summary.credit}
                 </span>
               </td>
-              <td className={`px-3 py-2 font-medium ${balanced ? 'text-success' : 'text-error'}`} colSpan={2}>
+              <td className={`px-3 py-2 font-medium ${balanced ? 'text-success' : 'text-destructive'}`} colSpan={2}>
                 {balanced ? t('journal.forms.balanced') : t('journal.forms.unbalanced')}
               </td>
             </tr>
@@ -536,20 +536,20 @@ export function JournalPageShell({
 
   const linkClass = (active: boolean) =>
     [
-      'rounded-shape-sm border px-3 py-2 text-sm transition-colors',
+      'rounded-md border px-3 py-2 text-sm transition-colors',
       active
-        ? 'border-primary bg-primary text-on-primary'
-        : 'border-outline-variant bg-surface-variant text-on-surface hover:bg-surface-container',
+        ? 'border-primary bg-primary text-primary-foreground'
+        : 'border hover:bg-muted text-foreground hover:text-foreground',
     ].join(' ')
 
   return (
     <section className="space-y-4">
-      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+      <div className="rounded-xl border bg-card p-6 shadow-sm">
         <div className="mb-2">
-          <Link to="/banque" className="text-xs text-on-surface-variant hover:text-on-surface">← {t('journal.back')}</Link>
+          <Link to="/banque" className="text-xs text-muted-foreground hover:text-foreground">← {t('journal.back')}</Link>
         </div>
-        <h1 className="text-xl font-semibold text-on-surface">{t('journal.title')}</h1>
-        <p className="mt-1 text-sm text-on-surface-variant">{t('journal.description')}</p>
+        <h1 className="text-xl font-semibold text-foreground">{t('journal.title')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t('journal.description')}</p>
         <nav className="mt-4 flex flex-wrap gap-2" aria-label="Journal navigation">
           <Link
             to="/banque/journal/entries"
@@ -604,10 +604,10 @@ export function JournalSubNav({
 }) {
   const linkClass = (active: boolean) =>
     [
-      'rounded-shape-sm border px-3 py-2 text-sm transition-colors',
+      'rounded-md border px-3 py-2 text-sm transition-colors',
       active
-        ? 'border-primary bg-primary text-on-primary'
-        : 'border-outline-variant bg-surface-variant text-on-surface hover:bg-surface-container',
+        ? 'border-primary bg-primary text-primary-foreground'
+        : 'border hover:bg-muted text-foreground hover:text-foreground',
     ].join(' ')
 
   return (
