@@ -1,696 +1,613 @@
-# Plan : Rapprochements Bancaires
+# Plan 046 — Rapprochements Bancaires (v4)
 
 ## TL;DR
 
-Système complet d'import et de rapprochement bancaire : import de relevés (CSV, **OFX**, QIF, MT940), parsing et normalisation, matching automatique avec les écritures comptables avec scoring de confiance, validation manuelle en workspace visuel, détection des écarts, génération d'écritures correctives, clôture de période et rapport de réconciliation.
+Importation de relevés bancaires (OFX prioritaire, CSV, QIF, MT940), matching automatique par score contre les écritures des journaux **Banque (type=3) et Caisse (type=4) uniquement**, validation manuelle en workspace split-panel, génération d'écritures correctives en Draft, clôture et exportation du rapport (JSON/PDF en téléchargement direct). L'état du rapprochement est entièrement porté par `bank_statement_lines` — `accounting_lines` n'est pas modifiée.
+
+**Règles métier spécifiques au club :**
+
+- **Versements pilotes directs** : les pilotes versent directement sur leur compte de tiers (411) sans facture émise au runtime. Le matching 1-à-1 est suffisant — la ligne de relevé va chercher l'écriture correspondante déjà saisie au journal de banque.
+- **Paiements CE éclatés** : les versements globaux des Comités d'Entreprise sont saisis en une unique écriture multi-lignes (débit 512 global / crédits 411 individuels). Le rapprochement s'effectue 1-à-1 sur l'UUID de l'écriture globale.
 
 ---
 
-## Workflow Global
+## Périmètre des écritures rapprochables
 
-```mermaid
-flowchart LR
-    A[1. IMPORT] --> B[2. PARSING & NORMALISATION]
-    B --> C[3. MATCHING AUTO<br/>scoring 0.0-1.0]
-    C --> D[4. VALIDATION MANUELLE<br/>split panel]
-    D --> E{Écart ?}
-    E -->|Oui| F[Création écriture<br/>corrective en Draft]
-    E -->|Non| G[5. CLÔTURE<br/>+ rapport]
-    F --> G
+Seules les écritures des journaux de **type Banque (3) ou Caisse (4)** sont candidates au matching.
 
-    style A fill:#e3f2fd
-    style B fill:#e3f2fd
-    style C fill:#e3f2fd
-    style D fill:#fff3e0
-    style E fill:#fff3e0
-    style F fill:#fce4ec
-    style G fill:#e8f5e9
+- Le compte sélectionné à l'import doit appartenir à un journal de type 3 ou 4 → **validé à l'import**.
+- Le moteur de matching filtre exclusivement sur `accounting_journals.type IN (3, 4)`.
+- Journaux vente (1), achat (2), général (5), ouverture (6), vols (7) → **hors scope**.
+
+```sql
+-- Filtre appliqué dans run_auto_match()
+JOIN accounting_journals j ON ae.journal_uuid = j.uuid
+WHERE j.type IN (3, 4)   -- Banque + Caisse uniquement
+```
+
+---
+
+## Workflow
+
+```
+IMPORT (compte Banque/Caisse) → PARSING → MATCHING AUTO → VALIDATION → CLÔTURE → EXPORT
+                                                               ↓
+                                                 Écriture corrective Draft
 ```
 
 | Phase | Action | Composant |
 |---|---|---|
-| **1** | Télécharger le fichier CSV/OFX/QIF/MT940 | Drag & drop + détection auto du format |
-| **2** | Parser → normaliser → lignes brutes | Parsers spécialisés par format (OFX avec `ofxparse`) |
-| **3** | Faire correspondre avec écritures comptables | Moteur de matching par score (montant, date, réf.) |
-| **4** | Valider/rejeter/associer manuellement | Workspace split-panel : banque ↔ GL |
-| **5** | Clôturer la période, générer l'écart si besoin | Rapport structuré + verrouillage période |
+| 1 | Upload + sélection compte Banque/Caisse | Drag & drop avec filtrage compte |
+| 2 | Parser → lignes normalisées | Parsers par format |
+| 3 | Scoring contre écritures journaux type 3/4 | Moteur de matching |
+| 4 | Valider / associer manuellement | Workspace split-panel |
+| 5 | Clôturer | Verrouillage période |
+| 6 | Exporter rapport PDF ou JSON | Téléchargement direct |
 
 ---
 
-## Formats Supportés
+## Formats supportés
 
-| Format | Extension | Usage | Parser |
-|---|---|---|---|
-| **OFX/QFX** | `.ofx`, `.qfx` | **Standard export banque française** (SG, CA, BNP, Crédit Mutuel, etc.) | `ofxparse` (lib Python) |
-| **CSV** | `.csv` | Format générique avec mapping colonnes configurable | Parseur interne + mapping wizard |
-| **QIF** | `.qif` | Hérité Quicken/Microsoft Money | Parseur interne (format texte structuré) |
-| **MT940** | `.940`, `.sta` | Standard SWIFT bancaire européen | Parseur interne (champs :61, :86, :62F) |
-
-**L'OFX est le format prioritaire** — c'est le standard d'export de la plupart des banques françaises. La lib `ofxparse` gère à la fois l'OFX 1.x (format SG/SBIF) et l'OFX 2.x (XML).
+| Format | Extension | Parser |
+|---|---|---|
+| **OFX/QFX** (prioritaire) | `.ofx`, `.qfx` | `ofxparse` |
+| CSV | `.csv` | Interne + mapping wizard |
+| QIF | `.qif` | Interne |
+| MT940 | `.940`, `.sta` | Interne (champs :61/:86) |
 
 ---
 
-## Modèle de Données
+## Phase A — Migration SQL
 
-### Nouvelle table : `bank_statements`
+**Fichier** : `docs/migrations/046_bank_reconciliation.sql`
 
 ```sql
+-- ============================================================
+-- 1. Relevés bancaires
+-- ============================================================
 CREATE TABLE bank_statements (
-    uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    fiscal_year_uuid UUID NOT NULL REFERENCES accounting_fiscal_years(uuid) ON DELETE CASCADE,
-    account_uuid UUID NOT NULL REFERENCES accounting_accounts(uuid),
-    -- Identifiant du relevé
-    import_date TIMESTAMPTZ NOT NULL DEFAULT now(),
-    statement_date DATE NOT NULL,
+    uuid                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    fiscal_year_uuid       UUID NOT NULL REFERENCES accounting_fiscal_years(uuid) ON DELETE CASCADE,
+    -- account_uuid doit appartenir à un journal de type 3 (Banque) ou 4 (Caisse)
+    -- validé au niveau applicatif lors de l'import
+    account_uuid           UUID NOT NULL REFERENCES accounting_accounts(uuid),
+    import_date            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    statement_date         DATE NOT NULL,
     statement_period_start DATE,
-    statement_period_end DATE,
-    -- Métadonnées
-    source_format VARCHAR(8) NOT NULL,            -- 'ofx', 'csv', 'qif', 'mt940'
-    raw_filename VARCHAR(255),
-    raw_content_hash VARCHAR(64),                  -- SHA-256 (déduplication)
-    -- Totaux de contrôle
-    opening_balance NUMERIC(10,4) DEFAULT 0,
-    closing_balance NUMERIC(10,4) DEFAULT 0,
-    total_debits NUMERIC(10,4) DEFAULT 0,
-    total_credits NUMERIC(10,4) DEFAULT 0,
-    line_count INTEGER DEFAULT 0,
-    -- Statut
-    status VARCHAR(16) NOT NULL DEFAULT 'imported',
-    -- imported / matched / reconciled / flagged
-    -- Correspondance avec écritures comptables
-    reconciled_balance NUMERIC(10,4),
-    balance_difference NUMERIC(10,4),
-    reconciled_at TIMESTAMPTZ,
-    reconciled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    -- Audit
-    created_by INTEGER NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    statement_period_end   DATE,
+    source_format          VARCHAR(8) NOT NULL,  -- 'ofx' | 'csv' | 'qif' | 'mt940'
+    raw_filename           VARCHAR(255),
+    raw_content_hash       VARCHAR(64),          -- SHA-256, déduplication
+    opening_balance        NUMERIC(10,4) DEFAULT 0,
+    closing_balance        NUMERIC(10,4) DEFAULT 0,
+    total_debits           NUMERIC(10,4) DEFAULT 0,
+    total_credits          NUMERIC(10,4) DEFAULT 0,
+    line_count             INTEGER DEFAULT 0,
+    -- Statuts : imported | matching | reconciled | flagged
+    -- 'flagged' positionné automatiquement par detect_discrepancies()
+    status                 VARCHAR(16) NOT NULL DEFAULT 'imported',
+    reconciled_balance     NUMERIC(10,4),
+    balance_difference     NUMERIC(10,4),
+    reconciled_at          TIMESTAMPTZ,
+    reconciled_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_by             INTEGER NOT NULL REFERENCES users(id),
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_bank_statements_fy ON bank_statements(fiscal_year_uuid);
+CREATE INDEX idx_bank_statements_fy      ON bank_statements(fiscal_year_uuid);
 CREATE INDEX idx_bank_statements_account ON bank_statements(account_uuid);
-CREATE INDEX idx_bank_statements_status ON bank_statements(status);
-CREATE INDEX idx_bank_statements_hash ON bank_statements(raw_content_hash)
+CREATE INDEX idx_bank_statements_status  ON bank_statements(status);
+CREATE INDEX idx_bank_statements_hash    ON bank_statements(raw_content_hash)
     WHERE raw_content_hash IS NOT NULL;
-```
 
-### Nouvelle table : `bank_statement_lines`
-
-```sql
+-- ============================================================
+-- 2. Lignes de relevé bancaire
+-- ============================================================
+-- L'état du rapprochement est intégralement ici.
+-- accounting_lines n'est PAS modifiée :
+--   • immutabilité des écritures postées préservée
+--   • pas de duplication d'état
+--   • pas de FK composite à gérer (accounting_entries a une PK composite)
+-- Cardinalité : 1-à-1 par défaut (suffisant pour les flux du club)
+-- ============================================================
 CREATE TABLE bank_statement_lines (
-    uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    statement_uuid UUID NOT NULL REFERENCES bank_statements(uuid) ON DELETE CASCADE,
-    -- Données de la ligne bancaire
-    line_date DATE NOT NULL,
-    description TEXT,
-    amount NUMERIC(10,4) NOT NULL,           -- Positif = crédit, Négatif = débit
-    reference VARCHAR(255),
-    counterparty VARCHAR(255),
-    bank_raw_data JSONB,                      -- Données brutes (FITID OFX...)
-    line_index INTEGER NOT NULL DEFAULT 0,
-    -- Statut de matching
-    match_status VARCHAR(20) NOT NULL DEFAULT 'unmatched',
-    -- unmatched / auto_matched / manually_matched / excluded / discrepancy
-    matched_entry_uuid UUID REFERENCES accounting_entries(uuid) ON DELETE SET NULL,
-    matched_line_uuid UUID REFERENCES accounting_lines(uuid) ON DELETE SET NULL,
-    match_confidence NUMERIC(4,3),
-    -- Écarts
-    discrepancy_type VARCHAR(32),
-    discrepancy_notes TEXT,
-    -- Résolution
-    resolved_at TIMESTAMPTZ,
-    resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    uuid                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    statement_uuid           UUID NOT NULL REFERENCES bank_statements(uuid) ON DELETE CASCADE,
+    line_index               INTEGER NOT NULL DEFAULT 0,
+    line_date                DATE NOT NULL,
+    description              TEXT,
+    amount                   NUMERIC(10,4) NOT NULL,  -- positif = crédit, négatif = débit
+    reference                VARCHAR(255),
+    counterparty             VARCHAR(255),
+    bank_raw_data            JSONB,                    -- données brutes OFX (FITID, etc.)
+    -- Statuts : unmatched | auto_matched | manually_matched | excluded | discrepancy
+    match_status             VARCHAR(20) NOT NULL DEFAULT 'unmatched',
+    -- Références vers l'écriture GL — pas de FK DB (PK composite sur accounting_entries)
+    -- Pattern identique à reversal_of_entry_uuid dans le projet
+    matched_entry_uuid       UUID,
+    matched_fiscal_year_uuid UUID,
+    match_confidence         NUMERIC(4,3),
+    discrepancy_type         VARCHAR(32),
+    discrepancy_notes        TEXT,
+    resolved_at              TIMESTAMPTZ,
+    resolved_by              INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_bank_lines_statement ON bank_statement_lines(statement_uuid);
-CREATE INDEX idx_bank_lines_status ON bank_statement_lines(match_status);
+CREATE INDEX idx_bank_lines_statement     ON bank_statement_lines(statement_uuid);
+CREATE INDEX idx_bank_lines_status        ON bank_statement_lines(match_status);
 CREATE INDEX idx_bank_lines_matched_entry ON bank_statement_lines(matched_entry_uuid)
     WHERE matched_entry_uuid IS NOT NULL;
-CREATE INDEX idx_bank_lines_date_amount ON bank_statement_lines(line_date, amount);
+CREATE INDEX idx_bank_lines_date_amount   ON bank_statement_lines(line_date, amount);
+
+-- ============================================================
+-- 3. Mappings CSV sauvegardés par utilisateur
+-- date_format explicite : sécurité anti-inversion jour/mois (bug historique)
+-- ============================================================
+CREATE TABLE bank_csv_mappings (
+    uuid           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name           VARCHAR(100) NOT NULL,
+    created_by     INTEGER NOT NULL REFERENCES users(id),
+    column_mapping JSONB NOT NULL,
+    separator      VARCHAR(4),
+    encoding       VARCHAR(16),
+    date_format    VARCHAR(16) NOT NULL DEFAULT 'DD/MM/YYYY',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ```
 
-### Modification de `accounting_lines`
+> **Vérifier si une écriture est rapprochée** (sans toucher `accounting_lines`) :
+> ```sql
+> SELECT EXISTS (
+>   SELECT 1 FROM bank_statement_lines
+>   WHERE matched_entry_uuid = $entry_uuid
+>     AND match_status IN ('auto_matched', 'manually_matched')
+> );
+> ```
 
-```sql
-ALTER TABLE accounting_lines
-  ADD COLUMN reconciled BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN reconciled_at TIMESTAMPTZ,
-  ADD COLUMN reconciled_statement_line_uuid UUID
-      REFERENCES bank_statement_lines(uuid) ON DELETE SET NULL;
+---
+
+## Phase B — Modèle Python
+
+**Fichier** : `backend/models.py`
+
+```python
+class BankStatement(Base):
+    __tablename__ = "bank_statements"
+
+    uuid                   = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    fiscal_year_uuid       = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    account_uuid           = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
+    import_date            = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    statement_date         = Column(Date, nullable=False)
+    statement_period_start = Column(Date, nullable=True)
+    statement_period_end   = Column(Date, nullable=True)
+    source_format          = Column(String(8), nullable=False)
+    raw_filename           = Column(String(255), nullable=True)
+    raw_content_hash       = Column(String(64), nullable=True)
+    opening_balance        = Column(Numeric(10, 4), default=0)
+    closing_balance        = Column(Numeric(10, 4), default=0)
+    total_debits           = Column(Numeric(10, 4), default=0)
+    total_credits          = Column(Numeric(10, 4), default=0)
+    line_count             = Column(Integer, default=0)
+    status                 = Column(String(16), nullable=False, default='imported')
+    reconciled_balance     = Column(Numeric(10, 4), nullable=True)
+    balance_difference     = Column(Numeric(10, 4), nullable=True)
+    reconciled_at          = Column(DateTime(timezone=True), nullable=True)
+    reconciled_by          = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by             = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at             = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at             = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    fiscal_year = relationship("AccountingFiscalYear")
+    account     = relationship("AccountingAccount")
+    lines       = relationship("BankStatementLine", back_populates="statement", cascade="all, delete-orphan")
+
+
+class BankStatementLine(Base):
+    __tablename__ = "bank_statement_lines"
+
+    uuid                     = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    statement_uuid           = Column(UUID(as_uuid=True), ForeignKey("bank_statements.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    line_index               = Column(Integer, nullable=False, default=0)
+    line_date                = Column(Date, nullable=False)
+    description              = Column(Text, nullable=True)
+    amount                   = Column(Numeric(10, 4), nullable=False)
+    reference                = Column(String(255), nullable=True)
+    counterparty             = Column(String(255), nullable=True)
+    bank_raw_data            = Column(JSON, nullable=True)
+    match_status             = Column(String(20), nullable=False, default='unmatched')
+    matched_entry_uuid       = Column(UUID(as_uuid=True), nullable=True, index=True)   # no DB FK
+    matched_fiscal_year_uuid = Column(UUID(as_uuid=True), nullable=True)
+    match_confidence         = Column(Numeric(4, 3), nullable=True)
+    discrepancy_type         = Column(String(32), nullable=True)
+    discrepancy_notes        = Column(Text, nullable=True)
+    resolved_at              = Column(DateTime(timezone=True), nullable=True)
+    resolved_by              = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at               = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    statement = relationship("BankStatement", back_populates="lines")
+
+
+class BankCsvMapping(Base):
+    __tablename__ = "bank_csv_mappings"
+
+    uuid           = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name           = Column(String(100), nullable=False)
+    created_by     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    column_mapping = Column(JSON, nullable=False)
+    separator      = Column(String(4), nullable=True)
+    encoding       = Column(String(16), nullable=True)
+    date_format    = Column(String(16), nullable=False, default='DD/MM/YYYY')
+    created_at     = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 ```
 
 ---
 
-## Architecture Backend
+## Phase C — Parsers
 
-### Parsers — `backend/services/bank_parsers.py`
+**Fichier** : `backend/services/bank_parsers.py`
 
+### Format normalisé
+
+```python
+@dataclass
+class ParsedLine:
+    line_date    : date
+    description  : str
+    amount       : Decimal   # positif = crédit, négatif = débit
+    reference    : str = ''
+    counterparty : str = ''
+    fit_id       : str | None = None
+    raw_data     : dict | None = None
+
+@dataclass
+class ParsedStatement:
+    account_id      : str | None
+    period_start    : date | None
+    period_end      : date | None
+    opening_balance : Decimal | None
+    closing_balance : Decimal | None
+    raw_format      : str
+    lines           : list[ParsedLine] = field(default_factory=list)
+    warnings        : list[str] = field(default_factory=list)
 ```
-bank_parsers/
-├── detect_format(filename, content) → 'ofx'|'csv'|'qif'|'mt940'
-├── OfxParser        → ofxparse → ParsedStatement
-├── CsvParser        → mapping colonnes → ParsedStatement
-├── QifParser        → !Type:Bank + D/T/M/P → ParsedStatement
-└── Mt940Parser      → champs SWIFT :61/:86 → ParsedStatement
-```
 
-#### Détection du format
+### Parsers
 
 ```python
 def detect_format(filename: str, content: bytes) -> str:
-    """Détecte le format du fichier bancaire.
-    - Extension .ofx/.qfx → 'ofx'
-    - Extension .qif → 'qif'
-    - Extension .940/.sta → vérifier en-tête SWIFT
-    - Extension .csv → 'csv'
-    - Sinon → analyse du contenu (OFX: OFXHEADER ou <?xml, QIF: !Type:Bank)
-    """
-```
+    """Extension d'abord (.ofx/.qfx → 'ofx', .qif → 'qif', .940/.sta → 'mt940', .csv → 'csv'),
+    puis analyse contenu si ambiguë (OFXHEADER, !Type:Bank)."""
 
-#### Format normalisé (ParsedStatement)
+class OfxParser:
+    """ofxparse — OFX 1.x (SGML : SG/CA/BNP/Crédit Mutuel) et 2.x (XML).
+    FITID dédupliqué. Erreurs par transaction skippées avec warning."""
 
-```python
-@dataclass
-class ParsedStatement:
-    account_id: str | None
-    period_start: date | None
-    period_end: date | None
-    opening_balance: Decimal | None
-    closing_balance: Decimal | None
-    currency: str = 'EUR'
-    lines: list[ParsedLine] = field(default_factory=list)
-    raw_format: str = ''
-    warnings: list[str] = field(default_factory=list)
+class CsvParser:
+    """Séparateur auto-détecté (virgule/point-virgule/tab).
+    Encodage auto (chardet). Format de date lu depuis BankCsvMapping.date_format
+    — élimine le risque d'inversion jour/mois (bug historique DD/MM vs MM/DD).
+    Nombres français (1.234,56) et anglais."""
 
-@dataclass
-class ParsedLine:
-    line_date: date
-    description: str
-    amount: Decimal            # Positif = crédit, Négatif = débit
-    reference: str = ''
-    counterparty: str = ''
-    fit_id: str | None = None  # OFX FITID unique
-    check_number: str | None = None
-    raw_data: dict | None = None
-```
+class QifParser:
+    """!Type:Bank + champs D/T/M/P → ParsedLine."""
 
-#### Parser OFX (prioritaire)
+class Mt940Parser:
+    """Champs SWIFT :61: (montant/date) et :86: (description) → ParsedLine."""
 
-```python
-import ofxparse
-
-def parse_ofx(filepath: str, content: bytes) -> ParsedStatement:
-    """Parse un fichier OFX/QFX via ofxparse.
-
-    Extrait :
-    - Compte : account_id, account_type
-    - Période : start_date, end_date
-    - Transactions : date, amount, description, fit_id, memo, check_number
-    - Soldes : opening_balance, closing_balance
-
-    Erreurs gérées :
-    - Fichier mal formé → InvalidFormatError
-    - Transaction sans montant → skip avec warning
-    - FITID dupliqué → déduplication
-    """
-```
-
-#### Parser CSV
-
-```python
-def parse_csv(content: bytes, column_mapping: ColumnMapping) -> ParsedStatement:
-    """Parse un fichier CSV.
-
-    Supporte :
-    - Séparateurs : virgule, point-virgule, tab (détection auto)
-    - Encodages : UTF-8, Latin-1, CP1252 (chardet)
-    - Formats de date : DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD (détection auto)
-    - Nombres : français (1.234,56) et anglais (1,234.56)
-    """
-```
-
-### Service de Rapprochement — `backend/services/bank_reconciliation.py`
-
-#### Fonctions principales
-
-```python
 async def import_statement(
-    db, fiscal_year_uuid, account_uuid, file_content, filename, user_id
+    db, fiscal_year_uuid, account_uuid, file_content, filename, user_id,
+    csv_mapping_uuid=None,  # obligatoire pour les fichiers CSV
 ) -> BankStatement:
     """
-    1. detect_format()
-    2. parse(content) → ParsedStatement
-    3. Vérifier déduplication (SHA-256 du contenu)
-    4. Créer BankStatement
-    5. Créer les BankStatementLines
-    6. Vérifier l'équilibre : opening + credits - debits ≈ closing
-    7. Audit log
+    1. Vérifier que le compte appartient à un journal type IN (3, 4)
+       → sinon lever InvalidAccountError
+    2. detect_format()
+    3. Parser correspondant → ParsedStatement
+       (CsvParser charge BankCsvMapping.date_format si csv_mapping_uuid fourni)
+    4. Vérifier SHA-256 : doublon → DuplicateStatementError
+    5. Créer BankStatement + BankStatementLines
+    6. Vérifier équilibre : opening + crédits - débits ≈ closing (warning si écart)
     """
+```
 
-async def run_auto_match(db, statement_uuid) -> MatchResult:
+---
+
+## Phase D — Moteur de Matching
+
+**Fichier** : `backend/services/bank_reconciliation.py`
+
+### Périmètre des écritures candidates
+
+```python
+ELIGIBLE_ENTRIES_QUERY = """
+    SELECT ae.uuid, ae.fiscal_year_uuid, ae.entry_date, ae.reference,
+           al.debit, al.credit
+    FROM accounting_entries ae
+    JOIN accounting_lines al ON al.entry_uuid = ae.uuid
+                             AND al.fiscal_year_uuid = ae.fiscal_year_uuid
+    JOIN accounting_journals aj ON aj.uuid = ae.journal_uuid
+    WHERE aj.type IN (3, 4)          -- Banque + Caisse uniquement
+      AND ae.fiscal_year_uuid = :fy_uuid
+      AND ae.state = 2               -- Postées uniquement
+      AND ae.reversal_of_entry_uuid IS NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM bank_statement_lines bsl
+          WHERE bsl.matched_entry_uuid = ae.uuid
+            AND bsl.match_status IN ('auto_matched', 'manually_matched')
+      )
+"""
+```
+
+### Scoring
+
+| Stratégie | Score | Comportement |
+|---|---|---|
+| Montant + référence + date ±1j | 1.0 | Auto-accept |
+| Montant + date exacte | 0.95 | Auto-accept |
+| Montant + date ±3j | 0.85 | Auto-accept |
+| Montant seul | 0.40–0.60 | Revue manuelle |
+| Aucune correspondance | 0.0 | `unmatched` |
+
+**Seuil** : ≥ 0.90 → `auto_matched` ; 0.40–0.89 → `discrepancy` ; < 0.40 → `unmatched`
+
+**Cardinalité** : relation 1-à-1 stricte — adaptée aux flux pilotes (411 directs) et CE (écriture multi-lignes déjà ventilée au journal de banque).
+
+**Virement interne** : même montant ±0 jour sur le même compte → score plafonné à 0.60.
+
+```python
+async def run_auto_match(db, statement_uuid) -> dict:
+    """{ auto_matched: int, flagged_review: int, unmatched: int }"""
+
+async def manual_match(db, line_uuid, entry_uuid, fiscal_year_uuid, user_id) -> BankStatementLine:
+    """Vérifier journal type IN (3, 4) avant association. Lever InvalidEntryError sinon."""
+
+async def unmatch(db, line_uuid, reason: str) -> BankStatementLine:
+    """status = 'unmatched', effacer matched_entry_uuid / matched_fiscal_year_uuid."""
+```
+
+---
+
+## Phase E — Écarts et Clôture
+
+```python
+async def detect_discrepancies(db, statement_uuid) -> list[dict]:
     """
-    MOTEUR DE SCORING (4 stratégies) :
-
-    1. MATCH EXACT (score = 1.0) → auto_accept
-       - Montant == debit/credit
-       - ET référence == entry.reference
-       - ET date ± 1 jour
-
-    2. MONTANT + DATE (score = 0.85-0.95) → auto_accept si > 0.90
-       - Montant identique
-       - ET date ± 3 jours
-       - date exacte = 0.95, ±3j = 0.85
-
-    3. MONTANT SEUL (score = 0.40-0.60) → flag review
-       - Montant identique, pas de référence concordante
-       - Pénalité si plusieurs écritures avec même montant
-
-    4. MATCH NÉGATIF (score = 0.0) → missing_entry
-       - Aucune écriture correspondante
-
-    RÈGLES :
-    - Ligne déjà réconciliée → exclue
-    - FITID déjà matché → exclu
-    - Écriture REVERSAL → exclue
-    - reversal_of_entry_uuid NOT NULL → exclue
-    """
-
-async def manual_match(db, line_uuid, entry_uuid, entry_line_uuid, user_id) -> BankStatementLine:
-    """Association manuelle d'une ligne bancaire à une écriture."""
-
-async def unmatch(db, line_uuid, reason) -> BankStatementLine:
-    """Casser une correspondance."""
-
-async def create_correcting_entry(
-    db, line_uuid, account_uuid, fiscal_year_uuid, user_id
-) -> AccountingEntry:
-    """
-    Créer une écriture corrective pour une ligne bancaire non matchée.
-    - Crée une écriture Draft (state=1) dans le journal OD
-    - Débit/crédit sur le compte GL passé en paramètre
-    - Contrepartie : compte d'attente (via settings)
-    - Description : "Correction rapprochement - {description}"
-    - Référence : "RAPPRO-{statement.code}-{line_index}"
-    """
-
-async def detect_discrepancies(db, statement_uuid) -> list[Discrepancy]:
-    """
-    4 types d'écarts :
-    - missing_entry : ligne sans match → suggérer création
+    4 types :
+    - missing_entry   : ligne sans match → suggérer création écriture
     - amount_variance : matché mais montant diffère → proposer correction
-    - timing : date banque - date écriture > 7j → flag
-    - duplicate : 2 lignes banque matchées sur 1 écriture → flag
+    - timing          : date banque - date écriture > 7j → flag
+    - duplicate       : 2 lignes matchées sur 1 écriture → flag
+    Si des écarts → statement.status = 'flagged'
+    """
+
+async def create_correcting_entry(db, line_uuid, account_uuid, fiscal_year_uuid, user_id) -> AccountingEntry:
+    """
+    Écriture Draft (state=1) dans un journal type 3 ou 4.
+    Description : 'Correction rapprochement - {description}'
+    Référence   : 'RAPPRO-{statement_date}-{line_index}'
     """
 
 async def close_reconciliation(db, statement_uuid, user_id) -> BankStatement:
     """
-    1. Vérifier aucune ligne 'unmatched' ou en 'manual_review'
-       → Si oui, refuser + lister
-    2. Vérifier équilibre : closing ≈ sum(matched)
-       → Si non, proposer écriture d'écart
-    3. Marquer BankStatement status = 'reconciled'
-    4. Marquer accounting_lines.reconciled = true
-    5. Audit log
+    1. Vérifier : aucune ligne 'unmatched' ou 'discrepancy' non résolue
+    2. Vérifier équilibre closing ≈ sum(matched amounts)
+    3. statement.status = 'reconciled', reconciled_at, reconciled_by
     """
 
 async def get_reconciliation_report(db, statement_uuid) -> dict:
-    """
-    Rapport structuré :
-    - Période, soldes (ouverture, clôture, comptable, écart)
-    - Stats matching (total, auto, manuel, à vérifier, non trouvé)
-    - Liste des écritures correctives créées
-    - Lignes non matchées avec explications
-    """
+    """Période, soldes, stats matching, écritures correctives, lignes non résolues."""
 ```
 
 ---
 
-## API Endpoints
+## Phase F — Endpoints API & Téléchargement
 
-**Fichier** : nouveau `backend/api/routes/reconciliation.py`
+**Fichier** : `backend/api/routes/reconciliation.py` (nouveau)
 
 ```
-# ── Import ──────────────────────────────────────────────────
-POST   /api/v1/reconciliation/import
-    Body: multipart/form-data { file, fiscal_year_uuid, account_uuid, column_mapping? }
-    → 201 BankStatementResponse
+POST   /api/v1/reconciliation/import                           → 201
+GET    /api/v1/reconciliation/statements                       → list
+GET    /api/v1/reconciliation/statements/{uuid}                → détail + lignes
+DELETE /api/v1/reconciliation/statements/{uuid}                → 204
 
-# ── Statements ──────────────────────────────────────────────
-GET    /api/v1/reconciliation/statements
-    Query: fiscal_year_uuid, account_uuid, status, period_start, period_end
-    → list[BankStatementResponse]
+POST   /api/v1/reconciliation/statements/{uuid}/match          → MatchResult
+POST   /api/v1/reconciliation/manual-match                     → BankStatementLine
+POST   /api/v1/reconciliation/unmatch                          → BankStatementLine
 
-GET    /api/v1/reconciliation/statements/{uuid}
-    → BankStatementDetailResponse (avec lignes)
+GET    /api/v1/reconciliation/statements/{uuid}/discrepancies  → list
+POST   /api/v1/reconciliation/resolve-discrepancy              → resolution
+POST   /api/v1/reconciliation/statements/{uuid}/close          → BankStatement
+GET    /api/v1/reconciliation/statements/{uuid}/report         → données rapport (JSON, pour affichage UI)
+GET    /api/v1/reconciliation/statements/{uuid}/report/download?format=pdf|json → téléchargement
 
-DELETE /api/v1/reconciliation/statements/{uuid}
-    → 204
-
-# ── Matching ────────────────────────────────────────────────
-POST   /api/v1/reconciliation/statements/{uuid}/match
-    → MatchResultResponse
-
-POST   /api/v1/reconciliation/manual-match
-    Body: { line_uuid, entry_uuid, entry_line_uuid }
-    → BankStatementLineResponse
-
-POST   /api/v1/reconciliation/unmatch
-    Body: { line_uuid, reason }
-    → BankStatementLineResponse
-
-# ── Discrepancies ───────────────────────────────────────────
-GET    /api/v1/reconciliation/statements/{uuid}/discrepancies
-    → list[DiscrepancyResponse]
-
-POST   /api/v1/reconciliation/resolve-discrepancy
-    Body: { line_uuid, resolution_type, account_uuid, notes }
-    → ResolutionResponse
-
-# ── Close / Report ──────────────────────────────────────────
-POST   /api/v1/reconciliation/statements/{uuid}/close
-    → BankStatementResponse
-
-GET    /api/v1/reconciliation/statements/{uuid}/report
-    Query: format (json / pdf)
-    → ReportResponse
-
-# ── CSV Mappings ────────────────────────────────────────────
-GET    /api/v1/reconciliation/csv-mappings       → list
-POST   /api/v1/reconciliation/csv-mappings       → CsvMappingResponse
-DELETE /api/v1/reconciliation/csv-mappings/{uuid} → 204
+GET    /api/v1/reconciliation/csv-mappings                     → list
+POST   /api/v1/reconciliation/csv-mappings                     → CsvMapping
+DELETE /api/v1/reconciliation/csv-mappings/{uuid}              → 204
 ```
 
-**Permissions :**
-- `view_guard` = `CAP_VIEW_FINANCIALS` (lecture statements, report)
-- `post_guard` = `CAP_POST_ACCOUNTING_ENTRIES` (import, match, unmatch, resolve, close)
-- `settings_guard` = `CAP_MANAGE_SYSTEM_SETTINGS` (delete, csv mappings)
+### Endpoint de téléchargement
+
+```python
+@router.get("/statements/{uuid}/report/download")
+async def download_reconciliation_report(
+    uuid: UUID,
+    format: str = "pdf",  # 'pdf' | 'json'
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(view_guard),
+):
+    """Force le téléchargement du rapport avec Content-Disposition: attachment."""
+    statement = await service.get_statement(db, uuid)
+    report_data = await service.get_report_data(db, uuid)
+    filename = f"rapprochement_{statement.statement_date.strftime('%Y%m%d')}"
+
+    if format == "json":
+        return StreamingResponse(
+            io.BytesIO(json.dumps(report_data, default=str).encode()),
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename={filename}.json"},
+        )
+    else:  # pdf
+        pdf_bin = await service.generate_pdf_report(report_data)
+        return Response(
+            content=pdf_bin,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}.pdf"},
+        )
+```
+
+**Guards** : `view_guard` (lecture + téléchargement), `post_guard` (import/match/resolve/close), `settings_guard` (delete/csv-mappings).
 
 ---
 
-## Architecture Frontend
+## Phase G — Frontend
 
-### Module : `frontend/src/modules/reconciliation/`
+**Module** : `frontend/src/modules/reconciliation/` (séparé de `banque/`)
 
-```  
+```
 components/
-├── ReconciliationImportPage.tsx       # Drag & drop + sélection compte/FY
-├── ReconciliationStatementList.tsx    # Liste des relevés avec progression
+├── ReconciliationImportPage.tsx       # Drag & drop — compte filtré Banque/Caisse
+├── ReconciliationStatementList.tsx    # Liste relevés + progression
 ├── ReconciliationWorkspace.tsx        # Split panel banque ↔ GL
 ├── ReconciliationDiscrepancies.tsx    # Panneau des écarts
-├── ReconciliationReport.tsx           # Rapport de réconciliation
-└── CsvMappingWizard.tsx              # Assistant mapping colonnes CSV
-api/
-└── index.ts                          # Hooks API (query + mutations)
-types/
-└── index.ts                          # Types TypeScript
-i18n/
-├── fr.ts
-└── en.ts
+├── ReconciliationReport.tsx           # Rapport + boutons d'export
+└── CsvMappingWizard.tsx               # Assistant mapping colonnes (avec champ date_format)
+api/index.ts
+types/index.ts
 ```
 
-### Page Import — Drag & Drop avec détection de format
+### Import
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Rapprochement bancaire — Import du relevé                  │
-│                                                             │
-│  Compte : [512100 - Crédit Mutuel ▼]                        │
-│  Exercice : [2025/2026 ▼]                                   │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              📁 Glissez votre relevé ici             │    │
-│  │        Formats : .ofx .qfx .csv .qif .940 .sta      │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-│  Fichier : relevé_juin_2026.ofx (12.4 KB)                   │
-│  ├── Détecté : OFX ✅                                       │
-│  ├── Période : 01/06 → 30/06/2026                          │
-│  ├── Lignes : 42                                            │
-│  ├── Solde d'ouverture : 3 250,00 €                        │
-│  └── Solde de clôture : 7 500,00 €                         │
-│                                                             │
-│              [⬇️ Importer]  [✕ Annuler]                     │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Compte : [512100 - Crédit Mutuel ▼]                 │
+│           (seuls les comptes Banque/Caisse affichés) │
+│  Exercice : [2025/2026 ▼]                            │
+│  ┌─────────────────────────────────────────────┐     │
+│  │         📁 Glissez votre relevé ici          │     │
+│  │    Formats : .ofx .qfx .csv .qif .940 .sta  │     │
+│  └─────────────────────────────────────────────┘     │
+│  Fichier : relevé_juin_2026.ofx                      │
+│  ├── Format : OFX ✅                                 │
+│  ├── Période : 01/06 → 30/06/2026                   │
+│  ├── Lignes : 42                                     │
+│  └── Soldes : 3 250 € → 7 500 €                     │
+│              [⬇️ Importer]  [✕ Annuler]               │
+└──────────────────────────────────────────────────────┘
 ```
 
-### Workspace de Matching — Split Panel
+### Workspace
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  📊 Progression : ████████████████░░░░░  72%                │
-│  ✅ 30 auto  │  🔵 2 manuel  │  🟡 6 à vérifier  │  ❌ 4   │
-│                                                              │
-│  🔍 [Tous ▼]  📅 [01/06 → 30/06]  💰 [   ]                 │
-│                                                              │
-│  ┌── Relevé Bancaire ───────────┬── GL Comptable ─────────┐ │
-│  │ 🟢 01/06  +1 000,00         │ 🟢 756-001  Cotisation  │ │
-│  │ 🟢 01/06  -200,00           │ 🟢 401-001  Fournisseur │ │
-│  │ 🔵 02/06  +500,00           │ 🔵 Client Z  (manuel)   │ │
-│  │ 🟡 03/06  -52,30            │ 🔶 Aucune écriture      │ │
-│  │ ❌ 05/06  +2 000,00         │ ❓ Aucune écriture      │ │
-│  │ 🟢 ...                      │ 🟢 ...                   │ │
-│  └──────────────────────────────┴─────────────────────────┘ │
-│                                                              │
-│  Légende : 🟢 Auto  🔵 Manuel  🟡 Faible confiance  ❌ Non trouvé│
-│                                                              │
-│  [🔄 Re-matching]  [📋 Rapport]  [🔒 Clôturer]              │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  ████████████████░░░░░  72%                         │
+│  ✅ 30 auto  🔵 2 manuel  🟡 6 à vérifier  ❌ 4    │
+│                                                     │
+│  ┌── Relevé Bancaire ──────┬── GL Banque/Caisse ──┐ │
+│  │ 🟢 01/06  +1 000,00    │ 🟢 BQ-001 Virement   │ │
+│  │ 🔵 02/06  +500,00      │ 🔵 BQ-002 (manuel)   │ │
+│  │ 🟡 03/06  -52,30       │ 🔶 Aucune écriture   │ │
+│  │ ❌ 05/06  +2 000,00    │ ❓ Aucune écriture   │ │
+│  └─────────────────────────┴──────────────────────┘ │
+│  [🔄 Re-matching]  [📋 Rapport]  [🔒 Clôturer]     │
+└─────────────────────────────────────────────────────┘
 ```
 
-### Modale de Détail d'une Ligne
+### Rapport — Actions d'export (ReconciliationReport.tsx)
+
+Bandeau d'actions après clôture :
 
 ```
-┌── Détail Ligne Bancaire ─────────────────────────────────┐
-│  Date        : 03/06/2026                                 │
-│  Description : Carte CB CARREFOUR                         │
-│  Montant     : -52,30 €                                   │
-│  Réf.        : FITID=2026060312345                        │
-│                                                           │
-│  🔶 Aucune correspondance automatique                     │
-│                                                           │
-│  Propositions :                                           │
-│  ○ 03/06  658  Frais bancaires  52,30 €  score 0.45     │
-│  ○ 02/06  471  Attente           52,30 €  score 0.40     │
-│                                                           │
-│  [➕ Associer]  [➕ Créer écriture]  [🚫 Exclure]        │
-│                                                           │
-│  ┌── Résolution ─────────────────────────────────────┐   │
-│  │  Type : Écriture manquante en compta               │   │
-│  │  Action : Créer sur compte [658 ▼]                  │   │
-│  │  [✅ Confirmer]                                     │   │
-│  └────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────┘
+[⬇️ Télécharger PDF]  [📋 Exporter JSON]
 ```
 
-### Panneau des Écarts
-
-```
-┌── Écarts ────────────────────────────────────────────────┐
-│                                                           │
-│ 🔴 Écritures manquantes (3)                               │
-│    03/06  -52,30 €  →  Créer sur [658 ▼]  [Créer]       │
-│    05/06  +2 000 €  →  Créer sur [411 ▼]  [Créer]       │
-│                                                           │
-│ 🟠 Variations de montant (1)                              │
-│    10/06  -150,00€ vs -148,50€ → écart 1,50€             │
-│    [Créer correction]  [Exclure]                          │
-│                                                           │
-│ 🟡 Doublon suspect (1)                                    │
-│    15/06  +200€ × 2 matchés sur 1 écriture               │
-│    [Exclure ligne A]  [Exclure ligne B]                   │
-│                                                           │
-└───────────────────────────────────────────────────────────┘
-```
-
-### Rapport de Réconciliation
-
-```
-┌── Rapport de Réconciliation ──────────────────────────────┐
-│  Période : 01/06 → 30/06/2026                             │
-│  Compte : 512100 - Crédit Mutuel                          │
-│                                                           │
-│  Solde d'ouverture    :  3 250,00 €                       │
-│  Total crédits        : 12 450,00 €                       │
-│  Total débits         : -8 200,00 €                       │
-│  Solde de clôture     :  7 500,00 €                       │
-│  Solde comptable      :  7 498,50 €                       │
-│  Écart                :      1,50 €                       │
-│                                                           │
-│  Matching : 42 lignes → 72% (30 auto + 2 manuel)         │
-│  Écritures correctives créées : 2                         │
-│                                                           │
-│  [📄 PDF]  [🔒 Valider et clôturer]                      │
-└───────────────────────────────────────────────────────────┘
-```
+- **PDF** → `GET /report/download?format=pdf` → ouverture flux binaire
+- **JSON** → `GET /report/download?format=json` → archivage / audit externe
 
 ---
 
-## Phases d'Implémentation
+## Phase H — Intégration & i18n
 
-### Phase 1 — Modèles & Migration
-
-**Fichiers** : `docs/migrations/046_bank_reconciliation.sql` + `backend/models.py`
-
-| Étape | Description |
-|---|---|
-| 1.1 | Créer les tables `bank_statements` et `bank_statement_lines` |
-| 1.2 | Ajouter `reconciled` à `accounting_lines` |
-| 1.3 | Classes Python `BankStatement`, `BankStatementLine` |
-| 1.4 | Schémas Pydantic `backend/schemas/reconciliation.py` |
-
-### Phase 2 — Parsers de fichiers
-
-**Fichier** : `backend/services/bank_parsers.py`
-
-| Étape | Description |
-|---|---|
-| 2.1 | `detect_format()` — par extension puis contenu |
-| 2.2 | `OfxParser` — OFX/QFX avec ofxparse (FITID déduplication) |
-| 2.3 | `CsvParser` — mapping colonnes, détection séparateur & encodage |
-| 2.4 | `QifParser` — format texte structuré |
-| 2.5 | `Mt940Parser` — champs SWIFT |
-| 2.6 | `import_statement()` — point d'entrée unifié |
-
-### Phase 3 — Moteur de Matching
-
-**Fichier** : `backend/services/bank_reconciliation.py`
-
-| Étape | Description |
-|---|---|
-| 3.1 | `run_auto_match()` — 4 stratégies de scoring |
-| 3.2 | `manual_match()` + `unmatch()` |
-| 3.3 | Filtres : exclusion déjà réconcilié, reversal, FITID déjà matché |
-
-### Phase 4 — Écarts et Résolution
-
-| Étape | Description |
-|---|---|
-| 4.1 | `detect_discrepancies()` — 4 types d'écarts |
-| 4.2 | `create_correcting_entry()` → écriture Draft journal OD |
-| 4.3 | `resolve_discrepancy()` — 3 modes de résolution |
-
-### Phase 5 — Clôture et Rapport
-
-| Étape | Description |
-|---|---|
-| 5.1 | `close_reconciliation()` — vérifications, verrouillage |
-| 5.2 | `get_reconciliation_report()` — rapport structuré |
-
-### Phase 6 — API Routes
-
-**Fichier** : nouveau `backend/api/routes/reconciliation.py`
-
-| Étape | Endpoints |
-|---|---|
-| 6.1 | Import + statements CRUD |
-| 6.2 | Matching (auto, manual, unmatch) |
-| 6.3 | Discrepancies, correction, close |
-| 6.4 | Report, CSV mappings |
-
-### Phase 7 — Frontend : Import & Liste
-
-**Fichiers** : `frontend/src/modules/reconciliation/`
-
-| Étape | Composant |
-|---|---|
-| 7.1 | Hooks API (import, statements, matching mutations) |
-| 7.2 | `ReconciliationImportPage` — drag & drop + détection format |
-| 7.3 | `CsvMappingWizard` — assistant mapping colonnes |
-| 7.4 | `ReconciliationStatementList` — liste des relevés |
-
-### Phase 8 — Frontend : Workspace
-
-| Étape | Composant |
-|---|---|
-| 8.1 | `ReconciliationWorkspace` — split panel banque/GL |
-| 8.2 | Colorimétrie : 🟢 🔵 🟡 ❌ selon statut |
-| 8.3 | Modale de détail : propositions, association, création |
-| 8.4 | `ReconciliationDiscrepancies` — panneau des écarts |
-| 8.5 | `ReconciliationReport` — rapport |
-
-### Phase 9 — Intégration
-
-| Étape | Description |
-|---|---|
-| 9.1 | Ajouter l'onglet `'reconciliation'` dans `BanqueDailyOpsPage.tsx` |
-| 9.2 | Badge de notification sur l'onglet (relevés en attente) |
-| 9.3 | i18n complète (fr + en) |
+1. Ajouter route `/banque/reconciliation` dans le routeur (`react-router-dom v7`)
+2. Ajouter onglet `reconciliation` dans `BanqueDailyOpsPage.tsx` avec badge si relevés en attente
+3. i18n namespace `reconciliation.*` dans `fr.ts` / `en.ts`
 
 ---
 
-## Dépendances Backend
+## Dépendances backend
 
-```txt
+```
 # backend/requirements.txt
-ofxparse==0.21       # OFX/QFX parser
-chardet==5.2.0       # Détection d'encodage (CSV)
-python-multipart     # File upload (déjà présent)
+ofxparse==0.21    # OFX/QFX
+chardet==5.2.0    # Détection encodage CSV
+reportlab>=4.0    # Génération PDF rapport (ou weasyprint selon préférence)
+# python-multipart déjà présent
 ```
 
 ---
 
-## Fichiers Modifiés / Créés
+## Fichiers modifiés / créés
 
 | Fichier | Action |
 |---|---|
 | `docs/migrations/046_bank_reconciliation.sql` | **Créer** |
-| `backend/models.py` | **Modifier** — ajouter `BankStatement`, `BankStatementLine`, modif `AccountingLine` |
+| `backend/models.py` | **Modifier** — 3 nouveaux modèles (+ `date_format` sur `BankCsvMapping`) |
 | `backend/schemas/reconciliation.py` | **Créer** |
 | `backend/services/bank_parsers.py` | **Créer** |
 | `backend/services/bank_reconciliation.py` | **Créer** |
 | `backend/api/routes/reconciliation.py` | **Créer** |
 | `backend/main.py` | **Modifier** — enregistrer le router |
-| `backend/requirements.txt` | **Modifier** — ofxparse, chardet |
-| `frontend/src/modules/reconciliation/` | **Créer** (6 composants + api + types + i18n) |
-| `frontend/src/modules/banque/components/BanqueDailyOpsPage.tsx` | **Modifier** — ajouter onglet |
-| `packages/i18n/src/resources/fr.ts` | **Modifier** |
-| `packages/i18n/src/resources/en.ts` | **Modifier** |
+| `backend/requirements.txt` | **Modifier** |
+| `frontend/src/modules/reconciliation/` | **Créer** (6 composants + api + types) |
+| `frontend/src/modules/banque/components/BanqueDailyOpsPage.tsx` | **Modifier** |
+| `packages/i18n/src/resources/fr.ts` + `en.ts` | **Modifier** |
 
 ---
 
-## Vérification
+## Tests
 
-### Tests unitaires Backend
+### Backend
 
-1. **Parser OFX** → fichier réel → 42 lignes normalisées correctement, FITID extraits
-2. **Parser CSV** → mapping colonnes → lignes correctes, détection auto séparateur
-3. **Matching exact** → montant + référence + date = score 1.0 → auto-accept ✅
-4. **Matching fuzzy** → montant ±3j = score 0.85 → revue manuelle 🟡
-5. **Déduplication** → même SHA-256 → rejet avec message "déjà importé le..."
-6. **FITID déjà matché** → ignoré silencieusement
-7. **Création corrective** → écriture Draft équilibrée dans journal OD
-8. **Clôture avec lignes en attente** → refus + liste des lignes à résoudre
-9. **Rapport** → soldes corrects, stats matching, liste écarts
+1. Import avec compte hors type 3/4 → `InvalidAccountError`
+2. Parser OFX → lignes normalisées, FITID dédupliqués
+3. Parser CSV avec `date_format='DD/MM/YYYY'` → pas d'inversion jour/mois
+4. Parser CSV avec `date_format='MM/DD/YYYY'` → interprétation correcte
+5. Matching → seules les écritures journaux type IN (3, 4) candidates
+6. Matching exact → score 1.0 → auto-accept
+7. Matching fuzzy ±3j → score 0.85 → auto-accept
+8. Virement interne → score plafonné 0.60 → revue manuelle
+9. Doublon SHA-256 → `DuplicateStatementError`
+10. Association manuelle écriture hors type 3/4 → `InvalidEntryError`
+11. Clôture avec lignes non résolues → refus + liste
+12. Téléchargement PDF → `Content-Disposition: attachment; filename=rapprochement_*.pdf`
+13. Téléchargement JSON → flux JSON valide avec toutes les données du rapport
 
-### Tests UI manuels
+### Frontend
 
-10. **Import OFX** → glisser fichier → détection auto → aperçu → importer → statut 'imported'
-11. **Matching auto** → lancer → 30 matchés, 6 à vérifier, 4 non trouvés
-12. **Association manuelle** → cliquer ligne → propositions → associer → 🔵
-13. **Création corrective** → "Créer écriture" → sélectionner compte → écriture Draft créée
-14. **Clôture** → refus si lignes non résolues → résoudre → OK → statut 'reconciled'
-15. **Mapping CSV** → créer mapping → réutiliser au prochain import
-
-### Cas limites
-
-16. **OFX mal formé** → message d'erreur clair
-17. **Encodage CSV non UTF-8** → détection auto par chardet
-18. **Fichier vide** → message explicite
-19. **Même fichier importé 2×** → hash identique → message "déjà importé"
-20. **Période déjà clôturée** → refus d'import
+14. Sélecteur compte → seuls Banque/Caisse affichés
+15. Import OFX → aperçu → import → statut `imported`
+16. Matching auto → progression → lignes colorées
+17. Association manuelle → modale → 🔵
+18. Clôture → refus si non résolu → résoudre → `reconciled`
+19. Bouton PDF → téléchargement déclenché
+20. Bouton JSON → téléchargement déclenché
 
 ---
 
-## Décisions Architecturales
+## Décisions architecturales
 
-| Décision | Choix |
-|---|---|
-| **Parser OFX** | Librairie `ofxparse` — mature, OFX 1.x (SG/SBIF) et 2.x (XML) |
-| **Stockage fichier** | Hash SHA-256 seulement, pas le contenu brut |
-| **Marquage réconciliation** | Booléen `reconciled` sur `accounting_lines` |
-| **Seuil auto-accept** | ≥ 0.90 ; revue 0.40–0.89 ; non trouvé < 0.40 |
-| **Écritures correctives** | Créées en Draft (state=1) journal OD — revue avant posting |
-| **Module frontend** | `reconciliation/` séparé de `banque/` — réutilisable |
-| **Mapping CSV** | Sauvegardé par utilisateur avec nom — réutilisation rapide |
+| Décision | Choix | Raison |
+|---|---|---|
+| Périmètre matching | Journaux type IN (3, 4) uniquement | Seules les opérations Banque/Caisse sont rapprochables |
+| Cardinalité | 1-à-1 stricte | Adapté aux flux pilotes (411 directs) et CE (écriture multi-lignes déjà ventilée) |
+| `date_format` sur `BankCsvMapping` | Colonne explicite `VARCHAR(16)` default `'DD/MM/YYYY'` | Élimine le risque d'inversion jour/mois — correctif du bug historique |
+| `accounting_lines` non modifiée | ✅ | Immutabilité des écritures postées, pas de duplication d'état |
+| État rapprochement | Porté par `bank_statement_lines` | Source unique de vérité |
+| FK vers `accounting_entries` | Pas de FK DB (app-layer) | PK composite `(uuid, fiscal_year_uuid)` — pattern existant |
+| `matched_fiscal_year_uuid` | Stocké en clair | Reconstitue la référence composite sans JOIN |
+| Téléchargement rapport | Route dédiée `/report/download?format=` | `Content-Disposition: attachment` — séparé de la route d'affichage UI |
+| Statut `flagged` | Déclenché par `detect_discrepancies()` | Comportement explicite |
+| Virement interne | Score plafonné à 0.60 | Évite les faux positifs à 1.0 |
+| Sélecteur compte frontend | Filtré sur type IN (3, 4) | UX : empêche les erreurs de sélection |

@@ -518,6 +518,11 @@ async def get_account_by_code(db: AsyncSession, code: str) -> AccountingAccount 
 # REM Adjustment
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# REM Adjustment (inchangé)
+# ---------------------------------------------------------------------------
+
 async def compute_rem_adjustment(
     db: AsyncSession,
     member_uuid: UUID,
@@ -537,9 +542,54 @@ async def compute_rem_adjustment(
     return _dec(result.scalar())
 
 
+# ---------------------------------------------------------------------------
+# Dataclass interne : slot de pack acheté avec date d'activation
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass, field as dc_field
+
+@dataclass
+class _PackSlot:
+    """
+    Un pack acheté par un membre, avec sa date d'activation et son solde restant.
+
+    Un membre peut avoir acheté le même type de pack plusieurs fois (ex. 2 x 25h).
+    Chaque achat est un _PackSlot distinct, consommé dans l'ordre FIFO (activated_at ASC).
+
+    La date d'activation est lue depuis la description de l'écriture GL VT :
+    pattern "VALID_FROM:YYYY-MM-DD". Si absente, on utilise entry_date.
+    """
+    pack_def: PackDefinition
+    applicability: list[PackApplicability]
+    activated_at: date
+    remaining: Decimal          # quantité restante (heures ou unités)
+    purchase_entry_uuid: UUID   # écriture GL VT correspondante
+
+
+# Préfixe de référence pour distinguer remises et achats dans le journal REM
+# Achats pack  → journal VT, reference PACK-{code}
+# Remises pack → journal REM, reference REM-DISCOUNT-{member_uuid}
+REM_DISCOUNT_REF_PREFIX = "REM-DISCOUNT-"
+
+
+def _parse_valid_from(description: str | None, entry_date: datetime | date) -> date:
+    """
+    Extrait la date d'activation depuis la description d'une écriture d'achat.
+    Format attendu : '... | VALID_FROM:YYYY-MM-DD'
+    Si absent, retourne entry_date (compatibilité avec les achats sans VALID_FROM).
+    """
+    import re
+    if description:
+        m = re.search(r'VALID_FROM:(\d{4}-\d{2}-\d{2})', description)
+        if m:
+            return date.fromisoformat(m.group(1))
+    if isinstance(entry_date, datetime):
+        return entry_date.date()
+    return entry_date
+
 
 # ---------------------------------------------------------------------------
-# Helper : charger le contexte pack pour un membre
+# Helper : charger le contexte pack pour un membre (v2 — slots avec activated_at)
 # ---------------------------------------------------------------------------
 
 async def _load_pack_context(
@@ -547,22 +597,23 @@ async def _load_pack_context(
     member_uuid: UUID,
     fiscal_year_uuid: UUID,
 ) -> tuple[
-    list[PackDefinition],
-    dict[UUID, Decimal],
-    dict[str, list[tuple[PackDefinition, PackApplicability]]],
+    list[_PackSlot],
+    dict[str, list[_PackSlot]],
 ]:
     """
-    Charge les pack definitions, calcule pack_remaining (total acheté - 0 consommé,
-    car la purge a déjà été faite), et construit pi_to_pack.
+    Charge les packs achetés par le membre dans l'exercice, sous forme de slots
+    ordonnés par date d'activation (FIFO).
 
-    Appelé UNE SEULE FOIS par cycle de calcul membre, après la purge globale
-    des consommations. Le remaining est donc = total acheté (pas de consommation
-    en base au moment de l'appel).
+    Changements vs v1 :
+      - Retourne list[_PackSlot] au lieu de (pack_defs, pack_remaining, pi_to_pack)
+      - Chaque slot porte sa date d'activation (lue depuis la description GL VT)
+      - Plusieurs slots du même type de pack sont possibles (packs consécutifs 2x25h)
+      - pack_remaining = montant crédité sur le compte pack (journal VT), par slot
+      - Les consommations de vols ont déjà été purgées → remaining = total acheté
 
     Returns:
-        pack_defs      : liste des PackDefinition actives pour l'exercice
-        pack_remaining : dict pack_uuid → quantité restante (Decimal)
-        pi_to_pack     : dict pricing_item_uuid_str → [(PackDefinition, PackApplicability)]
+        pack_slots  : liste de _PackSlot triée par activated_at ASC
+        pi_to_slots : dict pricing_item_uuid_str → [_PackSlot]
     """
     # Charger les pack definitions de l'exercice
     packs_result = await db.execute(
@@ -573,14 +624,15 @@ async def _load_pack_context(
     pack_defs = list(packs_result.scalars().all())
 
     if not pack_defs:
-        return [], {}, {}
+        return [], {}
 
-    # Trier par priorité ASC pour consommation dans le bon ordre
-    sorted_packs = sorted(pack_defs, key=lambda p: (p.priority or 0, p.code or ""))
+    pack_def_by_sales_account: dict[UUID, PackDefinition] = {
+        pd.pack_sales_account_uuid: pd for pd in pack_defs
+    }
 
-    # Charger applicabilité pour chaque pack
+    # Charger les applicabilités
     pack_applicability: dict[UUID, list[PackApplicability]] = {}
-    for pd in sorted_packs:
+    for pd in pack_defs:
         appl_result = await db.execute(
             select(PackApplicability).where(
                 PackApplicability.pack_definition_uuid == pd.uuid
@@ -588,52 +640,90 @@ async def _load_pack_context(
         )
         pack_applicability[pd.uuid] = list(appl_result.scalars().all())
 
-    # Construire pi_to_pack : pricing_item_uuid → [(pack_def, applicability)]
-    pi_to_pack: dict[str, list[tuple[PackDefinition, PackApplicability]]] = {}
-    for pd in sorted_packs:
-        for app in pack_applicability.get(pd.uuid, []):
-            pi_key = str(app.pricing_item_uuid)
-            if pi_key not in pi_to_pack:
-                pi_to_pack[pi_key] = []
-            pi_to_pack[pi_key].append((pd, app))
-
-    # Calculer pack_remaining depuis le GL (achats) uniquement.
-    # Les consommations ont été purgées juste avant — total_consumed = 0.
-    pack_remaining: dict[UUID, Decimal] = {}
-    for pd in sorted_packs:
-        purchase_result = await db.execute(
-            select(func.coalesce(func.sum(AccountingLine.credit), 0))
-            .where(
-                AccountingLine.account_uuid == pd.pack_sales_account_uuid,
-                AccountingLine.member_uuid == member_uuid,
-                AccountingLine.credit > 0,
-            )
+    # Charger les écritures d'achat de pack depuis le journal VT
+    # Une écriture VT avec reference LIKE 'PACK-%' et une ligne au crédit
+    # sur le compte pack du membre = un achat de pack.
+    purchases_result = await db.execute(
+        select(AccountingEntry, AccountingLine)
+        .join(
+            AccountingLine,
+            and_(
+                AccountingLine.entry_uuid == AccountingEntry.uuid,
+                AccountingLine.fiscal_year_uuid == AccountingEntry.fiscal_year_uuid,
+            ),
         )
-        total_purchased = _dec(purchase_result.scalar())
-        if total_purchased > 0:
-            pack_remaining[pd.uuid] = total_purchased
+        .join(
+            PackDefinition,
+            AccountingLine.account_uuid == PackDefinition.pack_sales_account_uuid,
+        )
+        .where(
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+            AccountingEntry.reference.like("PACK-%"),
+            AccountingLine.member_uuid == member_uuid,
+            AccountingLine.credit > 0,          # ligne crédit = achat pack
+            PackDefinition.fiscal_year_uuid == fiscal_year_uuid,
+        )
+        .order_by(AccountingEntry.entry_date.asc())
+    )
+    rows = purchases_result.all()
 
-    return pack_defs, pack_remaining, pi_to_pack
+    pack_slots: list[_PackSlot] = []
+    for entry, line in rows:
+        pd = pack_def_by_sales_account.get(line.account_uuid)
+        if pd is None:
+            continue
+
+        activated_at = _parse_valid_from(entry.description, entry.entry_date)
+        remaining = _dec(line.credit)
+
+        pack_slots.append(_PackSlot(
+            pack_def=pd,
+            applicability=pack_applicability.get(pd.uuid, []),
+            activated_at=activated_at,
+            remaining=remaining,
+            purchase_entry_uuid=entry.uuid,
+        ))
+
+    # Trier par activated_at ASC → consommation FIFO
+    pack_slots.sort(key=lambda s: s.activated_at)
+
+    logger.info(
+        "_load_pack_context: %d slot(s) de pack pour membre %s",
+        len(pack_slots), member_uuid,
+    )
+
+    # Construire pi_to_slots : pricing_item_uuid → [_PackSlot]
+    pi_to_slots: dict[str, list[_PackSlot]] = {}
+    for slot in pack_slots:
+        for app in slot.applicability:
+            pi_key = str(app.pricing_item_uuid)
+            if pi_key not in pi_to_slots:
+                pi_to_slots[pi_key] = []
+            pi_to_slots[pi_key].append(slot)
+
+    return pack_slots, pi_to_slots
 
 
 # ---------------------------------------------------------------------------
-# Helper : appliquer les consommations d'un vol (sans DELETE, sans DB pour remaining)
+# Helper : appliquer les consommations d'un vol (v2 — slots + activated_at)
 # ---------------------------------------------------------------------------
 
 async def _apply_flight_consumptions(
     db: AsyncSession,
     flight: ValidatedFlight,
     member: Member,
-    pack_remaining: dict[UUID, Decimal],  # muté en place
-    pi_to_pack: dict[str, list[tuple[PackDefinition, PackApplicability]]],
+    pack_slots: list[_PackSlot],  # muté en place (remaining décrémenté FIFO)
+    pi_to_slots: dict[str, list[_PackSlot]],
     fiscal_year_uuid: UUID,
 ) -> Decimal:
     """
     Calcule et insère les MemberPackConsumption pour un vol donné.
 
-    Mute pack_remaining en place (décrémente au fur et à mesure).
-    N'effectue aucun DELETE ni aucune requête DB pour lire le remaining
-    (le contexte a déjà été chargé par _load_pack_context).
+    Changements vs v1 :
+      - Accepte list[_PackSlot] au lieu de (pack_remaining, pi_to_pack)
+      - Filtre les slots non encore activés à la date du vol (activated_at > flight.jour)
+      - Consommation FIFO : slot avec activated_at le plus ancien en premier
+      - pack_slots[i].remaining muté en mémoire — aucune requête DB
 
     Returns: total remise pour ce vol (Decimal).
     """
@@ -641,6 +731,10 @@ async def _apply_flight_consumptions(
 
     if flight.accounting_entry_uuid is None:
         return Decimal("0")
+
+    flight_date: date = (
+        flight.jour.date() if isinstance(flight.jour, datetime) else flight.jour
+    ) if flight.jour else date.today()
 
     preview_service = FlightBillingPreviewService(db)
     preview = await preview_service.preview_flight(
@@ -658,53 +752,71 @@ async def _apply_flight_consumptions(
         if not line.pricing_item_uuid:
             continue
 
-        pi_key = line.pricing_item_uuid
-        if pi_key not in pi_to_pack:
+        pi_key = str(line.pricing_item_uuid)
+        if pi_key not in pi_to_slots:
             continue
 
-        for pd, app in pi_to_pack[pi_key]:
-            pack_uuid = pd.uuid
-            remaining = pack_remaining.get(pack_uuid, Decimal("0"))
-            if remaining <= 0:
+        base_price = _dec(line.normal_unit_price) if line.normal_unit_price else Decimal("0")
+        qty_to_consume = _dec(line.quantity) if line.quantity else Decimal("1")
+
+        # Consommer les slots FIFO (déjà triés par activated_at ASC)
+        for slot in pi_to_slots[pi_key]:
+            if qty_to_consume <= 0:
+                break
+
+            # Ne consommer que les packs activés avant ou à la date du vol
+            if flight_date < slot.activated_at:
+                logger.debug(
+                    "_apply_flight_consumptions: vol %s (%s) antérieur à l'activation "
+                    "du pack %s (%s) — slot ignoré",
+                    flight.uuid, flight_date, slot.pack_def.code, slot.activated_at,
+                )
                 continue
 
-            base_price = _dec(line.normal_unit_price) if line.normal_unit_price else Decimal("0")
+            if slot.remaining <= 0:
+                continue
+
+            app = next(
+                (a for a in slot.applicability if str(a.pricing_item_uuid) == pi_key),
+                None,
+            )
+            if app is None:
+                continue
+
             discounted_price = _dec(app.discounted_unit_price)
             unit_discount = base_price - discounted_price
             if unit_discount <= 0:
                 continue
 
-            qty = _dec(line.quantity) if line.quantity else Decimal("1")
-            if qty > remaining:
-                qty = remaining
-
+            qty = min(qty_to_consume, slot.remaining)
             line_discount = unit_discount * qty
 
             db.add(MemberPackConsumption(
                 uuid=uuid4(),
                 member_uuid=member.uuid,
                 flight_uuid=flight.uuid,
-                pack_type=pd.pack_type,
-                pack_definition_uuid=pack_uuid,
+                pack_type=slot.pack_def.pack_type,
+                pack_definition_uuid=slot.pack_def.uuid,
                 valid_from=flight.jour or datetime.now(timezone.utc),
                 quantity_consumed=qty,
                 discount_unit_price=unit_discount,
                 total_discount_amount=line_discount,
-                # accounting_entry_uuid sera renseigné après l'upsert REM
+                # accounting_entry_uuid renseigné après upsert_rem_entry
             ))
 
             total_discount += line_discount
             has_any_discount = True
 
-            # Décrémenter en mémoire — pas de requête DB
-            pack_remaining[pack_uuid] = remaining - qty
+            # Décrémenter en mémoire — FIFO
+            slot.remaining -= qty
+            qty_to_consume -= qty
 
     flight.has_discount = has_any_discount
     return total_discount
 
 
 # ---------------------------------------------------------------------------
-# upsert_rem_entry — CORRIGÉ
+# upsert_rem_entry (v2 — référence stable REM-DISCOUNT-, pas de commit interne)
 # ---------------------------------------------------------------------------
 
 async def upsert_rem_entry(
@@ -717,30 +829,22 @@ async def upsert_rem_entry(
     user_id: int,
 ) -> AccountingEntry:
     """
-    Crée ou met à jour l'écriture Draft REM pour ce membre / exercice fiscal.
+    Crée ou met à jour l'écriture Draft de REMISE pour ce membre / exercice fiscal.
 
-    Identification stable : on cherche via les lignes GL (member_uuid + journal REM
-    + fiscal_year_uuid), PAS via la description (qui changeait à chaque appel
-    dans l'ancienne version et empêchait de retrouver l'écriture existante).
+    Changements vs v1 :
+      - Référence stable : REM-DISCOUNT-{member_uuid} — unique par membre/exercice
+        → distingue sans ambiguïté les remises des achats (journal VT, ref PACK-*)
+      - Recherche par reference exacte + journal + exercice + member_uuid (ligne GL)
+        → plus de description.like() instable ni de MultipleResultsFound
+      - Pas de commit() — l'appelant commite une seule fois
 
     Règles :
-      - Draft existante   → remplacer ses lignes GL, mettre à jour la date
-      - Postée existante  → ValueError explicite (ne pas silencer)
-      - Aucune            → créer une nouvelle Draft
-
-    IMPORTANT : pas de commit() ici. L'appelant (discount_review_for_member)
-    commite une seule fois en fin de traitement.
-
-    Changements vs version précédente :
-      - Suppression des paramètres period_start / period_end (non pertinents
-        pour l'identification ; la période est implicite dans l'exercice fiscal)
-      - Recherche par JOIN AccountingLine.member_uuid au lieu de description.like()
-      - .limit(1) pour éviter MultipleResultsFound si des doublons existaient déjà
-      - ValueError au lieu de silencer si l'écriture est Postée
-      - Pas de await db.commit() en fin de fonction
+      - Draft remise existante → remplacer les lignes GL
+      - Postée                 → ValueError explicite
+      - Aucune                 → créer une nouvelle Draft
     """
-    # Recherche de l'écriture REM existante pour ce membre + exercice
-    # via les lignes GL (clé stable, indépendante de la description)
+    reference = f"{REM_DISCOUNT_REF_PREFIX}{member_uuid}"
+
     existing_result = await db.execute(
         select(AccountingEntry)
         .join(
@@ -753,21 +857,21 @@ async def upsert_rem_entry(
         .where(
             AccountingEntry.journal_uuid == rem_journal_uuid,
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+            AccountingEntry.reference == reference,
             AccountingLine.member_uuid == member_uuid,
         )
         .order_by(AccountingEntry.created_at.desc())
-        .limit(1)  # évite MultipleResultsFound si doublons résiduels
+        .limit(1)
     )
     entry = existing_result.scalar_one_or_none()
 
-    if entry is not None and entry.state == 2:  # Postée
+    if entry is not None and entry.state == 2:
         raise ValueError(
-            f"L'écriture REM {entry.uuid} pour le membre {member_uuid} "
-            "est déjà Postée. Supprimez-la manuellement avant de relancer le calcul."
+            f"L'écriture de remise {entry.uuid} pour le membre {member_uuid} "
+            "est déjà Postée. Supprimez-la manuellement avant de relancer."
         )
 
     if entry is not None:
-        # Supprimer les lignes existantes et les remplacer
         await db.execute(
             delete(AccountingLine).where(
                 and_(
@@ -777,8 +881,7 @@ async def upsert_rem_entry(
             )
         )
         entry.entry_date = date.today()
-        entry.reference = f"REM-{member_uuid}"
-        entry.description = f"Remises forfait membre {member_uuid}"
+        entry.description = f"Remises forfait vols membre {member_uuid}"
         await db.flush()
     else:
         entry = AccountingEntry(
@@ -786,9 +889,9 @@ async def upsert_rem_entry(
             fiscal_year_uuid=fiscal_year_uuid,
             journal_uuid=rem_journal_uuid,
             entry_date=date.today(),
-            reference=f"REM-{member_uuid}",
-            description=f"Remises forfait membre {member_uuid}",
-            state=1,  # Draft
+            reference=reference,
+            description=f"Remises forfait vols membre {member_uuid}",
+            state=1,
             created_by=user_id,
         )
         db.add(entry)
@@ -804,7 +907,7 @@ async def upsert_rem_entry(
         debit=total_discount,
     ))
 
-    # Ligne 2 : crédit 411 (client membre)
+    # Ligne 2 : crédit 411
     receivable = await get_account_by_code(db, "411")
     if receivable is None:
         raise ValueError("Compte 411 introuvable — vérifier le plan comptable")
@@ -819,12 +922,11 @@ async def upsert_rem_entry(
     ))
 
     await db.flush()
-    # PAS de commit() ici — l'appelant commite une fois tout terminé
     return entry
 
 
 # ---------------------------------------------------------------------------
-# discount_review_for_member — CORRIGÉ
+# discount_review_for_member (v2 — purge vols uniquement, slots FIFO)
 # ---------------------------------------------------------------------------
 
 async def discount_review_for_member(
@@ -835,24 +937,20 @@ async def discount_review_for_member(
 ) -> dict:
     """
     Recalcule les remises pack pour tous les vols facturés d'un membre.
-    Crée ou met à jour l'écriture REM Draft correspondante.
 
-    Corrections vs version précédente :
-      - Passe 1 : purge globale des consommations du membre (pas vol par vol)
-        → évite que pack_remaining soit pollué par des DELETE partiels
-      - Passe 2 : vols triés par date ASC (ORDER BY jour ASC)
-        → résultat déterministe, pack_remaining décroît dans le bon ordre
-      - pack_remaining calculé UNE SEULE FOIS après la purge
-        → plus de recalcul DB à chaque vol
-      - upsert_rem_entry appelé SANS commit interne
-      - Un seul await db.commit() à la fin du traitement
+    Changements vs v1 :
+      - Purge restreinte aux consommations de VOLS (flight_uuid IS NOT NULL)
+        → les consommations d'achat (flight_uuid IS NULL) sont préservées
+      - _load_pack_context retourne des _PackSlot avec activated_at
+      - _apply_flight_consumptions filtre par activated_at et consomme FIFO
+      - Liaison des consommations à l'écriture REM filtrée sur flight_uuid IS NOT NULL
+      - Un seul commit() en fin
     """
-    import logging
-    logger = logging.getLogger(__name__)
+    logger.info(
+        "discount_review_for_member member=%s fiscal_year=%s",
+        member_uuid, fiscal_year_uuid,
+    )
 
-    logger.info("discount_review_for_member member=%s fiscal_year=%s", member_uuid, fiscal_year_uuid)
-
-    # Charger les settings
     settings_result = await db.execute(
         select(FlightBillingSettings).where(
             FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
@@ -860,46 +958,41 @@ async def discount_review_for_member(
     )
     settings = settings_result.scalar_one_or_none()
     if settings is None:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Flight billing settings not configured for this fiscal year.",
         )
     if settings.default_pack_discount_expense_account_uuid is None:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Pack discount expense account not configured in flight billing settings.",
         )
 
-    # Charger le membre
     member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
     member = member_result.scalar_one_or_none()
     if member is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # -----------------------------------------------------------------------
-    # Passe 1 : purge globale des consommations du membre
-    # -----------------------------------------------------------------------
-    # On supprime TOUT en une seule requête, pas vol par vol.
-    # Cela garantit que _load_pack_context trouve total_consumed = 0
-    # et que pack_remaining = total acheté, sans pollution par les
-    # consommations résiduelles d'un cycle précédent.
+    # -------------------------------------------------------------------
+    # Passe 1 : purge des consommations de VOLS uniquement
+    # flight_uuid IS NOT NULL → lignes de remise vol
+    # flight_uuid IS NULL     → lignes d'achat de pack, préservées
+    # -------------------------------------------------------------------
     await db.execute(
         delete(MemberPackConsumption).where(
             MemberPackConsumption.member_uuid == member_uuid,
+            MemberPackConsumption.flight_uuid.isnot(None),
         )
     )
     await db.flush()
-    logger.info("discount_review_for_member: consommations purgées pour membre %s", member_uuid)
+    logger.info(
+        "discount_review_for_member: consommations vols purgées pour membre %s",
+        member_uuid,
+    )
 
-    # -----------------------------------------------------------------------
-    # Passe 2 : récupérer les vols triés par date ASC — déterministe
-    # -----------------------------------------------------------------------
-    # ORDER BY jour ASC : les vols les plus anciens consomment le pack en premier.
-    # Sans tri, l'ordre varie à chaque appel et pack_remaining décroît
-    # différemment → total_discount différent → écritures GL incohérentes.
+    # -------------------------------------------------------------------
+    # Passe 2 : vols facturés triés par date ASC — déterministe
+    # -------------------------------------------------------------------
     flights_result = await db.execute(
         select(ValidatedFlight)
         .join(AccountingEntry, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
@@ -909,24 +1002,25 @@ async def discount_review_for_member(
             AccountingLine.member_uuid == member_uuid,
             AccountingLine.debit > 0,
         )
-        .order_by(ValidatedFlight.jour.asc())  # ← déterministe
+        .order_by(ValidatedFlight.jour.asc())
     )
     flights = list(flights_result.unique().scalars().all())
 
     logger.info(
-        "discount_review_for_member: %d vols facturés trouvés pour membre %s",
-        len(flights), member.account_id,
+        "discount_review_for_member: %d vols facturés pour membre %s",
+        len(flights), member_uuid,
     )
 
-    # -----------------------------------------------------------------------
-    # Passe 2b : charger le contexte pack UNE SEULE FOIS
-    # -----------------------------------------------------------------------
-    pack_defs, pack_remaining, pi_to_pack = await _load_pack_context(
-        db, member_uuid, fiscal_year_uuid
-    )
+    # -------------------------------------------------------------------
+    # Passe 2b : charger les slots de pack (post-purge vols)
+    # -------------------------------------------------------------------
+    pack_slots, pi_to_slots = await _load_pack_context(db, member_uuid, fiscal_year_uuid)
 
-    if not pack_defs:
-        logger.warning("discount_review_for_member: aucun pack défini pour l'exercice %s", fiscal_year_uuid)
+    if not pack_slots:
+        logger.warning(
+            "discount_review_for_member: aucun pack acheté pour membre %s exercice %s",
+            member_uuid, fiscal_year_uuid,
+        )
         await db.commit()
         return {
             "member_uuid": str(member_uuid),
@@ -936,10 +1030,9 @@ async def discount_review_for_member(
             "rem_entry_uuid": None,
         }
 
-    # -----------------------------------------------------------------------
-    # Passe 2c : calculer les consommations vol par vol
-    # pack_remaining est muté en mémoire — aucune requête DB pour le remaining
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
+    # Passe 2c : consommations vol par vol, FIFO par slot
+    # -------------------------------------------------------------------
     total_discount = Decimal("0")
     member_flights_count = 0
 
@@ -948,8 +1041,8 @@ async def discount_review_for_member(
             db=db,
             flight=flight,
             member=member,
-            pack_remaining=pack_remaining,  # muté en place
-            pi_to_pack=pi_to_pack,
+            pack_slots=pack_slots,
+            pi_to_slots=pi_to_slots,
             fiscal_year_uuid=fiscal_year_uuid,
         )
         if discount > 0:
@@ -962,9 +1055,9 @@ async def discount_review_for_member(
         total_discount, member_flights_count, member_uuid,
     )
 
-    # -----------------------------------------------------------------------
-    # Passe 3 : upsert UNE SEULE écriture REM (sans commit interne)
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
+    # Passe 3 : upsert UNE SEULE écriture REM de remise
+    # -------------------------------------------------------------------
     rem_entry_uuid = None
     if member_flights_count > 0:
         try:
@@ -976,25 +1069,24 @@ async def discount_review_for_member(
                 discount_account_uuid=settings.default_pack_discount_expense_account_uuid,
                 total_discount=total_discount,
                 user_id=user_id,
-                # period_start / period_end supprimés — non pertinents pour l'identification
             )
             rem_entry_uuid = str(rem_entry.uuid)
 
-            # Lier toutes les consommations à l'écriture REM
+            # Lier uniquement les consommations de vols à l'écriture REM
             await db.execute(
                 update(MemberPackConsumption)
-                .where(MemberPackConsumption.member_uuid == member_uuid)
+                .where(
+                    MemberPackConsumption.member_uuid == member_uuid,
+                    MemberPackConsumption.flight_uuid.isnot(None),
+                )
                 .values(accounting_entry_uuid=rem_entry.uuid)
             )
-
         except ValueError as exc:
-            # L'écriture REM est Postée — on logue sans bloquer les autres membres
             logger.error(
-                "discount_review_for_member: impossible d'upsert REM pour membre %s : %s",
+                "discount_review_for_member: upsert REM échoué pour membre %s : %s",
                 member_uuid, exc,
             )
 
-    # Un seul commit à la fin — toutes les consommations + écriture REM en une transaction
     await db.commit()
 
     return {
@@ -1007,7 +1099,7 @@ async def discount_review_for_member(
 
 
 # ---------------------------------------------------------------------------
-# discount_review — CORRIGÉ (appelle la version refactorisée)
+# discount_review (inchangé dans la logique)
 # ---------------------------------------------------------------------------
 
 async def discount_review(
@@ -1017,17 +1109,8 @@ async def discount_review(
 ) -> dict:
     """
     Recalcule les remises pack pour TOUS les membres facturés dans l'exercice.
-    Délègue à discount_review_for_member (refactorisé) pour chaque membre.
-
-    Correction vs version précédente :
-      - discount_review_for_member gère maintenant son propre commit
-      - les erreurs par membre sont capturées individuellement sans bloquer les autres
-      - on ne duplique plus la logique de purge / calcul / upsert ici
+    Délègue à discount_review_for_member pour chaque membre.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-
-    # Charger les settings (validation uniquement — la logique est dans discount_review_for_member)
     settings_result = await db.execute(
         select(FlightBillingSettings).where(
             FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
@@ -1035,19 +1118,16 @@ async def discount_review(
     )
     settings = settings_result.scalar_one_or_none()
     if settings is None:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Flight billing settings not configured for this fiscal year.",
         )
     if settings.default_pack_discount_expense_account_uuid is None:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Pack discount expense account not configured in flight billing settings.",
         )
 
-    # Récupérer l'ensemble des membres ayant été effectivement facturés
     lines_result = await db.execute(
         select(AccountingLine.member_uuid)
         .join(AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid)
@@ -1079,13 +1159,9 @@ async def discount_review(
                 flights_recalculated += result["flights_count"]
                 total_discount += Decimal(result["total_discount"])
             details.append(result)
-
         except Exception as exc:
             logger.error("discount_review: erreur pour membre %s : %s", member_uuid, exc)
-            details.append({
-                "member_uuid": str(member_uuid),
-                "error": str(exc),
-            })
+            details.append({"member_uuid": str(member_uuid), "error": str(exc)})
 
     return {
         "members_affected": members_affected,
@@ -1094,6 +1170,3 @@ async def discount_review(
         "rem_entries_created": len([d for d in details if d.get("rem_entry_uuid")]),
         "details": details,
     }
-
-
-
