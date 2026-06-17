@@ -20,13 +20,16 @@
 
 import { type ReactNode, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, Shield, KeyRound } from 'lucide-react'
+import { Users, Shield, KeyRound, Settings } from 'lucide-react'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { WorkspaceShell } from '@/components/ui/workspace-shell'
+import { WorkspaceShell, SubWorkspaceShell } from '@/components/ui/workspace-shell'
+import { HelloAssoIntegrationPage } from '@/modules/helloasso/components/HelloAssoIntegrationPage'
+import { PlancheIntegrationPage } from '@/modules/planche/components/PlancheIntegrationPage'
+import { StorageSettingsPage } from '@/modules/storage/components/StorageSettingsPage'
 import {
   useAdminCapabilitiesQuery,
   useAdminRolesQuery,
@@ -131,6 +134,32 @@ export function AdminPage() {
             <LoadingOrError>
               <CapabilitiesCrudPanel capabilities={capabilities} />
             </LoadingOrError>
+          ),
+        },
+        {
+          value: 'parametres',
+          label: t('tabs.settings'),
+          icon: Settings,
+          content: (
+            <SubWorkspaceShell
+              tabs={[
+                {
+                  value: 'helloasso',
+                  label: t('settings.helloasso'),
+                  content: <HelloAssoIntegrationPage />,
+                },
+                {
+                  value: 'planche',
+                  label: t('settings.planche'),
+                  content: <PlancheIntegrationPage />,
+                },
+                {
+                  value: 'stockage',
+                  label: t('settings.storage'),
+                  content: <StorageSettingsPage />,
+                },
+              ]}
+            />
           ),
         },
       ]}

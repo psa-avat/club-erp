@@ -130,7 +130,7 @@ export const shellNavItems: ShellNavItem[] = [
   },
 
   // ── 10. Administration (priorité #10) ─────────────────────────────────────
-  // Absorbs: former Intégrations standalone group (planche push, gesasso, osrt)
+  // Paramètres système absorbés dans /admin?tab=parametres&subtab=xxx
   {
     to: '/admin',
     labelKey: 'nav.administration',
@@ -138,9 +138,9 @@ export const shellNavItems: ShellNavItem[] = [
     children: [
       { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
       { to: '/admin/audit', labelKey: 'nav.adminAudit', requiredCapability: 'MANAGE_USERS' },
-      { to: '/helloasso/integration', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/planche/integration', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/storage/settings', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/admin?tab=parametres&subtab=helloasso', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/admin?tab=parametres&subtab=planche', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/admin?tab=parametres&subtab=stockage', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/workspace/finance?tab=parametres', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },

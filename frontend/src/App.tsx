@@ -20,11 +20,9 @@ import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, MemberWorkspaceShell, MembersWorkspacePage } from './modules/members'
 import { AssetDetailPage, AssetFormPage, AssetPricingPage, MachinesWorkspacePage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
-import { HelloAssoIntegrationPage } from './modules/helloasso'
 import { FlightsWorkspacePage } from './modules/flights'
-import { PlancheIntegrationPage, PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
+import { PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
 import { ViWorkspacePage } from './modules/vi'
-import { StorageSettingsPage } from './modules/storage'
 import { RhWorkspacePage } from './modules/rh'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
@@ -104,7 +102,7 @@ function App() {
           <Route path="/flights/billing" element={<Navigate replace to="/workspace/flights?tab=facturation" />} />
           <Route path="/workspace/flights" element={<FlightsWorkspacePage />} />
           <Route path="/planche" element={<Navigate replace to="/planche/members-push" />} />
-          <Route path="/planche/integration" element={<PlancheIntegrationPage />} />
+          <Route path="/planche/integration" element={<Navigate replace to="/admin?tab=parametres&subtab=planche" />} />
           <Route path="/planche/members-push" element={<PlancheMembersPushPage />} />
           <Route path="/planche/machines-push" element={<PlancheMachinesPushPage />} />
           <Route path="/planche/vi-sync" element={<Navigate replace to="/workspace/vi?tab=sync" />} />
@@ -113,7 +111,7 @@ function App() {
 
           {/* ── 6. Integrations (HelloAsso, Gesasso, OSRT) ── */}
           <Route path="/helloasso" element={<Navigate replace to="/helloasso/purchases" />} />
-          <Route path="/helloasso/integration" element={<HelloAssoIntegrationPage />} />
+          <Route path="/helloasso/integration" element={<Navigate replace to="/admin?tab=parametres&subtab=helloasso" />} />
           <Route path="/helloasso/purchases" element={<Navigate replace to="/workspace/vi?tab=achats" />} />
           <Route path="/helloasso/vi-import" element={<Navigate replace to="/workspace/vi?tab=import" />} />
           <Route path="/integrations/gesasso" element={<PlaceholderPage title="Gesasso" description="Synchronisation avec Gesasso pour la gestion des envois postaux." eta="Phase 8" />} />
@@ -148,8 +146,8 @@ function App() {
           <Route path="/rh" element={<PlaceholderPage title="RH" description="Planning des congés, gestion des présences et tableau de bord RH." eta="Phase 10" />} />
           <Route path="/workspace/rh" element={<RhWorkspacePage />} />
           <Route path="/workspace/finance" element={<FinanceWorkspacePage />} />
-          <Route path="/storage" element={<Navigate replace to="/storage/settings" />} />
-          <Route path="/storage/settings" element={<StorageSettingsPage />} />
+          <Route path="/storage" element={<Navigate replace to="/admin?tab=parametres&subtab=stockage" />} />
+          <Route path="/storage/settings" element={<Navigate replace to="/admin?tab=parametres&subtab=stockage" />} />
         </Route>
       </Route>
 

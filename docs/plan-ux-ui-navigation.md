@@ -180,7 +180,7 @@ Dashboard
 
 ## 3. Détail des modifications
 
-### Phase A — Quick wins (navigation.ts uniquement, zéro nouveau composant)
+### Phase A — Quick wins ✅ TERMINÉ
 
 **A1. Supprimer le Portail membres du menu**
 - Fichier : `frontend/src/shell/navigation.ts`
@@ -208,7 +208,7 @@ Dashboard
 
 ---
 
-### Phase B — Unification Finance (composants)
+### Phase B — Unification Finance ✅ TERMINÉ
 
 **B1. Étendre `FinanceWorkspacePage`**
 - Fichier : `frontend/src/modules/banque/components/FinanceWorkspacePage.tsx`
@@ -240,7 +240,7 @@ Dashboard
 
 ---
 
-### Phase C — Restructuration dossier membre + suppression Fiches
+### Phase C — Restructuration dossier membre ✅ TERMINÉ (C2 déféré Phase 10)
 
 **C1. Supprimer le tab Fiches de `MembersWorkspacePage`**
 - Fichier : `frontend/src/modules/members/components/MembersWorkspacePage.tsx`
@@ -284,7 +284,16 @@ Dashboard
 
 ---
 
-### Phase E — Suppression double headers + audit i18n
+### Phase D — Administration étendue ✅ TERMINÉ
+
+- `AdminPage` étend avec tab `parametres` contenant `SubWorkspaceShell` (helloasso, planche, stockage)
+- Redirects : `/helloasso/integration` → `/admin?tab=parametres&subtab=helloasso`, `/planche/integration` → `...&subtab=planche`, `/storage/settings` → `...&subtab=stockage`
+- BanqueSettingsPage reste dans `/workspace/finance?tab=parametres` (lien séparé dans nav Administration)
+- i18n : ajout `admin.tabs.settings`, `admin.settings.{helloasso,planche,storage}` en fr+en
+
+---
+
+### Phase E — Suppression double headers + audit i18n ✅ TERMINÉ
 
 > Règle : **les composants rendus à l'intérieur d'un tab `WorkspaceShell` ne doivent pas avoir leur propre header de page.** Titres et descriptions vivent dans la définition du tab au niveau du workspace. Les contenus de tabs commencent directement par leur contenu fonctionnel (tableau, formulaire, KPIs).
 

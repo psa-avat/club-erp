@@ -2224,6 +2224,12 @@ export const fr = {
       users: 'Utilisateurs',
       roles: 'Rôles',
       capabilities: 'Capacités',
+      settings: 'Paramètres système',
+    },
+    settings: {
+      helloasso: 'HelloAsso',
+      planche: 'Planche',
+      storage: 'Stockage',
     },
     users: {
       email: 'Email',

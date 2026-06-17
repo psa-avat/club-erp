@@ -2217,6 +2217,12 @@ export const en = {
       users: 'Users',
       roles: 'Roles',
       capabilities: 'Capabilities',
+      settings: 'System settings',
+    },
+    settings: {
+      helloasso: 'HelloAsso',
+      planche: 'Planche',
+      storage: 'Storage',
     },
     users: {
       email: 'Email',
