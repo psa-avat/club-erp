@@ -112,18 +112,17 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── 8. Banque (priorité #8) ────────────────────────────────────────────────
+  // ── 8. Banque — opérations financières (priorité #8) ───────────────────────
   {
-    to: '/workspace/banque',
+    to: '/workspace/finance',
     labelKey: 'nav.banking',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/banque', labelKey: 'nav.banqueJournal' },
-      { to: '/workspace/banque?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
-      { to: '/workspace/banque?tab=pcg', labelKey: 'nav.banquePcg' },
-      { to: '/workspace/banque?tab=rapports', labelKey: 'nav.banqueReports' },
-      { to: '/workspace/banque?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
-      { to: '/workspace/banque?tab=parametres', labelKey: 'nav.banqueSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/workspace/finance', labelKey: 'nav.banqueOverview' },
+      { to: '/workspace/finance?tab=operations', labelKey: 'nav.banqueOps' },
+      { to: '/workspace/finance?tab=packs', labelKey: 'nav.packs' },
+      { to: '/workspace/finance?tab=recurring', labelKey: 'nav.banqueRecurring' },
+      { to: '/workspace/finance?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
     ],
   },
 
@@ -192,7 +191,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/helloasso/integration', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/planche/integration', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/storage/settings', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/workspace/banque?tab=parametres', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/workspace/finance?tab=parametres', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 ]

@@ -19,6 +19,7 @@
  */
 
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 
 import { cn } from '../../lib/utils'
 
@@ -59,6 +60,7 @@ function SearchableSelect({
   const [search, setSearch] = React.useState('')
   const [activeIndex, setActiveIndex] = React.useState(0)
   const containerRef = React.useRef<HTMLDivElement>(null)
+  const dropdownRef = React.useRef<HTMLDivElement>(null)
   const searchRef = React.useRef<HTMLInputElement>(null)
   const listRef = React.useRef<HTMLUListElement>(null)
 
@@ -67,11 +69,14 @@ function SearchableSelect({
     ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
     : options
 
-  // Close on outside click
+  // Close on outside click — also consider the portaled dropdown
   React.useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
+      const target = e.target as Node
+      const insideContainer = containerRef.current?.contains(target)
+      const insideDropdown = dropdownRef.current?.contains(target)
+      if (!insideContainer && !insideDropdown) {
         setOpen(false)
         setSearch('')
       }
@@ -128,210 +133,156 @@ function SearchableSelect({
     activeEl?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex, open])
 
-  return (
-    <div
-      ref={containerRef}
-      className={cn('relative', className)}
-      onKeyDown={handleKeyDown}
-    >
-      {/* Trigger */}
-      <button
-        type="button"
-        id={id}
-        disabled={disabled}
-        role="combobox"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? `${id}-listbox` : undefined}
-        aria-activedescendant={open && filtered[activeIndex] ? `${id}-option-${filtered[activeIndex].value}` : undefined}
-        onClick={() => { if (!disabled) setOpen(v => !v) }}
-        className={cn(
-          'flex w-full items-center justify-between rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-          selected ? 'text-on-surface' : 'text-on-surface-variant',
-        )}
-      >
-        <span className="truncate">{selected?.label ?? placeholder}</span>
-        <span className="ml-2 flex items-center gap-1">
-          {clearable && selected && !disabled ? (
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label={clearLabel}
-              title={clearLabel}
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                onChange('')
-                close()
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  onChange('')
-                  close()
-                }
-              }}
-              className="inline-flex h-4 w-4 items-center justify-center rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
-            >
-              <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-                <path fillRule="evenodd" d="M4.22 4.22a.75.75 0 011.06 0L10 8.94l4.72-4.72a.75.75 0 111.06 1.06L11.06 10l4.72 4.72a.75.75 0 11-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 11-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-              </svg>
-            </span>
-          ) : null}
-          <svg
-            aria-hidden="true"
-            className={cn(
-              'h-4 w-4 shrink-0 text-on-surface-variant transition-transform',
-              open && 'rotate-180',
-            )}
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fillRule="evenodd"
-              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </span>
-      </button>
-
-      {/* Dropdown — fixed positioning to escape modal stacking contexts */}
-      {open && containerRef.current && (
-        <FixedDropdown
-          containerRef={containerRef}
-          id={id}
-          search={search}
-          searchRef={searchRef}
-          onSearchChange={setSearch}
-          searchPlaceholder={searchPlaceholder}
-          filtered={filtered}
-          listRef={listRef}
-          activeIndex={activeIndex}
-          noResultsText={noResultsText}
-          value={value}
-          onChange={onChange}
-          onClose={close}
-        />
-      )}
-    </div>
-  )
-}
-
-// Fixed-position dropdown — renders outside any modal's stacking context
-function FixedDropdown({
-  containerRef,
-  id,
-  search,
-  searchRef,
-  onSearchChange,
-  searchPlaceholder,
-  filtered,
-  listRef,
-  activeIndex,
-  noResultsText,
-  value,
-  onChange,
-  onClose,
-}: {
-  containerRef: React.RefObject<HTMLDivElement | null>
-  id?: string
-  search: string
-  searchRef: React.RefObject<HTMLInputElement | null>
-  onSearchChange: (v: string) => void
-  searchPlaceholder: string
-  filtered: { value: string; label: string; disabled?: boolean }[]
-  listRef: React.RefObject<HTMLUListElement | null>
-  activeIndex: number
-  noResultsText: string
-  value?: string
-  onChange: (v: string) => void
-  onClose: () => void
-}) {
-  const [style, setStyle] = React.useState<React.CSSProperties>({})
-
-  // Calculate position relative to viewport
+  // Calculate dropdown position relative to viewport
+  const [dropdownStyle, setDropdownStyle] = React.useState<React.CSSProperties>({})
   React.useLayoutEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    setStyle({
+    if (!open || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    setDropdownStyle({
       position: 'fixed',
       top: `${rect.bottom + 4}px`,
       left: `${rect.left}px`,
       width: `${rect.width}px`,
       zIndex: 9999,
     })
-  }, [containerRef])
-
-  // Focus search on mount
-  React.useEffect(() => {
-    const id = setTimeout(() => searchRef.current?.focus(), 10)
-    return () => clearTimeout(id)
-  }, [searchRef])
+  }, [open, containerRef])
 
   return (
-    <div
-      role="listbox"
-      id={`${id}-listbox`}
-      style={style}
-      className={cn(
-        'flex flex-col rounded-shape-md border border-outline-variant bg-surface shadow-surface-3',
-        'max-h-64 overflow-hidden',
-      )}
-    >
-      {/* Search */}
-      <div className="border-b border-outline-variant p-2">
-        <input
-          ref={searchRef}
-          type="text"
-          value={search}
-          onChange={e => onSearchChange(e.target.value)}
-          placeholder={searchPlaceholder}
+    <>
+      <div
+        ref={containerRef}
+        className={cn('relative', className)}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Trigger */}
+        <button
+          type="button"
+          id={id}
+          disabled={disabled}
+          role="combobox"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? `${id}-listbox` : undefined}
+          aria-activedescendant={open && filtered[activeIndex] ? `${id}-option-${filtered[activeIndex].value}` : undefined}
+          onClick={() => { if (!disabled) setOpen(v => !v) }}
           className={cn(
-            'w-full rounded-shape-sm border border-outline bg-surface px-2 py-1.5 text-sm text-on-surface',
-            'placeholder:text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-primary',
+            'flex w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            selected ? 'text-foreground' : 'text-muted-foreground',
           )}
-        />
+        >
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <span className="ml-2 flex items-center gap-1">
+            {clearable && selected && !disabled ? (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={clearLabel}
+                title={clearLabel}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onChange('')
+                  close()
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onChange('')
+                    close()
+                  }
+                }}
+                className="inline-flex h-4 w-4 items-center justify-center rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+              >
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                  <path fillRule="evenodd" d="M4.22 4.22a.75.75 0 011.06 0L10 8.94l4.72-4.72a.75.75 0 111.06 1.06L11.06 10l4.72 4.72a.75.75 0 11-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 11-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+                </svg>
+              </span>
+            ) : null}
+            <svg
+              aria-hidden="true"
+              className={cn(
+                'h-4 w-4 shrink-0 text-on-surface-variant transition-transform',
+                open && 'rotate-180',
+              )}
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
+        </button>
       </div>
 
-      {/* Options */}
-      <ul ref={listRef} className="overflow-y-auto py-1">
-        {filtered.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
-        ) : (
-          filtered.map((opt, index) => (
-            <li
-              key={opt.value}
-              id={`${id}-option-${opt.value}`}
-              role="option"
-              data-option-index={index}
-              aria-selected={opt.value === value}
-              aria-disabled={opt.disabled}
-              onClick={() => {
-                if (!opt.disabled) {
-                  onChange(opt.value)
-                  onClose()
-                }
-              }}
+      {/* Portaled dropdown — rendered at document.body to escape modal stacking contexts */}
+      {open && createPortal(
+        <div
+          ref={dropdownRef}
+          role="listbox"
+          id={`${id}-listbox`}
+          style={dropdownStyle}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            'flex flex-col rounded-lg border border-border bg-popover shadow-lg',
+            'max-h-64 overflow-hidden',
+          )}
+        >
+          {/* Search */}
+          <div className="border-b border-outline-variant p-2">
+            <input
+              ref={searchRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={searchPlaceholder}
               className={cn(
-                'flex cursor-pointer items-center px-3 py-2 text-sm transition-colors',
-                opt.value === value
-                  ? 'bg-primary-container text-on-primary-container'
-                      : 'text-on-surface hover:bg-surface-container',
+                'w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground',
+                'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
+              )}
+            />
+          </div>
+
+          {/* Options */}
+          <ul ref={listRef} className="overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
+            ) : (
+              filtered.map((opt, index) => (
+                <li
+                  key={opt.value}
+                  id={`${id}-option-${opt.value}`}
+                  role="option"
+                  data-option-index={index}
+                  aria-selected={opt.value === value}
+                  aria-disabled={opt.disabled}
+                  onClick={() => {
+                    if (!opt.disabled) {
+                      onChange(opt.value)
+                      close()
+                    }
+                  }}
+                  className={cn(
+                    'flex cursor-pointer items-center px-3 py-2 text-sm transition-colors',
+                    opt.value === value
+                      ? 'bg-primary/10 text-foreground'
+                      : 'text-foreground hover:bg-muted',
                     opt.disabled && 'cursor-not-allowed opacity-40',
-                    index === activeIndex && 'bg-surface-container-high',
+                    index === activeIndex && opt.value !== value && 'bg-muted',
                   )}
                 >
                   {/* Check mark for selected */}
-                  <span className="mr-2 h-4 w-4 shrink-0">
+                  <span className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center">
                     {opt.value === value && (
                       <svg
                         aria-hidden="true"
+                        className="h-4 w-4"
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 20 20"
                         fill="currentColor"
@@ -349,7 +300,10 @@ function FixedDropdown({
               ))
             )}
           </ul>
-        </div>
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 
