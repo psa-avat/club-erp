@@ -338,499 +338,6 @@ async def get_member_pack_balance(
         return []
 
 
-# ---------------------------------------------------------------------------
-# Discount Review — Recalculate pack discounts for all billed flights
-# ---------------------------------------------------------------------------
-
-async def recalculate_pack_consumptions(
-    db: AsyncSession,
-    flight_uuid: UUID,
-    fiscal_year_uuid: UUID,
-    user_id: int,
-    member_uuid: UUID | None = None,
-    member_account_id: str | None = None,
-) -> Decimal:
-    """
-    Delete existing consumptions for this flight and re-run discount eligibility.
-    Uses the preview service to get pricing lines, then matches against pack applicability.
-
-    If *member_uuid* and *member_account_id* are provided (by the caller who knows
-    which pilot owns the pack), use them directly. Otherwise fall back to looking
-    up the member from ``flight.pilot_erp_id``.
-
-    Returns the total discount amount for this flight.
-    """
-    from services.flight_billing import FlightBillingPreviewService
-
-    logger.info("recalculate_pack_consumptions flight=%s fiscal_year=%s member_uuid=%s",
-                flight_uuid, fiscal_year_uuid, member_uuid)
-
-    # Delete existing consumptions for this flight
-    existing_result = await db.execute(
-        select(MemberPackConsumption).where(
-            MemberPackConsumption.flight_uuid == flight_uuid
-        )
-    )
-    existing_consumptions = list(existing_result.scalars().all())
-    for ec in existing_consumptions:
-        await db.delete(ec)
-    await db.flush()
-
-    # Get the flight
-    flight_result = await db.execute(
-        select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid)
-    )
-    flight = flight_result.scalar_one_or_none()
-    if flight is None:
-        logger.warning("recalc: flight %s not found", flight_uuid)
-        await db.flush()
-        return Decimal("0")
-    if flight.accounting_entry_uuid is None:
-        logger.warning("recalc: flight %s has no accounting entry (not billed)", flight_uuid)
-        await db.flush()
-        return Decimal("0")
-
-    # Check that the linked accounting entry exists.
-    entry_result = await db.execute(
-        select(AccountingEntry).where(AccountingEntry.uuid == flight.accounting_entry_uuid)
-    )
-    entry = entry_result.scalar_one_or_none()
-    if entry is None:
-        logger.warning("recalc: flight %s accounting_entry_uuid=%s is orphaned", flight_uuid, flight.accounting_entry_uuid)
-        await db.flush()
-        return Decimal("0")
-
-    # Get billing settings
-    settings_result = await db.execute(
-        select(FlightBillingSettings).where(
-            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
-        )
-    )
-    settings = settings_result.scalar_one_or_none()
-    if settings is None:
-        logger.warning("recalc: no FlightBillingSettings for FY %s", fiscal_year_uuid)
-        return Decimal("0")
-
-    # Run preview to get pricing lines with pack info
-    preview_service = FlightBillingPreviewService(db)
-    preview = await preview_service.preview_flight(flight_uuid, fiscal_year_uuid=fiscal_year_uuid)
-    if not preview.can_apply:
-        logger.warning("recalc: preview cannot apply for flight %s — errors=%s", flight_uuid, [e.message for e in preview.errors])
-        flight.has_discount = False
-        await db.flush()
-        return Decimal("0")
-
-    # Get all active pack definitions for this FY
-    packs_result = await db.execute(
-        select(PackDefinition).where(
-            PackDefinition.fiscal_year_uuid == fiscal_year_uuid
-        )
-    )
-    pack_defs = list(packs_result.scalars().all())
-    if not pack_defs:
-        logger.warning("recalc: no pack definitions for FY %s", fiscal_year_uuid)
-        flight.has_discount = False
-        await db.flush()
-        return Decimal("0")
-    logger.info("recalc: found %d pack definitions for FY", len(pack_defs))
-
-    # Resolve the member — use caller-provided values or fall back to flight's main pilot
-    if member_uuid is not None and member_account_id is not None:
-        member = await db.get(Member, member_uuid)
-        if member is None:
-            logger.warning("recalc: member %s not found by UUID", member_uuid)
-            flight.has_discount = False
-            await db.flush()
-            return Decimal("0")
-    else:
-        pid = flight.pilot_erp_id
-        if not pid:
-            logger.warning("recalc: flight %s has no pilot_erp_id", flight_uuid)
-            flight.has_discount = False
-            await db.flush()
-            return Decimal("0")
-        member_result = await db.execute(
-            select(Member).where(Member.account_id == pid)
-        )
-        member = member_result.scalar_one_or_none()
-        if member is None:
-            logger.warning("recalc: no member found for account_id=%s", pid)
-            flight.has_discount = False
-            await db.flush()
-            return Decimal("0")
-
-    logger.info("recalc: member resolved uuid=%s account_id=%s", member.uuid, member.account_id)
-
-    # Load member pack balances for all types
-    member_balances = await get_member_pack_balance(db, member.uuid, fiscal_year_uuid)
-    if not member_balances:
-        logger.warning("recalc: no pack balances for member %s (check vw_member_pack_balances or pack_sales_account_uuid)", member.uuid)
-        flight.has_discount = False
-        await db.flush()
-        return Decimal("0")
-    logger.info("recalc: member pack balances: %s", member_balances)
-
-    # Pre-load applicability for all pack defs
-    pack_applicability: dict[UUID, list[PackApplicability]] = {}
-    for pd in pack_defs:
-        appl_result = await db.execute(
-            select(PackApplicability).where(
-                PackApplicability.pack_definition_uuid == pd.uuid
-            )
-        )
-        pack_applicability[pd.uuid] = list(appl_result.scalars().all())
-    logger.info("recalc: pack_applicability links count: %s",
-                {str(k): len(v) for k, v in pack_applicability.items()})
-
-    total_discount = Decimal("0")
-    has_any_discount = False
-
-    # Build a map of pricing_item_uuid → (pack_def, applicability)
-    pi_to_pack: dict[str, list[tuple[PackDefinition, PackApplicability]]] = {}
-    for pd in pack_defs:
-        for app in pack_applicability.get(pd.uuid, []):
-            pi_key = str(app.pricing_item_uuid)
-            if pi_key not in pi_to_pack:
-                pi_to_pack[pi_key] = []
-            pi_to_pack[pi_key].append((pd, app))
-
-    # For multi-pack sequencing: compute remaining per individual pack definition.
-    # Ordered by priority ASC so first packs are consumed first.
-    sorted_packs = sorted(pack_defs, key=lambda p: (p.priority or 0, p.code or ""))
-    pack_remaining: dict[UUID, Decimal] = {}
-    for pd in sorted_packs:
-        # How much has this member purchased for this pack definition?
-        # We look at the pack_sales_account_uuid and find all credit lines for this member+account
-        purchase_result = await db.execute(
-            select(func.coalesce(func.sum(AccountingLine.credit), 0))
-            .where(
-                AccountingLine.account_uuid == pd.pack_sales_account_uuid,
-                AccountingLine.member_uuid == member.uuid,
-                AccountingLine.credit > 0,
-            )
-        )
-        total_purchased = _dec(purchase_result.scalar())
-
-        # How much has already been consumed from this pack definition?
-        consumed_result = await db.execute(
-            select(func.coalesce(func.sum(MemberPackConsumption.quantity_consumed), 0))
-            .where(
-                MemberPackConsumption.pack_definition_uuid == pd.uuid,
-                MemberPackConsumption.member_uuid == member.uuid,
-            )
-        )
-        total_consumed = _dec(consumed_result.scalar())
-
-        remaining = max(total_purchased - total_consumed, Decimal("0"))
-        if remaining > 0:
-            pack_remaining[pd.uuid] = remaining
-            logger.info("recalc: pack %s (%s) remaining=%.2f", pd.code, pd.pack_type, remaining)
-
-    logger.info("recalc: preview has %d applied_lines, pi_to_pack has %d entries",
-                len(preview.applied_lines), len(pi_to_pack))
-
-    for line in preview.applied_lines:
-        if not line.pricing_item_uuid:
-            continue
-        pi_key = line.pricing_item_uuid
-        if pi_key not in pi_to_pack:
-            logger.info("recalc: pricing_item %s has no pack applicability link", pi_key)
-            continue
-
-        for pd, app in pi_to_pack[pi_key]:
-            # Find remaining for THIS specific pack definition
-            pack_uuid = pd.uuid
-            remaining = pack_remaining.get(pack_uuid, Decimal("0"))
-            if remaining <= 0:
-                continue
-
-            # Unit discount = normal_unit_price - discounted_unit_price
-            base_price = _dec(line.normal_unit_price) if line.normal_unit_price else Decimal("0")
-            discounted_price = _dec(app.discounted_unit_price)
-            unit_discount = base_price - discounted_price
-            if unit_discount <= 0:
-                continue
-
-            qty = _dec(line.quantity) if line.quantity else Decimal("1")
-            # Can't consume more than remaining
-            if qty > remaining:
-                qty = remaining
-
-            line_discount = unit_discount * qty
-
-            consumption = MemberPackConsumption(
-                uuid=uuid4(),
-                member_uuid=member.uuid,
-                flight_uuid=flight_uuid,
-                pack_type=pd.pack_type,
-                pack_definition_uuid=pack_uuid,
-                valid_from=flight.jour or datetime.now(timezone.utc),
-                quantity_consumed=qty,
-                discount_unit_price=unit_discount,
-                total_discount_amount=line_discount,
-            )
-            db.add(consumption)
-            total_discount += line_discount
-            has_any_discount = True
-            # Decrement this pack's remaining balance
-            pack_remaining[pack_uuid] = remaining - qty
-
-    flight.has_discount = has_any_discount
-    await db.flush()
-    logger.info("recalc: total_discount=%s has_any_discount=%s for flight %s",
-                total_discount, has_any_discount, flight_uuid)
-    return total_discount
-
-
-async def discount_review(
-    db: AsyncSession,
-    fiscal_year_uuid: UUID,
-    user_id: int,
-) -> dict:
-    """
-    Recalculate pack discounts for ALL billed flights in a fiscal year.
-    Creates/updates REM accounting entries per member.
-
-    Returns summary dict with members_affected, flights_recalculated, total_discount.
-    """
-    # Load billing settings for REM journal info
-    settings_result = await db.execute(
-        select(FlightBillingSettings).where(
-            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
-        )
-    )
-    settings = settings_result.scalar_one_or_none()
-    if settings is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Flight billing settings not configured for this fiscal year.",
-        )
-
-    if settings.default_pack_discount_expense_account_uuid is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pack discount expense account not configured in flight billing settings. "
-                   "Set a default pack discount expense account (class 6) first.",
-        )
-
-    # Find all bills (accounting entries linked to flights) and collect the members
-    # who were actually debited (the real payer). We join through accounting_lines
-    # rather than checking pilot_erp_id to avoid instruction/initiation/private flights.
-    lines_result = await db.execute(
-        select(AccountingLine.member_uuid, AccountingLine.entry_uuid)
-        .join(AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid)
-        .join(ValidatedFlight, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
-        .where(
-            ValidatedFlight.accounting_entry_uuid.isnot(None),
-            AccountingLine.member_uuid.isnot(None),
-            AccountingLine.debit > 0,
-        )
-        .distinct()
-    )
-    # Collect unique member UUIDs who were actually billed
-    member_billed: dict[UUID, list[UUID]] = {}
-    for row in lines_result.all():
-        muuid = row[0]
-        if muuid not in member_billed:
-            member_billed[muuid] = []
-        member_billed[muuid].append(row[1])
-
-    members_affected = 0
-    flights_recalculated = 0
-    total_discount = Decimal("0")
-    details: list[dict] = []
-
-    for member_uuid_billed, entry_uuids in member_billed.items():
-        # Find the member
-        member = await db.get(Member, member_uuid_billed)
-        if member is None:
-            continue
-
-        # Find all flights linked to these entries
-        member_flights_result = await db.execute(
-            select(ValidatedFlight).where(
-                ValidatedFlight.accounting_entry_uuid.in_(entry_uuids),
-            )
-        )
-        member_flights = list(member_flights_result.scalars().all())
-
-        member_total_discount = Decimal("0")
-        member_flights_count = 0
-
-        for flight in member_flights:
-            discount = await recalculate_pack_consumptions(
-                db, flight.uuid, fiscal_year_uuid, user_id,
-                member_uuid=member.uuid,
-                member_account_id=member.account_id,
-            )
-            if discount > 0:
-                member_total_discount += discount
-                member_flights_count += 1
-                flights_recalculated += 1
-
-        if member_flights_count > 0:
-            members_affected += 1
-            # Upsert REM entry for this member
-            try:
-                rem_entry = await upsert_rem_entry(
-                    db=db,
-                    member_uuid=member.uuid,
-                    fiscal_year_uuid=fiscal_year_uuid,
-                    rem_journal_uuid=settings.rem_journal_uuid,
-                    discount_account_uuid=settings.default_pack_discount_expense_account_uuid,
-                    total_discount=member_total_discount,
-                    period_start=datetime.now(timezone.utc).replace(day=1),
-                    period_end=datetime.now(timezone.utc),
-                    user_id=user_id,
-                )
-                # Link consumptions to the REM entry for trigger-based cleanup
-                await db.execute(
-                    update(MemberPackConsumption)
-                    .where(
-                        MemberPackConsumption.member_uuid == member.uuid,
-                        MemberPackConsumption.accounting_entry_uuid.is_(None),
-                    )
-                    .values(accounting_entry_uuid=rem_entry.uuid)
-                )
-                total_discount += member_total_discount
-                details.append({
-                    "member_uuid": str(member.uuid),
-                    "member_name": f"{member.first_name} {member.last_name}",
-                    "flights_count": member_flights_count,
-                    "total_discount": str(member_total_discount),
-                    "rem_entry_uuid": str(rem_entry.uuid),
-                })
-            except Exception as exc:
-                logger.error("Failed to upsert REM entry for member %s: %s", member.uuid, exc)
-                details.append({
-                    "member_uuid": str(member.uuid),
-                    "member_name": f"{member.first_name} {member.last_name}",
-                    "flights_count": member_flights_count,
-                    "total_discount": str(member_total_discount),
-                    "error": str(exc),
-                })
-
-    await db.commit()
-
-    return {
-        "members_affected": members_affected,
-        "flights_recalculated": flights_recalculated,
-        "total_discount": total_discount,
-        "rem_entries_created": len(details),
-        "details": details,
-    }
-
-
-async def discount_review_for_member(
-    db: AsyncSession,
-    member_uuid: UUID,
-    fiscal_year_uuid: UUID,
-    user_id: int,
-) -> dict:
-    """
-    Recalculate pack discounts for a single member's billed flights.
-    Creates/updates the REM accounting entry for this member.
-    """
-    logger.info("discount_review_for_member member=%s fiscal_year=%s", member_uuid, fiscal_year_uuid)
-
-    # Load billing settings
-    settings_result = await db.execute(
-        select(FlightBillingSettings).where(
-            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
-        )
-    )
-    settings = settings_result.scalar_one_or_none()
-    if settings is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Flight billing settings not configured for this fiscal year.",
-        )
-
-    if settings.default_pack_discount_expense_account_uuid is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pack discount expense account not configured in flight billing settings.",
-        )
-
-    # Find the member
-    member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
-    member = member_result.scalar_one_or_none()
-    if member is None:
-        raise HTTPException(status_code=404, detail="Member not found")
-
-    # Find flights where this member was actually billed (debited in accounting lines).
-    # We join through accounting_lines to find the real payer — checking pilot_erp_id
-    # alone would incorrectly include instruction flights, initiations, private machines, etc.
-    flights_result = await db.execute(
-        select(ValidatedFlight)
-        .join(AccountingEntry, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
-        .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
-        .where(
-            ValidatedFlight.accounting_entry_uuid.isnot(None),
-            AccountingLine.member_uuid == member.uuid,
-            AccountingLine.debit > 0,
-        )
-    )
-    flights = list(flights_result.unique().scalars().all())
-    logger.info("discount_review_for_member: found %d billed flights for member %s",
-                len(flights), member.account_id)
-
-    member_total_discount = Decimal("0")
-    member_flights_count = 0
-
-    for flight in flights:
-        discount = await recalculate_pack_consumptions(
-            db, flight.uuid, fiscal_year_uuid, user_id,
-            member_uuid=member.uuid,
-            member_account_id=member.account_id,
-        )
-        if discount > 0:
-            member_total_discount += discount
-            member_flights_count += 1
-
-    rem_entry_uuid = None
-    if member_flights_count > 0:
-        try:
-            rem_entry = await upsert_rem_entry(
-                db=db,
-                member_uuid=member.uuid,
-                fiscal_year_uuid=fiscal_year_uuid,
-                rem_journal_uuid=settings.rem_journal_uuid,
-                discount_account_uuid=settings.default_pack_discount_expense_account_uuid,
-                total_discount=member_total_discount,
-                period_start=datetime.now(timezone.utc).replace(day=1),
-                period_end=datetime.now(timezone.utc),
-                user_id=user_id,
-            )
-            rem_entry_uuid = str(rem_entry.uuid)
-            # Link all this member's consumptions to the REM entry so the
-            # DB trigger (fn_unlink_flights_on_entry_delete) can clean them up
-            # when the REM entry is deleted.
-            await db.execute(
-                update(MemberPackConsumption)
-                .where(
-                    MemberPackConsumption.member_uuid == member.uuid,
-                    MemberPackConsumption.accounting_entry_uuid.is_(None),
-                    MemberPackConsumption.flight_uuid.in_(
-                        select(ValidatedFlight.uuid).where(
-                            ValidatedFlight.accounting_entry_uuid.isnot(None),
-                        )
-                    ),
-                )
-                .values(accounting_entry_uuid=rem_entry.uuid)
-            )
-        except Exception as exc:
-            logger.error("Failed to upsert REM entry for member %s: %s", member.uuid, exc)
-
-    await db.commit()
-
-    return {
-        "member_uuid": str(member.uuid),
-        "member_name": f"{member.first_name} {member.last_name}",
-        "flights_count": member_flights_count,
-        "total_discount": str(member_total_discount),
-        "rem_entry_uuid": rem_entry_uuid,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -1030,6 +537,176 @@ async def compute_rem_adjustment(
     return _dec(result.scalar())
 
 
+
+# ---------------------------------------------------------------------------
+# Helper : charger le contexte pack pour un membre
+# ---------------------------------------------------------------------------
+
+async def _load_pack_context(
+    db: AsyncSession,
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+) -> tuple[
+    list[PackDefinition],
+    dict[UUID, Decimal],
+    dict[str, list[tuple[PackDefinition, PackApplicability]]],
+]:
+    """
+    Charge les pack definitions, calcule pack_remaining (total acheté - 0 consommé,
+    car la purge a déjà été faite), et construit pi_to_pack.
+
+    Appelé UNE SEULE FOIS par cycle de calcul membre, après la purge globale
+    des consommations. Le remaining est donc = total acheté (pas de consommation
+    en base au moment de l'appel).
+
+    Returns:
+        pack_defs      : liste des PackDefinition actives pour l'exercice
+        pack_remaining : dict pack_uuid → quantité restante (Decimal)
+        pi_to_pack     : dict pricing_item_uuid_str → [(PackDefinition, PackApplicability)]
+    """
+    # Charger les pack definitions de l'exercice
+    packs_result = await db.execute(
+        select(PackDefinition).where(
+            PackDefinition.fiscal_year_uuid == fiscal_year_uuid
+        )
+    )
+    pack_defs = list(packs_result.scalars().all())
+
+    if not pack_defs:
+        return [], {}, {}
+
+    # Trier par priorité ASC pour consommation dans le bon ordre
+    sorted_packs = sorted(pack_defs, key=lambda p: (p.priority or 0, p.code or ""))
+
+    # Charger applicabilité pour chaque pack
+    pack_applicability: dict[UUID, list[PackApplicability]] = {}
+    for pd in sorted_packs:
+        appl_result = await db.execute(
+            select(PackApplicability).where(
+                PackApplicability.pack_definition_uuid == pd.uuid
+            )
+        )
+        pack_applicability[pd.uuid] = list(appl_result.scalars().all())
+
+    # Construire pi_to_pack : pricing_item_uuid → [(pack_def, applicability)]
+    pi_to_pack: dict[str, list[tuple[PackDefinition, PackApplicability]]] = {}
+    for pd in sorted_packs:
+        for app in pack_applicability.get(pd.uuid, []):
+            pi_key = str(app.pricing_item_uuid)
+            if pi_key not in pi_to_pack:
+                pi_to_pack[pi_key] = []
+            pi_to_pack[pi_key].append((pd, app))
+
+    # Calculer pack_remaining depuis le GL (achats) uniquement.
+    # Les consommations ont été purgées juste avant — total_consumed = 0.
+    pack_remaining: dict[UUID, Decimal] = {}
+    for pd in sorted_packs:
+        purchase_result = await db.execute(
+            select(func.coalesce(func.sum(AccountingLine.credit), 0))
+            .where(
+                AccountingLine.account_uuid == pd.pack_sales_account_uuid,
+                AccountingLine.member_uuid == member_uuid,
+                AccountingLine.credit > 0,
+            )
+        )
+        total_purchased = _dec(purchase_result.scalar())
+        if total_purchased > 0:
+            pack_remaining[pd.uuid] = total_purchased
+
+    return pack_defs, pack_remaining, pi_to_pack
+
+
+# ---------------------------------------------------------------------------
+# Helper : appliquer les consommations d'un vol (sans DELETE, sans DB pour remaining)
+# ---------------------------------------------------------------------------
+
+async def _apply_flight_consumptions(
+    db: AsyncSession,
+    flight: ValidatedFlight,
+    member: Member,
+    pack_remaining: dict[UUID, Decimal],  # muté en place
+    pi_to_pack: dict[str, list[tuple[PackDefinition, PackApplicability]]],
+    fiscal_year_uuid: UUID,
+) -> Decimal:
+    """
+    Calcule et insère les MemberPackConsumption pour un vol donné.
+
+    Mute pack_remaining en place (décrémente au fur et à mesure).
+    N'effectue aucun DELETE ni aucune requête DB pour lire le remaining
+    (le contexte a déjà été chargé par _load_pack_context).
+
+    Returns: total remise pour ce vol (Decimal).
+    """
+    from services.flight_billing import FlightBillingPreviewService
+
+    if flight.accounting_entry_uuid is None:
+        return Decimal("0")
+
+    preview_service = FlightBillingPreviewService(db)
+    preview = await preview_service.preview_flight(
+        flight.uuid, fiscal_year_uuid=fiscal_year_uuid
+    )
+
+    if not preview.can_apply:
+        flight.has_discount = False
+        return Decimal("0")
+
+    total_discount = Decimal("0")
+    has_any_discount = False
+
+    for line in preview.applied_lines:
+        if not line.pricing_item_uuid:
+            continue
+
+        pi_key = line.pricing_item_uuid
+        if pi_key not in pi_to_pack:
+            continue
+
+        for pd, app in pi_to_pack[pi_key]:
+            pack_uuid = pd.uuid
+            remaining = pack_remaining.get(pack_uuid, Decimal("0"))
+            if remaining <= 0:
+                continue
+
+            base_price = _dec(line.normal_unit_price) if line.normal_unit_price else Decimal("0")
+            discounted_price = _dec(app.discounted_unit_price)
+            unit_discount = base_price - discounted_price
+            if unit_discount <= 0:
+                continue
+
+            qty = _dec(line.quantity) if line.quantity else Decimal("1")
+            if qty > remaining:
+                qty = remaining
+
+            line_discount = unit_discount * qty
+
+            db.add(MemberPackConsumption(
+                uuid=uuid4(),
+                member_uuid=member.uuid,
+                flight_uuid=flight.uuid,
+                pack_type=pd.pack_type,
+                pack_definition_uuid=pack_uuid,
+                valid_from=flight.jour or datetime.now(timezone.utc),
+                quantity_consumed=qty,
+                discount_unit_price=unit_discount,
+                total_discount_amount=line_discount,
+                # accounting_entry_uuid sera renseigné après l'upsert REM
+            ))
+
+            total_discount += line_discount
+            has_any_discount = True
+
+            # Décrémenter en mémoire — pas de requête DB
+            pack_remaining[pack_uuid] = remaining - qty
+
+    flight.has_discount = has_any_discount
+    return total_discount
+
+
+# ---------------------------------------------------------------------------
+# upsert_rem_entry — CORRIGÉ
+# ---------------------------------------------------------------------------
+
 async def upsert_rem_entry(
     db: AsyncSession,
     member_uuid: UUID,
@@ -1037,54 +714,87 @@ async def upsert_rem_entry(
     rem_journal_uuid: UUID,
     discount_account_uuid: UUID,
     total_discount: Decimal,
-    period_start: datetime,
-    period_end: datetime,
     user_id: int,
 ) -> AccountingEntry:
     """
-    Create or update the single Draft REM entry for this pilot/period.
-    If a Draft entry exists → update its lines.
-    If a Posted entry exists with same member/period → create a new Draft.
-    Otherwise → create a new Draft entry.
-    Debit discount_account_uuid, Credit 411 (member).
+    Crée ou met à jour l'écriture Draft REM pour ce membre / exercice fiscal.
+
+    Identification stable : on cherche via les lignes GL (member_uuid + journal REM
+    + fiscal_year_uuid), PAS via la description (qui changeait à chaque appel
+    dans l'ancienne version et empêchait de retrouver l'écriture existante).
+
+    Règles :
+      - Draft existante   → remplacer ses lignes GL, mettre à jour la date
+      - Postée existante  → ValueError explicite (ne pas silencer)
+      - Aucune            → créer une nouvelle Draft
+
+    IMPORTANT : pas de commit() ici. L'appelant (discount_review_for_member)
+    commite une seule fois en fin de traitement.
+
+    Changements vs version précédente :
+      - Suppression des paramètres period_start / period_end (non pertinents
+        pour l'identification ; la période est implicite dans l'exercice fiscal)
+      - Recherche par JOIN AccountingLine.member_uuid au lieu de description.like()
+      - .limit(1) pour éviter MultipleResultsFound si des doublons existaient déjà
+      - ValueError au lieu de silencer si l'écriture est Postée
+      - Pas de await db.commit() en fin de fonction
     """
-    # Check if a REM Draft entry already exists for this member/period
-    existing = await db.execute(
-        select(AccountingEntry).where(
+    # Recherche de l'écriture REM existante pour ce membre + exercice
+    # via les lignes GL (clé stable, indépendante de la description)
+    existing_result = await db.execute(
+        select(AccountingEntry)
+        .join(
+            AccountingLine,
+            and_(
+                AccountingLine.entry_uuid == AccountingEntry.uuid,
+                AccountingLine.fiscal_year_uuid == AccountingEntry.fiscal_year_uuid,
+            ),
+        )
+        .where(
             AccountingEntry.journal_uuid == rem_journal_uuid,
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
-            AccountingEntry.state == 1,  # Draft only
-            AccountingEntry.description.like(f"REM % {member_uuid} %"),
+            AccountingLine.member_uuid == member_uuid,
         )
+        .order_by(AccountingEntry.created_at.desc())
+        .limit(1)  # évite MultipleResultsFound si doublons résiduels
     )
-    entry = existing.scalar_one_or_none()
+    entry = existing_result.scalar_one_or_none()
 
-    if entry:
-        # Update existing Draft entry — replace lines safely
-        # Use delete-all directly on the relation to avoid trigger issues
-        existing_lines = await db.execute(
-            select(AccountingLine).where(AccountingLine.entry_uuid == entry.uuid)
+    if entry is not None and entry.state == 2:  # Postée
+        raise ValueError(
+            f"L'écriture REM {entry.uuid} pour le membre {member_uuid} "
+            "est déjà Postée. Supprimez-la manuellement avant de relancer le calcul."
         )
-        for line in existing_lines.scalars().all():
-            await db.delete(line)
+
+    if entry is not None:
+        # Supprimer les lignes existantes et les remplacer
+        await db.execute(
+            delete(AccountingLine).where(
+                and_(
+                    AccountingLine.entry_uuid == entry.uuid,
+                    AccountingLine.fiscal_year_uuid == fiscal_year_uuid,
+                )
+            )
+        )
+        entry.entry_date = date.today()
+        entry.reference = f"REM-{member_uuid}"
+        entry.description = f"Remises forfait membre {member_uuid}"
         await db.flush()
-        entry.reference = f"REM-{period_start.date()}-{period_end.date()}"
-        entry.description = f"REM {member_uuid} {period_start.date()} → {period_end.date()}"
     else:
         entry = AccountingEntry(
             uuid=uuid4(),
             fiscal_year_uuid=fiscal_year_uuid,
             journal_uuid=rem_journal_uuid,
-            entry_date=period_end,
-            reference=f"REM-{period_start.date()}-{period_end.date()}",
-            description=f"REM {member_uuid} {period_start.date()} → {period_end.date()}",
+            entry_date=date.today(),
+            reference=f"REM-{member_uuid}",
+            description=f"Remises forfait membre {member_uuid}",
             state=1,  # Draft
             created_by=user_id,
         )
         db.add(entry)
         await db.flush()
 
-    # Line 1: Debit discount account (expense)
+    # Ligne 1 : débit compte charge remises (6xx)
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
@@ -1094,8 +804,11 @@ async def upsert_rem_entry(
         debit=total_discount,
     ))
 
-    # Line 2: Credit 411 (member receivable)
+    # Ligne 2 : crédit 411 (client membre)
     receivable = await get_account_by_code(db, "411")
+    if receivable is None:
+        raise ValueError("Compte 411 introuvable — vérifier le plan comptable")
+
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
@@ -1105,6 +818,282 @@ async def upsert_rem_entry(
         credit=total_discount,
     ))
 
-    await db.commit()
-    await db.refresh(entry)
+    await db.flush()
+    # PAS de commit() ici — l'appelant commite une fois tout terminé
     return entry
+
+
+# ---------------------------------------------------------------------------
+# discount_review_for_member — CORRIGÉ
+# ---------------------------------------------------------------------------
+
+async def discount_review_for_member(
+    db: AsyncSession,
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    user_id: int,
+) -> dict:
+    """
+    Recalcule les remises pack pour tous les vols facturés d'un membre.
+    Crée ou met à jour l'écriture REM Draft correspondante.
+
+    Corrections vs version précédente :
+      - Passe 1 : purge globale des consommations du membre (pas vol par vol)
+        → évite que pack_remaining soit pollué par des DELETE partiels
+      - Passe 2 : vols triés par date ASC (ORDER BY jour ASC)
+        → résultat déterministe, pack_remaining décroît dans le bon ordre
+      - pack_remaining calculé UNE SEULE FOIS après la purge
+        → plus de recalcul DB à chaque vol
+      - upsert_rem_entry appelé SANS commit interne
+      - Un seul await db.commit() à la fin du traitement
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info("discount_review_for_member member=%s fiscal_year=%s", member_uuid, fiscal_year_uuid)
+
+    # Charger les settings
+    settings_result = await db.execute(
+        select(FlightBillingSettings).where(
+            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
+        )
+    )
+    settings = settings_result.scalar_one_or_none()
+    if settings is None:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Flight billing settings not configured for this fiscal year.",
+        )
+    if settings.default_pack_discount_expense_account_uuid is None:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pack discount expense account not configured in flight billing settings.",
+        )
+
+    # Charger le membre
+    member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
+    member = member_result.scalar_one_or_none()
+    if member is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # -----------------------------------------------------------------------
+    # Passe 1 : purge globale des consommations du membre
+    # -----------------------------------------------------------------------
+    # On supprime TOUT en une seule requête, pas vol par vol.
+    # Cela garantit que _load_pack_context trouve total_consumed = 0
+    # et que pack_remaining = total acheté, sans pollution par les
+    # consommations résiduelles d'un cycle précédent.
+    await db.execute(
+        delete(MemberPackConsumption).where(
+            MemberPackConsumption.member_uuid == member_uuid,
+        )
+    )
+    await db.flush()
+    logger.info("discount_review_for_member: consommations purgées pour membre %s", member_uuid)
+
+    # -----------------------------------------------------------------------
+    # Passe 2 : récupérer les vols triés par date ASC — déterministe
+    # -----------------------------------------------------------------------
+    # ORDER BY jour ASC : les vols les plus anciens consomment le pack en premier.
+    # Sans tri, l'ordre varie à chaque appel et pack_remaining décroît
+    # différemment → total_discount différent → écritures GL incohérentes.
+    flights_result = await db.execute(
+        select(ValidatedFlight)
+        .join(AccountingEntry, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
+        .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .where(
+            ValidatedFlight.accounting_entry_uuid.isnot(None),
+            AccountingLine.member_uuid == member_uuid,
+            AccountingLine.debit > 0,
+        )
+        .order_by(ValidatedFlight.jour.asc())  # ← déterministe
+    )
+    flights = list(flights_result.unique().scalars().all())
+
+    logger.info(
+        "discount_review_for_member: %d vols facturés trouvés pour membre %s",
+        len(flights), member.account_id,
+    )
+
+    # -----------------------------------------------------------------------
+    # Passe 2b : charger le contexte pack UNE SEULE FOIS
+    # -----------------------------------------------------------------------
+    pack_defs, pack_remaining, pi_to_pack = await _load_pack_context(
+        db, member_uuid, fiscal_year_uuid
+    )
+
+    if not pack_defs:
+        logger.warning("discount_review_for_member: aucun pack défini pour l'exercice %s", fiscal_year_uuid)
+        await db.commit()
+        return {
+            "member_uuid": str(member_uuid),
+            "member_name": f"{member.first_name} {member.last_name}",
+            "flights_count": 0,
+            "total_discount": "0",
+            "rem_entry_uuid": None,
+        }
+
+    # -----------------------------------------------------------------------
+    # Passe 2c : calculer les consommations vol par vol
+    # pack_remaining est muté en mémoire — aucune requête DB pour le remaining
+    # -----------------------------------------------------------------------
+    total_discount = Decimal("0")
+    member_flights_count = 0
+
+    for flight in flights:
+        discount = await _apply_flight_consumptions(
+            db=db,
+            flight=flight,
+            member=member,
+            pack_remaining=pack_remaining,  # muté en place
+            pi_to_pack=pi_to_pack,
+            fiscal_year_uuid=fiscal_year_uuid,
+        )
+        if discount > 0:
+            total_discount += discount
+            member_flights_count += 1
+
+    await db.flush()
+    logger.info(
+        "discount_review_for_member: total_discount=%s sur %d vols pour membre %s",
+        total_discount, member_flights_count, member_uuid,
+    )
+
+    # -----------------------------------------------------------------------
+    # Passe 3 : upsert UNE SEULE écriture REM (sans commit interne)
+    # -----------------------------------------------------------------------
+    rem_entry_uuid = None
+    if member_flights_count > 0:
+        try:
+            rem_entry = await upsert_rem_entry(
+                db=db,
+                member_uuid=member_uuid,
+                fiscal_year_uuid=fiscal_year_uuid,
+                rem_journal_uuid=settings.rem_journal_uuid,
+                discount_account_uuid=settings.default_pack_discount_expense_account_uuid,
+                total_discount=total_discount,
+                user_id=user_id,
+                # period_start / period_end supprimés — non pertinents pour l'identification
+            )
+            rem_entry_uuid = str(rem_entry.uuid)
+
+            # Lier toutes les consommations à l'écriture REM
+            await db.execute(
+                update(MemberPackConsumption)
+                .where(MemberPackConsumption.member_uuid == member_uuid)
+                .values(accounting_entry_uuid=rem_entry.uuid)
+            )
+
+        except ValueError as exc:
+            # L'écriture REM est Postée — on logue sans bloquer les autres membres
+            logger.error(
+                "discount_review_for_member: impossible d'upsert REM pour membre %s : %s",
+                member_uuid, exc,
+            )
+
+    # Un seul commit à la fin — toutes les consommations + écriture REM en une transaction
+    await db.commit()
+
+    return {
+        "member_uuid": str(member_uuid),
+        "member_name": f"{member.first_name} {member.last_name}",
+        "flights_count": member_flights_count,
+        "total_discount": str(total_discount),
+        "rem_entry_uuid": rem_entry_uuid,
+    }
+
+
+# ---------------------------------------------------------------------------
+# discount_review — CORRIGÉ (appelle la version refactorisée)
+# ---------------------------------------------------------------------------
+
+async def discount_review(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+    user_id: int,
+) -> dict:
+    """
+    Recalcule les remises pack pour TOUS les membres facturés dans l'exercice.
+    Délègue à discount_review_for_member (refactorisé) pour chaque membre.
+
+    Correction vs version précédente :
+      - discount_review_for_member gère maintenant son propre commit
+      - les erreurs par membre sont capturées individuellement sans bloquer les autres
+      - on ne duplique plus la logique de purge / calcul / upsert ici
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Charger les settings (validation uniquement — la logique est dans discount_review_for_member)
+    settings_result = await db.execute(
+        select(FlightBillingSettings).where(
+            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
+        )
+    )
+    settings = settings_result.scalar_one_or_none()
+    if settings is None:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Flight billing settings not configured for this fiscal year.",
+        )
+    if settings.default_pack_discount_expense_account_uuid is None:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pack discount expense account not configured in flight billing settings.",
+        )
+
+    # Récupérer l'ensemble des membres ayant été effectivement facturés
+    lines_result = await db.execute(
+        select(AccountingLine.member_uuid)
+        .join(AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .join(ValidatedFlight, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
+        .where(
+            ValidatedFlight.accounting_entry_uuid.isnot(None),
+            AccountingLine.member_uuid.isnot(None),
+            AccountingLine.debit > 0,
+        )
+        .distinct()
+    )
+    member_uuids = [row[0] for row in lines_result.all()]
+
+    members_affected = 0
+    flights_recalculated = 0
+    total_discount = Decimal("0")
+    details: list[dict] = []
+
+    for member_uuid in member_uuids:
+        try:
+            result = await discount_review_for_member(
+                db=db,
+                member_uuid=member_uuid,
+                fiscal_year_uuid=fiscal_year_uuid,
+                user_id=user_id,
+            )
+            if result["flights_count"] > 0:
+                members_affected += 1
+                flights_recalculated += result["flights_count"]
+                total_discount += Decimal(result["total_discount"])
+            details.append(result)
+
+        except Exception as exc:
+            logger.error("discount_review: erreur pour membre %s : %s", member_uuid, exc)
+            details.append({
+                "member_uuid": str(member_uuid),
+                "error": str(exc),
+            })
+
+    return {
+        "members_affected": members_affected,
+        "flights_recalculated": flights_recalculated,
+        "total_discount": str(total_discount),
+        "rem_entries_created": len([d for d in details if d.get("rem_entry_uuid")]),
+        "details": details,
+    }
+
+
+
