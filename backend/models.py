@@ -909,6 +909,12 @@ class AccountingEntryTemplate(Base):
     default_reference = Column(String(255), nullable=True)
     recurrence_type = Column(SmallInteger, nullable=False, default=1)  # 1=Manual, 2=Monthly, 3=Quarterly, 4=Yearly
     is_active = Column(Boolean, nullable=False, default=True)
+    # Scheduling (pluriannual — no fiscal_year_uuid)
+    valid_from = Column(Date, nullable=True)
+    valid_until = Column(Date, nullable=True)
+    next_scheduled_date = Column(Date, nullable=True)
+    last_generated_at = Column(DateTime(timezone=True), nullable=True)
+    last_generated_entry_uuid = Column(UUID(as_uuid=True), nullable=True)  # no DB FK, app-layer only
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -932,7 +938,14 @@ class AccountingEntryTemplateLine(Base):
     __tablename__ = "accounting_entry_template_lines"
     __table_args__ = (
         CheckConstraint("debit >= 0 AND credit >= 0", name="chk_entry_template_line_amounts_positive"),
-        CheckConstraint("debit > 0 OR credit > 0", name="chk_entry_template_line_at_least_one_amount"),
+        CheckConstraint(
+            "formula_type = 'rounding_adjustment' OR debit > 0 OR credit > 0",
+            name="chk_entry_template_line_at_least_one_amount",
+        ),
+        CheckConstraint(
+            "formula_type IN ('fixed', 'percentage', 'previous_period', 'rounding_adjustment')",
+            name="chk_template_line_formula_type",
+        ),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -944,6 +957,8 @@ class AccountingEntryTemplateLine(Base):
     debit = Column(Numeric(10, 4), nullable=False, default=0.0)
     credit = Column(Numeric(10, 4), nullable=False, default=0.0)
     description = Column(String(255), nullable=True)
+    formula_type = Column(String(16), nullable=False, default='fixed')
+    formula_params = Column(JSON, nullable=True)
 
     template = relationship("AccountingEntryTemplate", back_populates="lines")
     account = relationship("AccountingAccount", back_populates="template_lines")

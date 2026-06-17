@@ -86,11 +86,20 @@ export function opsStatusLabel(status: OpsStatus, t: (key: string) => string): s
 // Local form state shapes
 // ---------------------------------------------------------------------------
 
+export type FormulaType = 'fixed' | 'percentage' | 'previous_period' | 'rounding_adjustment'
+
 export type LineFormState = {
   account_uuid: string
   amount: string // signed: positive = debit, negative = credit
   description: string
   member_uuid: string
+  // Formula (optional — defaults to 'fixed' in buildModelLines)
+  formula_type?: FormulaType
+  formula_params?: {
+    percentage?: number
+    source_line_index?: number
+    fallback_amount?: number
+  }
 }
 
 export type EntryFormState = {
@@ -110,6 +119,12 @@ export type ModelFormState = {
   default_reference: string
   recurrence_type: number
   is_active: boolean
+  // Scheduling (pluriannual)
+  valid_from: string
+  valid_until: string
+  next_scheduled_date: string
+  last_generated_at: string
+  last_generated_entry_uuid: string
   lines: LineFormState[]
 }
 
@@ -127,7 +142,7 @@ export function toErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function emptyLine(): LineFormState {
-  return { account_uuid: '', amount: '', description: '', member_uuid: '' }
+  return { account_uuid: '', amount: '', description: '', member_uuid: '', formula_type: 'fixed' }
 }
 
 export function emptyEntryForm(today: string): EntryFormState {
@@ -150,7 +165,22 @@ export function emptyModelForm(): ModelFormState {
     default_reference: '',
     recurrence_type: 1,
     is_active: true,
+    valid_from: '',
+    valid_until: '',
+    next_scheduled_date: '',
+    last_generated_at: '',
+    last_generated_entry_uuid: '',
     lines: [emptyLine(), emptyLine()],
+  }
+}
+
+export function formulaTypeLabel(type: string, t: (key: string) => string): string {
+  switch (type) {
+    case 'fixed': return t('journal.models.recurring.formulaType.fixed')
+    case 'percentage': return t('journal.models.recurring.formulaType.percentage')
+    case 'previous_period': return t('journal.models.recurring.formulaType.previousPeriod')
+    case 'rounding_adjustment': return t('journal.models.recurring.formulaType.rounding')
+    default: return type
   }
 }
 
@@ -210,6 +240,11 @@ export function mapModelToForm(model: AccountingEntryModel): ModelFormState {
     default_reference: model.default_reference ?? '',
     recurrence_type: model.recurrence_type,
     is_active: model.is_active,
+    valid_from: model.valid_from ?? '',
+    valid_until: model.valid_until ?? '',
+    next_scheduled_date: model.next_scheduled_date ?? '',
+    last_generated_at: model.last_generated_at ?? '',
+    last_generated_entry_uuid: model.last_generated_entry_uuid ?? '',
     lines: model.lines.map((line) => {
       const debit = decimalOrZero(line.debit)
       const credit = decimalOrZero(line.credit)
@@ -219,6 +254,8 @@ export function mapModelToForm(model: AccountingEntryModel): ModelFormState {
         amount: amount.toFixed(2),
         description: line.description ?? '',
         member_uuid: line.member_uuid ?? '',
+        formula_type: (line.formula_type as FormulaType | undefined) ?? 'fixed',
+        formula_params: line.formula_params ?? undefined,
       }
     }),
   }
@@ -250,6 +287,8 @@ export function buildModelLines(lines: LineFormState[]): AccountingEntryModelLin
       credit,
       description: line.description.trim() === '' ? null : line.description.trim(),
       member_uuid: line.member_uuid.trim() === '' ? null : line.member_uuid.trim(),
+      formula_type: line.formula_type ?? 'fixed',
+      formula_params: line.formula_params ?? null,
     }
   })
 }
@@ -329,6 +368,7 @@ export function LineEditor({
             <tr>
               <th className="sticky left-0 z-10 bg-surface-container px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.account')}</th>
               <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.amount')}</th>
+              <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.models.recurring.formulaType.fixed').replace(' fixe', '')}</th>
               <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.lineDescription')}</th>
               <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.tiers')}</th>
               <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.actions')}</th>
@@ -355,10 +395,69 @@ export function LineEditor({
                     type="number"
                     step="0.01"
                     value={line.amount}
-                    disabled={disabled}
+                    disabled={disabled || line.formula_type === 'rounding_adjustment'}
                     onChange={(event) => onChange(index, { amount: event.target.value })}
                     placeholder={t('journal.forms.amountPlaceholder')}
                   />
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    value={line.formula_type}
+                    disabled={disabled}
+                    onChange={(event) => onChange(index, { formula_type: event.target.value as FormulaType })}
+                    className="h-9 w-36 rounded-shape-sm border border-outline bg-surface px-2 text-sm"
+                  >
+                    <option value="fixed">{t('journal.models.recurring.formulaType.fixed')}</option>
+                    <option value="percentage">{t('journal.models.recurring.formulaType.percentage')}</option>
+                    <option value="previous_period">{t('journal.models.recurring.formulaType.previousPeriod')}</option>
+                    <option value="rounding_adjustment">{t('journal.models.recurring.formulaType.rounding')}</option>
+                  </select>
+                  {line.formula_type === 'percentage' && (
+                    <div className="mt-1 flex gap-1">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="%"
+                        value={line.formula_params?.percentage ?? ''}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          onChange(index, {
+                            formula_params: {
+                              ...line.formula_params,
+                              percentage: Number(event.target.value),
+                            },
+                          })
+                        }
+                        className="w-20"
+                      />
+                      <Input
+                        type="number"
+                        step="1"
+                        placeholder="#"
+                        value={line.formula_params?.source_line_index ?? ''}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          onChange(index, {
+                            formula_params: {
+                              ...line.formula_params,
+                              source_line_index: Number(event.target.value),
+                            },
+                          })
+                        }
+                        className="w-16"
+                      />
+                    </div>
+                  )}
+                  {line.formula_type === 'previous_period' && (
+                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                      {t('journal.models.recurring.previousPeriodHint') || 'Montant basé sur la période précédente'}
+                    </p>
+                  )}
+                  {line.formula_type === 'rounding_adjustment' && (
+                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                      {t('journal.models.recurring.roundingHint') || "Calculé automatiquement pour équilibrer l'écriture"}
+                    </p>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <Input

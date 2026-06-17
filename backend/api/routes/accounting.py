@@ -35,6 +35,10 @@ from schemas.accounting import (
     AccountingEntriesBulkPostRequest,
     AccountingEntryCreateRequest,
     AccountingEntryTemplateCreateRequest,
+    AccountingEntryTemplateGenerateRequest,
+    AccountingEntryTemplateGenerateResponse,
+    AccountingEntryTemplateGenerateDueResponse,
+    AccountingEntryTemplatePreviewResponse,
     AccountingEntryTemplateResponse,
     AccountingEntryTemplateUpdateRequest,
     AccountingEntryPostRequest,
@@ -111,6 +115,11 @@ from services.accounting import (
     _replace_pricing_item_tiers,
     preview_accounting_import,
     apply_accounting_import,
+)
+from services.scheduled_entries import (
+    generate_entry,
+    generate_due_entries,
+    preview_generation,
 )
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["accounting"])
@@ -1141,6 +1150,73 @@ async def delete_entry_model_endpoint(
     await delete_accounting_entry_template(db, template_uuid)
     _log_accounting_audit(action="delete_entry_model", user_id=current_user.id, template_uuid=template_uuid)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Recurring entries — Generate & Preview endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/entry-models/{template_uuid}/preview",
+    response_model=AccountingEntryTemplatePreviewResponse,
+)
+async def preview_entry_model_generation_endpoint(
+    template_uuid: UUID,
+    request: AccountingEntryTemplateGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Preview entry generation from a template without persisting.
+
+    Resolves the fiscal year at runtime. Returns calculated lines,
+    totals, balance status, and warnings.
+    """
+    return await preview_generation(db, template_uuid, request.target_date)
+
+
+@router.post(
+    "/entry-models/{template_uuid}/generate",
+    response_model=AccountingEntryTemplateGenerateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_entry_model_endpoint(
+    template_uuid: UUID,
+    request: AccountingEntryTemplateGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a single accounting entry from a template.
+
+    The fiscal year is resolved at runtime. If the entry already exists
+    (deduplication by reference), returns it with was_already_generated=True.
+    """
+    entry, was_already = await generate_entry(db, template_uuid, request.target_date, current_user.id)
+    return AccountingEntryTemplateGenerateResponse(
+        entry_uuid=entry.uuid,
+        reference=entry.reference,
+        fiscal_year_uuid=entry.fiscal_year_uuid,
+        state=entry.state,
+        was_already_generated=was_already,
+    )
+
+
+@router.post(
+    "/entry-models/generate-due",
+    response_model=AccountingEntryTemplateGenerateDueResponse,
+)
+async def generate_due_entry_models_endpoint(
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate entries for ALL due templates at once.
+
+    Each template resolves its own fiscal year at runtime.
+    Returns a summary of generated, skipped, and errored entries.
+    """
+    return await generate_due_entries(db, current_user.id)
 
 
 # ---------------------------------------------------------------------------

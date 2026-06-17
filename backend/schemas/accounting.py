@@ -218,6 +218,9 @@ class AccountingEntryTemplateLineBase(BaseModel):
     debit: Decimal = Field(decimal_places=4, ge=0)
     credit: Decimal = Field(decimal_places=4, ge=0)
     description: Optional[str] = Field(default=None, max_length=255)
+    # Formula
+    formula_type: str = Field(default='fixed', pattern=r'^(fixed|percentage|previous_period|rounding_adjustment)$')
+    formula_params: Optional[dict] = None
 
 
 class AccountingEntryTemplateLineCreateRequest(AccountingEntryTemplateLineBase):
@@ -247,6 +250,9 @@ class AccountingEntryTemplateCreateRequest(BaseModel):
     default_reference: Optional[str] = Field(default=None, max_length=255)
     recurrence_type: int = Field(default=1, ge=1, le=4)
     is_active: bool = True
+    # Scheduling (pluriannual — fiscal_year resolved at runtime)
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
     lines: list[AccountingEntryTemplateLineCreateRequest] = Field(min_length=1)
 
 
@@ -259,6 +265,8 @@ class AccountingEntryTemplateUpdateRequest(BaseModel):
     default_reference: Optional[str] = Field(default=None, max_length=255)
     recurrence_type: Optional[int] = Field(default=None, ge=1, le=4)
     is_active: Optional[bool] = None
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
     lines: Optional[list[AccountingEntryTemplateLineCreateRequest]] = None
 
 
@@ -272,6 +280,12 @@ class AccountingEntryTemplateResponse(BaseModel):
     default_reference: Optional[str] = None
     recurrence_type: int
     is_active: bool
+    # Scheduling
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
+    next_scheduled_date: Optional[date] = None
+    last_generated_at: Optional[datetime] = None
+    last_generated_entry_uuid: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
     created_by: int
@@ -279,6 +293,72 @@ class AccountingEntryTemplateResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Generate / Preview schemas ──────────────────────────────────────────────
+
+
+class AccountingEntryTemplateGenerateRequest(BaseModel):
+    """Request to generate an entry from a template."""
+    target_date: date
+
+
+class GeneratePreviewLine(BaseModel):
+    """A single calculated line in a preview response."""
+    account_code: str
+    debit: Decimal = Field(decimal_places=4)
+    credit: Decimal = Field(decimal_places=4)
+    description: Optional[str] = None
+
+
+class AccountingEntryTemplatePreviewResponse(BaseModel):
+    """Preview of a generated entry without persisting."""
+    template_code: str
+    reference: str
+    description: Optional[str] = None
+    fiscal_year_uuid: UUID
+    fiscal_year_label: str
+    lines: list[GeneratePreviewLine]
+    total_debit: Decimal = Field(decimal_places=4)
+    total_credit: Decimal = Field(decimal_places=4)
+    is_balanced: bool
+    warnings: list[str] = []
+
+
+class AccountingEntryTemplateGenerateResponse(BaseModel):
+    """Response after generating an entry from a template."""
+    entry_uuid: UUID
+    reference: str
+    fiscal_year_uuid: UUID
+    state: int
+    was_already_generated: bool
+
+
+class GenerateDueItem(BaseModel):
+    """Item in the generate-due response."""
+    template_code: str
+    entry_uuid: Optional[UUID] = None
+    reference: Optional[str] = None
+    fiscal_year_uuid: Optional[UUID] = None
+
+
+class GenerateDueSkipped(BaseModel):
+    """Skipped template in generate-due."""
+    template_code: str
+    reason: str
+
+
+class GenerateDueError(BaseModel):
+    """Error item in generate-due."""
+    template_code: str
+    reason: str
+
+
+class AccountingEntryTemplateGenerateDueResponse(BaseModel):
+    """Response after generating all due entries."""
+    generated: list[GenerateDueItem] = []
+    skipped: list[GenerateDueSkipped] = []
+    errors: list[GenerateDueError] = []
 
 
 class SeedPcgResponse(BaseModel):

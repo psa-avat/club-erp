@@ -11,6 +11,7 @@ export const banqueQueryKeys = {
   entry: (entryUuid: string, fiscalYearUuid: string) => ['banque', 'entry', fiscalYearUuid, entryUuid] as const,
   entriesCount: (filters: Record<string, unknown>) => ['banque', 'entries-count', filters] as const,
   entryModels: () => ['banque', 'entry-models'] as const,
+  entryModelPreview: (templateUuid: string) => ['banque', 'entry-models', templateUuid, 'preview'] as const,
   accountBalances: (fiscalYearUuid: string, postedOnly: boolean) =>
     ['banque', 'account-balances', fiscalYearUuid, postedOnly] as const,
 }
@@ -297,6 +298,9 @@ export type AccountingEntryModelLinePayload = {
   description?: string | null
   member_uuid?: string | null
   analytical_asset_uuid?: string | null
+  // Formula
+  formula_type?: string
+  formula_params?: Record<string, unknown> | null
 }
 
 export type AccountingEntryModelLine = AccountingEntryModelLinePayload & {
@@ -314,6 +318,12 @@ export type AccountingEntryModel = {
   default_reference: string | null
   recurrence_type: number
   is_active: boolean
+  // Scheduling (pluriannual)
+  valid_from: string | null
+  valid_until: string | null
+  next_scheduled_date: string | null
+  last_generated_at: string | null
+  last_generated_entry_uuid: string | null
   created_at: string
   updated_at: string
   created_by: number
@@ -328,6 +338,8 @@ export type AccountingEntryModelCreatePayload = {
   default_reference?: string | null
   recurrence_type?: number
   is_active?: boolean
+  valid_from?: string | null
+  valid_until?: string | null
   lines: AccountingEntryModelLinePayload[]
 }
 
@@ -618,6 +630,98 @@ export function useDeleteAccountingEntryModelMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entryModels() })
+    },
+  })
+}
+
+// ── Preview / Generate hooks ────────────────────────────────────────────────
+
+export type PreviewLine = {
+  account_code: string
+  debit: string
+  credit: string
+  description: string | null
+}
+
+export type PreviewResponse = {
+  template_code: string
+  reference: string
+  description: string | null
+  fiscal_year_uuid: string
+  fiscal_year_label: string
+  lines: PreviewLine[]
+  total_debit: string
+  total_credit: string
+  is_balanced: boolean
+  warnings: string[]
+}
+
+export type GenerateResponse = {
+  entry_uuid: string
+  reference: string
+  fiscal_year_uuid: string
+  state: number
+  was_already_generated: boolean
+}
+
+export type GenerateDueItem = {
+  template_code: string
+  entry_uuid: string | null
+  reference: string | null
+  fiscal_year_uuid: string | null
+}
+
+export type GenerateDueResponse = {
+  generated: GenerateDueItem[]
+  skipped: { template_code: string; reason: string }[]
+  errors: { template_code: string; reason: string }[]
+}
+
+export function usePreviewEntryGenerationMutation() {
+  return useMutation({
+    mutationFn: async ({ templateUuid, targetDate }: { templateUuid: string; targetDate: string }) => {
+      const { data } = await apiClient.post<PreviewResponse>(
+        `/api/v1/accounting/entry-models/${templateUuid}/preview`,
+        { target_date: targetDate },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useGenerateEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ templateUuid, targetDate }: { templateUuid: string; targetDate: string }) => {
+      const { data } = await apiClient.post<GenerateResponse>(
+        `/api/v1/accounting/entry-models/${templateUuid}/generate`,
+        { target_date: targetDate },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entryModels() })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
+    },
+  })
+}
+
+export function useGenerateDueEntriesMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<GenerateDueResponse>(
+        '/api/v1/accounting/entry-models/generate-due',
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entryModels() })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
     },
   })
 }

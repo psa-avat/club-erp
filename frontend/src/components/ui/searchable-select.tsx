@@ -200,54 +200,128 @@ function SearchableSelect({
         </span>
       </button>
 
-      {/* Dropdown */}
-      {open && (
-        <div
-          role="listbox"
-          id={`${id}-listbox`}
-          className={cn(
-            'absolute z-50 mt-1 flex w-full flex-col rounded-shape-md border border-outline-variant bg-surface shadow-surface-3',
-            'max-h-64 overflow-hidden',
-          )}
-        >
-          {/* Search */}
-          <div className="border-b border-outline-variant p-2">
-            <input
-              ref={searchRef}
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={searchPlaceholder}
-              className={cn(
-                'w-full rounded-shape-sm border border-outline bg-surface px-2 py-1.5 text-sm text-on-surface',
-                'placeholder:text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-primary',
-              )}
-            />
-          </div>
+      {/* Dropdown — fixed positioning to escape modal stacking contexts */}
+      {open && containerRef.current && (
+        <FixedDropdown
+          containerRef={containerRef}
+          id={id}
+          search={search}
+          searchRef={searchRef}
+          onSearchChange={setSearch}
+          searchPlaceholder={searchPlaceholder}
+          filtered={filtered}
+          listRef={listRef}
+          activeIndex={activeIndex}
+          noResultsText={noResultsText}
+          value={value}
+          onChange={onChange}
+          onClose={close}
+        />
+      )}
+    </div>
+  )
+}
 
-          {/* Options */}
-          <ul ref={listRef} className="overflow-y-auto py-1">
-            {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
-            ) : (
-              filtered.map((opt, index) => (
-                <li
-                  key={opt.value}
-                  id={`${id}-option-${opt.value}`}
-                  role="option"
-                  data-option-index={index}
-                  aria-selected={opt.value === value}
-                  aria-disabled={opt.disabled}
-                  onClick={() => {
-                    if (!opt.disabled) {
-                      onChange(opt.value)
-                      close()
-                    }
-                  }}
-                  className={cn(
-                    'flex cursor-pointer items-center px-3 py-2 text-sm transition-colors',
-                    opt.value === value
-                      ? 'bg-primary-container text-on-primary-container'
+// Fixed-position dropdown — renders outside any modal's stacking context
+function FixedDropdown({
+  containerRef,
+  id,
+  search,
+  searchRef,
+  onSearchChange,
+  searchPlaceholder,
+  filtered,
+  listRef,
+  activeIndex,
+  noResultsText,
+  value,
+  onChange,
+  onClose,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>
+  id?: string
+  search: string
+  searchRef: React.RefObject<HTMLInputElement | null>
+  onSearchChange: (v: string) => void
+  searchPlaceholder: string
+  filtered: { value: string; label: string; disabled?: boolean }[]
+  listRef: React.RefObject<HTMLUListElement | null>
+  activeIndex: number
+  noResultsText: string
+  value?: string
+  onChange: (v: string) => void
+  onClose: () => void
+}) {
+  const [style, setStyle] = React.useState<React.CSSProperties>({})
+
+  // Calculate position relative to viewport
+  React.useLayoutEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setStyle({
+      position: 'fixed',
+      top: `${rect.bottom + 4}px`,
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+      zIndex: 9999,
+    })
+  }, [containerRef])
+
+  // Focus search on mount
+  React.useEffect(() => {
+    const id = setTimeout(() => searchRef.current?.focus(), 10)
+    return () => clearTimeout(id)
+  }, [searchRef])
+
+  return (
+    <div
+      role="listbox"
+      id={`${id}-listbox`}
+      style={style}
+      className={cn(
+        'flex flex-col rounded-shape-md border border-outline-variant bg-surface shadow-surface-3',
+        'max-h-64 overflow-hidden',
+      )}
+    >
+      {/* Search */}
+      <div className="border-b border-outline-variant p-2">
+        <input
+          ref={searchRef}
+          type="text"
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder={searchPlaceholder}
+          className={cn(
+            'w-full rounded-shape-sm border border-outline bg-surface px-2 py-1.5 text-sm text-on-surface',
+            'placeholder:text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-primary',
+          )}
+        />
+      </div>
+
+      {/* Options */}
+      <ul ref={listRef} className="overflow-y-auto py-1">
+        {filtered.length === 0 ? (
+          <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
+        ) : (
+          filtered.map((opt, index) => (
+            <li
+              key={opt.value}
+              id={`${id}-option-${opt.value}`}
+              role="option"
+              data-option-index={index}
+              aria-selected={opt.value === value}
+              aria-disabled={opt.disabled}
+              onClick={() => {
+                if (!opt.disabled) {
+                  onChange(opt.value)
+                  onClose()
+                }
+              }}
+              className={cn(
+                'flex cursor-pointer items-center px-3 py-2 text-sm transition-colors',
+                opt.value === value
+                  ? 'bg-primary-container text-on-primary-container'
                       : 'text-on-surface hover:bg-surface-container',
                     opt.disabled && 'cursor-not-allowed opacity-40',
                     index === activeIndex && 'bg-surface-container-high',
@@ -276,8 +350,6 @@ function SearchableSelect({
             )}
           </ul>
         </div>
-      )}
-    </div>
   )
 }
 

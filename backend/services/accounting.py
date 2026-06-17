@@ -1376,9 +1376,16 @@ async def validate_entry_date_in_fy(
 
 
 async def validate_entry_balance(lines_data: list[AccountingLineCreateRequest | AccountingEntryTemplateLineCreateRequest]) -> None:
-    """Ensure entry is balanced: sum(debit) == sum(credit)."""
-    total_debit = sum(line.debit for line in lines_data)
-    total_credit = sum(line.credit for line in lines_data)
+    """Ensure entry is balanced: sum(debit) == sum(credit).
+
+    Lines with formula_type 'rounding_adjustment' are excluded from
+    the balance check — they will be calculated at generation time.
+    """
+    non_rounding = [l for l in lines_data if getattr(l, 'formula_type', 'fixed') != 'rounding_adjustment']
+    if not non_rounding:
+        return  # Only rounding_adjustment lines — balance will be computed at generation
+    total_debit = sum(line.debit for line in non_rounding)
+    total_credit = sum(line.credit for line in non_rounding)
     if total_debit != total_credit:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1681,6 +1688,8 @@ async def create_accounting_entry_template(
         default_reference=request.default_reference,
         recurrence_type=request.recurrence_type,
         is_active=request.is_active,
+        valid_from=request.valid_from,
+        valid_until=request.valid_until,
         created_by=user_id,
     )
     for index, line_req in enumerate(request.lines, start=1):
@@ -1693,6 +1702,8 @@ async def create_accounting_entry_template(
                 debit=line_req.debit,
                 credit=line_req.credit,
                 description=line_req.description,
+                formula_type=line_req.formula_type,
+                formula_params=line_req.formula_params,
             )
         )
 
@@ -1733,6 +1744,10 @@ async def update_accounting_entry_template(
         template.recurrence_type = request.recurrence_type
     if request.is_active is not None:
         template.is_active = request.is_active
+    if request.valid_from is not None:
+        template.valid_from = request.valid_from
+    if request.valid_until is not None:
+        template.valid_until = request.valid_until
     if request.lines is not None:
         for line_req in request.lines:
             await get_account(db, line_req.account_uuid)
@@ -1748,6 +1763,8 @@ async def update_accounting_entry_template(
                     debit=line_req.debit,
                     credit=line_req.credit,
                     description=line_req.description,
+                    formula_type=line_req.formula_type,
+                    formula_params=line_req.formula_params,
                 )
             )
 
