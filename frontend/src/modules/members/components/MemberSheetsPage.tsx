@@ -22,6 +22,8 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
+import { Input } from '../../../components/ui/input'
+import { Label } from '../../../components/ui/label'
 import {
   useDisableExpenseAccessMutation,
   useEnableExpenseAccessMutation,
@@ -40,11 +42,10 @@ import {
   toErrorMessage,
   type SheetFormState,
 } from './membersShared'
-import { ClubPageShell } from './ClubPageShell'
 
 export function MemberSheetsPage() {
   const { t } = useTranslation('members')
-  const { selectedMemberId, setSelectedMemberId, selectedYear, filters } = useMembersStore()
+  const { selectedMemberId, setSelectedMemberId, selectedYear, setSelectedYear, filters } = useMembersStore()
 
   const [sheetForm, setSheetForm] = useState<SheetFormState>(() => createSheetForm())
   const [expenseToken, setExpenseToken] = useState<string | null>(null)
@@ -135,8 +136,22 @@ export function MemberSheetsPage() {
     disableExpenseAccessMutation.error
 
   return (
-    <ClubPageShell>
+    <div className="space-y-4">
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
+
+      {/* Year selector */}
+      <div className="flex items-center gap-3">
+        <Label className="whitespace-nowrap text-xs text-on-surface-variant" htmlFor="sheets-year">
+          {t('filters.year')}
+        </Label>
+        <Input
+          id="sheets-year"
+          className="h-8 w-20 text-sm"
+          type="number"
+          value={selectedYear}
+          onChange={(event) => setSelectedYear(Number(event.target.value))}
+        />
+      </div>
 
       {/* Mobile: back button when viewing form */}
       {mobileView === 'form' && selectedMemberId ? (
@@ -255,7 +270,7 @@ export function MemberSheetsPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-blue-800">
-                          🚪 Accès portail membre
+                          {t('sheet.portalAccess')}
                         </p>
                         <p className="mt-0.5 text-xs text-blue-600">
                           {t('sheet.portalTokenDescription')}
@@ -292,8 +307,7 @@ export function MemberSheetsPage() {
                           </button>
                         </div>
                         <p className="mt-1.5 text-xs text-amber-600">
-                          ⚠️ Ce code ne sera plus affiché après rechargement de la page.
-                          Copiez-le et transmettez-le au membre.
+                          {t('sheet.tokenWarning')}
                         </p>
                       </div>
                     )}
@@ -308,7 +322,7 @@ export function MemberSheetsPage() {
                           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                           {enableExpenseAccessMutation.isPending
-                            ? 'Génération…'
+                            ? t('sheet.generating')
                             : t('sheet.regenerateToken')}
                         </button>
                       ) : (
@@ -341,6 +355,6 @@ export function MemberSheetsPage() {
           </div>
         </div>
       </div>
-    </ClubPageShell>
+    </div>
   )
 }

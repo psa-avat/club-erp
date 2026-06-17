@@ -42,7 +42,6 @@ import {
   toErrorMessage,
   type MemberFormState,
 } from './membersShared'
-import { ClubPageShell } from './ClubPageShell'
 
 function sanitizeBusinessMemberForm(form: MemberFormState): MemberFormState {
   return {
@@ -150,10 +149,10 @@ export function MemberFormPage() {
   const combinedError = memberQuery.error ?? createMemberMutation.error ?? updateMemberMutation.error
 
   return (
-    <ClubPageShell>
+    <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader
         title={isEditMode ? t('form.editTitle') : t('form.createTitle')}
-        supportingText={isBusinessCategory ? 'BUSINESS CONTACT PROFILE' : isEditMode ? 'MEMBERS > EDIT PROFILE' : 'MEMBERS > NEW PROFILE'}
+        supportingText={isEditMode ? t('form.editSubtitle') : t('form.createSubtitle')}
       />
 
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
@@ -502,6 +501,6 @@ export function MemberFormPage() {
           </Card>
         </div>
       </form>
-    </ClubPageShell>
+    </div>
   )
 }

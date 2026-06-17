@@ -28,7 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
-import { PageHeader } from '@club-erp/ui'
+
 import {
   exportMembersToCSV,
   useImportMembersMutation,
@@ -258,29 +258,23 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
 
   return (
     <section className="space-y-4">
-      {/* ── Page header ──────────────────────────────────────────────── */}
-      <PageHeader
-        title={t('list.title')}
-        supportingText={`${t(activeScreenMeta.titleKey)}: ${t(activeScreenMeta.descriptionKey)}`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              type="button" 
-              variant="secondary" 
-              onClick={handleExportMembers}
-              disabled={isExporting}
-            >
-              {isExporting ? tCommon('export.exporting') : tCommon('export.button')}
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => setShowImportDialog(true)}>
-              {tCommon('import.button')}
-            </Button>
-            <Button type="button" onClick={handleNewMember}>
-              {t('actions.newMember')}
-            </Button>
-          </div>
-        }
-      />
+      {/* ── Action bar ───────────────────────────────────────────────── */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={handleExportMembers}
+          disabled={isExporting}
+        >
+          {isExporting ? tCommon('export.exporting') : tCommon('export.button')}
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setShowImportDialog(true)}>
+          {tCommon('import.button')}
+        </Button>
+        <Button type="button" onClick={handleNewMember}>
+          {t('actions.newMember')}
+        </Button>
+      </div>
 
       <Card>
         <CardContent className="flex flex-col gap-3 py-4">

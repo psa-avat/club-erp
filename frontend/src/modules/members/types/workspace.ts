@@ -18,6 +18,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type React from 'react';
+
 export type WorkspaceMode = 'club' | 'portal';
 
 export interface WorkspaceContext {
@@ -29,10 +31,11 @@ export interface WorkspaceContext {
   readOnly: boolean;
 }
 
-export type WorkspaceTab = 'logbook' | 'balance' | 'club-expenses' | 'volunteer-fiscal' | 'documents';
+export type WorkspaceTab = 'logbook' | 'balance' | 'club-expenses' | 'volunteer-fiscal' | 'documents' | 'portal-access';
 
 export interface WorkspaceTabDefinition {
   id: WorkspaceTab;
   labelKey: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
+  clubOnly?: boolean;
 }

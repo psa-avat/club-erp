@@ -70,14 +70,15 @@ export interface WorkspaceShellProps {
 export function useActiveTab(
   tabs: WorkspaceTab[],
   defaultTab?: string,
+  tabParam = "tab",
 ): [string, (value: string) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = useMemo(() => {
-    const raw = searchParams.get("tab");
+    const raw = searchParams.get(tabParam);
     if (raw && tabs.some((t) => t.value === raw)) return raw;
     return defaultTab ?? tabs[0]?.value ?? "";
-  }, [searchParams, tabs, defaultTab]);
+  }, [searchParams, tabs, defaultTab, tabParam]);
 
   const setActiveTab = useCallback(
     (value: string) => {
@@ -85,16 +86,16 @@ export function useActiveTab(
         (prev: URLSearchParams) => {
           const next = new URLSearchParams(prev);
           if (value === (defaultTab ?? tabs[0]?.value)) {
-            next.delete("tab");
+            next.delete(tabParam);
           } else {
-            next.set("tab", value);
+            next.set(tabParam, value);
           }
           return next;
         },
         { replace: true },
       );
     },
-    [setSearchParams, tabs, defaultTab],
+    [setSearchParams, tabs, defaultTab, tabParam],
   );
 
   return [activeTab, setActiveTab];
@@ -135,6 +136,53 @@ export function WorkspaceShell({
     <div className={cn("mx-auto flex max-w-7xl flex-col gap-6", className)}>
       <PageHeader title={title} description={description} actions={actions} />
 
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+              {tab.icon && <tab.icon className="h-4 w-4" />}
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {tabs.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
+            {tab.lazy && activeTab !== tab.value ? null : tab.content}
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
+  );
+}
+
+// ── SubWorkspaceShell ─────────────────────────────────────────────────────────
+
+export interface SubWorkspaceShellProps {
+  tabs: WorkspaceTab[];
+  /** URL search param to persist the active sub-tab (default: "subtab") */
+  tabParam?: string;
+  defaultTab?: string;
+  className?: string;
+}
+
+/**
+ * SubWorkspaceShell — secondary tab bar without a PageHeader.
+ *
+ * Use inside a WorkspaceShell tab when the section has its own sub-navigation.
+ * The active sub-tab is persisted in the URL via `?subtab=xxx` (by default),
+ * which is distinct from the outer `?tab=xxx` used by WorkspaceShell.
+ */
+export function SubWorkspaceShell({
+  tabs,
+  tabParam = "subtab",
+  defaultTab,
+  className,
+}: SubWorkspaceShellProps) {
+  const [activeTab, setActiveTab] = useActiveTab(tabs, defaultTab, tabParam);
+
+  return (
+    <div className={cn("flex flex-col gap-4", className)}>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           {tabs.map((tab) => (

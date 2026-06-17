@@ -1,16 +1,15 @@
 /*
     ERP-CLUB - ERP pour Club de vol a voile
-    - MembersWorkspacePage: workspace Membres (annuaire, commissions, fiches, reinscription)
+    - MembersWorkspacePage: workspace Membres (annuaire, commissions, reinscription)
  */
 
 import { useTranslation } from "react-i18next";
-import { ClipboardList, FileText, RefreshCw, Users } from "lucide-react";
+import { ClipboardList, RefreshCw, Users } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { MembersListPage } from "./MembersListPage";
 import { CommitteesManagementPage } from "./CommitteesManagementPage";
-import { MemberSheetsPage } from "./MemberSheetsPage";
 
 export function MembersWorkspacePage() {
   const { t } = useTranslation("members");
@@ -20,7 +19,7 @@ export function MembersWorkspacePage() {
       title={t("workspace.members.title", "Membres")}
       description={t(
         "workspace.members.description",
-        "Annuaire, commissions, fiches pilotes et reinscription.",
+        "Annuaire, commissions et réinscription.",
       )}
       tabs={[
         {
@@ -36,21 +35,15 @@ export function MembersWorkspacePage() {
           content: <CommitteesManagementPage />,
         },
         {
-          value: "fiches",
-          label: t("workspace.members.tabs.sheets", "Fiches"),
-          icon: FileText,
-          content: <MemberSheetsPage />,
-        },
-        {
           value: "reinscription",
-          label: t("workspace.members.tabs.renewal", "Reinscription"),
+          label: t("workspace.members.tabs.renewal", "Réinscription"),
           icon: RefreshCw,
           content: (
             <PlaceholderPage
-              title={t("workspace.members.renewal.title", "Reinscription en ligne")}
+              title={t("workspace.members.renewal.title", "Réinscription en ligne")}
               description={t(
                 "workspace.members.renewal.description",
-                "Module de reinscription pour les membres. Accessible depuis l'espace membre.",
+                "Configuration annuelle (licence, type de tarif, heures) et module de réinscription.",
               )}
               eta="Phase 10"
             />

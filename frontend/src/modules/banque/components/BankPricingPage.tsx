@@ -18,11 +18,12 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState, useMemo } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, Copy, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Package, Settings } from 'lucide-react'
+import { Plus, Copy, Trash2, Pencil, Check, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { AxiosError } from 'axios'
 
+import { PageHeader } from '@club-erp/ui'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Dialog } from '../../../components/ui/dialog'
@@ -534,57 +535,29 @@ export function BankPricingPage() {
 
   return (
     <section className="space-y-4">
-      {/* Header */}
-      <div className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-on-surface">{t('pricing.title')}</h1>
-            <p className="text-sm text-on-surface-variant">{t('pricing.description')}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/banque/packs"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-shape-sm text-sm font-medium transition-all h-8 rounded-md px-3 text-xs text-on-surface-variant hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-outline"
-            >
-              <Package className="mr-1 h-4 w-4" />
-              {t('pricing.packs')}
-            </Link>
-            <Link
-              to="/vi/types"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-shape-sm text-sm font-medium transition-all h-8 rounded-md px-3 text-xs text-on-surface-variant hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-outline"
-              title="Types VI — configurez les comptes de vente pour les vols initiation"
-            >
-              <ChevronDown className="mr-1 h-3 w-3 -rotate-90" />
-              Types VI
-            </Link>
-            <Link
-              to="/banque/settings/flight_billing"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-shape-sm text-sm font-medium transition-all h-8 rounded-md px-3 text-xs text-on-surface-variant hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-outline"
-              title="Paramètres généraux de la tarification"
-            >
-              <Settings className="mr-1 h-4 w-4" />
-              {t('pricing.settings', 'Réglages')}
-            </Link>
-            {canManagePrices && !showNewFyForm && (
-              <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>
-                <Plus className="mr-1 h-4 w-4" />
-                {t('pricing.fy.new')}
-              </Button>
-            )}
-          </div>
+      <PageHeader
+        title={t('pricing.title')}
+        description={t('pricing.description')}
+        actions={
+          canManagePrices && !showNewFyForm ? (
+            <Button size="sm" variant="secondary" onClick={() => setShowNewFyForm(true)}>
+              <Plus className="mr-1 h-4 w-4" />
+              {t('pricing.fy.new')}
+            </Button>
+          ) : undefined
+        }
+      />
+      {showNewFyForm && (
+        <div className="rounded-xl border border-outline-variant bg-white p-4">
+          <NewFyForm
+            defaultYear={nextDefaultYear}
+            saving={createFyMutation.isPending}
+            t={t}
+            onSave={handleCreateFy}
+            onCancel={() => setShowNewFyForm(false)}
+          />
         </div>
-        {showNewFyForm && (
-          <div className="mt-4">
-            <NewFyForm
-              defaultYear={nextDefaultYear}
-              saving={createFyMutation.isPending}
-              t={t}
-              onSave={handleCreateFy}
-              onCancel={() => setShowNewFyForm(false)}
-            />
-          </div>
-        )}
-      </div>
+      )}
 
       {fiscalYearsQuery.isLoading && (
         <p className="text-sm text-on-surface-variant">{t('pricing.loading')}</p>

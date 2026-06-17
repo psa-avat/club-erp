@@ -63,6 +63,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '../../../components/ui/sheet'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import { useMembersQuery } from '../../members/api'
 import {
@@ -480,162 +488,164 @@ export function JournalTemplatesScreen() {
         </Card>
       </div>
 
-      {/* ── Template Editor Dialog ───────────────────────────────────────── */}
-      <Dialog open={editingTemplate !== null} onOpenChange={(open) => { if (!open) closeEditor() }}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
+      {/* ── Template Editor Sheet ────────────────────────────────────────── */}
+      <Sheet open={editingTemplate !== null} onOpenChange={(open) => { if (!open) closeEditor() }}>
+        <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-3xl">
+          <SheetHeader className="border-b px-6 py-4">
+            <SheetTitle>
               {selectedModelUuid
                 ? `${t('journal.models.editTitle')} — ${modelForm.code || ''}`
                 : t('journal.models.recurring.newModel')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('journal.models.descriptionLabel')}
-            </DialogDescription>
-          </DialogHeader>
+            </SheetTitle>
+            <SheetDescription>{t('journal.models.descriptionLabel')}</SheetDescription>
+          </SheetHeader>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('journal.models.code')}</Label>
-              <Input
-                value={modelForm.code}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, code: e.target.value }))}
-                disabled={!canManageModels}
-                placeholder="COTIS-MENSUELLE"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('journal.models.name')}</Label>
-              <Input
-                value={modelForm.name}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, name: e.target.value }))}
-                disabled={!canManageModels}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('journal.entries.journal')}</Label>
-              <Select
-                value={modelForm.journal_uuid}
-                onValueChange={(v) => setModelForm((prev) => ({ ...prev, journal_uuid: v }))}
-                disabled={!canManageModels}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('journal.entries.selectJournal')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {journals.map((j) => (
-                    <SelectItem key={j.uuid} value={j.uuid}>{j.code} · {j.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('journal.models.recurrence.label')}</Label>
-              <Select
-                value={String(modelForm.recurrence_type)}
-                onValueChange={(v) => setModelForm((prev) => ({ ...prev, recurrence_type: Number(v) }))}
-                disabled={!canManageModels}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RECURRENCE_OPTIONS.map((value) => (
-                    <SelectItem key={value} value={String(value)}>{recurrenceLabel(value, t)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('journal.models.recurring.validFrom')}</Label>
-              <Input
-                type="date"
-                value={modelForm.valid_from}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, valid_from: e.target.value }))}
-                disabled={!canManageModels}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('journal.models.recurring.validUntil')}</Label>
-              <Input
-                type="date"
-                value={modelForm.valid_until}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, valid_until: e.target.value }))}
-                disabled={!canManageModels}
-              />
-            </div>
-          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('journal.models.code')}</Label>
+                  <Input
+                    value={modelForm.code}
+                    onChange={(e) => setModelForm((prev) => ({ ...prev, code: e.target.value }))}
+                    disabled={!canManageModels}
+                    placeholder="COTIS-MENSUELLE"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('journal.models.name')}</Label>
+                  <Input
+                    value={modelForm.name}
+                    onChange={(e) => setModelForm((prev) => ({ ...prev, name: e.target.value }))}
+                    disabled={!canManageModels}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('journal.entries.journal')}</Label>
+                  <Select
+                    value={modelForm.journal_uuid}
+                    onValueChange={(v) => setModelForm((prev) => ({ ...prev, journal_uuid: v }))}
+                    disabled={!canManageModels}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('journal.entries.selectJournal')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {journals.map((j) => (
+                        <SelectItem key={j.uuid} value={j.uuid}>{j.code} · {j.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('journal.models.recurrence.label')}</Label>
+                  <Select
+                    value={String(modelForm.recurrence_type)}
+                    onValueChange={(v) => setModelForm((prev) => ({ ...prev, recurrence_type: Number(v) }))}
+                    disabled={!canManageModels}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECURRENCE_OPTIONS.map((value) => (
+                        <SelectItem key={value} value={String(value)}>{recurrenceLabel(value, t)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('journal.models.recurring.validFrom')}</Label>
+                  <Input
+                    type="date"
+                    value={modelForm.valid_from}
+                    onChange={(e) => setModelForm((prev) => ({ ...prev, valid_from: e.target.value }))}
+                    disabled={!canManageModels}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('journal.models.recurring.validUntil')}</Label>
+                  <Input
+                    type="date"
+                    value={modelForm.valid_until}
+                    onChange={(e) => setModelForm((prev) => ({ ...prev, valid_until: e.target.value }))}
+                    disabled={!canManageModels}
+                  />
+                </div>
+              </div>
 
-          {/* Scheduling info (read-only) */}
-          <div className="rounded-md border bg-muted/40 p-3 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">{t('journal.models.recurring.nextScheduled')}</span>
-              <span className="font-mono">{modelForm.next_scheduled_date || '—'}</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between">
-              <span className="text-muted-foreground">{t('journal.models.recurring.lastGenerated')}</span>
-              <span className="font-mono">{modelForm.last_generated_at?.slice(0, 10) || '—'}</span>
-            </div>
-          </div>
+              {/* Scheduling info (read-only) */}
+              <div className="rounded-md border bg-muted/40 p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{t('journal.models.recurring.nextScheduled')}</span>
+                  <span className="font-mono">{modelForm.next_scheduled_date || '—'}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-muted-foreground">{t('journal.models.recurring.lastGenerated')}</span>
+                  <span className="font-mono">{modelForm.last_generated_at?.slice(0, 10) || '—'}</span>
+                </div>
+              </div>
 
-          <div className="flex items-center gap-2">
-            <Switch
-              id="model-active"
-              checked={modelForm.is_active}
-              onCheckedChange={(v) => setModelForm((prev) => ({ ...prev, is_active: v }))}
-              disabled={!canManageModels}
-            />
-            <Label htmlFor="model-active" className="text-sm">{t('journal.models.active')}</Label>
-          </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="model-active"
+                  checked={modelForm.is_active}
+                  onCheckedChange={(v) => setModelForm((prev) => ({ ...prev, is_active: v }))}
+                  disabled={!canManageModels}
+                />
+                <Label htmlFor="model-active" className="text-sm">{t('journal.models.active')}</Label>
+              </div>
 
-          <Separator />
+              <Separator />
 
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">{t('journal.models.linesTitle')}</h3>
-            {canManageModels && (
-              <Button variant="outline" size="sm" onClick={() => setModelForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}>
-                <Plus className="mr-1 h-4 w-4" /> {t('journal.forms.addLine')}
-              </Button>
-            )}
-          </div>
-
-          <LineEditor
-            title=""
-            lines={modelForm.lines}
-            accounts={accounts}
-            members={members}
-            onChange={updateModelLine}
-            onAdd={() => setModelForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}
-            onRemove={(index) =>
-              setModelForm((prev) => ({ ...prev, lines: prev.lines.filter((_, i) => i !== index) }))
-            }
-            disabled={!canManageModels}
-            t={t}
-          />
-
-          {/* Totaux */}
-          {modelForm.lines.length > 0 && (
-            <div className="flex items-center justify-between rounded-md border bg-muted/40 p-3 text-sm">
-              <span className="font-medium">{t('journal.forms.total')}</span>
-              <div className="flex items-center gap-4 font-mono">
-                <span>D {fmtEUR(Number(modelForm.lines.reduce((s, l) => s + (Number(l.amount) > 0 ? Number(l.amount) : 0), 0)))}</span>
-                <span>C {fmtEUR(Number(modelForm.lines.reduce((s, l) => s + (Number(l.amount) < 0 ? -Number(l.amount) : 0), 0)))}</span>
-                {isBalanced(modelForm.lines) || modelForm.lines.some((l) => l.formula_type === 'rounding_adjustment') ? (
-                  <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-                    <CheckCircle2 className="mr-1 h-3 w-3" /> Équilibré
-                  </Badge>
-                ) : (
-                  <Badge variant="destructive">
-                    <AlertTriangle className="mr-1 h-3 w-3" /> Déséquilibré
-                  </Badge>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">{t('journal.models.linesTitle')}</h3>
+                {canManageModels && (
+                  <Button variant="outline" size="sm" onClick={() => setModelForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}>
+                    <Plus className="mr-1 h-4 w-4" /> {t('journal.forms.addLine')}
+                  </Button>
                 )}
               </div>
-            </div>
-          )}
 
-          <DialogFooter>
+              <LineEditor
+                title=""
+                lines={modelForm.lines}
+                accounts={accounts}
+                members={members}
+                onChange={updateModelLine}
+                onAdd={() => setModelForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}
+                onRemove={(index) =>
+                  setModelForm((prev) => ({ ...prev, lines: prev.lines.filter((_, i) => i !== index) }))
+                }
+                disabled={!canManageModels}
+                t={t}
+              />
+
+              {/* Totaux */}
+              {modelForm.lines.length > 0 && (
+                <div className="flex items-center justify-between rounded-md border bg-muted/40 p-3 text-sm">
+                  <span className="font-medium">{t('journal.forms.total')}</span>
+                  <div className="flex items-center gap-4 font-mono">
+                    <span>D {fmtEUR(Number(modelForm.lines.reduce((s, l) => s + (Number(l.amount) > 0 ? Number(l.amount) : 0), 0)))}</span>
+                    <span>C {fmtEUR(Number(modelForm.lines.reduce((s, l) => s + (Number(l.amount) < 0 ? -Number(l.amount) : 0), 0)))}</span>
+                    {isBalanced(modelForm.lines) || modelForm.lines.some((l) => l.formula_type === 'rounding_adjustment') ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                        <CheckCircle2 className="mr-1 h-3 w-3" /> Équilibré
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive">
+                        <AlertTriangle className="mr-1 h-3 w-3" /> Déséquilibré
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <SheetFooter className="border-t px-6 py-4">
             <Button variant="ghost" onClick={closeEditor}>
-              {t('journal.models.cancel') || 'Annuler'}
+              {t('journal.models.cancel')}
             </Button>
             <Button
               onClick={() => void handleSaveModel()}
@@ -645,9 +655,9 @@ export function JournalTemplatesScreen() {
                 ? t('journal.models.saving')
                 : selectedModelUuid ? t('journal.models.saveChanges') : t('journal.models.saveModel')}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* ── Preview Dialog ──────────────────────────────────────────────── */}
       <Dialog open={previewingTemplate !== null} onOpenChange={(open) => { if (!open) setPreviewingTemplate(null) }}>

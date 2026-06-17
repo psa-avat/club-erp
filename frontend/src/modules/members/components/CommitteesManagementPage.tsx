@@ -27,7 +27,7 @@ import { Dialog } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { PageHeader } from '@club-erp/ui'
+
 import {
   useCommitteeMembersQuery,
   useCommitteesQuery,
@@ -404,24 +404,19 @@ export function CommitteesManagementPage() {
 
   return (
     <section className="space-y-4">
-      <PageHeader
-        title={t('committees.title')}
-        supportingText={t('committees.description')}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => exportCsv(committees, membersByUuid)}
-            >
-              {tCommon('export.button')}
-            </Button>
-            <Button type="button" onClick={() => setEditingCommittee(null)}>
-              {t('actions.createCommittee')}
-            </Button>
-          </div>
-        }
-      />
+      {/* ── Action bar ───────────────────────────────────────────────── */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => exportCsv(committees, membersByUuid)}
+        >
+          {tCommon('export.button')}
+        </Button>
+        <Button type="button" onClick={() => setEditingCommittee(null)}>
+          {t('actions.createCommittee')}
+        </Button>
+      </div>
 
       {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
 

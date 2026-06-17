@@ -9,20 +9,15 @@ import { getPortalProfile } from './modules/member-portal/api/client'
 import { AdminPage } from './modules/admin'
 import {
   BanqueJournalEntryWorkspacePage,
-  BanqueJournalTemplatesPage,
   BanqueSettingsPage,
   BankPricingPage,
   BankPricingVersionEditPage,
   SupplierInvoicePage,
   PackDefinitionEditPage,
-  SalesWorkspacePage,
-  BanqueWorkspacePage,
   FinanceWorkspacePage,
-  AccountingWorkspacePage,
-  PurchasesWorkspacePage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
-import { MembersListPage, MemberFormPage, MemberWorkspaceShell, MemberPilotSheetPage, MembersWorkspacePage } from './modules/members'
+import { MembersListPage, MemberFormPage, MemberWorkspaceShell, MembersWorkspacePage } from './modules/members'
 import { AssetDetailPage, AssetFormPage, AssetPricingPage, MachinesWorkspacePage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { HelloAssoIntegrationPage } from './modules/helloasso'
@@ -77,15 +72,15 @@ function App() {
           <Route path="/club/members/new" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/edit" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/workspace" element={<MemberWorkspaceClubRoute />} />
-          <Route path="/club/members/:memberUuid/pilot-sheet" element={<MemberPilotSheetPage />} />
+          <Route path="/club/members/:memberUuid/pilot-sheet" element={<Navigate replace to="/workspace/members" />} />
           <Route path="/club/commissions" element={<Navigate replace to="/workspace/members?tab=commissions" />} />
-          <Route path="/club/sheets" element={<Navigate replace to="/workspace/members?tab=fiches" />} />
+          <Route path="/club/sheets" element={<Navigate replace to="/workspace/members?tab=reinscription" />} />
           <Route path="/daily-ops/alerts" element={<PlaceholderPage title="Alertes & Tâches" description="Tableau de bord des alertes, notifications et tâches en attente." eta="Phase 10" />} />
           <Route path="/member-portal/renewal" element={<Navigate replace to="/workspace/members?tab=reinscription" />} />
 
           {/* ── 3. Sales (MVP) ── */}
-          <Route path="/sales" element={<Navigate replace to="/workspace/sales" />} />
-          <Route path="/workspace/sales" element={<SalesWorkspacePage />} />
+          <Route path="/sales" element={<Navigate replace to="/workspace/finance?tab=ventes" />} />
+          <Route path="/workspace/sales" element={<Navigate replace to="/workspace/finance?tab=ventes" />} />
           <Route path="/banque/packs" element={<Navigate replace to="/pricing" />} />
           <Route path="/banque/packs/:packUuid" element={<PackDefinitionEditPage />} />
           <Route path="/banque/factures-fournisseurs/new" element={<SupplierInvoicePage />} />
@@ -125,25 +120,27 @@ function App() {
           <Route path="/integrations/osrt" element={<PlaceholderPage title="OSRT" description="Synchronisation avec OSRT pour les temps machine." eta="Phase 8" />} />
 
           {/* ── 7. Finance & Accounting ── */}
-          <Route path="/banque" element={<Navigate replace to="/workspace/banque" />} />
-          <Route path="/workspace/banque" element={<BanqueWorkspacePage />} />
-          <Route path="/banque/dashboard" element={<Navigate replace to="/workspace/banque" />} />
-          <Route path="/banque/operations" element={<Navigate replace to="/workspace/banque?tab=operations" />} />
-          <Route path="/banque/facturation-membres" element={<Navigate replace to="/workspace/sales" />} />
-          <Route path="/banque/journal" element={<Navigate replace to="/workspace/banque?tab=journal" />} />
-          <Route path="/banque/journal/entries" element={<Navigate replace to="/workspace/banque?tab=journal" />} />
+          <Route path="/banque" element={<Navigate replace to="/workspace/finance" />} />
+          <Route path="/workspace/banque" element={<Navigate replace to="/workspace/finance" />} />
+          <Route path="/banque/dashboard" element={<Navigate replace to="/workspace/finance" />} />
+          <Route path="/banque/operations" element={<Navigate replace to="/workspace/finance?tab=operations" />} />
+          <Route path="/banque/facturation-membres" element={<Navigate replace to="/workspace/finance?tab=ventes" />} />
+          <Route path="/banque/journal" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=journal" />} />
+          <Route path="/banque/journal/entries" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=journal" />} />
           <Route path="/banque/journal/entry/new" element={<BanqueJournalEntryWorkspacePage />} />
           <Route path="/banque/journal/entry/:entryUuid" element={<BanqueJournalEntryWorkspacePage />} />
-          <Route path="/banque/journal/templates" element={<BanqueJournalTemplatesPage />} />
-          <Route path="/banque/accounts" element={<Navigate replace to="/workspace/banque?tab=pcg" />} />
-          <Route path="/banque/pcg" element={<Navigate replace to="/workspace/banque?tab=pcg" />} />
-          <Route path="/banque/fiscal-years" element={<Navigate replace to="/workspace/banque?tab=exercices" />} />
+          <Route path="/banque/journal/templates" element={<Navigate replace to="/workspace/finance?tab=recurring" />} />
+          <Route path="/banque/accounts" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=pcg" />} />
+          <Route path="/banque/pcg" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=pcg" />} />
+          <Route path="/banque/fiscal-years" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=exercices" />} />
           <Route path="/banque/pricing" element={<BankPricingPage />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
-          <Route path="/banque/reports" element={<Navigate replace to="/workspace/banque?tab=rapports" />} />
-          <Route path="/banque/reconciliation" element={<Navigate replace to="/workspace/banque?tab=rapprochement" />} />
+          <Route path="/banque/reports" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=rapports" />} />
+          <Route path="/banque/reconciliation" element={<Navigate replace to="/workspace/finance?tab=rapprochement" />} />
           <Route path="/banque/settings/:section" element={<BanqueSettingsPage />} />
           <Route path="/pricing" element={<Navigate replace to="/banque/pricing" />} />
+          <Route path="/workspace/purchases" element={<Navigate replace to="/workspace/finance?tab=achats" />} />
+          <Route path="/workspace/accounting" element={<Navigate replace to="/workspace/finance?tab=comptabilite" />} />
 
           {/* ── 8. Admin ── */}
           <Route path="/admin" element={<AdminPage />} />
@@ -151,8 +148,6 @@ function App() {
           <Route path="/rh" element={<PlaceholderPage title="RH" description="Planning des congés, gestion des présences et tableau de bord RH." eta="Phase 10" />} />
           <Route path="/workspace/rh" element={<RhWorkspacePage />} />
           <Route path="/workspace/finance" element={<FinanceWorkspacePage />} />
-          <Route path="/workspace/accounting" element={<AccountingWorkspacePage />} />
-          <Route path="/workspace/purchases" element={<PurchasesWorkspacePage />} />
           <Route path="/storage" element={<Navigate replace to="/storage/settings" />} />
           <Route path="/storage/settings" element={<StorageSettingsPage />} />
         </Route>

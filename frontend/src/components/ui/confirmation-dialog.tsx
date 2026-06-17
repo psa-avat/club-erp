@@ -20,8 +20,17 @@
 
 import * as React from 'react'
 
-import { Button } from './button'
-import { Dialog } from './dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './alert-dialog'
+import { cn } from '@/lib/utils'
 
 type ConfirmVariant = 'default' | 'destructive'
 
@@ -46,39 +55,27 @@ function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const titleId = React.useId()
-  const descId = React.useId()
-
   return (
-    <Dialog
-      open={open}
-      onClose={onCancel}
-      aria-labelledby={titleId}
-      aria-describedby={body ? descId : undefined}
-      className="max-w-sm"
-    >
-      <div className="p-6">
-        <h2 id={titleId} className="text-base font-semibold text-on-surface">
-          {title}
-        </h2>
-        {body && (
-          <div id={descId} className="mt-2 text-sm text-on-surface-variant">
-            {body}
-          </div>
-        )}
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel}>
-            {cancelLabel}
-          </Button>
-          <Button
-            variant={variant === 'destructive' ? 'destructive' : 'default'}
+    <AlertDialog open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          {body && <AlertDialogDescription>{body}</AlertDialogDescription>}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction
             onClick={onConfirm}
+            className={cn(
+              variant === 'destructive' &&
+                'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+            )}
           >
             {confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

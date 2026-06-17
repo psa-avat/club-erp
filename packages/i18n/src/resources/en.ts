@@ -85,7 +85,23 @@ export const en = {
       sheets: 'Sheets',
       onlineRenewal: 'Renewal',
 
-      // Finance
+      // Pricing (dedicated section)
+      tarifs: 'Pricing',
+      tarifsGrid: 'Rate grid',
+      tarifsPacks: 'Packs',
+      tarifsMachines: 'Machines',
+
+      // Finance (unified group)
+      finance: 'Finance',
+      financeOverview: 'Overview',
+      financeOps: 'Operations',
+      financeSales: 'Sales',
+      financeAchats: 'Purchases',
+      financeTarifs: 'Pricing',
+      financeComptabilite: 'Accounting',
+      financeSettings: 'Settings',
+
+      // Finance (legacy sub-keys — kept for backward compat)
       banqueOverview: 'Overview',
       banqueOps: 'Operations',
       banqueJournal: 'Journal',
@@ -213,10 +229,13 @@ export const en = {
     workspaceTabExpenses: 'Club Expenses',
     workspaceTabVolunteerFiscal: 'Volunteer Fiscal',
     workspaceTabDocuments: 'Documents',
+    workspaceTabPortalAccess: 'Portal access',
     workspaceBackToDirectory: 'Back to directory',
     workspaceSendAccess: 'Send portal access',
     workspaceNoEmail: 'Member has no email',
     workspaceEdit: 'Edit',
+    workspaceSave: 'Save',
+    workspaceSaving: 'Saving…',
     workspaceChangePassword: 'Change password',
     workspacePasswordChanged: 'Password changed successfully.',
     workspaceClose: 'Close',
@@ -467,7 +486,9 @@ export const en = {
     },
     form: {
       createTitle: 'Create member',
+      createSubtitle: 'Members > New profile',
       editTitle: 'Edit member',
+      editSubtitle: 'Members > Edit profile',
       title: 'Member profile',
       description: 'Identity, classification, role flags, and registration details.',
       genre: 'Gender',
@@ -529,8 +550,11 @@ export const en = {
       expenseAccessEnabled: 'Expense access enabled',
       generatedToken: 'Generated external access token',
       portalTokenDescription: 'This code allows the member to log into the member portal (flights, balance, packs).',
+      portalAccess: 'Member portal access',
       copyToken: 'Copy code',
       tokenCopied: 'Code copied!',
+      generating: 'Generating…',
+      tokenWarning: 'This code will no longer be displayed after page reload. Copy it and send it to the member.',
       regenerateToken: 'Regenerate code',
       disablePortal: 'Disable portal',
       portalActive: 'Member portal active',
@@ -1209,12 +1233,63 @@ export const en = {
   },
   banque: {
     workspace: {
+      finance: {
+        title: 'Finance',
+        description: 'Banking operations, sales, purchases, pricing and accounting.',
+        tabs: {
+          overview: 'Overview',
+          operations: 'Operations',
+          ventes: 'Sales',
+          achats: 'Purchases',
+          tarifs: 'Packs',
+          recurring: 'Recurring',
+          comptabilite: 'Accounting',
+          reconciliation: 'Reconciliation',
+          settings: 'Settings',
+        },
+        overview: {
+          title: 'Overview',
+          description: 'Key indicators and bank account balances.',
+        },
+        reconciliation: {
+          title: 'Bank reconciliation',
+          description: 'Import bank statements, match entries and resolve discrepancies.',
+        },
+      },
       sales: {
-        title: 'Sales & Purchases',
-        description: 'Member billing and supplier invoices.',
+        title: 'Sales',
+        description: 'Member billing, sales entries, invoices and payments.',
         tabs: {
           sales: 'Sales',
-          suppliers: 'Supplier invoices',
+          entries: 'Sales entries',
+          invoices: 'Invoices',
+          payments: 'Payments',
+        },
+        invoices: {
+          title: 'Issued invoices',
+          description: 'History of invoices generated for members.',
+        },
+        payments: {
+          title: 'Received payments',
+          description: 'Collections and tracking of member settlements.',
+        },
+      },
+      purchases: {
+        title: 'Purchases',
+        description: 'Supplier invoices and supplier directory.',
+        tabs: {
+          invoices: 'Supplier invoices',
+          suppliers: 'Suppliers',
+        },
+      },
+      accounting: {
+        title: 'Accounting',
+        description: 'Journal, fiscal years, chart of accounts and reports.',
+        tabs: {
+          journal: 'Journal',
+          fiscalYears: 'Fiscal years',
+          pcg: 'Chart of accounts',
+          reports: 'Reports',
         },
       },
       banque: {
@@ -1934,12 +2009,46 @@ export const en = {
         reset: 'Reset',
         statusActive: 'Active',
         statusInactive: 'Inactive',
+        cancel: 'Cancel',
+        close: 'Close',
+        deleted: 'Model deleted.',
         recurrence: {
           label: 'Recurrence',
           manual: 'Manual',
           monthly: 'Monthly',
           quarterly: 'Quarterly',
           yearly: 'Yearly',
+        },
+        recurring: {
+          validFrom: 'Valid from',
+          validUntil: 'Valid until',
+          nextScheduled: 'Next scheduled date',
+          lastGenerated: 'Last generated',
+          generateNow: 'Generate now',
+          preview: 'Preview',
+          generateDue: 'Generate due entries ({{count}})',
+          generateDescription: 'The entry will be created as Draft and visible in the journal.',
+          targetDate: 'Target date',
+          newModel: 'New model',
+          previousPeriodHint: 'Amount based on the previous period',
+          roundingHint: 'Computed automatically to balance the entry',
+          formulaType: {
+            fixed: 'Fixed amount',
+            percentage: 'Percentage',
+            previousPeriod: 'Previous period',
+            rounding: 'Rounding adjustment',
+          },
+          kpi: {
+            total: 'Models',
+            active: 'Active',
+            due: 'Due',
+          },
+          result: {
+            success: 'Entry {{reference}} created as Draft (fiscal year {{fiscalYear}})',
+            alreadyExists: 'Entry {{reference}} already exists',
+            noFiscalYear: 'No open fiscal year for date {{date}} — generation blocked',
+            error: 'Error: {{message}}',
+          },
         },
       },
     },
@@ -2477,6 +2586,45 @@ export const en = {
       filterAll: 'All',
       filterApply: 'Filter',
       filterClear: 'Clear filters',
+    },
+  },
+  vi: {
+    workspace: {
+      title: 'VI & HelloAsso',
+      description: 'Flight initiation vouchers, HelloAsso purchases and Planche sync.',
+      tabs: {
+        entitlements: 'VI Rights',
+        types: 'VI Types',
+        planning: 'Planning',
+        purchases: 'HelloAsso purchases',
+        import: 'VI import',
+        sync: 'Planche sync',
+      },
+    },
+  },
+  rh: {
+    workspace: {
+      rh: {
+        title: 'Human resources',
+        description: 'Leave planning, attendance tracking and internal directory.',
+        tabs: {
+          leaves: 'Leave planning',
+          attendance: 'Attendance',
+          team: 'Team',
+        },
+        leaves: {
+          title: 'Leave planning',
+          description: 'View and manage leave requests by period.',
+        },
+        attendance: {
+          title: 'Time tracking',
+          description: 'Record attendance and working hours.',
+        },
+        team: {
+          title: 'Internal directory',
+          description: 'List of salaried and volunteer team members.',
+        },
+      },
     },
   },
 } as const

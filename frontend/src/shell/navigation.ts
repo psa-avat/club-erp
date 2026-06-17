@@ -7,32 +7,28 @@ export type ShellNavItem = {
 }
 
 /**
- * Navigation structure ordonnée par fréquence d'usage métier
- * (déclarée par les utilisateurs — voir docs/PROMPT_MIGRATION_DESIGN.md).
+ * Navigation structure ordered by business usage frequency.
  *
- * Fréquence décroissante :
- *   1. Facturation des vols (Packs, Gesasso, OSRT)
- *   2. Gestion des VI (HelloAsso)
- *   3. Planning activité
- *   4. Gestion des membres (adhésions)
- *   5. Portail membres (logbooks / balance / dépenses)
- *   6. Ventes
- *   7. Achats
- *   8. Banque / écritures récurrentes
- *   9. RH (planning / congés)
- *  10. Compta (états / écritures)
- *  11. Machines (gestion de la dispo)
- *  12. Gestion des tarifs
- *  13. Bilans
- *  14. Admin / Configurations
+ * Groups (8 vs 15 previously):
+ *   1. Vols & Facturation
+ *   2. VI & HelloAsso
+ *   3. Planning
+ *   4. Membres
+ *   5. Finance (unified: banking + sales + purchases + accounting + pricing)
+ *   6. RH
+ *   7. Machines
+ *   8. Administration (absorbs integrations config)
  *
- * Chaque entrée peut être filtrée dynamiquement par requiredCapability.
+ * Removed from nav:
+ *   - Portail membres (external access, separate auth — use /member-portal/login directly)
+ *   - Bilans (duplicate of Finance > Comptabilité > Rapports)
+ *   - Intégrations standalone group (absorbed into Administration)
  */
 export const shellNavItems: ShellNavItem[] = [
   // ── 0. Tableau de bord ────────────────────────────────────────────────────
   { to: '/dashboard', labelKey: 'nav.dashboard' },
 
-  // ── 1. Facturation & Vols (priorité #1) ───────────────────────────────────
+  // ── 1. Vols & Facturation (priorité #1) ───────────────────────────────────
   {
     to: '/workspace/flights',
     labelKey: 'nav.billingFlights',
@@ -64,6 +60,7 @@ export const shellNavItems: ShellNavItem[] = [
   { to: '/planning', labelKey: 'nav.planning' },
 
   // ── 4. Membres (priorité #4) ──────────────────────────────────────────────
+  // Fiches tab removed — annual config absorbed into Réinscription (Phase C)
   {
     to: '/workspace/members',
     labelKey: 'nav.members',
@@ -71,58 +68,25 @@ export const shellNavItems: ShellNavItem[] = [
     children: [
       { to: '/workspace/members', labelKey: 'nav.directory', requiredCapability: 'MANAGE_USERS' },
       { to: '/workspace/members?tab=commissions', labelKey: 'nav.committees', requiredCapability: 'MANAGE_USERS' },
-      { to: '/workspace/members?tab=fiches', labelKey: 'nav.sheets', requiredCapability: 'MANAGE_USERS' },
       { to: '/workspace/members?tab=reinscription', labelKey: 'nav.onlineRenewal', requiredCapability: 'MANAGE_USERS' },
+      { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
 
-  // ── 5. Portail membres (priorité #5) ───────────────────────────────────────
-  {
-    to: '/member-portal/workspace',
-    labelKey: 'nav.memberPortal',
-    children: [
-      { to: '/member-portal/workspace', labelKey: 'nav.portalDashboard' },
-      { to: '/member-portal/workspace?tab=logbook', labelKey: 'nav.portalLogbook' },
-      { to: '/member-portal/workspace?tab=account', labelKey: 'nav.portalAccount' },
-      { to: '/member-portal/workspace?tab=packs', labelKey: 'nav.portalPacks' },
-      { to: '/member-portal/workspace?tab=availability', labelKey: 'nav.portalAvailability' },
-    ],
-  },
-
-  // ── 6. Ventes (priorité #6) ────────────────────────────────────────────────
-  {
-    to: '/workspace/sales',
-    labelKey: 'nav.sales',
-    requiredCapability: 'VIEW_FINANCIALS',
-    children: [
-      { to: '/workspace/sales', labelKey: 'nav.memberSales' },
-      { to: '/workspace/sales?tab=factures', labelKey: 'nav.salesInvoices' },
-      { to: '/workspace/sales?tab=paiements', labelKey: 'nav.salesPayments' },
-    ],
-  },
-
-  // ── 7. Achats (priorité #7) ────────────────────────────────────────────────
-  {
-    to: '/workspace/purchases',
-    labelKey: 'nav.purchases',
-    requiredCapability: 'VIEW_FINANCIALS',
-    children: [
-      { to: '/workspace/purchases', labelKey: 'nav.supplierInvoices' },
-      { to: '/workspace/purchases?tab=fournisseurs', labelKey: 'nav.supplierDirectory' },
-    ],
-  },
-
-  // ── 8. Banque — opérations financières (priorité #8) ───────────────────────
+  // ── 5. Finance — workspace unifié (priorité #5) ────────────────────────────
+  // Tous les enfants pointent vers /workspace/finance?tab=xxx (Phase B complète).
   {
     to: '/workspace/finance',
-    labelKey: 'nav.banking',
+    labelKey: 'nav.finance',
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
-      { to: '/workspace/finance', labelKey: 'nav.banqueOverview' },
-      { to: '/workspace/finance?tab=operations', labelKey: 'nav.banqueOps' },
-      { to: '/workspace/finance?tab=packs', labelKey: 'nav.packs' },
-      { to: '/workspace/finance?tab=recurring', labelKey: 'nav.banqueRecurring' },
-      { to: '/workspace/finance?tab=rapprochement', labelKey: 'nav.banqueReconciliation' },
+      { to: '/workspace/finance', labelKey: 'nav.financeOverview' },
+      { to: '/workspace/finance?tab=operations', labelKey: 'nav.financeOps' },
+      { to: '/workspace/finance?tab=ventes', labelKey: 'nav.financeSales' },
+      { to: '/workspace/finance?tab=achats', labelKey: 'nav.financeAchats' },
+      { to: '/workspace/finance?tab=tarifs', labelKey: 'nav.financeTarifs' },
+      { to: '/workspace/finance?tab=comptabilite', labelKey: 'nav.financeComptabilite' },
+      { to: '/workspace/finance?tab=parametres', labelKey: 'nav.financeSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 
@@ -137,20 +101,23 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
-  // ── 10. Comptabilité (priorité #10) ────────────────────────────────────────
+  // ── 7. Tarifs (priorité #7) ───────────────────────────────────────────────
+  // Regroupe les trois facettes de la tarification :
+  //   - Grille globale (versions par exercice, tarifs non liés à un actif)
+  //   - Packs (catalogue de produits / forfaits)
+  //   - Tarifs machine (par aéronef)
   {
-    to: '/workspace/accounting',
-    labelKey: 'nav.accounting',
-    requiredCapability: 'VIEW_FINANCIALS',
+    to: '/banque/pricing',
+    labelKey: 'nav.tarifs',
+    requiredCapability: 'MANAGE_PRICES',
     children: [
-      { to: '/workspace/accounting', labelKey: 'nav.banqueJournal' },
-      { to: '/workspace/accounting?tab=exercices', labelKey: 'nav.banqueFiscalYears' },
-      { to: '/workspace/accounting?tab=pcg', labelKey: 'nav.banquePcg' },
-      { to: '/workspace/accounting?tab=rapports', labelKey: 'nav.banqueReports' },
+      { to: '/banque/pricing', labelKey: 'nav.tarifsGrid', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/finance?tab=tarifs', labelKey: 'nav.tarifsPacks', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/machines?tab=tarifs', labelKey: 'nav.tarifsMachines', requiredCapability: 'MANAGE_PRICES' },
     ],
   },
 
-  // ── 11. Machines (priorité #11) ────────────────────────────────────────────
+  // ── 8. Machines (priorité #8) ─────────────────────────────────────────────
   {
     to: '/workspace/machines',
     labelKey: 'nav.machines',
@@ -158,29 +125,12 @@ export const shellNavItems: ShellNavItem[] = [
     children: [
       { to: '/workspace/machines', labelKey: 'nav.equipment', requiredCapability: 'MANAGE_ASSETS' },
       { to: '/workspace/machines?tab=types', labelKey: 'nav.assetTypes', requiredCapability: 'MANAGE_ASSETS' },
-      { to: '/workspace/machines?tab=tarifs', labelKey: 'nav.assetPricing', requiredCapability: 'MANAGE_PRICES' },
-    ],
-  },
-
-  // ── 12. Tarifs (priorité #12) ──────────────────────────────────────────────
-  { to: '/pricing', labelKey: 'nav.pricing' },
-
-  // ── 13. Bilans (priorité #13) ──────────────────────────────────────────────
-  { to: '/workspace/accounting?tab=rapports', labelKey: 'nav.reports' },
-
-  // ── 14. Intégrations techniques ────────────────────────────────────────────
-  {
-    to: '/planche',
-    labelKey: 'nav.integrations',
-    children: [
-      { to: '/planche/members-push', labelKey: 'nav.plancheMembersPush', requiredCapability: 'MANAGE_PLANCHE' },
       { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_PLANCHE' },
-      { to: '/integrations/gesasso', labelKey: 'nav.gesassoSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/integrations/osrt', labelKey: 'nav.osrtSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 
-  // ── 15. Administration (priorité #14) ─────────────────────────────────────
+  // ── 10. Administration (priorité #10) ─────────────────────────────────────
+  // Absorbs: former Intégrations standalone group (planche push, gesasso, osrt)
   {
     to: '/admin',
     labelKey: 'nav.administration',
