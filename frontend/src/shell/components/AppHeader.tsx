@@ -18,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Bell, Search, ChevronDown } from "lucide-react";
@@ -34,6 +34,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/auth/store/authStore";
 import { useCurrentUser, useLogout } from "@/auth/api/useAuth";
 import { ChangePasswordDialog } from "@/auth/components/ChangePasswordDialog";
@@ -67,20 +75,22 @@ function FiscalYearSelector({ fiscalYears, activeFiscalYearUuid, onSelect }: Fis
   return (
     <div className="flex items-center gap-1.5">
       {activeFY ? (
-        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${fyStateBadgeClass(activeFY.state)}`}>
+        <Badge className={fyStateBadgeClass(activeFY.state)} variant="outline">
           {fyStateLabel(activeFY.state)}
-        </span>
+        </Badge>
       ) : null}
-      <select
-        aria-label="Fiscal year"
-        className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
-        value={activeFiscalYearUuid ?? ""}
-        onChange={(e) => { if (e.target.value) onSelect(e.target.value); }}
-      >
-        {fiscalYears.map((fy) => (
-          <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
-        ))}
-      </select>
+      <Select value={activeFiscalYearUuid ?? ""} onValueChange={onSelect}>
+        <SelectTrigger className="h-8 w-28 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {fiscalYears.map((fy) => (
+            <SelectItem key={fy.uuid} value={fy.uuid} className="text-xs">
+              {fy.code}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -93,9 +103,7 @@ export function AppHeader() {
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const logoutMutation = useLogout();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const meQuery = useCurrentUser(Boolean(token));
   const canChangePassword = meQuery.data?.can_change_password !== false;
@@ -113,18 +121,7 @@ export function AppHeader() {
     }
   }, [activeFiscalYearUuid, activeFiscalYearQuery.data, setActiveFiscalYear]);
 
-  useEffect(() => {
-    function handleOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
-
   async function handleLogout() {
-    setMenuOpen(false);
     await logoutMutation.mutateAsync();
     navigate("/", { replace: true });
   }
@@ -145,15 +142,15 @@ export function AppHeader() {
 
       <div className="ml-auto flex items-center gap-2">
         {/* Language switcher */}
-        <select
-          aria-label="Language"
-          className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
-          value={i18n.language}
-          onChange={(event) => { void i18n.changeLanguage(event.target.value); }}
-        >
-          <option value="fr">FR</option>
-          <option value="en">EN</option>
-        </select>
+        <Select value={i18n.language} onValueChange={(v) => { void i18n.changeLanguage(v); }}>
+          <SelectTrigger className="h-8 w-16 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fr" className="text-xs">FR</SelectItem>
+            <SelectItem value="en" className="text-xs">EN</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Fiscal year selector (authenticated only) */}
         {token && fiscalYears.length > 0 ? (
@@ -175,43 +172,41 @@ export function AppHeader() {
 
         {/* User menu */}
         {token ? (
-          <div className="relative" ref={menuRef}>
-            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2 px-1.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-                    {initials}
-                  </div>
-                  <span className="hidden text-xs text-foreground md:inline">
-                    {user?.prenom} {user?.nom}
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col">
-                    <span>{user?.prenom} {user?.nom}</span>
-                    <span className="text-xs font-normal text-muted-foreground">{user?.email}</span>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {canChangePassword ? (
-                  <DropdownMenuItem onClick={() => { setMenuOpen(false); setShowChangePassword(true); }}>
-                    {t("auth.changePassword.title")}
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  disabled={logoutMutation.isPending}
-                  onClick={() => { void handleLogout(); }}
-                  className="text-destructive focus:text-destructive"
-                >
-                  {logoutMutation.isPending ? t("auth.logoutLoading") : t("auth.logout")}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2 px-1.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                  {initials}
+                </div>
+                <span className="hidden text-xs text-foreground md:inline">
+                  {user?.prenom} {user?.nom}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>{user?.prenom} {user?.nom}</span>
+                  <span className="text-xs font-normal text-muted-foreground">{user?.email}</span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {canChangePassword ? (
+                <DropdownMenuItem onClick={() => setShowChangePassword(true)}>
+                  {t("auth.changePassword.title")}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+              ) : null}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={logoutMutation.isPending}
+                onClick={() => { void handleLogout(); }}
+                className="text-destructive focus:text-destructive"
+              >
+                {logoutMutation.isPending ? t("auth.logoutLoading") : t("auth.logout")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button size="sm" onClick={() => navigate("/login")}>
             {t("auth.login")}

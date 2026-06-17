@@ -34,13 +34,13 @@ function EmptyState({ icon, title, description, action, className }: EmptyStateP
   return (
     <div className={cn('flex flex-col items-center justify-center py-12 text-center', className)}>
       {icon && (
-        <div aria-hidden="true" className="mb-3 text-4xl text-on-surface-variant">
+        <div aria-hidden="true" className="mb-3 text-4xl text-muted-foreground">
           {icon}
         </div>
       )}
-      <h3 className="text-sm font-medium text-on-surface">{title}</h3>
+      <h3 className="text-sm font-medium text-foreground">{title}</h3>
       {description && (
-        <p className="mt-1 max-w-xs text-sm text-on-surface-variant">{description}</p>
+        <p className="mt-1 max-w-xs text-sm text-muted-foreground">{description}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
     </div>

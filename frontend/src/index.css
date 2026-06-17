@@ -91,7 +91,6 @@
   --sidebar-border: oklch(0.26 0.04 260);
   --sidebar-ring: oklch(0.62 0.18 255);
 
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -139,6 +138,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
     font-feature-settings: "cv11", "ss01";
   }
   .tabular {
