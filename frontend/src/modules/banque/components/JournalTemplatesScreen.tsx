@@ -478,7 +478,7 @@ export function JournalTemplatesScreen() {
 
       {/* ── Template Editor Sheet ────────────────────────────────────────── */}
       <Sheet open={isEditorOpen} onOpenChange={(open) => { if (!open) closeEditor() }}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-3xl">
+        <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-5xl">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle>
               {selectedModelUuid

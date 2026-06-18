@@ -19,7 +19,7 @@
  */
 import { useMemo, useState } from 'react'
 
-import { Dialog } from '../../../components/ui/dialog'
+import { Dialog, DialogContent } from '../../../components/ui/dialog'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
@@ -76,11 +76,9 @@ export function ReversalDialog({
     <Dialog
       open={open}
       onClose={handleClose}
-      className="max-w-4xl"
-      aria-labelledby="reversal-dialog-title"
-      aria-describedby="reversal-dialog-description"
     >
-      <div className="p-6">
+      <DialogContent className="sm:max-w-4xl" aria-labelledby="reversal-dialog-title" aria-describedby="reversal-dialog-description">
+        <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="reversal-dialog-title" className="text-lg font-semibold text-on-surface">
@@ -171,6 +169,7 @@ export function ReversalDialog({
           </Button>
         </div>
       </div>
+      </DialogContent>
     </Dialog>
   )
 }

@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
-import { Dialog } from '../../../components/ui/dialog'
+import { Dialog, DialogContent } from '../../../components/ui/dialog'
 import {
   useMachinesPushMutation,
   useMachinesPushPreviewQuery,
@@ -175,10 +175,9 @@ export function PlancheMachinesPushPage() {
       <Dialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        aria-labelledby="planche-machines-push-confirm-title"
-        aria-describedby="planche-machines-push-confirm-body"
       >
-        <div className="space-y-4 p-6">
+        <DialogContent className="sm:max-w-md" aria-labelledby="planche-machines-push-confirm-title" aria-describedby="planche-machines-push-confirm-body">
+          <div className="space-y-4">
           <h2 id="planche-machines-push-confirm-title" className="text-lg font-semibold text-slate-900">
             {t('machinesPush.confirm.title')}
           </h2>
@@ -201,6 +200,7 @@ export function PlancheMachinesPushPage() {
             </Button>
           </div>
         </div>
+        </DialogContent>
       </Dialog>
     </section>
   )

@@ -21,7 +21,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import Decimal from 'decimal.js'
 
-import { Dialog } from '../../../components/ui/dialog'
+import { Dialog, DialogContent } from '../../../components/ui/dialog'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
@@ -170,10 +170,9 @@ export function SettlePaymentDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      aria-labelledby="settle-payment-title"
-      className="w-full max-w-md"
     >
-      <div className="space-y-5 p-6">
+      <DialogContent className="sm:max-w-md" aria-labelledby="settle-payment-title">
+        <div className="space-y-5">
         <div>
           <h2 id="settle-payment-title" className="text-lg font-semibold text-slate-900">
             {t('ops.suppliers.settleTitle')}
@@ -270,6 +269,7 @@ export function SettlePaymentDialog({
           </Button>
         </div>
       </div>
+      </DialogContent>
     </Dialog>
   )
 }

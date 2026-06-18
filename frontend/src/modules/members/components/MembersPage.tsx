@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
-import { Dialog } from '../../../components/ui/dialog'
+import { Dialog, DialogContent } from '../../../components/ui/dialog'
 import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
@@ -1006,8 +1006,9 @@ export function MembersPage() {
           </Card>
         </div>
       ) : null}
-      <Dialog open={registrationDialogOpen} onClose={() => setRegistrationDialogOpen(false)} aria-labelledby="registration-checklist-title">
-        <div className="space-y-5 p-5">
+      <Dialog open={registrationDialogOpen} onClose={() => setRegistrationDialogOpen(false)}>
+        <DialogContent className="sm:max-w-lg" aria-labelledby="registration-checklist-title">
+          <div className="space-y-5">
           <div className="space-y-1">
             <h2 id="registration-checklist-title" className="text-lg font-semibold text-slate-900">
               {t('registrationWizard.title', { year: selectedYear })}
@@ -1112,7 +1113,8 @@ export function MembersPage() {
               {t('actions.completeRegistration')}
             </Button>
           </div>
-        </div>
+      </div>
+        </DialogContent>
       </Dialog>
       {showImportDialog && (
         <ImportDialog

@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
-import { Dialog } from '../../../components/ui/dialog'
+import { Dialog, DialogContent } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
@@ -421,10 +421,9 @@ export function PlancheFlightsPullPage() {
       <Dialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        aria-labelledby="planche-flights-fetch-confirm-title"
-        aria-describedby="planche-flights-fetch-confirm-body"
       >
-        <div className="space-y-4 p-6">
+        <DialogContent className="sm:max-w-md" aria-labelledby="planche-flights-fetch-confirm-title" aria-describedby="planche-flights-fetch-confirm-body">
+          <div className="space-y-4">
           <h2 id="planche-flights-fetch-confirm-title" className="text-lg font-semibold text-slate-900">
             {t('flightsFetch.confirm.title')}
           </h2>
@@ -478,6 +477,7 @@ export function PlancheFlightsPullPage() {
             </Button>
           </div>
         </div>
+        </DialogContent>
       </Dialog>
     </section>
   )

@@ -20,7 +20,7 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Dialog } from '../../../components/ui/dialog'
+import { Dialog, DialogContent } from '../../../components/ui/dialog'
 import { Button } from '../../../components/ui/button'
 import { Label } from '../../../components/ui/label'
 import type {
@@ -136,10 +136,9 @@ export function AccountingImportDialog({
     <Dialog
       open={open}
       onClose={handleClose}
-      className="max-w-3xl"
-      aria-labelledby="import-dialog-title"
     >
-      <div className="p-6">
+      <DialogContent className="sm:max-w-3xl" aria-labelledby="import-dialog-title">
+        <div className="space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -311,6 +310,7 @@ export function AccountingImportDialog({
           </div>
         )}
       </div>
+    </DialogContent>
     </Dialog>
   )
 }

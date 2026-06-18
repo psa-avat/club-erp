@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
-import { Dialog } from '../../../components/ui/dialog'
+import { Sheet, SheetContent } from '../../../components/ui/sheet'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
@@ -87,13 +87,13 @@ function RosterPanel({ open, onClose, committee, year }: RosterPanelProps) {
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      aria-labelledby="roster-panel-title"
-      className="ml-auto mr-0 flex h-[100vh] max-h-[100vh] max-w-md flex-col overflow-hidden rounded-none"
-    >
-      <div className="flex h-full flex-col">
+    <Sheet open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="flex h-full max-h-screen w-full max-w-md flex-col p-0"
+        aria-labelledby="roster-panel-title"
+      >
+        <div className="flex h-full flex-col">
         <div className="border-b border-outline-variant px-6 py-4">
           <h2 id="roster-panel-title" className="text-base font-semibold text-on-surface">
             {t('committees.rosterTitle')} — {committee?.code}
@@ -135,8 +135,9 @@ function RosterPanel({ open, onClose, committee, year }: RosterPanelProps) {
             {t('actions.saveRoster')}
           </Button>
         </div>
-      </div>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -178,40 +179,40 @@ function CommitteeFormPanel({ open, onClose, committee, members }: CommitteeForm
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      aria-labelledby="committee-form-title"
-      className="ml-auto mr-0 flex h-[100vh] max-h-[100vh] max-w-md flex-col overflow-hidden rounded-none"
-    >
-      <div className="flex h-full flex-col">
-        <div className="border-b border-outline-variant px-6 py-4">
-          <h2 id="committee-form-title" className="text-base font-semibold text-on-surface">
-            {committee ? t('actions.saveCommittee') : t('actions.createCommittee')}
-          </h2>
-        </div>
+    <Sheet open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="flex h-full max-h-screen w-full max-w-md flex-col p-0"
+        aria-labelledby="committee-form-title"
+      >
+        <div className="flex h-full flex-col">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 id="committee-form-title" className="text-base font-semibold text-on-surface">
+              {committee ? t('actions.saveCommittee') : t('actions.createCommittee')}
+            </h2>
+          </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {(createMutation.error ?? updateMutation.error) ? (
-            <Alert className="mb-4">
-              {toErrorMessage(createMutation.error ?? updateMutation.error)}
-            </Alert>
-          ) : null}
-          <form id="committee-form" className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
-            <TextField
-              id="cmgmt-code"
-              label={t('committees.code')}
-              value={form.code}
-              onChange={(value) => setForm({ ...form, code: value.toUpperCase() })}
-            />
-            <TextField
-              id="cmgmt-budget"
-              label={t('committees.budget')}
-              value={form.budget_amount}
-              onChange={(value) => setForm({ ...form, budget_amount: value })}
-            />
-            <TextField
-              id="cmgmt-last-meeting"
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {(createMutation.error ?? updateMutation.error) ? (
+              <Alert className="mb-4">
+                {toErrorMessage(createMutation.error ?? updateMutation.error)}
+              </Alert>
+            ) : null}
+            <form id="committee-form" className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+              <TextField
+                id="cmgmt-code"
+                label={t('committees.code')}
+                value={form.code}
+                onChange={(value) => setForm({ ...form, code: value.toUpperCase() })}
+              />
+              <TextField
+                id="cmgmt-budget"
+                label={t('committees.budget')}
+                value={form.budget_amount}
+                onChange={(value) => setForm({ ...form, budget_amount: value })}
+              />
+              <TextField
+                id="cmgmt-last-meeting"
               type="date"
               label={t('committees.lastMeeting')}
               value={form.last_meeting_date}
@@ -270,8 +271,9 @@ function CommitteeFormPanel({ open, onClose, committee, members }: CommitteeForm
             {committee ? t('actions.saveCommittee') : t('actions.createCommittee')}
           </Button>
         </div>
-      </div>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
