@@ -81,7 +81,6 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'VIEW_FINANCIALS',
     children: [
       { to: '/workspace/finance', labelKey: 'nav.financeOverview' },
-      { to: '/workspace/finance?tab=operations', labelKey: 'nav.financeOps' },
       { to: '/workspace/finance?tab=ventes', labelKey: 'nav.financeSales' },
       { to: '/workspace/finance?tab=achats', labelKey: 'nav.financeAchats' },
       { to: '/workspace/finance?tab=tarifs', labelKey: 'nav.financeTarifs' },

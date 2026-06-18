@@ -121,7 +121,7 @@ function App() {
           <Route path="/banque" element={<Navigate replace to="/workspace/finance" />} />
           <Route path="/workspace/banque" element={<Navigate replace to="/workspace/finance" />} />
           <Route path="/banque/dashboard" element={<Navigate replace to="/workspace/finance" />} />
-          <Route path="/banque/operations" element={<Navigate replace to="/workspace/finance?tab=operations" />} />
+          <Route path="/banque/operations" element={<Navigate replace to="/workspace/finance" />} />
           <Route path="/banque/facturation-membres" element={<Navigate replace to="/workspace/finance?tab=ventes" />} />
           <Route path="/banque/journal" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=journal" />} />
           <Route path="/banque/journal/entries" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=journal" />} />

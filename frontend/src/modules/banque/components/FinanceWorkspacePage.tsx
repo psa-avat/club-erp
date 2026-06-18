@@ -21,7 +21,6 @@
 
 import { useTranslation } from "react-i18next";
 import {
-  ArrowLeftRight,
   BarChart3,
   Banknote,
   Building2,
@@ -40,7 +39,6 @@ import { WorkspaceShell, SubWorkspaceShell } from "@/components/ui/workspace-she
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
 
-import { BanqueDailyOpsPage } from "./BanqueDailyOpsPage";
 import { PackDefinitionsPage } from "./PackDefinitionsPage";
 import { BanqueJournalTemplatesPage } from "./BanqueJournalTemplatesPage";
 import { BanqueSettingsPage } from "./BanqueSettingsPage";
@@ -190,12 +188,6 @@ export function FinanceWorkspacePage() {
               eta="Phase 7"
             />
           ),
-        },
-        {
-          value: "operations",
-          label: t("workspace.finance.tabs.operations", "Opérations"),
-          icon: ArrowLeftRight,
-          content: <BanqueDailyOpsPage />,
         },
         {
           value: "ventes",

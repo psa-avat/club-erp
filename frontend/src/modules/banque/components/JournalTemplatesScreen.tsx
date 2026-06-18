@@ -87,7 +87,6 @@ import {
   type PreviewResponse,
 } from '../api'
 import {
-  JournalPageShell,
   LineEditor,
   RECURRENCE_OPTIONS,
   buildModelLines,
@@ -108,7 +107,6 @@ function fmtEUR(n: number) {
 export function JournalTemplatesScreen() {
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
-  const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
   const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
 
   const journalsQuery = useJournalsQuery(canView)
@@ -126,7 +124,7 @@ export function JournalTemplatesScreen() {
   const [localError, setLocalError] = useState<string | null>(null)
 
   // Dialog state
-  const [editingTemplate, setEditingTemplate] = useState<AccountingEntryModel | null>(null)
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [previewingTemplate, setPreviewingTemplate] = useState<AccountingEntryModel | null>(null)
   const [previewData, setPreviewData] = useState<PreviewResponse | null>(null)
   const [generatingTemplate, setGeneratingTemplate] = useState<AccountingEntryModel | null>(null)
@@ -163,20 +161,20 @@ export function JournalTemplatesScreen() {
   // ── Dialog handlers ────────────────────────────────────────────────────────
 
   function openNewTemplate() {
-    setEditingTemplate(null)
     setSelectedModelUuid(null)
     setModelForm((prev) => ({ ...emptyModelForm(), journal_uuid: prev.journal_uuid }))
+    setIsEditorOpen(true)
   }
 
   function openEditTemplate(model: AccountingEntryModel) {
-    setEditingTemplate(model)
     setSelectedModelUuid(model.uuid)
     setModelForm(mapModelToForm(model))
     setLocalError(null)
+    setIsEditorOpen(true)
   }
 
   function closeEditor() {
-    setEditingTemplate(null)
+    setIsEditorOpen(false)
   }
 
   async function handleSaveModel() {
@@ -312,7 +310,7 @@ export function JournalTemplatesScreen() {
       : null)
 
   return (
-    <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
+    <>
       <ConfirmDialog
         open={confirmDeleteUuid !== null}
         title={t('journal.models.confirmDeleteTitle')}
@@ -328,32 +326,22 @@ export function JournalTemplatesScreen() {
       {anyError && <Alert>{anyError}</Alert>}
 
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        {/* ── Page Header ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {t('journal.models.listTitle')}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('journal.models.listDescription')}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => void handleGenerateAll()}
-              disabled={kpis.due === 0 || generateDueMutation.isPending}
-            >
-              <CalendarClock className="mr-2 h-4 w-4" />
-              {t('journal.models.recurring.generateDue', { count: kpis.due })}
+        {/* ── Actions ─────────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void handleGenerateAll()}
+            disabled={kpis.due === 0 || generateDueMutation.isPending}
+          >
+            <CalendarClock className="mr-2 h-4 w-4" />
+            {t('journal.models.recurring.generateDue', { count: kpis.due })}
+          </Button>
+          {canManageModels && (
+            <Button onClick={openNewTemplate}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t('journal.models.recurring.newModel')}
             </Button>
-            {canManageModels && (
-              <Button onClick={openNewTemplate}>
-                <Plus className="mr-2 h-4 w-4" />
-                {t('journal.models.recurring.newModel')}
-              </Button>
-            )}
-          </div>
+          )}
         </div>
 
         {/* ── KPI Cards ──────────────────────────────────────────────────── */}
@@ -489,7 +477,7 @@ export function JournalTemplatesScreen() {
       </div>
 
       {/* ── Template Editor Sheet ────────────────────────────────────────── */}
-      <Sheet open={editingTemplate !== null} onOpenChange={(open) => { if (!open) closeEditor() }}>
+      <Sheet open={isEditorOpen} onOpenChange={(open) => { if (!open) closeEditor() }}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-3xl">
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle>
@@ -780,6 +768,6 @@ export function JournalTemplatesScreen() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </JournalPageShell>
+    </>
   )
 }

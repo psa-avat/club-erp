@@ -26,7 +26,7 @@ export function BanqueJournalTemplatesPage() {
   const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
 
   if (!canManageModels) {
-    return <Navigate replace to="/banque/journal/entries" />
+    return <Navigate replace to="/workspace/finance?tab=comptabilite&subtab=journal" />
   }
 
   return <JournalTemplatesScreen />
