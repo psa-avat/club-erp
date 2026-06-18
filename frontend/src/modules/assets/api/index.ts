@@ -41,7 +41,6 @@ import type {
   UpdateFlightTypePayload,
   UpdatePricingItemPayload,
 } from '../types'
-import { banqueQueryKeys } from '../../banque/api'
 
 // ── Query Keys ────────────────────────────────────────────────────────────────
 
@@ -52,8 +51,8 @@ export const assetsQueryKeys = {
   list: (filters: AssetFilters) => ['assets', 'list', filters] as const,
   detail: (uuid: string) => ['assets', 'detail', uuid] as const,
   statusHistory: (uuid: string) => ['assets', 'status-history', uuid] as const,
-  pricingVersions: (assetTypeUuid: string, fyUuid: string) =>
-    ['assets', 'pricing-versions', assetTypeUuid, fyUuid] as const,
+  pricingVersions: (assetTypeUuid: string) =>
+    ['assets', 'pricing-versions', assetTypeUuid] as const,
   pricingItems: (versionUuid: string) => ['assets', 'pricing-items', versionUuid] as const,
 }
 
@@ -253,18 +252,17 @@ export function useTransitionAssetStatusMutation(uuid: string) {
 
 export function useAssetPricingVersionsQuery(
   assetTypeUuid: string | null,
-  fiscalYearUuid: string | null,
   enabled = true,
 ) {
   return useQuery({
-    queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid ?? '', fiscalYearUuid ?? ''),
-    enabled: enabled && Boolean(assetTypeUuid) && Boolean(fiscalYearUuid),
+    queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid ?? ''),
+    enabled: enabled && Boolean(assetTypeUuid),
     queryFn: async () => {
       const { data } = await apiClient.get<AssetPricingVersion[]>(
         '/api/v1/accounting/pricing/versions',
         {
           ...getAuthRequestConfig(),
-          params: { fiscal_year_uuid: fiscalYearUuid, asset_type_uuid: assetTypeUuid },
+          params: { asset_type_uuid: assetTypeUuid },
         },
       )
       return data
@@ -272,7 +270,7 @@ export function useAssetPricingVersionsQuery(
   })
 }
 
-export function useCreateAssetPricingVersionMutation(fiscalYearUuid: string, assetTypeUuid: string) {
+export function useCreateAssetPricingVersionMutation(assetTypeUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: {
@@ -284,22 +282,20 @@ export function useCreateAssetPricingVersionMutation(fiscalYearUuid: string, ass
     }) => {
       const { data } = await apiClient.post<AssetPricingVersion>(
         '/api/v1/accounting/pricing/versions',
-        { ...payload, fiscal_year_uuid: fiscalYearUuid, asset_type_uuid: assetTypeUuid },
+        { ...payload, asset_type_uuid: assetTypeUuid },
         getAuthRequestConfig(),
       )
       return data
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid, fiscalYearUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
       })
-      // Also refresh global pricing list in banque module
-      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions(fiscalYearUuid) })
     },
   })
 }
 
-export function useUpdateAssetPricingVersionMutation(fiscalYearUuid: string, assetTypeUuid: string) {
+export function useUpdateAssetPricingVersionMutation(assetTypeUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: {
@@ -320,13 +316,13 @@ export function useUpdateAssetPricingVersionMutation(fiscalYearUuid: string, ass
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid, fiscalYearUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
       })
     },
   })
 }
 
-export function useDeleteAssetPricingVersionMutation(fiscalYearUuid: string, assetTypeUuid: string) {
+export function useDeleteAssetPricingVersionMutation(assetTypeUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (versionUuid: string) => {
@@ -337,13 +333,13 @@ export function useDeleteAssetPricingVersionMutation(fiscalYearUuid: string, ass
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid, fiscalYearUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
       })
     },
   })
 }
 
-export function useCloneAssetPricingVersionMutation(fiscalYearUuid: string, assetTypeUuid: string) {
+export function useCloneAssetPricingVersionMutation(assetTypeUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: {
@@ -363,7 +359,7 @@ export function useCloneAssetPricingVersionMutation(fiscalYearUuid: string, asse
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid, fiscalYearUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
       })
     },
   })

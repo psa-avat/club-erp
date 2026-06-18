@@ -46,7 +46,7 @@ import {
 export function BankPricingVersionEditPage() {
   const { fiscalYearUuid, versionUuid } = useParams<{ fiscalYearUuid: string; versionUuid: string }>()
   const navigate = useNavigate()
-  const { t } = useTranslation('banque')
+  const { t: tp } = useTranslation('pricing')
 
   const canView = useCapability('VIEW_FINANCIALS')
   const canManagePrices = useCapability('MANAGE_PRICES')
@@ -56,11 +56,11 @@ export function BankPricingVersionEditPage() {
   const selectedFy = (fiscalYearsQuery.data ?? []).find((fy) => fy.uuid === fiscalYearUuid) ?? null
 
   // Version data — fetched from the FY versions list (cached from the list page)
-  const versionsQuery = usePricingVersionsQuery(fiscalYearUuid ?? null, canView)
+  const versionsQuery = usePricingVersionsQuery(canView)
   const version = (versionsQuery.data ?? []).find((v) => v.uuid === versionUuid) ?? null
 
   // Mutations
-  const updateVersionMutation = useUpdatePricingVersionMutation(fiscalYearUuid ?? '')
+  const updateVersionMutation = useUpdatePricingVersionMutation()
 
   // UI state
   const [editingMeta, setEditingMeta] = useState(false)
@@ -73,7 +73,7 @@ export function BankPricingVersionEditPage() {
 
   function extractError(e: unknown): string {
     if (e instanceof AxiosError && e.response?.data?.detail) return String(e.response.data.detail)
-    return t('pricing.error.generic')
+    return tp('error.generic')
   }
 
   async function handleUpdateVersion(form: VersionFormState) {
@@ -106,12 +106,12 @@ export function BankPricingVersionEditPage() {
   if (!canView) {
     return (
       <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
-        <p className="text-sm text-on-surface-variant">{t('pricing.noPermission')}</p>
+        <p className="text-sm text-on-surface-variant">{tp('noPermission')}</p>
       </section>
     )
   }
 
-  const scope = version ? versionScopeLabel(version, t) : null
+  const scope = version ? versionScopeLabel(version, tp) : null
 
   return (
     <section className="space-y-4">
@@ -122,7 +122,7 @@ export function BankPricingVersionEditPage() {
           onClick={() => navigate('/banque/pricing')}
           className="hover:text-on-surface hover:underline"
         >
-          {t('pricing.title')}
+          {tp('title')}
         </button>
         <ChevronRight className="h-3.5 w-3.5 shrink-0" />
         <button
@@ -139,12 +139,12 @@ export function BankPricingVersionEditPage() {
       {/* Version metadata card */}
       <div className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
         {versionsQuery.isLoading || fiscalYearsQuery.isLoading ? (
-          <p className="text-sm text-on-surface-variant">{t('pricing.loading')}</p>
+          <p className="text-sm text-on-surface-variant">{tp('loading')}</p>
         ) : !version ? (
           <div className="space-y-3">
-            <p className="text-sm text-error">{t('pricing.version.notFound')}</p>
+            <p className="text-sm text-error">{tp('version.notFound')}</p>
             <Button size="sm" variant="ghost" onClick={() => navigate('/banque/pricing')}>
-              ← {t('pricing.title')}
+              ← {tp('title')}
             </Button>
           </div>
         ) : (
@@ -158,15 +158,15 @@ export function BankPricingVersionEditPage() {
                       {scope.label}
                     </span>
                   )}
-                  <VersionBadge status={version.status} t={t} />
+                  <VersionBadge status={version.status} />
                   {version.is_locked && (
                     <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
-                      {t('pricing.version.locked')}
+                      {tp('version.locked')}
                     </span>
                   )}
                 </div>
                 <p className="text-sm text-on-surface-variant">
-                  {version.from_date} → {version.to_date ?? t('pricing.version.openEnd')}
+                  {version.from_date} → {version.to_date ?? tp('version.openEnd')}
                   {selectedFy && <> · {selectedFy.label}</>}
                 </p>
               </div>
@@ -177,11 +177,10 @@ export function BankPricingVersionEditPage() {
                     version={version}
                     onActivate={() => setConfirmActivate(true)}
                     disabled={updateVersionMutation.isPending}
-                    t={t}
                   />
                   <Button size="sm" variant="secondary" onClick={() => setEditingMeta(true)}>
                     <Pencil className="mr-1 h-3.5 w-3.5" />
-                    {t('pricing.version.editMetaTitle')}
+                    {tp('version.editMetaTitle')}
                   </Button>
                 </div>
               )}
@@ -210,7 +209,6 @@ export function BankPricingVersionEditPage() {
                     status: version.status,
                   }}
                   saving={updateVersionMutation.isPending}
-                  t={t}
                   onSave={handleUpdateVersion}
                   onCancel={() => setEditingMeta(false)}
                 />
@@ -231,9 +229,9 @@ export function BankPricingVersionEditPage() {
       {confirmActivate && version && (
         <ConfirmDialog
           open={confirmActivate}
-          title={t('pricing.version.confirmActivateTitle')}
-          body={t('pricing.version.confirmActivateBody')}
-          confirmLabel={t('pricing.version.activate')}
+          title={tp('version.confirmActivateTitle')}
+          body={tp('version.confirmActivateBody')}
+          confirmLabel={tp('version.activate')}
           onConfirm={() => {
             setConfirmActivate(false)
             handleActivate()

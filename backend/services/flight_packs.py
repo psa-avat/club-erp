@@ -87,7 +87,6 @@ async def create_pack_definition(
         uuid=uuid4(),
         code=request.code,
         name=request.name,
-        fiscal_year_uuid=request.fiscal_year_uuid,
         pack_type=request.pack_type,
         quantity_allowance=request.quantity_allowance,
         quantity_unit=request.quantity_unit,
@@ -131,13 +130,10 @@ async def get_pack_definition(db: AsyncSession, pack_uuid: UUID) -> PackDefiniti
 
 async def list_pack_definitions(
     db: AsyncSession,
-    fiscal_year_uuid: UUID | None = None,
     pack_type: str | None = None,
 ) -> list[PackDefinition]:
-    """List pack definitions, optionally filtered."""
+    """List all pack definitions, optionally filtered by type."""
     stmt = select(PackDefinition).options(selectinload(PackDefinition.applicability))
-    if fiscal_year_uuid is not None:
-        stmt = stmt.where(PackDefinition.fiscal_year_uuid == fiscal_year_uuid)
     if pack_type is not None:
         stmt = stmt.where(PackDefinition.pack_type == pack_type)
     stmt = stmt.order_by(PackDefinition.priority.asc(), PackDefinition.code.asc())
@@ -344,6 +340,25 @@ async def get_member_pack_balance(
 # Pack Purchase Accounting
 # ---------------------------------------------------------------------------
 
+async def _resolve_fiscal_year_for_date(db: AsyncSession, ref_date: date) -> "AccountingFiscalYear":
+    """Return the open fiscal year that contains ref_date, or raise 422."""
+    from models import AccountingFiscalYear as FY
+    result = await db.execute(
+        select(FY).where(
+            FY.start_date <= ref_date,
+            FY.end_date >= ref_date,
+            FY.state == 1,  # OPEN
+        )
+    )
+    fy = result.scalar_one_or_none()
+    if fy is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"No open fiscal year found for date {ref_date}.",
+        )
+    return fy
+
+
 async def create_pack_purchase_entry(
     db: AsyncSession,
     member_uuid: UUID,
@@ -386,6 +401,8 @@ async def create_pack_purchase_entry(
     sales_account = await get_account(db, pack_definition.pack_sales_account_uuid)
 
     entry_uuid = uuid4()
+    ref_date = valid_from or date.today()
+    fy = await _resolve_fiscal_year_for_date(db, ref_date)
 
     # Create as Draft first (state=1) so the DB trigger allows line inserts
     description = f"Achat forfait {pack_definition.code} — {pack_definition.name}"
@@ -393,7 +410,7 @@ async def create_pack_purchase_entry(
         description += f" | VALID_FROM:{valid_from.isoformat()}"
     entry = AccountingEntry(
         uuid=entry_uuid,
-        fiscal_year_uuid=pack_definition.fiscal_year_uuid,
+        fiscal_year_uuid=fy.uuid,
         journal_uuid=vt_journal.uuid,
         entry_date=datetime.now(timezone.utc),
         reference=f"PACK-{pack_definition.code}",
@@ -407,7 +424,7 @@ async def create_pack_purchase_entry(
     # Line 1: Debit 411
     db.add(AccountingLine(
         uuid=uuid4(),
-        fiscal_year_uuid=pack_definition.fiscal_year_uuid,
+        fiscal_year_uuid=fy.uuid,
         entry_uuid=entry_uuid,
         account_uuid=receivable.uuid,
         member_uuid=member_uuid,
@@ -417,7 +434,7 @@ async def create_pack_purchase_entry(
     # Line 2: Credit sales account
     db.add(AccountingLine(
         uuid=uuid4(),
-        fiscal_year_uuid=pack_definition.fiscal_year_uuid,
+        fiscal_year_uuid=fy.uuid,
         entry_uuid=entry_uuid,
         account_uuid=sales_account.uuid,
         member_uuid=member_uuid,
@@ -615,12 +632,8 @@ async def _load_pack_context(
         pack_slots  : liste de _PackSlot triée par activated_at ASC
         pi_to_slots : dict pricing_item_uuid_str → [_PackSlot]
     """
-    # Charger les pack definitions de l'exercice
-    packs_result = await db.execute(
-        select(PackDefinition).where(
-            PackDefinition.fiscal_year_uuid == fiscal_year_uuid
-        )
-    )
+    # Charger toutes les pack definitions (plus de filtre par exercice)
+    packs_result = await db.execute(select(PackDefinition))
     pack_defs = list(packs_result.scalars().all())
 
     if not pack_defs:
@@ -661,7 +674,6 @@ async def _load_pack_context(
             AccountingEntry.reference.like("PACK-%"),
             AccountingLine.member_uuid == member_uuid,
             AccountingLine.credit > 0,          # ligne crédit = achat pack
-            PackDefinition.fiscal_year_uuid == fiscal_year_uuid,
         )
         .order_by(AccountingEntry.entry_date.asc())
     )

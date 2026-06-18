@@ -80,13 +80,12 @@ post_guard = Depends(require_capability(CAP_POST_ACCOUNTING_ENTRIES))
 
 @router.get("/definitions", response_model=list[PackDefinitionResponse])
 async def list_pack_definitions_endpoint(
-    fiscal_year_uuid: UUID | None = None,
     pack_type: str | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
-    """List all pack definitions, optionally filtered by fiscal year and/or pack type."""
-    return await list_pack_definitions(db, fiscal_year_uuid=fiscal_year_uuid, pack_type=pack_type)
+    """List all pack definitions, optionally filtered by pack type."""
+    return await list_pack_definitions(db, pack_type=pack_type)
 
 
 @router.post("/definitions", response_model=PackDefinitionResponse, status_code=status.HTTP_201_CREATED)
@@ -253,10 +252,9 @@ async def list_pack_purchases(
     List all pack purchases for a fiscal year, grouped by pack definition.
     Returns each purchase entry with member info, amounts, and consumption details.
     """
-    # Find all pack sales accounts from active pack definitions
+    # Find all pack sales accounts from pack definitions
     pack_defs_result = await db.execute(
         select(PackDefinition).where(
-            PackDefinition.fiscal_year_uuid == fiscal_year_uuid,
             PackDefinition.pack_sales_account_uuid.isnot(None),
         )
     )

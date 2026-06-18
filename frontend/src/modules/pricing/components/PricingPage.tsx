@@ -158,10 +158,10 @@ function useCreatePricingVersionMutation(fiscalYearUuid: string) {
 function VersionBadge({ status, t }: { status: number; t: TranslateFn }) {
   const label =
     status === VERSION_STATUS_DRAFT
-      ? t('pricing.statusDraft')
+      ? t('version.statusDraft')
       : status === VERSION_STATUS_ACTIVE
-      ? t('pricing.statusActive')
-      : t('pricing.statusArchived')
+      ? t('version.statusActive')
+      : t('version.statusArchived')
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${versionStatusClass(status)}`}>
       {label}
@@ -203,40 +203,40 @@ function VersionForm({
   return (
     <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-4">
       <div className="space-y-1 sm:col-span-2">
-        <Label className="text-xs">{t('pricing.versionName')}</Label>
+        <Label className="text-xs">{t('version.name')}</Label>
         <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1 sm:col-span-2">
-        <Label className="text-xs">{t('pricing.assetType')}</Label>
+        <Label className="text-xs">{t('version.assetType')}</Label>
         <select
           value={form.asset_type_uuid}
           onChange={(e) => set('asset_type_uuid', e.target.value)}
           className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
         >
-          <option value="">{t('pricing.globalVersion')}</option>
+          <option value="">{t('version.globalVersion')}</option>
           {assetTypes.map((at) => (
             <option key={at.uuid} value={at.uuid}>{at.name}</option>
           ))}
         </select>
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('pricing.fromDate')}</Label>
+        <Label className="text-xs">{t('version.fromDate')}</Label>
         <Input type="date" value={form.from_date} onChange={(e) => set('from_date', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('pricing.toDate')}</Label>
+        <Label className="text-xs">{t('version.toDate')}</Label>
         <Input type="date" value={form.to_date} onChange={(e) => set('to_date', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('pricing.versionStatus')}</Label>
+        <Label className="text-xs">{t('version.status')}</Label>
         <select
           value={form.status}
           onChange={(e) => set('status', Number(e.target.value))}
           className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
         >
-          <option value={1}>{t('pricing.statusDraft')}</option>
-          <option value={2}>{t('pricing.statusActive')}</option>
-          <option value={3}>{t('pricing.statusArchived')}</option>
+          <option value={1}>{t('version.statusDraft')}</option>
+          <option value={2}>{t('version.statusActive')}</option>
+          <option value={3}>{t('version.statusArchived')}</option>
         </select>
       </div>
       <div className="flex items-center gap-2 pt-4">
@@ -247,17 +247,17 @@ function VersionForm({
           onChange={(e) => set('use_pack', e.target.checked)}
           className="h-4 w-4 rounded border-slate-300 text-slate-900"
         />
-        <Label htmlFor="use-pack-global" className="text-xs">{t('pricing.usePack')}</Label>
-        <span className="text-[11px] text-slate-500">{t('pricing.usePackHelp')}</span>
+        <Label htmlFor="use-pack-global" className="text-xs">{t('version.usePack')}</Label>
+        <span className="text-[11px] text-slate-500">{t('version.usePackHelp')}</span>
       </div>
       <div className="flex items-end gap-2 sm:col-span-4">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !form.name || !form.from_date}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('pricing.saving') : t('pricing.save')}
+          {saving ? t('saving') : t('save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('pricing.cancel')}
+          {t('cancel')}
         </Button>
       </div>
     </div>
@@ -350,23 +350,23 @@ function PricingItemForm({
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
-          <Label className="text-xs">{t('pricing.itemName')} *</Label>
+          <Label className="text-xs">{t('itemName')} *</Label>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.itemUnit')}</Label>
+          <Label className="text-xs">{t('itemUnit')}</Label>
           <select
             value={form.unit}
             onChange={(e) => set('unit', Number(e.target.value))}
             className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
             {Object.entries(UNIT_LABELS).map(([k, label]) => (
-              <option key={k} value={Number(k)}>{t(`pricing.unit${label}`)}</option>
+              <option key={k} value={Number(k)}>{t(`unit${label}`)}</option>
             ))}
           </select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.basePrice')} *</Label>
+          <Label className="text-xs">{t('basePrice')} *</Label>
           <Input
             type="number"
             min="0"
@@ -376,11 +376,11 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-slate-500">{t('pricing.basePriceHelp')}</p>
+          <p className="text-[11px] text-slate-500">{t('basePriceHelp')}</p>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
+          <Label className="text-xs">{t('ageDiscountPercent')}</Label>
           <Input
             type="number"
             min="0"
@@ -391,31 +391,31 @@ function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-slate-500">{t('pricing.ageDiscountPercentHelp')}</p>
+          <p className="text-[11px] text-slate-500">{t('ageDiscountPercentHelp')}</p>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.glAccountCredit')}</Label>
+          <Label className="text-xs">{t('glAccountCredit')}</Label>
           <select
             value={form.gl_account_credit_uuid}
             onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
             className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
           >
-            <option value="">{t('pricing.noAccount')}</option>
+            <option value="">{t('noAccount')}</option>
             {revenueAccounts.map((a) => (
               <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-500">{t('pricing.glAccountCreditHelp')}</p>
+          <p className="text-[11px] text-slate-500">{t('glAccountCreditHelp')}</p>
         </div>
         {flightTypes.length > 0 && (
           <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.flightType')}</Label>
+            <Label className="text-xs">{t('flightType')}</Label>
             <select
               value={form.flight_type_uuid}
               onChange={(e) => set('flight_type_uuid', e.target.value)}
               className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
-              <option value="">{t('pricing.noFlightType')}</option>
+              <option value="">{t('noFlightType')}</option>
               {flightTypes.map((ft) => (
                 <option key={ft.uuid} value={ft.uuid}>{ft.name}</option>
               ))}
@@ -432,22 +432,22 @@ function PricingItemForm({
               onChange={(e) => set('is_progressive', e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400 disabled:cursor-not-allowed"
             />
-            <span>{t('pricing.isProgressive')}</span>
+            <span>{t('isProgressive')}</span>
           </label>
           {progressiveDisabled && (
-            <p className="mt-1 text-[11px] text-slate-400">{t('pricing.isProgressiveHelp')}</p>
+            <p className="mt-1 text-[11px] text-slate-400">{t('isProgressiveHelp')}</p>
           )}
         </div>
       </div>
       <div className="space-y-2">
-        <Label className="text-xs">{t('pricing.tiers')}</Label>
-        <p className="text-[11px] text-slate-500">{t('pricing.tiersHelp')}</p>
-        {form.tiers.length === 0 && <p className="text-xs text-slate-400">{t('pricing.noTiers')}</p>}
+        <Label className="text-xs">{t('tiers')}</Label>
+        <p className="text-[11px] text-slate-500">{t('tiersHelp')}</p>
+        {form.tiers.length === 0 && <p className="text-xs text-slate-400">{t('noTiers')}</p>}
         {form.tiers.length > 0 && (
           <div className="space-y-1">
             <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-slate-500">
-              <span>{t('pricing.tierFrom')}</span>
-              <span>{t('pricing.tierPrice')}</span>
+              <span>{t('tierFrom')}</span>
+              <span>{t('tierPrice')}</span>
               <span />
             </div>
             {form.tiers.map((tier, i) => (
@@ -479,17 +479,17 @@ function PricingItemForm({
         )}
         <Button size="sm" variant="ghost" type="button" onClick={addTier}>
           <Plus className="mr-1 h-3 w-3" />
-          {t('pricing.addTier')}
+          {t('addTier')}
         </Button>
       </div>
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('pricing.saving') : t('pricing.save')}
+          {saving ? t('saving') : t('save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('pricing.cancel')}
+          {t('cancel')}
         </Button>
       </div>
     </div>
@@ -530,7 +530,7 @@ function PricingItemsPanel({
       setShowForm(false)
       setItemError(null)
     } catch (e) {
-      setItemError(extractError(e, t('pricing.error.saveFailed')))
+      setItemError(extractError(e, t('error.saveFailed')))
     }
   }
 
@@ -541,16 +541,16 @@ function PricingItemsPanel({
       setEditingItem(null)
       setItemError(null)
     } catch (e) {
-      setItemError(extractError(e, t('pricing.error.saveFailed')))
+      setItemError(extractError(e, t('error.saveFailed')))
     }
   }
 
   async function handleDelete(item: PricingItem) {
-    if (!window.confirm(t('pricing.confirmDeleteItem'))) return
+    if (!window.confirm(t('confirmDeleteItem'))) return
     try {
       await deleteMutation.mutateAsync(item.uuid)
     } catch (e) {
-      setItemError(extractError(e, t('pricing.error.deleteFailed')))
+      setItemError(extractError(e, t('error.deleteFailed')))
     }
   }
 
@@ -559,7 +559,7 @@ function PricingItemsPanel({
   return (
     <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-slate-600">{t('pricing.items')}</p>
+        <p className="text-xs font-semibold text-slate-600">{t('items')}</p>
         {editable && !showForm && !editingItem && (
           <button
             type="button"
@@ -567,7 +567,7 @@ function PricingItemsPanel({
             onClick={() => setShowForm(true)}
           >
             <Plus className="h-3 w-3" />
-            {t('pricing.addItem')}
+            {t('addItem')}
           </button>
         )}
       </div>
@@ -590,7 +590,7 @@ function PricingItemsPanel({
         <p className="text-xs text-slate-400">{t('states.loading')}</p>
       ) : items.length === 0 && !showForm ? (
         <p className="rounded border border-dashed border-slate-200 py-3 text-center text-xs text-slate-400">
-          {t('pricing.noItems')}
+          {t('noItems')}
         </p>
       ) : (
         <div className="space-y-1.5">
@@ -614,7 +614,7 @@ function PricingItemsPanel({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
                   <p className="mt-0.5 truncate text-xs text-slate-500">
-                    {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}
+                    {t(`unit${UNIT_LABELS[item.unit] ?? ''}`)}
                     {' · '}{formatPrice(item.base_price)} €
                     {item.tiers.length > 0 && (
                       <> · {item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}€`).join(' · ')}</>
@@ -670,8 +670,8 @@ function VersionCard({
   const [editing, setEditing] = useState(false)
   const [cardError, setCardError] = useState<string | null>(null)
 
-  const updateMutation = useUpdatePricingVersionMutation(fyUuid)
-  const deleteMutation = useDeletePricingVersionMutation(fyUuid)
+  const updateMutation = useUpdatePricingVersionMutation()
+  const deleteMutation = useDeletePricingVersionMutation()
 
   // Also invalidate the unified versions list
   const queryClient = useQueryClient()
@@ -693,17 +693,17 @@ function VersionCard({
       setEditing(false)
       setCardError(null)
     } catch (e) {
-      setCardError(extractError(e, t('pricing.error.saveFailed')))
+      setCardError(extractError(e, t('error.saveFailed')))
     }
   }
 
   async function handleDelete() {
-    if (!window.confirm(t('pricing.confirmDeleteVersion', { name: version.name }))) return
+    if (!window.confirm(t('confirmDeleteVersion', { name: version.name }))) return
     try {
       await deleteMutation.mutateAsync(version.uuid)
       invalidateAll()
     } catch (e) {
-      setCardError(extractError(e, t('pricing.error.deleteFailed')))
+      setCardError(extractError(e, t('error.deleteFailed')))
     }
   }
 
@@ -742,13 +742,13 @@ function VersionCard({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-slate-900">{version.name}</p>
           <p className="text-xs text-slate-500">
-            {version.from_date} → {version.to_date ?? t('pricing.openEnd')}
+            {version.from_date} → {version.to_date ?? t('version.openEnd')}
           </p>
         </div>
         <VersionBadge status={version.status} t={t} />
         {version.is_locked && (
           <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
-            {t('pricing.locked')}
+            {t('version.locked')}
           </span>
         )}
         {canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT && (
@@ -823,7 +823,7 @@ function VersionsSection({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function PricingPage() {
-  const { t } = useTranslation('assets')
+  const { t } = useTranslation('pricing')
   const canManagePrices = useCapability('MANAGE_PRICES')
   const canView = useCapability('MANAGE_PRICES') || useCapability('VIEW_FINANCIALS')
 
@@ -888,7 +888,7 @@ export function PricingPage() {
       setExpandedVersionUuid(created.uuid)
       setError(null)
     } catch (e) {
-      setError(extractError(e, t('pricing.error.saveFailed')))
+      setError(extractError(e, t('error.saveFailed')))
     }
   }
 
@@ -916,13 +916,13 @@ export function PricingPage() {
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <PageHeader
-        title={t('pricing.title')}
-        description={isFyClosed ? t('pricing.fyClosedWarning') : undefined}
+        title={t('title')}
+        description={isFyClosed ? t('fy.closedWarning') : undefined}
         actions={
           canEdit && !showNewVersionForm ? (
             <Button onClick={() => setShowNewVersionForm(true)}>
               <Plus className="mr-1.5 h-4 w-4" />
-              {t('pricing.newVersion')}
+              {t('version.new')}
             </Button>
           ) : undefined
         }
@@ -970,14 +970,14 @@ export function PricingPage() {
         <p className="text-sm text-slate-500">{t('states.loading')}</p>
       ) : versions.length === 0 && !showNewVersionForm ? (
         <div className="rounded-lg border border-dashed border-slate-200 py-12 text-center">
-          <p className="text-sm text-slate-500">{t('pricing.noVersions')}</p>
+          <p className="text-sm text-slate-500">{t('version.empty')}</p>
           {canEdit && (
             <button
               type="button"
               className="mt-2 text-sm font-medium text-slate-700 underline hover:text-slate-900"
               onClick={() => setShowNewVersionForm(true)}
             >
-              {t('pricing.newVersion')}
+              {t('version.new')}
             </button>
           )}
         </div>
@@ -985,7 +985,7 @@ export function PricingPage() {
         <div className="space-y-6">
           {/* Global versions */}
           <VersionsSection
-            title={t('pricing.globalVersions')}
+            title={t('version.globalVersions')}
             versions={globalVersions}
             assetTypes={assetTypes}
             fyUuid={selectedFy?.uuid ?? ''}

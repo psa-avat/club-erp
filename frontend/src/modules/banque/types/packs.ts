@@ -12,7 +12,6 @@ export type PackDefinition = {
   uuid: string
   code: string
   name: string
-  fiscal_year_uuid: string
   pack_type: 'flight_hours' | 'winch_launches' | 'tow_launches' | 'engine_time'
   quantity_allowance: string
   quantity_unit: string
@@ -26,7 +25,6 @@ export type PackDefinition = {
 export type PackDefinitionCreate = {
   code: string
   name: string
-  fiscal_year_uuid: string
   pack_type: string
   quantity_allowance: string
   quantity_unit?: string

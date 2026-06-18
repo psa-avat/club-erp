@@ -32,7 +32,6 @@ import {
   useCreatePackDefinitionMutation,
   useUpdatePackDefinitionMutation,
   useDeletePackDefinitionMutation,
-  useFiscalYearsQuery,
   useAccountsQuery,
   useAllActivePricingItemsQuery,
 } from '../api'
@@ -52,12 +51,7 @@ export function PackDefinitionsPage() {
   const canManage = useCapability('MANAGE_PRICES')
   const navigate = useNavigate()
 
-  const fiscalYearsQuery = useFiscalYearsQuery(canView)
-  const fiscalYears = fiscalYearsQuery.data ?? []
-
-  const [selectedFyUuid, setSelectedFyUuid] = useState<string>('')
-
-  const packsQuery = usePackDefinitionsQuery(selectedFyUuid || undefined, undefined, canView)
+  const packsQuery = usePackDefinitionsQuery(undefined, canView)
   const packs = packsQuery.data ?? []
   const deleteMutation = useDeletePackDefinitionMutation()
   const [deleteUuid, setDeleteUuid] = useState<string | null>(null)
@@ -83,16 +77,6 @@ export function PackDefinitionsPage() {
           <p className="mt-1 text-sm text-slate-500">{t('packs.definitions.description')}</p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            value={selectedFyUuid}
-            onChange={(e) => setSelectedFyUuid(e.target.value)}
-          >
-            <option value="">{t('common.allFiscalYears')}</option>
-            {fiscalYears.map((fy) => (
-              <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
-            ))}
-          </select>
           {canManage && (
             <Button onClick={() => navigate('/banque/packs/new')}>
               <Plus className="mr-1 h-4 w-4" /> {t('packs.definitions.create')}
@@ -230,7 +214,6 @@ export function PackDefinitionEditPage() {
   const isNew = packUuid === 'new'
   const canManage = useCapability('MANAGE_PRICES')
 
-  const fiscalYearsQuery = useFiscalYearsQuery(true)
   const accountsQuery = useAccountsQuery(true)
   const allItemsQuery = useAllActivePricingItemsQuery(true)
   const pricingItems = allItemsQuery.data ?? []
@@ -257,7 +240,6 @@ export function PackDefinitionEditPage() {
     ? {
         code: pack.code,
         name: pack.name,
-        fiscal_year_uuid: pack.fiscal_year_uuid,
         pack_type: pack.pack_type,
         quantity_allowance: pack.quantity_allowance,
         quantity_unit: pack.quantity_unit,
@@ -268,7 +250,6 @@ export function PackDefinitionEditPage() {
     : {
         code: '',
         name: '',
-        fiscal_year_uuid: '',
         pack_type: 'flight_hours',
         quantity_allowance: '25.00',
         quantity_unit: 'hours',
@@ -320,7 +301,6 @@ export function PackDefinitionEditPage() {
     }
   }
 
-  const fiscalYears = fiscalYearsQuery.data ?? []
   const accounts = accountsQuery.data ?? []
 
   return (
@@ -341,7 +321,6 @@ export function PackDefinitionEditPage() {
         <PackDefinitionForm
           initial={initialForm}
           applicability={initialItems}
-          fiscalYears={fiscalYears}
           pricingItems={pricingItems}
           accounts={accounts}
           saving={saving}

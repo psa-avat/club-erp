@@ -448,14 +448,12 @@ async def create_pricing_version(
     user_id: int,
     asset_type_uuid: "UUID | None" = None,
 ) -> PricingVersion:
-    """Create pricing version with fiscal-year and date overlap constraints."""
+    """Create pricing version with date overlap constraints."""
     if request.status != PRICING_STATUS_DRAFT:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Pricing versions must be created in Draft status.",
         )
-
-    fy = await get_or_create_fiscal_year(db, request.fiscal_year_uuid)
 
     if request.to_date is not None and request.to_date < request.from_date:
         raise HTTPException(
@@ -463,36 +461,23 @@ async def create_pricing_version(
             detail="to_date must be greater than or equal to from_date",
         )
 
-    if request.from_date < fy.start_date or request.from_date > fy.end_date:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"from_date {request.from_date} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
-        )
-
-    if request.to_date is not None and (request.to_date < fy.start_date or request.to_date > fy.end_date):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"to_date {request.to_date} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
-        )
-
     existing_result = await db.execute(
         select(PricingVersion).where(
-            PricingVersion.fiscal_year_uuid == request.fiscal_year_uuid,
             PricingVersion.asset_type_uuid == asset_type_uuid,
         )
     )
     existing_versions = existing_result.scalars().all()
 
-    candidate_end = request.to_date or fy.end_date
+    candidate_end = request.to_date or date(9999, 12, 31)
     for version in existing_versions:
-        existing_end = version.to_date or fy.end_date
+        existing_end = version.to_date or date(9999, 12, 31)
         overlaps = request.from_date <= existing_end and candidate_end >= version.from_date
         if overlaps:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
                     f"Pricing version date range overlaps with existing version {version.uuid} "
-                    f"[{version.from_date}, {version.to_date or fy.end_date}]"
+                    f"[{version.from_date}, {version.to_date}]"
                 ),
             )
 
@@ -597,9 +582,8 @@ async def update_pricing_version(
     request: PricingVersionUpdateRequest,
     asset_type_uuid: UUID | None = None,
 ) -> PricingVersion:
-    """Update pricing version and enforce fiscal-year and overlap constraints."""
+    """Update pricing version and enforce date overlap constraints."""
     version = await get_pricing_version(db, version_uuid)
-    fy = await get_or_create_fiscal_year(db, version.fiscal_year_uuid)
 
     if version.is_locked:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pricing version is locked.")
@@ -648,39 +632,26 @@ async def update_pricing_version(
             detail="to_date must be greater than or equal to from_date",
         )
 
-    if next_from < fy.start_date or next_from > fy.end_date:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"from_date {next_from} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
-        )
-
-    if next_to is not None and (next_to < fy.start_date or next_to > fy.end_date):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"to_date {next_to} is outside fiscal year [{fy.start_date}, {fy.end_date}]",
-        )
-
     existing_result = await db.execute(
         select(PricingVersion).where(
-            PricingVersion.fiscal_year_uuid == version.fiscal_year_uuid,
             PricingVersion.asset_type_uuid == version.asset_type_uuid,
         )
     )
     existing_versions = existing_result.scalars().all()
-    candidate_end = next_to or fy.end_date
+    candidate_end = next_to or date(9999, 12, 31)
 
     for existing in existing_versions:
         if existing.uuid == version.uuid:
             continue
 
-        existing_end = existing.to_date or fy.end_date
+        existing_end = existing.to_date or date(9999, 12, 31)
         overlaps = _pricing_ranges_overlap(next_from, candidate_end, existing.from_date, existing_end)
         if overlaps:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
                     f"Pricing version date range overlaps with existing version {existing.uuid} "
-                    f"[{existing.from_date}, {existing.to_date or fy.end_date}]"
+                    f"[{existing.from_date}, {existing.to_date}]"
                 ),
             )
 
@@ -714,7 +685,6 @@ async def clone_pricing_version(
     """Clone one pricing version into a new Draft version with copied items and tiers."""
     source_version = await get_pricing_version(db, source_version_uuid)
     clone_request = PricingVersionCreateRequest(
-        fiscal_year_uuid=source_version.fiscal_year_uuid,
         asset_type_uuid=source_version.asset_type_uuid,
         name=request.name,
         from_date=request.from_date,

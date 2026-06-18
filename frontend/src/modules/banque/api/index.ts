@@ -745,7 +745,7 @@ export function useDeleteAccountingEntryMutation() {
 
 export type PricingVersion = {
   uuid: string
-  fiscal_year_uuid: string
+  fiscal_year_uuid: string | null
   asset_type_uuid: string | null
   name: string
   from_date: string
@@ -759,7 +759,6 @@ export type PricingVersion = {
 }
 
 export type PricingVersionCreatePayload = {
-  fiscal_year_uuid: string
   name: string
   from_date: string
   to_date?: string | null
@@ -775,11 +774,6 @@ export type PricingVersionUpdatePayload = {
   use_pack?: boolean
 }
 
-export type CopyPricingVersionsPayload = {
-  source_fiscal_year_uuid: string
-  target_fiscal_year_uuid: string
-}
-
 export type ClonePricingVersionPayload = {
   source_version_uuid: string
   name: string
@@ -788,20 +782,13 @@ export type ClonePricingVersionPayload = {
   use_pack?: boolean
 }
 
-export type CopyPricingVersionsResult = {
-  copied: number
-  skipped: number
-  versions: PricingVersion[]
-}
-
-export function usePricingVersionsQuery(fiscalYearUuid: string | null, enabled = true) {
+export function usePricingVersionsQuery(enabled = true) {
   return useQuery({
-    queryKey: banqueQueryKeys.pricingVersions(fiscalYearUuid ?? undefined),
-    enabled: enabled && fiscalYearUuid !== null,
+    queryKey: banqueQueryKeys.pricingVersions(),
+    enabled,
     queryFn: async () => {
-      const params = fiscalYearUuid ? `?fiscal_year_uuid=${fiscalYearUuid}` : ''
       const { data } = await apiClient.get<PricingVersion[]>(
-        `/api/v1/accounting/pricing/versions${params}`,
+        '/api/v1/accounting/pricing/versions',
         getAuthRequestConfig(),
       )
       return data
@@ -820,13 +807,13 @@ export function useCreatePricingVersionMutation() {
       )
       return data
     },
-    onSuccess: async (data) => {
-      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions(data.fiscal_year_uuid) })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions() })
     },
   })
 }
 
-export function useUpdatePricingVersionMutation(fiscalYearUuid: string) {
+export function useUpdatePricingVersionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ uuid, ...payload }: PricingVersionUpdatePayload & { uuid: string }) => {
@@ -838,12 +825,12 @@ export function useUpdatePricingVersionMutation(fiscalYearUuid: string) {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions(fiscalYearUuid) })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions() })
     },
   })
 }
 
-export function useDeletePricingVersionMutation(fiscalYearUuid: string) {
+export function useDeletePricingVersionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (versionUuid: string) => {
@@ -853,31 +840,12 @@ export function useDeletePricingVersionMutation(fiscalYearUuid: string) {
       )
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions(fiscalYearUuid) })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions() })
     },
   })
 }
 
-export function useCopyPricingVersionsMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: CopyPricingVersionsPayload) => {
-      const { data } = await apiClient.post<CopyPricingVersionsResult>(
-        '/api/v1/accounting/pricing/versions/copy',
-        payload,
-        getAuthRequestConfig(),
-      )
-      return data
-    },
-    onSuccess: async (_data, variables) => {
-      await queryClient.invalidateQueries({
-        queryKey: banqueQueryKeys.pricingVersions(variables.target_fiscal_year_uuid),
-      })
-    },
-  })
-}
-
-export function useClonePricingVersionMutation(fiscalYearUuid: string) {
+export function useClonePricingVersionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: ClonePricingVersionPayload) => {
@@ -890,7 +858,7 @@ export function useClonePricingVersionMutation(fiscalYearUuid: string) {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions(fiscalYearUuid) })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.pricingVersions() })
     },
   })
 }
@@ -932,7 +900,7 @@ export type PricingItemWithVersion = PricingItem & {
  * a rate belongs to.
  */
 export function useAllActivePricingItemsQuery(enabled = true) {
-  const versionsQuery = usePricingVersionsQuery('', enabled)
+  const versionsQuery = usePricingVersionsQuery(enabled)
   const versionUuids = (versionsQuery.data ?? []).map((v) => v.uuid)
 
   // Build a stable key from the sorted list of version UUIDs so the query key
@@ -1136,13 +1104,12 @@ export const banquePackKeys = {
   balances: (memberUuid: string, fyUuid: string) => ['banque', 'packs', 'balances', memberUuid, fyUuid] as const,
 }
 
-export function usePackDefinitionsQuery(fiscalYearUuid?: string, packType?: string, enabled = true) {
+export function usePackDefinitionsQuery(packType?: string, enabled = true) {
   return useQuery({
-    queryKey: banquePackKeys.definitions({ fiscalYearUuid, packType }),
+    queryKey: banquePackKeys.definitions({ packType }),
     enabled,
     queryFn: async () => {
       const params = new URLSearchParams()
-      if (fiscalYearUuid) params.set('fiscal_year_uuid', fiscalYearUuid)
       if (packType) params.set('pack_type', packType)
       const qs = params.toString()
       const { data } = await apiClient.get<PackDefinition[]>(

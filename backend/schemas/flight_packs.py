@@ -57,7 +57,6 @@ class PackDefinitionCreate(BaseModel):
     """Create a new pack definition (catalog template)."""
     code: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=100)
-    fiscal_year_uuid: UUID
     pack_type: str = Field(pattern=r"^(flight_hours|winch_launches|tow_launches|engine_time)$")
     quantity_allowance: Decimal = Field(gt=0, decimal_places=2)
     quantity_unit: str = Field(default="hours", pattern=r"^(hours|launches|centihours)$")
@@ -84,7 +83,6 @@ class PackDefinitionResponse(BaseModel):
     uuid: UUID
     code: str
     name: str
-    fiscal_year_uuid: UUID
     pack_type: str
     quantity_allowance: Decimal
     quantity_unit: str

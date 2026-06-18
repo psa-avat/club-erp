@@ -422,7 +422,7 @@ class SystemSettingResponse(BaseModel):
 
 class PricingVersionCreateRequest(BaseModel):
     """Create request for pricing version governance."""
-    fiscal_year_uuid: UUID
+    fiscal_year_uuid: Optional[UUID] = None
     # NULL = global pricing; set to scope this version to a specific asset type
     asset_type_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=100)
@@ -435,7 +435,7 @@ class PricingVersionCreateRequest(BaseModel):
 class PricingVersionResponse(BaseModel):
     """Pricing version response."""
     uuid: UUID
-    fiscal_year_uuid: UUID
+    fiscal_year_uuid: Optional[UUID] = None
     name: str
     from_date: date
     to_date: Optional[date] = None

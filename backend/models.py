@@ -1592,9 +1592,6 @@ class PackDefinition(Base):
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     code = Column(String(32), nullable=False, index=True)
     name = Column(String(100), nullable=False)
-    fiscal_year_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, index=True
-    )
     pack_type = Column(String(32), nullable=False)
     quantity_allowance = Column(Numeric(10, 2), nullable=False)
     quantity_unit = Column(String(32), nullable=False, default="hours")
@@ -1612,7 +1609,6 @@ class PackDefinition(Base):
         nullable=False,
     )
 
-    fiscal_year = relationship("AccountingFiscalYear")
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[pack_sales_account_uuid])
     pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[pack_discount_expense_account_uuid])
     applicability = relationship("PackApplicability", back_populates="pack_definition", cascade="all, delete-orphan")

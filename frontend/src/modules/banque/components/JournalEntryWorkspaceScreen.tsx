@@ -114,10 +114,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
     canView && Boolean(entryUuid && forcedEntryFiscalYearUuid),
   )
 
-  const pricingVersionsQuery = usePricingVersionsQuery(
-    entryForm.fiscal_year_uuid || null,
-    canView && Boolean(entryForm.fiscal_year_uuid),
-  )
+  const pricingVersionsQuery = usePricingVersionsQuery(canView)
   const pricingItemsQuery = usePricingItemsQuery(
     selectedPriceVersionUuid || null,
     canView && Boolean(selectedPriceVersionUuid),

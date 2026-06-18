@@ -100,18 +100,20 @@ export const shellNavItems: ShellNavItem[] = [
   },
 
   // ── 7. Tarifs (priorité #7) ───────────────────────────────────────────────
-  // Regroupe les trois facettes de la tarification :
-  //   - Grille globale (versions par exercice, tarifs non liés à un actif)
-  //   - Packs (catalogue de produits / forfaits)
-  //   - Tarifs machine (par aéronef)
+  // Regroupe les quatre facettes de la tarification :
+  //   - Génériques (versions non liées à un type d'actif)
+  //   - Machines (par type d'actif)
+  //   - Forfaits (catalogue de packs)
+  //   - Types de vol (catégories de vol pour les lignes de tarif)
   {
     to: '/workspace/tarifs',
     labelKey: 'nav.tarifs',
     requiredCapability: 'MANAGE_PRICES',
     children: [
       { to: '/workspace/tarifs', labelKey: 'nav.tarifsGrid', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/tarifs?tab=machines', labelKey: 'nav.tarifsMachines', requiredCapability: 'MANAGE_PRICES' },
       { to: '/workspace/tarifs?tab=packs', labelKey: 'nav.tarifsPacks', requiredCapability: 'MANAGE_PRICES' },
-      { to: '/workspace/machines?tab=tarifs', labelKey: 'nav.tarifsMachines', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/tarifs?tab=flight-types', labelKey: 'nav.tarifsFlightTypes', requiredCapability: 'MANAGE_PRICES' },
     ],
   },
 

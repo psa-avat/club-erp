@@ -567,7 +567,7 @@ export function MemberBulkBillingPage() {
   const journalsQuery = useJournalsQuery()
   const accountsQuery = useAccountsQuery()
   const membersQuery = useMemberOptionsQuery({ limit: 5000 })
-  const versionsQuery = usePricingVersionsQuery(activeFiscalYearUuid)
+  const versionsQuery = usePricingVersionsQuery()
 
   const vtJournal = useMemo(
     () => journalsQuery.data?.find((j) => j.code === 'VT') ?? null,

@@ -116,12 +116,7 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
   const [localError, setLocalError] = useState<string | null>(null)
 
   const fiscalYearsQuery = useFiscalYearsQuery(open)
-  const fiscalYear = useMemo(
-    () => (fiscalYearsQuery.data ?? []).find((fy) => fy.year === year) ?? null,
-    [fiscalYearsQuery.data, year],
-  )
-
-  const pricingVersionsQuery = usePricingVersionsQuery(fiscalYear?.uuid ?? null, open)
+  const pricingVersionsQuery = usePricingVersionsQuery(open)
   const activePricingVersion = useMemo(() => {
     const versions = pricingVersionsQuery.data ?? []
     return versions.find((version) => version.status === ACTIVE_VERSION_STATUS) ?? versions[0] ?? null

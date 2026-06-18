@@ -58,22 +58,22 @@ export const UNIT_LABELS: Record<number, string> = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 export function fyStateLabel(state: number, t: (k: string) => string): { label: string; className: string } {
-  if (state === FY_STATE_OPEN) return { label: t('pricing.fy.stateOpen'), className: 'bg-success-container text-on-success-container' }
-  if (state === FY_STATE_CLOSED) return { label: t('pricing.fy.stateClosed'), className: 'bg-surface-container text-on-surface-variant' }
-  return { label: t('pricing.fy.stateReopened'), className: 'bg-warning-container text-on-warning-container' }
+  if (state === FY_STATE_OPEN) return { label: t('fy.stateOpen'), className: 'bg-success-container text-on-success-container' }
+  if (state === FY_STATE_CLOSED) return { label: t('fy.stateClosed'), className: 'bg-surface-container text-on-surface-variant' }
+  return { label: t('fy.stateReopened'), className: 'bg-warning-container text-on-warning-container' }
 }
 
 export function versionStatusLabel(status: number, t: (k: string) => string): { label: string; className: string } {
-  if (status === VERSION_STATUS_DRAFT) return { label: t('pricing.version.statusDraft'), className: 'bg-warning-container text-on-warning-container' }
-  if (status === VERSION_STATUS_ACTIVE) return { label: t('pricing.version.statusActive'), className: 'bg-success-container text-on-success-container' }
-  return { label: t('pricing.version.statusArchived'), className: 'bg-surface-container text-on-surface-variant' }
+  if (status === VERSION_STATUS_DRAFT) return { label: t('version.statusDraft'), className: 'bg-warning-container text-on-warning-container' }
+  if (status === VERSION_STATUS_ACTIVE) return { label: t('version.statusActive'), className: 'bg-success-container text-on-success-container' }
+  return { label: t('version.statusArchived'), className: 'bg-surface-container text-on-surface-variant' }
 }
 
 export function versionScopeLabel(version: PricingVersion, t: (k: string) => string): { label: string; className: string } {
   if (version.asset_type_uuid !== null) {
-    return { label: t('pricing.version.assetScope'), className: 'bg-primary-container text-on-primary-container' }
+    return { label: t('version.assetScope'), className: 'bg-primary-container text-on-primary-container' }
   }
-  return { label: t('pricing.version.genericScope'), className: 'bg-surface-container-high text-on-surface-variant' }
+  return { label: t('version.genericScope'), className: 'bg-surface-container-high text-on-surface-variant' }
 }
 
 export function formatPrice(value: string | null | undefined): string {
@@ -181,7 +181,8 @@ export function buildItemPayload(
 
 // ── Sub-component: Version Status Badge ─────────────────────────────────────
 
-export function VersionBadge({ status, t }: { status: number; t: (k: string) => string }) {
+export function VersionBadge({ status }: { status: number }) {
+  const { t } = useTranslation('pricing')
   const { label, className } = versionStatusLabel(status, t)
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}>{label}</span>
@@ -194,13 +195,12 @@ export function ActivateVersionButton({
   version,
   onActivate,
   disabled = false,
-  t,
 }: {
   version: PricingVersion
   onActivate: (v: PricingVersion) => void
   disabled?: boolean
-  t: (k: string, opts?: Record<string, unknown>) => string
 }) {
+  const { t } = useTranslation('pricing')
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
 
@@ -211,10 +211,10 @@ export function ActivateVersionButton({
   const canActivate = !disabled && missingGlCount === 0 && totalCount > 0
 
   const helperText = missingGlCount > 0
-    ? t('pricing.version.guard.missingGlAccounts', { count: missingGlCount })
+    ? t('version.guard.missingGlAccounts', { count: missingGlCount })
     : totalCount === 0
-      ? t('pricing.version.guard.noItems')
-      : t('pricing.version.guard.ready')
+      ? t('version.guard.noItems')
+      : t('version.guard.ready')
 
   return (
     <div className="space-y-2" title={helperText}>
@@ -226,10 +226,10 @@ export function ActivateVersionButton({
             ? 'text-on-success-container hover:bg-success-container'
             : 'text-on-surface-variant cursor-not-allowed opacity-50'
         }`}
-        title={t('pricing.version.activateTitle')}
+        title={t('version.activateTitle')}
         onClick={() => onActivate(version)}
       >
-        {t('pricing.version.activate')}
+        {t('version.activate')}
       </button>
       <div className="w-44 space-y-1">
         <div className="h-1.5 overflow-hidden rounded-full bg-surface-container">
@@ -241,7 +241,7 @@ export function ActivateVersionButton({
           />
         </div>
         <p className="text-[11px] text-on-surface-variant">
-          {t('pricing.version.guard.progress', { complete: completeCount, total: totalCount, pct: readinessPct })}
+          {t('version.guard.progress', { complete: completeCount, total: totalCount, pct: readinessPct })}
         </p>
         <p className={`text-[11px] ${missingGlCount === 0 && totalCount > 0 ? 'text-success' : 'text-on-surface-variant'}`}>
           {helperText}
@@ -258,14 +258,13 @@ export function VersionForm({
   onSave,
   onCancel,
   saving,
-  t,
 }: {
   initial: VersionFormState
   onSave: (v: VersionFormState) => void
   onCancel: () => void
   saving: boolean
-  t: (k: string, opts?: Record<string, unknown>) => string
 }) {
+  const { t } = useTranslation('pricing')
   const [form, setForm] = useState<VersionFormState>(initial)
 
   function set(field: keyof VersionFormState, value: string | number) {
@@ -275,16 +274,16 @@ export function VersionForm({
   return (
     <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4 md:grid-cols-4">
       <div className="space-y-1 md:col-span-2">
-        <Label className="text-xs">{t('pricing.version.name')}</Label>
+        <Label className="text-xs">{t('version.name')}</Label>
         <Input
           value={form.name}
           onChange={(e) => set('name', e.target.value)}
-          placeholder={t('pricing.version.namePlaceholder')}
+          placeholder={t('version.namePlaceholder')}
           className="h-8 text-sm"
         />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('pricing.version.fromDate')}</Label>
+        <Label className="text-xs">{t('version.fromDate')}</Label>
         <Input
           type="date"
           value={form.from_date}
@@ -293,7 +292,7 @@ export function VersionForm({
         />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('pricing.version.toDate')}</Label>
+        <Label className="text-xs">{t('version.toDate')}</Label>
         <Input
           type="date"
           value={form.to_date}
@@ -302,15 +301,15 @@ export function VersionForm({
         />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t('pricing.version.status')}</Label>
+        <Label className="text-xs">{t('version.status')}</Label>
         <select
           value={form.status}
           onChange={(e) => set('status', Number(e.target.value))}
           className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
         >
-          <option value={VERSION_STATUS_DRAFT}>{t('pricing.version.statusDraft')}</option>
-          <option value={VERSION_STATUS_ACTIVE}>{t('pricing.version.statusActive')}</option>
-          <option value={VERSION_STATUS_ARCHIVED}>{t('pricing.version.statusArchived')}</option>
+          <option value={VERSION_STATUS_DRAFT}>{t('version.statusDraft')}</option>
+          <option value={VERSION_STATUS_ACTIVE}>{t('version.statusActive')}</option>
+          <option value={VERSION_STATUS_ARCHIVED}>{t('version.statusArchived')}</option>
         </select>
       </div>
       <div className="flex items-end gap-2 md:col-span-3">
@@ -320,11 +319,11 @@ export function VersionForm({
           disabled={saving || !form.name || !form.from_date}
         >
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('pricing.version.saving') : t('pricing.version.save')}
+          {saving ? t('version.saving') : t('version.save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('pricing.version.cancel')}
+          {t('version.cancel')}
         </Button>
       </div>
     </div>
@@ -350,7 +349,7 @@ export function PricingItemForm({
   onCancel: () => void
   saving: boolean
 }) {
-  const { t } = useTranslation('assets')
+  const { t } = useTranslation('pricing')
   const [form, setForm] = useState<ItemFormState>(initial)
   function set<K extends keyof ItemFormState>(key: K, value: ItemFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -377,16 +376,16 @@ export function PricingItemForm({
   return (
     <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
       <p className="text-xs text-on-surface-variant">
-        {isAssetScoped ? t('pricing.tiersHelp') : t('pricing.genericItemHelp')}
+        {isAssetScoped ? t('tiersHelp') : t('genericItemHelp')}
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1 sm:col-span-2">
-          <Label className="text-xs">{t('pricing.itemName')} *</Label>
+          <Label className="text-xs">{t('itemName')} *</Label>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
         </div>
         {isAssetScoped ? (
           <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.itemUnit')}</Label>
+            <Label className="text-xs">{t('itemUnit')}</Label>
             <select
               value={form.unit}
               onChange={(e) => set('unit', Number(e.target.value))}
@@ -394,21 +393,21 @@ export function PricingItemForm({
             >
               {Object.entries(UNIT_LABELS).map(([unit, label]) => (
                 <option key={unit} value={Number(unit)}>
-                  {t(`pricing.unit${label}`)}
+                  {t(`unit${label}`)}
                 </option>
               ))}
             </select>
           </div>
         ) : (
           <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.itemMode')}</Label>
+            <Label className="text-xs">{t('itemMode')}</Label>
             <div className="flex h-8 items-center rounded-shape-sm border border-outline-variant bg-white px-2 text-sm text-on-surface">
-              {t('pricing.genericItemMode')}
+              {t('genericItemMode')}
             </div>
           </div>
         )}
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.basePrice')} *</Label>
+          <Label className="text-xs">{t('basePrice')} *</Label>
           <Input
             type="number" min="0" step="0.01"
             value={form.base_price}
@@ -416,11 +415,11 @@ export function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-on-surface-variant">{t('pricing.basePriceHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('basePriceHelp')}</p>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.ageDiscountPercent')}</Label>
+          <Label className="text-xs">{t('ageDiscountPercent')}</Label>
           <Input
             type="number" min="0" max="100" step="0.01"
             value={form.age_discount_percent}
@@ -428,31 +427,31 @@ export function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-on-surface-variant">{t('pricing.ageDiscountPercentHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('ageDiscountPercentHelp')}</p>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('pricing.glAccountCredit')}</Label>
+          <Label className="text-xs">{t('glAccountCredit')}</Label>
           <select
             value={form.gl_account_credit_uuid}
             onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
             className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
           >
-            <option value="">{t('pricing.noAccount')}</option>
+            <option value="">{t('noAccount')}</option>
             {revenueAccounts.map((a) => (
               <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
             ))}
           </select>
-          <p className="text-[11px] text-on-surface-variant">{t('pricing.glAccountCreditHelp')}</p>
+          <p className="text-[11px] text-on-surface-variant">{t('glAccountCreditHelp')}</p>
         </div>
         {isAssetScoped && (
           <div className="space-y-1">
-            <Label className="text-xs">{t('pricing.flightType')}</Label>
+            <Label className="text-xs">{t('flightType')}</Label>
             <select
               value={form.flight_type_uuid}
               onChange={(e) => set('flight_type_uuid', e.target.value)}
               className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
             >
-              <option value="">{t('pricing.noFlightType')}</option>
+              <option value="">{t('noFlightType')}</option>
               {flightTypes.map((flightType) => (
                 <option key={flightType.uuid} value={flightType.uuid}>
                   {flightType.name}
@@ -472,10 +471,10 @@ export function PricingItemForm({
                 onChange={(e) => set('is_progressive', e.target.checked)}
                 className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary disabled:cursor-not-allowed"
               />
-              <span>{t('pricing.isProgressive')}</span>
+              <span>{t('isProgressive')}</span>
             </label>
             {progressiveDisabled && (
-              <p className="mt-1 text-[11px] text-on-surface-variant">{t('pricing.isProgressiveHelp')}</p>
+              <p className="mt-1 text-[11px] text-on-surface-variant">{t('isProgressiveHelp')}</p>
             )}
           </div>
         )}
@@ -483,16 +482,16 @@ export function PricingItemForm({
 
       {isAssetScoped && (
         <div className="space-y-2">
-          <Label className="text-xs">{t('pricing.tiers')}</Label>
-          <p className="text-[11px] text-on-surface-variant">{t('pricing.tiersHelp')}</p>
+          <Label className="text-xs">{t('tiers')}</Label>
+          <p className="text-[11px] text-on-surface-variant">{t('tiersHelp')}</p>
           {form.tiers.length === 0 && (
-            <p className="text-xs text-on-surface-variant">{t('pricing.noTiers')}</p>
+            <p className="text-xs text-on-surface-variant">{t('noTiers')}</p>
           )}
           {form.tiers.length > 0 && (
             <div className="space-y-1">
               <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-on-surface-variant">
-                <span>{t('pricing.tierFrom')}</span>
-                <span>{t('pricing.tierPrice')}</span>
+                <span>{t('tierFrom')}</span>
+                <span>{t('tierPrice')}</span>
                 <span />
               </div>
               {form.tiers.map((tier, index) => (
@@ -526,7 +525,7 @@ export function PricingItemForm({
           )}
           <Button size="sm" variant="ghost" type="button" onClick={addTier}>
             <Plus className="mr-1 h-3 w-3" />
-            {t('pricing.addTier')}
+            {t('addTier')}
           </Button>
         </div>
       )}
@@ -534,11 +533,11 @@ export function PricingItemForm({
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('pricing.saving') : t('pricing.save')}
+          {saving ? t('saving') : t('save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('pricing.cancel')}
+          {t('cancel')}
         </Button>
       </div>
     </div>
@@ -554,7 +553,7 @@ export function PricingItemsPanel({
   version: PricingVersion
   canEdit: boolean
 }) {
-  const { t } = useTranslation('assets')
+  const { t } = useTranslation('pricing')
   const itemsQuery = usePricingItemsQuery(version.uuid, true)
   const items = itemsQuery.data ?? []
   const flightTypesQuery = useFlightTypesQuery()
@@ -574,7 +573,7 @@ export function PricingItemsPanel({
 
   function extractItemError(e: unknown): string {
     if (e instanceof AxiosError && e.response?.data?.detail) return String(e.response.data.detail)
-    return t('pricing.error.saveFailed')
+    return t('error.saveFailed')
   }
 
   async function handleCreate(form: ItemFormState) {
@@ -598,7 +597,7 @@ export function PricingItemsPanel({
   }
 
   async function handleDelete(item: PricingItem) {
-    if (!window.confirm(t('pricing.confirmDeleteItem'))) return
+    if (!window.confirm(t('confirmDeleteItem'))) return
     try {
       await deleteMutation.mutateAsync(item.uuid)
     } catch (e) { setItemError(extractItemError(e)) }
@@ -609,7 +608,7 @@ export function PricingItemsPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-on-surface">{t('pricing.items')}</p>
+        <p className="text-sm font-semibold text-on-surface">{t('items')}</p>
         {editable && !showForm && !editingItem && (
           <button
             type="button"
@@ -617,7 +616,7 @@ export function PricingItemsPanel({
             onClick={() => setShowForm(true)}
           >
             <Plus className="h-3 w-3" />
-            {t('pricing.addItem')}
+            {t('addItem')}
           </button>
         )}
       </div>
@@ -637,10 +636,10 @@ export function PricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-on-surface-variant">{t('states.loading')}</p>
+        <p className="text-xs text-on-surface-variant">{t('loading')}</p>
       ) : items.length === 0 && !showForm ? (
         <p className="rounded border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
-          {t('pricing.noItems')}
+          {t('noItems')}
         </p>
       ) : (
         <div className="space-y-1.5">
@@ -666,17 +665,17 @@ export function PricingItemsPanel({
                   <p className="mt-0.5 truncate text-xs text-on-surface-variant">
                     {isAssetScoped ? (
                       <>
-                        {t(`pricing.unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
+                        {t(`unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
                         {formatPrice(item.base_price)}
                         {item.tiers.length > 0 &&
                           ` · ${item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}`).join(' · ')}`}
                       </>
                     ) : (
                       <>
-                        {t('pricing.genericItemMode')}
+                        {t('genericItemMode')}
                         {' · '}{formatPrice(item.base_price)} €
                         {item.age_discount_percent !== '0' && item.age_discount_percent !== '0.00' && (
-                          <> · {t('pricing.ageDiscountSummary', { percent: formatPrice(item.age_discount_percent) })}</>
+                          <> · {t('ageDiscountSummary', { percent: formatPrice(item.age_discount_percent) })}</>
                         )}
                       </>
                     )}

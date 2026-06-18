@@ -49,9 +49,9 @@ function fyStateBadgeClass(state: number): string {
 }
 
 function fyStateLabel(state: number, t: (key: string) => string): string {
-  if (state === 1) return t('pricing.fy.stateOpen')
-  if (state === 3) return t('pricing.fy.stateReopened')
-  return t('pricing.fy.stateClosed')
+  if (state === 1) return t('fy.stateOpen')
+  if (state === 3) return t('fy.stateReopened')
+  return t('fy.stateClosed')
 }
 
 function sumDebit(entries: AccountingEntry[]): Decimal {
@@ -72,6 +72,7 @@ function sumCredit(entries: AccountingEntry[]): Decimal {
 
 export function BanqueDashboardPage() {
   const { t } = useTranslation('banque')
+  const { t: tp } = useTranslation('pricing')
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
 
@@ -163,7 +164,7 @@ export function BanqueDashboardPage() {
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${fyStateBadgeClass(activeFiscalYearData.state)}`}
                 >
-                  {fyStateLabel(activeFiscalYearData.state, t)}
+                  {fyStateLabel(activeFiscalYearData.state, tp)}
                 </span>
               </div>
               <p className="mt-1 text-sm text-slate-500">

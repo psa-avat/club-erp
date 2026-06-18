@@ -29,7 +29,6 @@ import type { PricingItemWithVersion } from '../api'
 export type PackFormState = {
   code: string
   name: string
-  fiscal_year_uuid: string
   pack_type: string
   quantity_allowance: string
   quantity_unit: string
@@ -47,7 +46,6 @@ export type ApplicableItemFormEntry = {
 type Props = {
   initial: PackFormState
   applicability: ApplicableItemFormEntry[]
-  fiscalYears: { uuid: string; code: string }[]
   pricingItems: PricingItemWithVersion[]
   accounts: { uuid: string; code: string; name: string }[]
   saving: boolean
@@ -64,7 +62,6 @@ function nextKey(): string {
 export function PackDefinitionForm({
   initial,
   applicability,
-  fiscalYears,
   pricingItems,
   accounts,
   saving,
@@ -122,16 +119,6 @@ export function PackDefinitionForm({
               <option value="winch_launches">Winch launches</option>
               <option value="tow_launches">Tow launches</option>
               <option value="engine_time">Engine time</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="fiscal_year">{t('packs.form.fiscalYear')}</Label>
-            <select id="fiscal_year" value={form.fiscal_year_uuid} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleSelectChange('fiscal_year_uuid', e.target.value)} required
-              className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-              <option value="">{t('common.select')}</option>
-              {fiscalYears.map((fy) => (
-                <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
-              ))}
             </select>
           </div>
           <div className="space-y-1">
