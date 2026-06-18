@@ -431,13 +431,12 @@ async def create_pack_purchase_entry(
         debit=amount,
     ))
 
-    # Line 2: Credit sales account
+    # Line 2: Credit sales account (club revenue — not tagged to a member)
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fy.uuid,
         entry_uuid=entry_uuid,
         account_uuid=sales_account.uuid,
-        member_uuid=member_uuid,
         credit=amount,
     ))
 
@@ -672,8 +671,15 @@ async def _load_pack_context(
         .where(
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
             AccountingEntry.reference.like("PACK-%"),
-            AccountingLine.member_uuid == member_uuid,
             AccountingLine.credit > 0,          # ligne crédit = achat pack
+            # La ligne crédit n'a plus member_uuid, on vérifie via la ligne débit 411
+            AccountingEntry.uuid.in_(
+                select(AccountingLine.entry_uuid).where(
+                    AccountingLine.fiscal_year_uuid == fiscal_year_uuid,
+                    AccountingLine.member_uuid == member_uuid,
+                    AccountingLine.debit > 0,
+                )
+            ),
         )
         .order_by(AccountingEntry.entry_date.asc())
     )
@@ -909,13 +915,12 @@ async def upsert_rem_entry(
         db.add(entry)
         await db.flush()
 
-    # Ligne 1 : débit compte charge remises (6xx)
+    # Ligne 1 : débit compte charge remises (6xx — pas lié à un membre)
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
         entry_uuid=entry.uuid,
         account_uuid=discount_account_uuid,
-        member_uuid=member_uuid,
         debit=total_discount,
     ))
 
@@ -996,9 +1001,27 @@ async def discount_review_for_member(
             MemberPackConsumption.flight_uuid.isnot(None),
         )
     )
+    # Reset has_discount flag — clean slate avant recalcul, même pour les vols
+    # qui ne seraient plus dans le scope de facturation de l'exercice
+    await db.execute(
+        update(ValidatedFlight)
+        .where(
+            ValidatedFlight.accounting_entry_uuid.isnot(None),
+            ValidatedFlight.accounting_entry_uuid.in_(
+                select(AccountingEntry.uuid)
+                .join(AccountingLine)
+                .where(
+                    AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+                    AccountingLine.member_uuid == member_uuid,
+                    AccountingLine.debit > 0,
+                )
+            ),
+        )
+        .values(has_discount=False)
+    )
     await db.flush()
     logger.info(
-        "discount_review_for_member: consommations vols purgées pour membre %s",
+        "discount_review_for_member: consommations vols purgées et has_discount reset pour membre %s",
         member_uuid,
     )
 
@@ -1013,6 +1036,7 @@ async def discount_review_for_member(
             ValidatedFlight.accounting_entry_uuid.isnot(None),
             AccountingLine.member_uuid == member_uuid,
             AccountingLine.debit > 0,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
         )
         .order_by(ValidatedFlight.jour.asc())
     )
@@ -1148,6 +1172,7 @@ async def discount_review(
             ValidatedFlight.accounting_entry_uuid.isnot(None),
             AccountingLine.member_uuid.isnot(None),
             AccountingLine.debit > 0,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
         )
         .distinct()
     )

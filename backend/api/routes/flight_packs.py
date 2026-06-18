@@ -283,6 +283,24 @@ async def list_pack_purchases(
     )
     lines = list(lines_result.unique().scalars().all())
 
+    # Credit lines no longer carry member_uuid, so fetch member from
+    # the corresponding debit line (411 receivable) of each entry.
+    member_by_entry: dict[UUID, tuple[UUID | None, object | None]] = {}
+    if lines:
+        entry_uuids = [al.entry_uuid for al in lines if al.entry]
+        debit_lines_result = await db.execute(
+            select(AccountingLine)
+            .options(joinedload(AccountingLine.member))
+            .where(
+                AccountingLine.entry_uuid.in_(entry_uuids),
+                AccountingLine.member_uuid.isnot(None),
+                AccountingLine.debit > 0,
+            )
+        )
+        for dl in debit_lines_result.unique().scalars().all():
+            if dl.entry_uuid not in member_by_entry:
+                member_by_entry[dl.entry_uuid] = (dl.member_uuid, dl.member)
+
     items: list[PackPurchaseLine] = []
     entry_map: dict[UUID, int] = {}  # entry_uuid → index in items
 
@@ -296,8 +314,11 @@ async def list_pack_purchases(
         if not pack_def:
             continue
 
+        # Get member from the debit side of this entry
+        member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
+
         # Get consumptions for this member + pack_type
-        consumptions = await list_consumptions_for_member(db, al.member_uuid, pack_def.pack_type)
+        consumptions = await list_consumptions_for_member(db, member_uuid, pack_def.pack_type)
         total_consumed = sum(c.total_discount_amount for c in consumptions)
         units_consumed = sum(c.quantity_consumed for c in consumptions)
 
@@ -320,7 +341,7 @@ async def list_pack_purchases(
                 "pack_definition_uuid": str(c.pack_definition_uuid) if c.pack_definition_uuid else None,
             })
 
-        member_name = f"{al.member.first_name} {al.member.last_name}" if al.member else None
+        member_name = f"{member_obj.first_name} {member_obj.last_name}" if member_obj else None
 
         # Parse valid_from from description if present (stored as " | VALID_FROM:YYYY-MM-DD")
         valid_from = None
@@ -338,7 +359,7 @@ async def list_pack_purchases(
             reference=entry.reference or "",
             description=entry.description or "",
             entry_date=entry.entry_date if hasattr(entry, 'entry_date') else entry.created_at.date(),
-            member_uuid=al.member_uuid,
+            member_uuid=member_uuid,
             member_name=member_name,
             pack_code=pack_def.code,
             pack_type=pack_def.pack_type,
