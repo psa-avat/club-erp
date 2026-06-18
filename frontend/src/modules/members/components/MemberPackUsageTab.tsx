@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, ShoppingBag, Loader2 } from 'lucide-react'
 
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { usePackPurchasesQuery } from '../../banque/api'
+import { useActiveFiscalYearQuery, usePackPurchasesQuery } from '../../banque/api'
 import type { WorkspaceMode } from '../types/workspace'
 
 interface MemberPackUsageTabProps {
@@ -25,8 +25,10 @@ function formatEur(value: string | number | null | undefined): string {
 
 export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageTabProps) {
   const { t } = useTranslation(['banque', 'common'])
-  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
-  const { data: purchases, isLoading } = usePackPurchasesQuery(activeFiscalYearUuid, memberUuid, !!activeFiscalYearUuid)
+  const storeFyUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const { data: activeFy } = useActiveFiscalYearQuery(!storeFyUuid)
+  const fiscalYearUuid = storeFyUuid ?? (activeFy?.uuid ?? null)
+  const { data: purchases, isLoading } = usePackPurchasesQuery(fiscalYearUuid, memberUuid, !!fiscalYearUuid)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
 
   if (isLoading) {
