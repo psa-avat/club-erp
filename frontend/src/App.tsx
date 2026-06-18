@@ -10,11 +10,11 @@ import { AdminPage } from './modules/admin'
 import {
   BanqueJournalEntryWorkspacePage,
   BanqueSettingsPage,
-  BankPricingPage,
   BankPricingVersionEditPage,
   SupplierInvoicePage,
   PackDefinitionEditPage,
   FinanceWorkspacePage,
+  TarifsWorkspacePage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
 import { MembersListPage, MemberFormPage, MemberWorkspaceShell, MembersWorkspacePage } from './modules/members'
@@ -131,7 +131,7 @@ function App() {
           <Route path="/banque/accounts" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=pcg" />} />
           <Route path="/banque/pcg" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=pcg" />} />
           <Route path="/banque/fiscal-years" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=exercices" />} />
-          <Route path="/banque/pricing" element={<BankPricingPage />} />
+          <Route path="/banque/pricing" element={<Navigate replace to="/workspace/tarifs" />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
           <Route path="/banque/reports" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=rapports" />} />
           <Route path="/banque/reconciliation" element={<Navigate replace to="/workspace/finance?tab=rapprochement" />} />
@@ -146,6 +146,7 @@ function App() {
           <Route path="/rh" element={<PlaceholderPage title="RH" description="Planning des congés, gestion des présences et tableau de bord RH." eta="Phase 10" />} />
           <Route path="/workspace/rh" element={<RhWorkspacePage />} />
           <Route path="/workspace/finance" element={<FinanceWorkspacePage />} />
+          <Route path="/workspace/tarifs" element={<TarifsWorkspacePage />} />
           <Route path="/storage" element={<Navigate replace to="/admin?tab=parametres&subtab=stockage" />} />
           <Route path="/storage/settings" element={<Navigate replace to="/admin?tab=parametres&subtab=stockage" />} />
         </Route>

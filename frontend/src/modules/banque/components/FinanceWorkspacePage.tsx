@@ -32,14 +32,12 @@ import {
   Repeat,
   Settings,
   TableProperties,
-  Tags,
 } from "lucide-react";
 
 import { WorkspaceShell, SubWorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
 
-import { PackDefinitionsPage } from "./PackDefinitionsPage";
 import { BanqueJournalTemplatesPage } from "./BanqueJournalTemplatesPage";
 import { BanqueSettingsPage } from "./BanqueSettingsPage";
 import { BanqueJournalEntriesPage } from "./BanqueJournalEntriesPage";
@@ -174,7 +172,7 @@ export function FinanceWorkspacePage() {
       title={t("workspace.finance.title", "Finance")}
       description={t(
         "workspace.finance.description",
-        "Opérations bancaires, ventes, achats, packs et comptabilité.",
+        "Opérations bancaires, ventes, achats et comptabilité.",
       )}
       tabs={[
         {
@@ -200,12 +198,6 @@ export function FinanceWorkspacePage() {
           label: t("workspace.finance.tabs.achats", "Achats"),
           icon: Building2,
           content: <AchatsSection />,
-        },
-        {
-          value: "packs",
-          label: t("workspace.finance.tabs.packs", "Packs"),
-          icon: Tags,
-          content: <PackDefinitionsPage />,
         },
         {
           value: "recurring",

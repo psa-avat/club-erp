@@ -1230,13 +1230,12 @@ export const fr = {
     workspace: {
       finance: {
         title: 'Finance',
-        description: 'Opérations bancaires, ventes, achats, packs et comptabilité.',
+        description: 'Opérations bancaires, ventes, achats et comptabilité.',
         tabs: {
           overview: "Vue d'ensemble",
           operations: 'Opérations',
           ventes: 'Ventes',
           achats: 'Achats',
-          packs: 'Packs',
           recurring: 'Récurrentes',
           comptabilite: 'Comptabilité',
           reconciliation: 'Rapprochement',
@@ -1285,6 +1284,14 @@ export const fr = {
           fiscalYears: 'Exercices',
           pcg: 'Plan comptable',
           reports: 'Rapports',
+        },
+      },
+      tarifs: {
+        title: 'Tarifs',
+        description: 'Grille tarifaire par exercice et catalogue de forfaits.',
+        tabs: {
+          grid: 'Grille tarifaire',
+          packs: 'Forfaits',
         },
       },
       banque: {

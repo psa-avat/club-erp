@@ -1,5 +1,6 @@
 export { BanquePage } from './components/BanquePage'
 export { FinanceWorkspacePage } from './components/FinanceWorkspacePage'
+export { TarifsWorkspacePage } from './components/TarifsWorkspacePage'
 export { BanqueDashboardPage } from './components/BanqueDashboardPage'
 export { BanqueCoaPage } from './components/BanqueCoaPage'
 export { BanqueJournalEntriesPage } from './components/BanqueJournalEntriesPage'

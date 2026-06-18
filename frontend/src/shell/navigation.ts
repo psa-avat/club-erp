@@ -105,12 +105,12 @@ export const shellNavItems: ShellNavItem[] = [
   //   - Packs (catalogue de produits / forfaits)
   //   - Tarifs machine (par aéronef)
   {
-    to: '/banque/pricing',
+    to: '/workspace/tarifs',
     labelKey: 'nav.tarifs',
     requiredCapability: 'MANAGE_PRICES',
     children: [
-      { to: '/banque/pricing', labelKey: 'nav.tarifsGrid', requiredCapability: 'MANAGE_PRICES' },
-      { to: '/workspace/finance?tab=packs', labelKey: 'nav.tarifsPacks', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/tarifs', labelKey: 'nav.tarifsGrid', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/tarifs?tab=packs', labelKey: 'nav.tarifsPacks', requiredCapability: 'MANAGE_PRICES' },
       { to: '/workspace/machines?tab=tarifs', labelKey: 'nav.tarifsMachines', requiredCapability: 'MANAGE_PRICES' },
     ],
   },

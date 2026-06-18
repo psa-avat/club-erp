@@ -1234,13 +1234,12 @@ export const en = {
     workspace: {
       finance: {
         title: 'Finance',
-        description: 'Banking operations, sales, purchases, packs and accounting.',
+        description: 'Banking operations, sales, purchases and accounting.',
         tabs: {
           overview: 'Overview',
           operations: 'Operations',
           ventes: 'Sales',
           achats: 'Purchases',
-          packs: 'Packs',
           recurring: 'Recurring',
           comptabilite: 'Accounting',
           reconciliation: 'Reconciliation',
@@ -1289,6 +1288,14 @@ export const en = {
           fiscalYears: 'Fiscal years',
           pcg: 'Chart of accounts',
           reports: 'Reports',
+        },
+      },
+      tarifs: {
+        title: 'Pricing',
+        description: 'Rate grid by fiscal year and pack catalogue.',
+        tabs: {
+          grid: 'Rate grid',
+          packs: 'Packs',
         },
       },
       banque: {
