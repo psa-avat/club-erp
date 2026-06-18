@@ -22,7 +22,7 @@ export function OpsPacksTab() {
   const canPostEntries = useCapability('POST_ACCOUNTING_ENTRIES')
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
-  const { data: purchases, isLoading } = usePackPurchasesQuery(activeFiscalYearUuid, !!activeFiscalYearUuid)
+  const { data: purchases, isLoading } = usePackPurchasesQuery(activeFiscalYearUuid, undefined, !!activeFiscalYearUuid)
   const [showPurchaseDialog, setShowPurchaseDialog] = useState(false)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)

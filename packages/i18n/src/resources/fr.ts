@@ -226,6 +226,7 @@ export const fr = {
     // Workspace tabs
     workspaceTabLogbook: 'Carnet de vol',
     workspaceTabBalance: 'Solde & Dépôts',
+    workspaceTabPackUsage: 'Forfaits',
     workspaceTabExpenses: 'Notes de frais',
     workspaceTabVolunteerFiscal: 'Fiscal bénévole',
     workspaceTabDocuments: 'Documents',

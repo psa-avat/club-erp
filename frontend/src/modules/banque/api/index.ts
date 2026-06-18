@@ -1303,13 +1303,15 @@ export function useBuyPackMutation() {
   })
 }
 
-export function usePackPurchasesQuery(fiscalYearUuid: string | null, enabled = true) {
+export function usePackPurchasesQuery(fiscalYearUuid: string | null, memberUuid?: string, enabled = true) {
   return useQuery({
-    queryKey: ['banque', 'packs', 'purchases', fiscalYearUuid],
+    queryKey: ['banque', 'packs', 'purchases', fiscalYearUuid, memberUuid],
     enabled: enabled && !!fiscalYearUuid,
     queryFn: async () => {
+      const params = new URLSearchParams({ fiscal_year_uuid: fiscalYearUuid! })
+      if (memberUuid) params.append('member_uuid', memberUuid)
       const { data } = await apiClient.get<PackPurchaseListResponse>(
-        `/api/v1/packs/purchases?fiscal_year_uuid=${fiscalYearUuid}`,
+        `/api/v1/packs/purchases?${params}`,
         getAuthRequestConfig(),
       )
       return data

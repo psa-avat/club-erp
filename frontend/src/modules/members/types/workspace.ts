@@ -31,7 +31,7 @@ export interface WorkspaceContext {
   readOnly: boolean;
 }
 
-export type WorkspaceTab = 'logbook' | 'balance' | 'club-expenses' | 'volunteer-fiscal' | 'documents' | 'portal-access';
+export type WorkspaceTab = 'logbook' | 'balance' | 'club-expenses' | 'volunteer-fiscal' | 'documents' | 'portal-access' | 'pack-usage';
 
 export interface WorkspaceTabDefinition {
   id: WorkspaceTab;

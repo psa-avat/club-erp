@@ -245,12 +245,14 @@ async def buy_pack_endpoint(
 )
 async def list_pack_purchases(
     fiscal_year_uuid: UUID,
+    member_uuid: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
     """
     List all pack purchases for a fiscal year, grouped by pack definition.
     Returns each purchase entry with member info, amounts, and consumption details.
+    If member_uuid is provided, filters purchases for that member only.
     """
     # Find all pack sales accounts from pack definitions
     pack_defs_result = await db.execute(
@@ -301,6 +303,13 @@ async def list_pack_purchases(
             if dl.entry_uuid not in member_by_entry:
                 member_by_entry[dl.entry_uuid] = (dl.member_uuid, dl.member)
 
+    # If filtering for a specific member, keep only their entries
+    if member_uuid is not None:
+        lines = [
+            al for al in lines
+            if al.entry and member_by_entry.get(al.entry.uuid, (None, None))[0] == member_uuid
+        ]
+
     items: list[PackPurchaseLine] = []
     entry_map: dict[UUID, int] = {}  # entry_uuid → index in items
 
@@ -315,10 +324,10 @@ async def list_pack_purchases(
             continue
 
         # Get member from the debit side of this entry
-        member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
+        entry_member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
 
         # Get consumptions for this member + pack_type
-        consumptions = await list_consumptions_for_member(db, member_uuid, pack_def.pack_type)
+        consumptions = await list_consumptions_for_member(db, entry_member_uuid, pack_def.pack_type)
         total_consumed = sum(c.total_discount_amount for c in consumptions)
         units_consumed = sum(c.quantity_consumed for c in consumptions)
 
@@ -359,7 +368,7 @@ async def list_pack_purchases(
             reference=entry.reference or "",
             description=entry.description or "",
             entry_date=entry.entry_date if hasattr(entry, 'entry_date') else entry.created_at.date(),
-            member_uuid=member_uuid,
+            member_uuid=entry_member_uuid,
             member_name=member_name,
             pack_code=pack_def.code,
             pack_type=pack_def.pack_type,

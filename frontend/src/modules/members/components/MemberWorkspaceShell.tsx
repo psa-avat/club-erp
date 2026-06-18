@@ -20,7 +20,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, BookOpen, FileText, FolderOpen, Key, Mail, Receipt, Wallet } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, FolderOpen, Key, Mail, Receipt, ShoppingBag, Wallet } from 'lucide-react';
 
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -37,6 +37,7 @@ import { getPortalProfile } from '../../member-portal/api/client';
 import { useChangePortalPasswordMutation } from '../../member-portal/api';
 import { MemberLogbookTab } from './MemberLogbookTab';
 import { MemberBalanceTab } from './MemberBalanceTab';
+import { MemberPackUsageTab } from './MemberPackUsageTab';
 import { useMembersStore } from '../store';
 import type {
   WorkspaceMode,
@@ -52,6 +53,7 @@ import type { MemberPortalProfile } from '../../member-portal/types';
 const ALL_TABS: WorkspaceTabDefinition[] = [
   { id: 'logbook', labelKey: 'workspaceTabLogbook', icon: BookOpen },
   { id: 'balance', labelKey: 'workspaceTabBalance', icon: Wallet },
+  { id: 'pack-usage', labelKey: 'workspaceTabPackUsage', icon: ShoppingBag },
   { id: 'club-expenses', labelKey: 'workspaceTabExpenses', icon: Receipt },
   { id: 'volunteer-fiscal', labelKey: 'workspaceTabVolunteerFiscal', icon: FileText },
   { id: 'documents', labelKey: 'workspaceTabDocuments', icon: FolderOpen },
@@ -385,6 +387,7 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
       <div>
         {activeTab === 'logbook' && <MemberLogbookTab memberUuid={memberUuid} mode={mode} />}
         {activeTab === 'balance' && <MemberBalanceTab memberUuid={memberUuid} mode={mode} />}
+        {activeTab === 'pack-usage' && <MemberPackUsageTab memberUuid={memberUuid} mode={mode} />}
         {activeTab === 'club-expenses' && <TabPlaceholder labelKey="workspaceTabExpenses" />}
         {activeTab === 'volunteer-fiscal' && <TabPlaceholder labelKey="workspaceTabVolunteerFiscal" />}
         {activeTab === 'documents' && <TabPlaceholder labelKey="workspaceTabDocuments" />}
