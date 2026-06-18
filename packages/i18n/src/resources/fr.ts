@@ -97,7 +97,6 @@ export const fr = {
       financeOps: 'Opérations',
       financeSales: 'Ventes',
       financeAchats: 'Achats',
-      financeTarifs: 'Tarifs',
       financeComptabilite: 'Comptabilité',
       financeSettings: 'Paramètres',
 
@@ -1231,13 +1230,13 @@ export const fr = {
     workspace: {
       finance: {
         title: 'Finance',
-        description: 'Opérations bancaires, ventes, achats, tarifs et comptabilité.',
+        description: 'Opérations bancaires, ventes, achats, packs et comptabilité.',
         tabs: {
           overview: "Vue d'ensemble",
           operations: 'Opérations',
           ventes: 'Ventes',
           achats: 'Achats',
-          tarifs: 'Packs',
+          packs: 'Packs',
           recurring: 'Récurrentes',
           comptabilite: 'Comptabilité',
           reconciliation: 'Rapprochement',

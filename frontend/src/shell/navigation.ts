@@ -83,7 +83,6 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/workspace/finance', labelKey: 'nav.financeOverview' },
       { to: '/workspace/finance?tab=ventes', labelKey: 'nav.financeSales' },
       { to: '/workspace/finance?tab=achats', labelKey: 'nav.financeAchats' },
-      { to: '/workspace/finance?tab=tarifs', labelKey: 'nav.financeTarifs' },
       { to: '/workspace/finance?tab=comptabilite', labelKey: 'nav.financeComptabilite' },
       { to: '/workspace/finance?tab=parametres', labelKey: 'nav.financeSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
@@ -111,7 +110,7 @@ export const shellNavItems: ShellNavItem[] = [
     requiredCapability: 'MANAGE_PRICES',
     children: [
       { to: '/banque/pricing', labelKey: 'nav.tarifsGrid', requiredCapability: 'MANAGE_PRICES' },
-      { to: '/workspace/finance?tab=tarifs', labelKey: 'nav.tarifsPacks', requiredCapability: 'MANAGE_PRICES' },
+      { to: '/workspace/finance?tab=packs', labelKey: 'nav.tarifsPacks', requiredCapability: 'MANAGE_PRICES' },
       { to: '/workspace/machines?tab=tarifs', labelKey: 'nav.tarifsMachines', requiredCapability: 'MANAGE_PRICES' },
     ],
   },

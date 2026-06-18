@@ -174,7 +174,7 @@ export function FinanceWorkspacePage() {
       title={t("workspace.finance.title", "Finance")}
       description={t(
         "workspace.finance.description",
-        "Opérations bancaires, ventes, achats, tarifs et comptabilité.",
+        "Opérations bancaires, ventes, achats, packs et comptabilité.",
       )}
       tabs={[
         {
@@ -202,8 +202,8 @@ export function FinanceWorkspacePage() {
           content: <AchatsSection />,
         },
         {
-          value: "tarifs",
-          label: t("workspace.finance.tabs.tarifs", "Packs"),
+          value: "packs",
+          label: t("workspace.finance.tabs.packs", "Packs"),
           icon: Tags,
           content: <PackDefinitionsPage />,
         },
