@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import { useMemberPortalAccount, useMemberPortalPacks } from '../api'
+import { useMemberPortalAccountSummaryQuery, useMemberPortalPacks } from '../api'
+import { useFiscalYearStore } from '@/store/fiscalYearStore'
 
 export function DashboardPage() {
   const { t } = useTranslation('common')
-  const { data: account, isLoading: accountLoading } = useMemberPortalAccount()
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const { data: account, isLoading: accountLoading } = useMemberPortalAccountSummaryQuery(activeFiscalYearUuid)
   const { data: packs, isLoading: packsLoading } = useMemberPortalPacks()
 
   return (
@@ -23,13 +25,13 @@ export function DashboardPage() {
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <p className="text-xs font-medium text-slate-500">{t('portalPendingEntries')}</p>
             <p className="mt-1 text-2xl font-bold text-amber-600">
-              {account.pending_entries_count}
+              {account.pending_total} €
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <p className="text-xs font-medium text-slate-500">{t('portalPostedEntries')}</p>
             <p className="mt-1 text-2xl font-bold text-green-600">
-              {account.posted_entries_count}
+              {account.posted_total} €
             </p>
           </div>
         </div>

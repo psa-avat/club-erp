@@ -180,7 +180,11 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
   const grouped = data?.grouped ?? []
 
   // Split flights: instructor (second_pilot) vs pilot/other
-  const instructorFlights = flights.filter((f) => f.role === 'second_pilot')
+  // Instructor section only counts instruction (0), lacher (5) and supervise (6) flights
+  const INSTRUCTOR_TYPES = new Set([0, 5, 6])
+  const instructorFlights = flights.filter(
+    (f) => f.role === 'second_pilot' && INSTRUCTOR_TYPES.has(f.type_of_flight),
+  )
   const otherFlights = flights.filter((f) => f.role !== 'second_pilot')
 
   function makeColumns(

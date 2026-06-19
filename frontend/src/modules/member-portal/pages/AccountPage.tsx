@@ -1,11 +1,20 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useMemberPortalAccount, useMemberPortalAccountEntries, useMemberPortalDeposit } from '../api'
+import {
+  useMemberPortalAccountSummaryQuery,
+  useMemberPortalAccountEntriesQuery,
+  useMemberPortalDeposit,
+} from '../api'
+import { useFiscalYearStore } from '@/store/fiscalYearStore'
 
 export function AccountPage() {
   const { t } = useTranslation('common')
-  const { data: account, isLoading } = useMemberPortalAccount()
-  const { data: entries, isLoading: entriesLoading } = useMemberPortalAccountEntries()
+  const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const { data: account, isLoading } = useMemberPortalAccountSummaryQuery(activeFiscalYearUuid)
+  const { data: entries, isLoading: entriesLoading } = useMemberPortalAccountEntriesQuery({
+    fiscalYearUuid: activeFiscalYearUuid ?? undefined,
+    limit: 50,
+  })
   const depositMutation = useMemberPortalDeposit()
 
   const [showDeposit, setShowDeposit] = useState(false)
@@ -56,32 +65,16 @@ export function AccountPage() {
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <p className="text-xs font-medium text-slate-500">{t('portalPendingEntries')}</p>
               <p className="mt-1 text-2xl font-bold text-amber-600">
-                {account.pending_entries_count}
+                {account.pending_total} €
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
               <p className="text-xs font-medium text-slate-500">{t('portalPostedEntries')}</p>
               <p className="mt-1 text-2xl font-bold text-green-600">
-                {account.posted_entries_count}
+                {account.posted_total} €
               </p>
             </div>
           </div>
-
-          {account.active_packs.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-lg font-semibold text-slate-700">{t('portalMyPacks')}</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {account.active_packs.map((pack) => (
-                  <div key={pack.pack_type} className="rounded-lg border border-slate-200 bg-white p-3">
-                    <p className="text-sm font-medium text-slate-700">{pack.pack_type_label}</p>
-                    <p className="text-xs text-slate-500">
-                      {pack.units_remaining} / {pack.total_purchased}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </>
       ) : null}
 
@@ -147,7 +140,7 @@ export function AccountPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {entries.items.map((entry) => (
-                  <tr key={entry.uuid} className="hover:bg-slate-50">
+                  <tr key={entry.entry_uuid} className="hover:bg-slate-50">
                     <td className="px-3 py-2 text-slate-600">{entry.entry_date ?? '—'}</td>
                     <td className="px-3 py-2 font-medium text-slate-700">{entry.reference ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-600">{entry.description ?? '—'}</td>

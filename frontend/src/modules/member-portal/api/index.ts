@@ -14,6 +14,23 @@ import type {
   MemberPortalDepositResponse,
 } from '../types'
 
+import type { FiscalYear } from '../../banque/api'
+
+// ── Fiscal Years ──────────────────────────────────────────────────────────────
+
+async function fetchPortalFiscalYears() {
+  const { data } = await portalApiClient.get<FiscalYear[]>('/api/v1/member-portal/fiscal-years')
+  return data
+}
+
+export function useMemberPortalFiscalYearsQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['member-portal', 'fiscal-years'],
+    queryFn: fetchPortalFiscalYears,
+    enabled,
+  })
+}
+
 // ── Login ─────────────────────────────────────────────────────────────────────
 
 async function loginRequest(memberIdentifier: string, password: string) {

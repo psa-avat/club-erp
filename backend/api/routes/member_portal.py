@@ -69,6 +69,8 @@ from services.members import (
     list_member_account_entries,
     list_member_logbook,
 )
+from schemas.accounting import FiscalYearResponse
+from services.accounting import list_fiscal_years
 
 router = APIRouter(prefix="/api/v1/member-portal", tags=["member-portal"])
 
@@ -117,6 +119,17 @@ async def member_portal_change_password(
     )
     if not success:
         raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+
+
+# ── Fiscal Years ───────────────────────────────────────────────────────────────
+
+@router.get("/fiscal-years", response_model=list[FiscalYearResponse])
+async def member_portal_fiscal_years(
+    member: Member = Depends(get_member_portal_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all fiscal years (for the member to select the one to view)."""
+    return await list_fiscal_years(db=db)
 
 
 # ── Flights ────────────────────────────────────────────────────────────────────
