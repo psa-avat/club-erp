@@ -227,6 +227,7 @@ function SearchableSelect({
           ref={dropdownRef}
           role="listbox"
           id={`${id}-listbox`}
+          data-searchable-select-portal=""
           style={dropdownStyle}
           onKeyDown={handleKeyDown}
           className={cn(

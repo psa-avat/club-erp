@@ -478,7 +478,19 @@ export function JournalTemplatesScreen() {
 
       {/* ── Template Editor Sheet ────────────────────────────────────────── */}
       <Sheet open={isEditorOpen} onOpenChange={(open) => { if (!open) closeEditor() }}>
-        <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-5xl">
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 sm:max-w-[min(90vw,80rem)]"
+          onInteractOutside={(e) => {
+            // Prevent sheet close when interacting with a portaled SearchableSelect dropdown
+            // (covers both pointer clicks on items and auto-focus of the search input)
+            const originalEvent = (e as unknown as CustomEvent<{ originalEvent: Event }>).detail?.originalEvent
+            const target = originalEvent?.target as HTMLElement | null
+            if (target?.closest?.('[data-searchable-select-portal]')) {
+              e.preventDefault()
+            }
+          }}
+        >
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle>
               {selectedModelUuid
