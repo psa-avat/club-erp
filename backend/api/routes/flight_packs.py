@@ -292,16 +292,27 @@ async def list_pack_purchases(
         entry_uuids = [al.entry_uuid for al in lines if al.entry]
         debit_lines_result = await db.execute(
             select(AccountingLine)
-            .options(joinedload(AccountingLine.member))
             .where(
                 AccountingLine.entry_uuid.in_(entry_uuids),
-                AccountingLine.member_uuid.isnot(None),
+                AccountingLine.tiers_uuid.isnot(None),
                 AccountingLine.debit > 0,
             )
         )
-        for dl in debit_lines_result.unique().scalars().all():
+        debit_lines = debit_lines_result.unique().scalars().all()
+        for dl in debit_lines:
             if dl.entry_uuid not in member_by_entry:
-                member_by_entry[dl.entry_uuid] = (dl.member_uuid, dl.member)
+                member_by_entry[dl.entry_uuid] = (dl.tiers_uuid, None)
+
+        # Batch-fetch member objects for display
+        member_uuids_needed = {tiers_uuid for tiers_uuid, _ in member_by_entry.values() if tiers_uuid}
+        if member_uuids_needed:
+            from models import Member
+            members_result = await db.execute(select(Member).where(Member.uuid.in_(list(member_uuids_needed))))
+            members_map = {m.uuid: m for m in members_result.scalars().all()}
+            member_by_entry = {
+                entry_uuid: (tiers_uuid, members_map.get(tiers_uuid))
+                for entry_uuid, (tiers_uuid, _) in member_by_entry.items()
+            }
 
     # If filtering for a specific member, keep only their entries
     if member_uuid is not None:

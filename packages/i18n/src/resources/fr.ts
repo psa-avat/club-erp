@@ -2140,6 +2140,13 @@ export const fr = {
         type: 'Type',
         posting: 'Saisie autorisée',
         reconcilable: 'Rapprochable',
+        requireId: 'Tiers requis',
+      },
+      requireId: {
+        none: 'Aucun',
+        member: 'Membre',
+        asset: 'Aéronef',
+        supplier: 'Fournisseur',
       },
     },
   },

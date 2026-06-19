@@ -2133,6 +2133,13 @@ export const en = {
         type: 'Type',
         posting: 'Posting allowed',
         reconcilable: 'Reconcilable',
+        requireId: 'Required party',
+      },
+      requireId: {
+        none: 'None',
+        member: 'Member',
+        asset: 'Aircraft',
+        supplier: 'Supplier',
       },
     },
   },

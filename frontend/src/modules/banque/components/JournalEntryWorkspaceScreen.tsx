@@ -225,7 +225,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
           account_uuid: line.account_uuid,
           amount: amount.toFixed(2),
           description: line.description ?? '',
-          member_uuid: line.member_uuid ?? '',
+          tiers_uuid: line.tiers_uuid ?? '',
         }
       }),
     }))
@@ -247,8 +247,8 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
       description: `${t('journal.entries.pricing.generatedPrefix')} ${item.name}`,
       reference: item.name,
       lines: [
-        { account_uuid: priceDebitAccountUuid, amount: amount, description: item.name, member_uuid: '' },
-        { account_uuid: item.gl_account_credit_uuid ?? '', amount: new Decimal(amount).negated().toFixed(2), description: item.name, member_uuid: '' },
+        { account_uuid: priceDebitAccountUuid, amount: amount, description: item.name, tiers_uuid: '' },
+        { account_uuid: item.gl_account_credit_uuid ?? '', amount: new Decimal(amount).negated().toFixed(2), description: item.name, tiers_uuid: '' },
       ],
     }))
     setLocalError(null)

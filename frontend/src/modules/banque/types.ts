@@ -12,6 +12,7 @@ export type PcgSeedItem = {
   type: number // 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue
   is_posting_allowed: boolean
   is_reconcilable: boolean
+  require_id: number // 0=none,1=member,2=asset,3=supplier
 }
 
 export type PcgSeedExportResponse = {

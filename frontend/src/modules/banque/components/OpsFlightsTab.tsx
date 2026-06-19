@@ -193,7 +193,7 @@ function FlightPreviewPanel({ preview }: FlightPreviewPanelProps) {
             {preview.accounting_lines.map((line, index) => (
               <tr key={`${line.side}-${line.account_code}-${index}`}>
                 <td className="px-3 py-2 text-slate-800">{line.account_code ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-700">{line.member_account_id_snapshot ?? '—'}</td>
+                <td className="px-3 py-2 text-slate-700">{line.tiers_uuid ?? '—'}</td>
                 <td className="px-3 py-2 text-slate-700">{line.description ?? '—'}</td>
                 <td className="px-3 py-2 text-right text-slate-700">{Number(line.debit) > 0 ? formatMoney(line.debit) : '—'}</td>
                 <td className="px-3 py-2 text-right text-slate-700">{Number(line.credit) > 0 ? formatMoney(line.credit) : '—'}</td>

@@ -153,8 +153,7 @@ class FlightBillingApplyService:
                 fiscal_year_uuid=fiscal_year_uuid,
                 entry_uuid=entry_uuid,
                 account_uuid=UUID(line.account_uuid),
-                member_uuid=UUID(line.member_uuid) if line.member_uuid else None,
-                analytical_asset_uuid=UUID(line.analytical_asset_uuid) if line.analytical_asset_uuid else None,
+                tiers_uuid=UUID(line.tiers_uuid) if line.tiers_uuid else None,
                 debit=_money(_dec(line.debit)) if line.debit else Decimal("0"),
                 credit=_money(_dec(line.credit)) if line.credit else Decimal("0"),
             ))

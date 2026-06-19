@@ -164,9 +164,7 @@ class FlightAccountingLinePreview(BaseModel):
     side: str
     account_uuid: str | None = None
     account_code: str | None = None
-    member_uuid: str | None = None
-    member_account_id_snapshot: str | None = None
-    analytical_asset_uuid: str | None = None
+    tiers_uuid: str | None = None
     debit: Decimal = Decimal("0")
     credit: Decimal = Decimal("0")
     description: str | None = None

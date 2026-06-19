@@ -219,10 +219,10 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
 
   function supplierMemberLabelFromEntry(entry: AccountingEntry): string | undefined {
     const supplierLine = entry.lines.find((line) =>
-      line.member_uuid && new Decimal(line.credit).greaterThan(0),
+      line.tiers_uuid && new Decimal(line.credit).greaterThan(0),
     )
-    if (!supplierLine?.member_uuid) return undefined
-    return memberLabelByUuid.get(supplierLine.member_uuid)
+    if (!supplierLine?.tiers_uuid) return undefined
+    return memberLabelByUuid.get(supplierLine.tiers_uuid)
   }
 
   // Separate into overdue/pending/draft for summary KPIs

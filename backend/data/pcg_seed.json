@@ -4,792 +4,903 @@
     "name": "Capitaux permanents",
     "type": 2,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "100",
     "name": "Fonds associatif et réserves (Racine)",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "102",
     "name": "Fonds associatif sans droit de reprise",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "110",
     "name": "Report à nouveau (solde créditeur)",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "120",
     "name": "Résultat de l'exercice (Excédent)",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "131",
     "name": "Subventions d'équipement",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "139",
     "name": "Subventions d'investissement inscrites au compte de résultat",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "151",
     "name": "Provisions pour risques",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "164",
     "name": "Emprunts auprès des établissements de crédit",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "19",
     "name": "Fonds dedies",
     "type": 2,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "194",
     "name": "Fonds dédiés sur projets",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "2",
     "name": "Comptes d'immobilisations",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "212",
     "name": "Agencements et aménagements des terrains",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "215",
     "name": "Installations techniques, matériel et outillage",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "218",
     "name": "Autres immobilisations corporelles",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "2185",
     "name": "Matériel de transport (Aéronefs)",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "272",
     "name": "Titres immobilisés (droits de créance)",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "275",
     "name": "Dépôts et cautionnements versés",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "281",
     "name": "Amortissements des immob. corporelles",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "288",
     "name": "Amortissements des autres immobilisations corporelles",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "3",
     "name": "Comptes de stocks et en-cours",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "322",
     "name": "Fournitures consommables (Stocks)",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "390",
     "name": "Dépréciations des stocks",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "4",
     "name": "Comptes de tiers",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "401",
     "name": "Fournisseurs",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 3
   },
   {
     "code": "402",
     "name": "Fournisseurs d'immobilisations",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "41",
     "name": "Membres et usagers",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "411",
     "name": "Membres - Créances",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 1
   },
   {
     "code": "425",
     "name": "Personnel - Avances et acomptes",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "428",
     "name": "Personnel - Charges à payer et produits à recevoir",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "431",
     "name": "Sécurité sociale",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "432",
     "name": "Organismes sociaux - Mutuelles",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "437",
     "name": "Autres organismes sociaux",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "445",
     "name": "Etat - Taxes sur le CA",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "44566",
     "name": "TVA sur autres biens et services",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "44571",
     "name": "TVA collectée",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "467",
     "name": "Autres comptes débiteurs ou créditeurs",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "468",
     "name": "Charges à payer ou produits à recevoir divers",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "471",
     "name": "Comptes d'attente",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "487",
     "name": "Produits constatés d'avance",
     "type": 2,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "5",
     "name": "Comptes financiers",
     "type": 1,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "512",
     "name": "Banque",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "521",
     "name": "Placements de trésorerie (Livrets)",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "530",
     "name": "Caisse",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "531",
     "name": "Caisse (espèces)",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "540",
     "name": "Régies d'avances et accréditifs",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "580",
     "name": "Virements internes",
     "type": 1,
     "is_posting_allowed": true,
-    "is_reconcilable": true
+    "is_reconcilable": true,
+    "require_id": 0
   },
   {
     "code": "6",
     "name": "Comptes de charges",
     "type": 4,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "602",
     "name": "Achats stockés - Matières premières et fournitures",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "603",
     "name": "Variations des stocks (Approvisionnements)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
-  {  
+  {
     "code": "605",
     "name": "Achats de matériel, équipements et travaux",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "606",
     "name": "Achats non stockés de matières et fournitures (Energie, petit matériel)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "6063",
     "name": "Carburants",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "6064",
     "name": "Vols club",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
-    {
+  {
     "code": "6066",
     "name": "Remises sur Packs",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "6067",
     "name": "VI / JD",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "6068",
     "name": "Stages",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
-
- {
+  {
     "code": "607",
     "name": "Achats de marchandises (Boutique, Bar...)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "613",
     "name": "Locations (Hangars, locaux, matériel)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "615",
     "name": "Entretien et réparations",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "616",
     "name": "Primes d'assurances",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "618",
     "name": "Divers (Documentation, abonnements)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "622",
     "name": "Rémunérations d'intermédiaires et honoraires",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "623",
     "name": "Publicité, publications, relations publiques",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "625",
     "name": "Déplacements, missions et réceptions",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "626",
     "name": "Frais postaux et de télécommunications",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "627",
     "name": "Services bancaires et assimilés",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "628",
     "name": "Divers (Cotisations techniques, G-NAV)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "635",
     "name": "Autres impôts, taxes et versements assimilés (Redevances)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "641",
     "name": "Rémunérations du personnel",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "645",
     "name": "Charges de sécurité sociale et de prévoyance",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "661",
     "name": "Charges d'intérêts",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "671",
     "name": "Charges exceptionnelles sur opérations de gestion",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "672",
     "name": "Charges sur exercices antérieurs (Régularisations)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "681",
     "name": "Dotations aux amortissements",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "689",
     "name": "Engagements à réaliser sur fonds dédiés",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "699",
     "name": "Reports sur ressources non utilisées des exercices antérieurs",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7",
     "name": "Comptes de produits",
     "type": 5,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "706",
     "name": "Prestations de services (Vols et activités)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7061",
     "name": "Cotisations et adhésions",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7062",
     "name": "Activité vol (Heures cellule)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 2
   },
   {
     "code": "7063",
     "name": "Produit des lancements (Treuil/Remorque)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 2
   },
   {
     "code": "7064",
     "name": "Produit des moteurs (TMG et Avions)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 2
   },
   {
     "code": "7065",
     "name": "Frais de fonctionnement",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7066",
     "name": "Packs et réductions",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7067",
     "name": "VI / JD",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7068",
     "name": "Stages",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
-
     "code": "707",
     "name": "Ventes de marchandises (Boutique, Cartes SIA)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7071",
     "name": "Ventes boutique",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7072",
     "name": "Ventes bar et repas",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "708",
     "name": "Produits activités annexes (Refacturation aéronefs)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "74",
     "name": "Subventions d'exploitation",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "740",
     "name": "Subventions d'exploitation",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "742",
     "name": "Aides et subventions d'exploitation (Collectivités)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "750",
     "name": "Produits divers / Redevances",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "756",
     "name": "Cotisations",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "7561",
     "name": "Cotisations et adhésions (membres)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
-    {
+  {
     "code": "758",
     "name": "Produits divers de gestion courante",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "761",
     "name": "Produits financiers / Produits de participations",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "771",
     "name": "Produits exceptionnels sur opérations de gestion (Dons)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "772",
     "name": "Produits sur exercices antérieurs (Régularisations)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "777",
     "name": "Quote-part des subventions d'investissement virée au résultat",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "781",
     "name": "Reprises sur amortissements et provisions",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "789",
     "name": "Report des ressources non utilisées",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "8",
     "name": "Contributions volontaires en nature",
     "type": 4,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "86",
     "name": "Emplois des contributions volontaires",
     "type": 4,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "861",
     "name": "Mises à disposition gratuites de biens",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "862",
     "name": "Prestations de services gratuites",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "864",
     "name": "Personnel bénévole (Emplois)",
     "type": 4,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "87",
     "name": "Contributions volontaires en nature",
     "type": 5,
     "is_posting_allowed": false,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "870",
     "name": "Dons en nature",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "871",
     "name": "Prestations en nature",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   },
   {
     "code": "875",
     "name": "Bénévolat (Ressources)",
     "type": 5,
     "is_posting_allowed": true,
-    "is_reconcilable": false
+    "is_reconcilable": false,
+    "require_id": 0
   }
 ]

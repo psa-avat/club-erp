@@ -205,6 +205,7 @@ export type AccountOption = {
   name: string
   type: number            // 1=Asset 2=Liability 3=Equity 4=Expense 5=Revenue
   is_posting_allowed: boolean
+  require_id: number      // 0=none,1=member,2=asset,3=supplier
 }
 
 export type JournalOption = {
@@ -220,16 +221,15 @@ export type AccountingEntryLinePayload = {
   debit: string
   credit: string
   description?: string | null
-  member_uuid?: string | null
-  analytical_asset_uuid?: string | null
+  tiers_uuid?: string | null
 }
 
 export type AccountingEntryLine = AccountingEntryLinePayload & {
   uuid: string
   entry_uuid: string
   fiscal_year_uuid: string
-  member_first_name?: string | null
-  member_last_name?: string | null
+  tiers_display_ref?: string | null   // account_id for members, registration code for assets
+  tiers_display_name?: string | null  // full name for members, asset name for assets
   analytical_asset_code?: string | null
   analytical_asset_name?: string | null
 }
@@ -296,8 +296,7 @@ export type AccountingEntryModelLinePayload = {
   debit: string
   credit: string
   description?: string | null
-  member_uuid?: string | null
-  analytical_asset_uuid?: string | null
+  tiers_uuid?: string | null
   // Formula
   formula_type?: string
   formula_params?: Record<string, unknown> | null
@@ -1625,9 +1624,7 @@ export type FlightAccountingLinePreview = {
   side: 'debit' | 'credit' | string
   account_uuid: string | null
   account_code: string | null
-  member_uuid: string | null
-  member_account_id_snapshot: string | null
-  analytical_asset_uuid: string | null
+  tiers_uuid: string | null
   debit: string
   credit: string
   description: string | null

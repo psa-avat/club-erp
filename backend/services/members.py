@@ -224,9 +224,6 @@ async def _create_registration_accounting_entry(
         ),
         user_id=user_id or 0,
     )
-    for line in entry.lines:
-        if line.member_uuid == member.uuid:
-            line.member_account_id_snapshot = member.account_id
     await db.commit()
 
 
@@ -311,7 +308,7 @@ def _apply_member_filters(
     if filters.balance_min is not None or filters.balance_max is not None:
         balance_subq = (
             select(func.coalesce(func.sum(AccountingLine.credit - AccountingLine.debit), 0).label("balance"))
-            .where(AccountingLine.member_uuid == Member.uuid)
+            .where(AccountingLine.tiers_uuid == Member.uuid)
             .correlate(Member)
             .scalar_subquery()
         )
@@ -536,7 +533,7 @@ async def _serialize_member_summary(
     if include_balance:
         # Sum of accounting_lines for this member (credit - debit) — positive = member has credit
         balance_query = select(func.coalesce(func.sum(AccountingLine.credit - AccountingLine.debit), 0)).where(
-            AccountingLine.member_uuid == member.uuid
+            AccountingLine.tiers_uuid == member.uuid
         )
         if fiscal_year_uuid is not None:
             balance_query = balance_query.where(AccountingLine.fiscal_year_uuid == fiscal_year_uuid)
@@ -1552,7 +1549,7 @@ async def get_member_account_summary(
 ) -> AccountSummaryResponse:
     """Compute the account balance for a member from accounting lines."""
     # Build base filter on member_uuid
-    base_filters = [AccountingLine.member_uuid == member_uuid]
+    base_filters = [AccountingLine.tiers_uuid == member_uuid]
 
     # If a fiscal year is given, scope to entries in that FY
     if fiscal_year_uuid:
@@ -1590,7 +1587,7 @@ async def list_member_account_entries(
     offset: int = 0,
 ) -> AccountEntriesResponse:
     """List accounting entries where this member appears on a line."""
-    filters = [AccountingLine.member_uuid == member_uuid]
+    filters = [AccountingLine.tiers_uuid == member_uuid]
     if fiscal_year_uuid:
         filters.append(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
     if state is not None:
@@ -1625,7 +1622,7 @@ async def list_member_account_entries(
                 func.coalesce(func.sum(AccountingLine.credit), 0),
             ).where(
                 AccountingLine.entry_uuid == entry.uuid,
-                AccountingLine.member_uuid == member_uuid,
+                AccountingLine.tiers_uuid == member_uuid,
             )
         )
         debit, credit = line_sum.one()

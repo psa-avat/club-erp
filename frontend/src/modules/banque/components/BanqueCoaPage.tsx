@@ -38,6 +38,26 @@ function accountTypeKey(type: number): string {
   return map[type] ?? 'unknown'
 }
 
+/** Label for require_id */
+function requireIdLabel(requireId: number | undefined, t: (k: string) => string): string | null {
+  switch (requireId) {
+    case 1: return t('pcg.requireId.member')
+    case 2: return t('pcg.requireId.asset')
+    case 3: return t('pcg.requireId.supplier')
+    default: return null
+  }
+}
+
+/** Badge color per require_id */
+function requireIdBadgeClass(requireId: number | undefined): string {
+  switch (requireId) {
+    case 1: return 'bg-blue-100 text-blue-700'
+    case 2: return 'bg-amber-100 text-amber-700'
+    case 3: return 'bg-violet-100 text-violet-700'
+    default: return ''
+  }
+}
+
 /** Badge color per account type */
 function accountTypeBadgeClass(type: number): string {
   const map: Record<number, string> = {
@@ -189,6 +209,7 @@ export function BanqueCoaPage() {
                           <th className="px-6 py-2 text-left font-medium">{t('coa.colCode')}</th>
                           <th className="px-4 py-2 text-left font-medium">{t('coa.colName')}</th>
                           <th className="px-4 py-2 text-left font-medium">{t('coa.colType')}</th>
+                          <th className="px-4 py-2 text-left font-medium">{t('pcg.columns.requireId')}</th>
                           <th className="px-4 py-2 text-center font-medium">{t('coa.colPosting')}</th>
                         </tr>
                       </thead>
@@ -206,6 +227,13 @@ export function BanqueCoaPage() {
                               >
                                 {t(`coa.types.${accountTypeKey(account.type)}`)}
                               </span>
+                            </td>
+                            <td className="px-4 py-2">
+                              {requireIdLabel(account.require_id, t) && (
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${requireIdBadgeClass(account.require_id)}`}>
+                                  {requireIdLabel(account.require_id, t)}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-2 text-center">
                               {account.is_posting_allowed ? (

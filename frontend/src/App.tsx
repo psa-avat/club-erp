@@ -128,7 +128,7 @@ function App() {
           <Route path="/banque/journal/entry/new" element={<BanqueJournalEntryWorkspacePage />} />
           <Route path="/banque/journal/entry/:entryUuid" element={<BanqueJournalEntryWorkspacePage />} />
           <Route path="/banque/journal/templates" element={<Navigate replace to="/workspace/finance?tab=recurring" />} />
-          <Route path="/banque/accounts" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=pcg" />} />
+          <Route path="/banque/accounts" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=comptes" />} />
           <Route path="/banque/pcg" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=pcg" />} />
           <Route path="/banque/fiscal-years" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=exercices" />} />
           <Route path="/banque/pricing" element={<Navigate replace to="/workspace/tarifs" />} />

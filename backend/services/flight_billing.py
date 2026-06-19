@@ -1000,19 +1000,15 @@ class FlightBillingPreviewService:
         is_club_billed: bool = False,
     ) -> list[FlightAccountingLinePreview]:
         description = f"{line.pricing_item_name} {line.asset_code}"
-        member_uuid = None if is_club_billed else (str(payer.member.uuid) if payer.member else None)
-        member_account_id = None if is_club_billed else (payer.member.account_id if payer.member else None)
+        # Debit side (411 receivable): tiers_uuid = member who owes; for club-billed = None
+        debit_tiers_uuid = None if is_club_billed else (str(payer.member.uuid) if payer.member else None)
         asset_uuid = str(asset.uuid)
         return [
             FlightAccountingLinePreview(
                 side="debit",
                 account_uuid=str(debit_account.uuid) if debit_account else None,
                 account_code=debit_account.code if debit_account else None,
-                # 411 receivable: member dimension = who owes the money
-                member_uuid=member_uuid,
-                member_account_id_snapshot=member_account_id,
-                # 411 receivable: also track analytical asset dimension
-                analytical_asset_uuid=asset_uuid,
+                tiers_uuid=debit_tiers_uuid,
                 debit=line.amount,
                 credit=Decimal("0"),
                 description=description,
@@ -1021,10 +1017,8 @@ class FlightBillingPreviewService:
                 side="credit",
                 account_uuid=str(item.gl_account_credit.uuid) if item.gl_account_credit else None,
                 account_code=item.gl_account_credit.code if item.gl_account_credit else None,
-                # 7xx revenue: no member dimension, analytical asset = source of revenue
-                member_uuid=None,
-                member_account_id_snapshot=None,
-                analytical_asset_uuid=asset_uuid,
+                # 7xx revenue: tiers_uuid = asset (source of revenue)
+                tiers_uuid=asset_uuid,
                 debit=Decimal("0"),
                 credit=line.amount,
                 description=description,

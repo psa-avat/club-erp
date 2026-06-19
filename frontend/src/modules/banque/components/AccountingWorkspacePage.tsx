@@ -19,11 +19,12 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { FileText, Calendar, TableProperties, BarChart3 } from "lucide-react";
+import { FileText, Calendar, TableProperties, BookOpen, BarChart3 } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { BanqueJournalEntriesPage } from "./BanqueJournalEntriesPage";
 import { BanqueFiscalYearsPage } from "./BanqueFiscalYearsPage";
+import { BanqueCoaPage } from "./BanqueCoaPage";
 import { BanquePcgPage } from "./BanquePcgPage";
 import { FinancialReportsPage } from "./FinancialReportsPage";
 
@@ -58,6 +59,12 @@ export function AccountingWorkspacePage() {
           label: t("workspace.accounting.tabs.fiscalYears", "Exercices"),
           icon: Calendar,
           content: <BanqueFiscalYearsPage />,
+        },
+        {
+          value: "comptes",
+          label: t("workspace.accounting.tabs.coa", "Comptes"),
+          icon: BookOpen,
+          content: <BanqueCoaPage />,
         },
         {
           value: "pcg",

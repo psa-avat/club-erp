@@ -189,7 +189,7 @@ export function JournalEntriesScreen() {
             account_uuid: line.account_uuid,
             amount: amount.toFixed(2),
             description: line.description ?? '',
-            member_uuid: line.member_uuid ?? '',
+            tiers_uuid: line.tiers_uuid ?? '',
           }
         }),
       )
@@ -696,7 +696,6 @@ export function JournalEntriesScreen() {
                                         <th className="px-2 py-1 text-right">{t('journal.forms.credit')}</th>
                                         <th className="px-2 py-1 text-left">{t('journal.forms.lineDescription')}</th>
                                         <th className="px-2 py-1 text-left">{t('journal.forms.tiers')}</th>
-                                        <th className="px-2 py-1 text-left">Machine</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -711,13 +710,8 @@ export function JournalEntriesScreen() {
                                           <td className="px-2 py-1 text-right font-mono tabular-nums">{formatAmountFr(line.credit)}</td>
                                           <td className="px-2 py-1 text-slate-600">{line.description ?? '—'}</td>
                                           <td className="px-2 py-1 text-slate-600">
-                                            {line.member_first_name && line.member_last_name
-                                              ? `${line.member_last_name} ${line.member_first_name}`
-                                              : '—'}
-                                          </td>
-                                          <td className="px-2 py-1 text-slate-600 font-mono text-[11px]">
-                                            {line.analytical_asset_code
-                                              ? `${line.analytical_asset_code}${line.analytical_asset_name ? ` — ${line.analytical_asset_name}` : ''}`
+                                            {line.tiers_display_ref || line.tiers_display_name
+                                              ? [line.tiers_display_ref, line.tiers_display_name].filter(Boolean).join(' — ')
                                               : '—'}
                                           </td>
                                         </tr>

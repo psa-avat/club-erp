@@ -1276,6 +1276,60 @@ def _canonical_decimal(value: Decimal) -> str:
     return f"{Decimal(value):.4f}"
 
 
+async def _enrich_lines_tiers(db: AsyncSession, lines: list) -> None:
+    """Resolve tiers_uuid display data for a flat list of AccountingLine objects.
+
+    Lines whose account.require_id is 1 or 3 (member/supplier) get their tiers data
+    from the members table; lines with require_id 2 (asset) get it from the assets table.
+    Results are set as transient attributes: tiers_display_ref, tiers_display_name,
+    analytical_asset_code, analytical_asset_name (kept for backward compatibility).
+    """
+    from models import Asset, Member
+
+    member_line_uuids: set = set()
+    asset_line_uuids: set = set()
+
+    for line in lines:
+        if not line.tiers_uuid:
+            continue
+        require_id = line.account.require_id if line.account else 0
+        if require_id in (1, 3):
+            member_line_uuids.add(line.tiers_uuid)
+        elif require_id == 2:
+            asset_line_uuids.add(line.tiers_uuid)
+
+    member_map: dict = {}
+    if member_line_uuids:
+        result = await db.execute(
+            select(Member.uuid, Member.account_id, Member.first_name, Member.last_name)
+            .where(Member.uuid.in_(list(member_line_uuids)))
+        )
+        member_map = {row.uuid: row for row in result.all()}
+
+    asset_map: dict = {}
+    if asset_line_uuids:
+        result = await db.execute(
+            select(Asset.uuid, Asset.code, Asset.name)
+            .where(Asset.uuid.in_(list(asset_line_uuids)))
+        )
+        asset_map = {row.uuid: row for row in result.all()}
+
+    for line in lines:
+        if not line.tiers_uuid:
+            continue
+        require_id = line.account.require_id if line.account else 0
+        if require_id in (1, 3) and line.tiers_uuid in member_map:
+            m = member_map[line.tiers_uuid]
+            line.tiers_display_ref = m.account_id
+            line.tiers_display_name = f"{m.first_name} {m.last_name}".strip()
+        elif require_id == 2 and line.tiers_uuid in asset_map:
+            a = asset_map[line.tiers_uuid]
+            line.tiers_display_ref = a.code
+            line.tiers_display_name = a.name
+            line.analytical_asset_code = a.code
+            line.analytical_asset_name = a.name
+
+
 def compute_entry_hash(entry: AccountingEntry) -> str:
     """Generate a deterministic SHA-256 digest for a posted entry and its lines."""
     header = [
@@ -1299,9 +1353,7 @@ def compute_entry_hash(entry: AccountingEntry) -> str:
                     str(line.account_uuid),
                     _canonical_decimal(line.debit),
                     _canonical_decimal(line.credit),
-                    str(line.member_uuid or ""),
-                    str(line.member_account_id_snapshot or ""),
-                    str(line.analytical_asset_uuid or ""),
+                    str(line.tiers_uuid or ""),
                     str(line.description or ""),
                 ]
             )
@@ -1387,7 +1439,7 @@ async def list_accounting_entries(
         .options(
             joinedload(AccountingEntry.fiscal_year),
             joinedload(AccountingEntry.journal),
-            joinedload(AccountingEntry.lines).joinedload(AccountingLine.member),
+            joinedload(AccountingEntry.lines).joinedload(AccountingLine.account),
         )
         .order_by(AccountingEntry.entry_date.desc(), AccountingEntry.created_at.desc())
         .limit(limit)
@@ -1413,30 +1465,10 @@ async def list_accounting_entries(
     result = await db.scalars(stmt)
     entries = result.unique().all()
     
-    # Populate member_first_name and member_last_name from loaded member relationship
-    for entry in entries:
-        for line in entry.lines:
-            if hasattr(line, 'member') and line.member:
-                line.member_first_name = line.member.first_name
-                line.member_last_name = line.member.last_name
-    
-    # Batch-fetch asset codes/names for all lines across all entries
-    all_asset_uuids = set()
-    for entry in entries:
-        for line in entry.lines:
-            if line.analytical_asset_uuid:
-                all_asset_uuids.add(line.analytical_asset_uuid)
-    if all_asset_uuids:
-        from models import Asset
-        asset_result = await db.execute(
-            select(Asset.uuid, Asset.code, Asset.name).where(Asset.uuid.in_(list(all_asset_uuids)))
-        )
-        asset_map = {row.uuid: (row.code, row.name) for row in asset_result.all()}
-        for entry in entries:
-            for line in entry.lines:
-                if line.analytical_asset_uuid and line.analytical_asset_uuid in asset_map:
-                    line.analytical_asset_code, line.analytical_asset_name = asset_map[line.analytical_asset_uuid]
-    
+    # Batch-fetch tiers display data for all lines that carry a tiers_uuid.
+    # account.require_id tells us whether it's a member/supplier (1,3) or an asset (2).
+    await _enrich_lines_tiers(db, [line for entry in entries for line in entry.lines])
+
     return entries
 
 async def count_accounting_entries(
@@ -1504,7 +1536,7 @@ def _apply_accounting_entry_filters(
                 select(AccountingLine.uuid)
                 .where(
                     AccountingLine.entry_uuid == AccountingEntry.uuid,
-                    AccountingLine.member_uuid == member_uuid,
+                    AccountingLine.tiers_uuid == member_uuid,
                 )
                 .correlate(AccountingEntry)
             )
@@ -1517,12 +1549,11 @@ def _apply_accounting_entry_filters(
                 exists(
                     select(AccountingLine.uuid)
                     .select_from(AccountingLine)
-                    .outerjoin(Member, Member.uuid == AccountingLine.member_uuid)
+                    .outerjoin(Member, Member.uuid == AccountingLine.tiers_uuid)
                     .where(
                         AccountingLine.entry_uuid == AccountingEntry.uuid,
                         (
-                            AccountingLine.member_account_id_snapshot.ilike(term)
-                            | Member.account_id.ilike(term)
+                            Member.account_id.ilike(term)
                             | Member.first_name.ilike(term)
                             | Member.last_name.ilike(term)
                         ),
@@ -1667,8 +1698,7 @@ async def create_accounting_entry_template(
             AccountingEntryTemplateLine(
                 account_uuid=line_req.account_uuid,
                 sort_order=index,
-                member_uuid=line_req.member_uuid,
-                analytical_asset_uuid=line_req.analytical_asset_uuid,
+                tiers_uuid=line_req.tiers_uuid,
                 debit=line_req.debit,
                 credit=line_req.credit,
                 description=line_req.description,
@@ -1728,8 +1758,7 @@ async def update_accounting_entry_template(
                 AccountingEntryTemplateLine(
                     account_uuid=line_req.account_uuid,
                     sort_order=index,
-                    member_uuid=line_req.member_uuid,
-                    analytical_asset_uuid=line_req.analytical_asset_uuid,
+                    tiers_uuid=line_req.tiers_uuid,
                     debit=line_req.debit,
                     credit=line_req.credit,
                     description=line_req.description,
@@ -1800,8 +1829,7 @@ async def create_accounting_entry(
             fiscal_year_uuid=request.fiscal_year_uuid,
             entry_uuid=entry_uuid,
             account_uuid=line_req.account_uuid,
-            member_uuid=line_req.member_uuid,
-            analytical_asset_uuid=line_req.analytical_asset_uuid,
+            tiers_uuid=line_req.tiers_uuid,
             debit=line_req.debit,
             credit=line_req.credit,
             description=line_req.description,
@@ -1835,7 +1863,7 @@ async def get_accounting_entry(
         .options(
             joinedload(AccountingEntry.fiscal_year),
             joinedload(AccountingEntry.journal),
-            joinedload(AccountingEntry.lines),
+            joinedload(AccountingEntry.lines).joinedload(AccountingLine.account),
         )
     )
     entry = await db.scalar(stmt)
@@ -1845,18 +1873,7 @@ async def get_accounting_entry(
             detail=f"Entry {entry_uuid} not found in fiscal year {fiscal_year_uuid}",
         )
 
-    # Batch-fetch asset codes/names for lines with analytical_asset_uuid
-    asset_uuids = {line.analytical_asset_uuid for line in entry.lines if line.analytical_asset_uuid}
-    if asset_uuids:
-        from models import Asset
-        asset_result = await db.execute(
-            select(Asset.uuid, Asset.code, Asset.name).where(Asset.uuid.in_(list(asset_uuids)))
-        )
-        asset_map = {row.uuid: (row.code, row.name) for row in asset_result.all()}
-        for line in entry.lines:
-            if line.analytical_asset_uuid and line.analytical_asset_uuid in asset_map:
-                line.analytical_asset_code, line.analytical_asset_name = asset_map[line.analytical_asset_uuid]
-
+    await _enrich_lines_tiers(db, list(entry.lines))
     return entry
 
 
@@ -1961,8 +1978,7 @@ async def update_accounting_entry(
                 fiscal_year_uuid=fiscal_year_uuid,
                 entry_uuid=entry_uuid,
                 account_uuid=line_req.account_uuid,
-                member_uuid=line_req.member_uuid,
-                analytical_asset_uuid=line_req.analytical_asset_uuid,
+                tiers_uuid=line_req.tiers_uuid,
                 debit=line_req.debit,
                 credit=line_req.credit,
                 description=line_req.description,
@@ -2143,9 +2159,7 @@ async def create_reversal_entry(
             fiscal_year_uuid=original.fiscal_year_uuid,
             entry_uuid=reversal_uuid,
             account_uuid=line.account_uuid,
-            member_uuid=line.member_uuid,
-            member_account_id_snapshot=line.member_account_id_snapshot,
-            analytical_asset_uuid=line.analytical_asset_uuid,
+            tiers_uuid=line.tiers_uuid,
             debit=line.credit,
             credit=line.debit,
             description=line.description,
@@ -2684,8 +2698,7 @@ async def apply_accounting_import(
                 fiscal_year_uuid=fiscal_year_uuid,
                 entry_uuid=entry_uuid,
                 account_uuid=account.uuid,
-                member_uuid=member.uuid if member else None,
-                member_account_id_snapshot=raw_mid if member else None,
+                tiers_uuid=member.uuid if member else None,
                 debit=Decimal(r.get("debit", "0") or "0"),
                 credit=Decimal(r.get("credit", "0") or "0"),
                 description=r.get("label") or None,

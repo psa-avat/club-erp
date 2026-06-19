@@ -379,7 +379,7 @@ async def get_account_summary(
         select(func.count(func.distinct(AccountingLine.entry_uuid)))
         .join(AccountingEntry, AccountingEntry.uuid == AccountingLine.entry_uuid)
         .where(
-            AccountingLine.member_uuid == member_uuid,
+            AccountingLine.tiers_uuid == member_uuid,
             AccountingEntry.state == 1,  # Draft
         )
     )
@@ -389,7 +389,7 @@ async def get_account_summary(
         select(func.count(func.distinct(AccountingLine.entry_uuid)))
         .join(AccountingEntry, AccountingEntry.uuid == AccountingLine.entry_uuid)
         .where(
-            AccountingLine.member_uuid == member_uuid,
+            AccountingLine.tiers_uuid == member_uuid,
             AccountingEntry.state == 2,  # Posted
         )
     )
@@ -413,14 +413,14 @@ async def list_account_entries(
     count_result = await db.execute(
         select(func.count(func.distinct(AccountingEntry.uuid)))
         .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
-        .where(AccountingLine.member_uuid == member_uuid)
+        .where(AccountingLine.tiers_uuid == member_uuid)
     )
     total = count_result.scalar() or 0
 
     result = await db.execute(
         select(AccountingEntry)
         .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
-        .where(AccountingLine.member_uuid == member_uuid)
+        .where(AccountingLine.tiers_uuid == member_uuid)
         .order_by(AccountingEntry.date.desc())
         .offset(offset)
         .limit(limit)
@@ -437,7 +437,7 @@ async def list_account_entries(
                 func.coalesce(func.sum(AccountingLine.credit), 0),
             ).where(
                 AccountingLine.entry_uuid == entry.uuid,
-                AccountingLine.member_uuid == member_uuid,
+                AccountingLine.tiers_uuid == member_uuid,
             )
         )
         debit_sum, credit_sum = lines_result.one()

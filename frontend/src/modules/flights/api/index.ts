@@ -141,9 +141,7 @@ export type FlightAccountingLinePreview = {
   side: 'debit' | 'credit' | string
   account_uuid: string | null
   account_code: string | null
-  member_uuid: string | null
-  member_account_id_snapshot: string | null
-  analytical_asset_uuid: string | null
+  tiers_uuid: string | null
   debit: string
   credit: string
   description: string | null

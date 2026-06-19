@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 37aY4g9CtdLOOe0oOTLdYc2koobxqDdGidIK094FxnRIP8hPASchMRU5PHQpSY4
+\restrict Rjyucgk8e8gyWn26VTCF0rnrCPazPY1QczP7MIuoVHwIlqEMjMpTU0mdokBScb8
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -394,7 +394,9 @@ CREATE TABLE public.accounting_accounts (
     is_active boolean DEFAULT true NOT NULL,
     archived_at timestamp with time zone,
     replacement_account_uuid uuid,
+    require_id smallint DEFAULT 0 NOT NULL,
     CONSTRAINT chk_account_normal_balance CHECK ((normal_balance = ANY (ARRAY[1, 2]))),
+    CONSTRAINT chk_account_require_id CHECK ((require_id = ANY (ARRAY[0, 1, 2, 3]))),
     CONSTRAINT chk_account_type CHECK ((type = ANY (ARRAY[1, 2, 3, 4, 5])))
 );
 
@@ -529,13 +531,12 @@ CREATE TABLE public.accounting_entry_template_lines (
     template_uuid uuid NOT NULL,
     account_uuid uuid NOT NULL,
     sort_order smallint NOT NULL,
-    member_uuid uuid,
-    analytical_asset_uuid uuid,
     debit numeric(10,4) NOT NULL,
     credit numeric(10,4) NOT NULL,
     description character varying(255),
     formula_type character varying(16) DEFAULT 'fixed'::character varying NOT NULL,
     formula_params jsonb,
+    tiers_uuid uuid,
     CONSTRAINT chk_entry_template_line_amounts_positive CHECK (((debit >= (0)::numeric) AND (credit >= (0)::numeric))),
     CONSTRAINT chk_entry_template_line_at_least_one_amount CHECK ((((formula_type)::text = 'rounding_adjustment'::text) OR (debit > (0)::numeric) OR (credit > (0)::numeric))),
     CONSTRAINT chk_template_line_formula_type CHECK (((formula_type)::text = ANY ((ARRAY['fixed'::character varying, 'percentage'::character varying, 'previous_period'::character varying, 'rounding_adjustment'::character varying])::text[])))
@@ -660,9 +661,6 @@ CREATE TABLE public.accounting_lines (
     fiscal_year_uuid uuid NOT NULL,
     entry_uuid uuid NOT NULL,
     account_uuid uuid NOT NULL,
-    member_uuid uuid,
-    member_account_id_snapshot character varying(32),
-    analytical_asset_uuid uuid,
     debit numeric(10,4) DEFAULT 0.0000 NOT NULL,
     credit numeric(10,4) DEFAULT 0.0000 NOT NULL,
     description character varying(255),
@@ -671,6 +669,7 @@ CREATE TABLE public.accounting_lines (
     tax_rate numeric(10,4),
     tax_base numeric(10,4),
     tax_amount numeric(10,4),
+    tiers_uuid uuid,
     CONSTRAINT chk_line_amounts_positive CHECK (((debit >= (0)::numeric) AND (credit >= (0)::numeric))),
     CONSTRAINT chk_line_at_least_one_amount CHECK (((debit > (0)::numeric) OR (credit > (0)::numeric)))
 )
@@ -686,9 +685,6 @@ CREATE TABLE public.accounting_lines_default (
     fiscal_year_uuid uuid CONSTRAINT accounting_lines_fiscal_year_uuid_not_null NOT NULL,
     entry_uuid uuid CONSTRAINT accounting_lines_entry_uuid_not_null NOT NULL,
     account_uuid uuid CONSTRAINT accounting_lines_account_uuid_not_null NOT NULL,
-    member_uuid uuid,
-    member_account_id_snapshot character varying(32),
-    analytical_asset_uuid uuid,
     debit numeric(10,4) DEFAULT 0.0000 CONSTRAINT accounting_lines_debit_not_null NOT NULL,
     credit numeric(10,4) DEFAULT 0.0000 CONSTRAINT accounting_lines_credit_not_null NOT NULL,
     description character varying(255),
@@ -697,6 +693,7 @@ CREATE TABLE public.accounting_lines_default (
     tax_rate numeric(10,4),
     tax_base numeric(10,4),
     tax_amount numeric(10,4),
+    tiers_uuid uuid,
     CONSTRAINT chk_line_amounts_positive CHECK (((debit >= (0)::numeric) AND (credit >= (0)::numeric))),
     CONSTRAINT chk_line_at_least_one_amount CHECK (((debit > (0)::numeric) OR (credit > (0)::numeric)))
 );
@@ -711,9 +708,6 @@ CREATE TABLE public.accounting_lines_fy2025 (
     fiscal_year_uuid uuid CONSTRAINT accounting_lines_fiscal_year_uuid_not_null NOT NULL,
     entry_uuid uuid CONSTRAINT accounting_lines_entry_uuid_not_null NOT NULL,
     account_uuid uuid CONSTRAINT accounting_lines_account_uuid_not_null NOT NULL,
-    member_uuid uuid,
-    member_account_id_snapshot character varying(32),
-    analytical_asset_uuid uuid,
     debit numeric(10,4) DEFAULT 0.0000 CONSTRAINT accounting_lines_debit_not_null NOT NULL,
     credit numeric(10,4) DEFAULT 0.0000 CONSTRAINT accounting_lines_credit_not_null NOT NULL,
     description character varying(255),
@@ -722,6 +716,7 @@ CREATE TABLE public.accounting_lines_fy2025 (
     tax_rate numeric(10,4),
     tax_base numeric(10,4),
     tax_amount numeric(10,4),
+    tiers_uuid uuid,
     CONSTRAINT chk_line_amounts_positive CHECK (((debit >= (0)::numeric) AND (credit >= (0)::numeric))),
     CONSTRAINT chk_line_at_least_one_amount CHECK (((debit > (0)::numeric) OR (credit > (0)::numeric)))
 );
@@ -736,9 +731,6 @@ CREATE TABLE public.accounting_lines_fy2026 (
     fiscal_year_uuid uuid CONSTRAINT accounting_lines_fiscal_year_uuid_not_null NOT NULL,
     entry_uuid uuid CONSTRAINT accounting_lines_entry_uuid_not_null NOT NULL,
     account_uuid uuid CONSTRAINT accounting_lines_account_uuid_not_null NOT NULL,
-    member_uuid uuid,
-    member_account_id_snapshot character varying(32),
-    analytical_asset_uuid uuid,
     debit numeric(10,4) DEFAULT 0.0000 CONSTRAINT accounting_lines_debit_not_null NOT NULL,
     credit numeric(10,4) DEFAULT 0.0000 CONSTRAINT accounting_lines_credit_not_null NOT NULL,
     description character varying(255),
@@ -747,6 +739,7 @@ CREATE TABLE public.accounting_lines_fy2026 (
     tax_rate numeric(10,4),
     tax_base numeric(10,4),
     tax_amount numeric(10,4),
+    tiers_uuid uuid,
     CONSTRAINT chk_line_amounts_positive CHECK (((debit >= (0)::numeric) AND (credit >= (0)::numeric))),
     CONSTRAINT chk_line_at_least_one_amount CHECK (((debit > (0)::numeric) OR (credit > (0)::numeric)))
 );
@@ -2145,14 +2138,14 @@ CREATE TABLE public.vi_type_catalog (
 
 CREATE VIEW public.vw_member_pack_balances AS
  WITH pack_purchases AS (
-         SELECT al.member_uuid,
+         SELECT al.tiers_uuid AS member_uuid,
             p_def.pack_type,
             sum(p_def.quantity_allowance) AS total_purchased_units
            FROM ((public.accounting_lines al
              JOIN public.accounting_entries ae ON ((al.entry_uuid = ae.uuid)))
              JOIN public.pack_definitions p_def ON ((al.account_uuid = p_def.pack_sales_account_uuid)))
-          WHERE ((ae.state = 2) AND (al.member_uuid IS NOT NULL))
-          GROUP BY al.member_uuid, p_def.pack_type
+          WHERE ((ae.state = 2) AND (al.tiers_uuid IS NOT NULL))
+          GROUP BY al.tiers_uuid, p_def.pack_type
         ), pack_consumptions AS (
          SELECT member_pack_consumptions.member_uuid,
             member_pack_consumptions.pack_type,
@@ -3102,20 +3095,6 @@ CREATE INDEX accounting_lines_default_account_uuid_idx ON public.accounting_line
 
 
 --
--- Name: ix_lines_asset; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_lines_asset ON ONLY public.accounting_lines USING btree (analytical_asset_uuid) WHERE (analytical_asset_uuid IS NOT NULL);
-
-
---
--- Name: accounting_lines_default_analytical_asset_uuid_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX accounting_lines_default_analytical_asset_uuid_idx ON public.accounting_lines_default USING btree (analytical_asset_uuid) WHERE (analytical_asset_uuid IS NOT NULL);
-
-
---
 -- Name: ix_lines_entry; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3144,17 +3123,17 @@ CREATE INDEX accounting_lines_default_fiscal_year_uuid_idx ON public.accounting_
 
 
 --
--- Name: ix_lines_member; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_lines_tiers; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_lines_member ON ONLY public.accounting_lines USING btree (member_uuid) WHERE (member_uuid IS NOT NULL);
+CREATE INDEX ix_lines_tiers ON ONLY public.accounting_lines USING btree (tiers_uuid) WHERE (tiers_uuid IS NOT NULL);
 
 
 --
--- Name: accounting_lines_default_member_uuid_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: accounting_lines_default_tiers_uuid_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX accounting_lines_default_member_uuid_idx ON public.accounting_lines_default USING btree (member_uuid) WHERE (member_uuid IS NOT NULL);
+CREATE INDEX accounting_lines_default_tiers_uuid_idx ON public.accounting_lines_default USING btree (tiers_uuid) WHERE (tiers_uuid IS NOT NULL);
 
 
 --
@@ -3162,13 +3141,6 @@ CREATE INDEX accounting_lines_default_member_uuid_idx ON public.accounting_lines
 --
 
 CREATE INDEX accounting_lines_fy2025_account_uuid_idx ON public.accounting_lines_fy2025 USING btree (account_uuid);
-
-
---
--- Name: accounting_lines_fy2025_analytical_asset_uuid_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX accounting_lines_fy2025_analytical_asset_uuid_idx ON public.accounting_lines_fy2025 USING btree (analytical_asset_uuid) WHERE (analytical_asset_uuid IS NOT NULL);
 
 
 --
@@ -3186,10 +3158,10 @@ CREATE INDEX accounting_lines_fy2025_fiscal_year_uuid_idx ON public.accounting_l
 
 
 --
--- Name: accounting_lines_fy2025_member_uuid_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: accounting_lines_fy2025_tiers_uuid_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX accounting_lines_fy2025_member_uuid_idx ON public.accounting_lines_fy2025 USING btree (member_uuid) WHERE (member_uuid IS NOT NULL);
+CREATE INDEX accounting_lines_fy2025_tiers_uuid_idx ON public.accounting_lines_fy2025 USING btree (tiers_uuid) WHERE (tiers_uuid IS NOT NULL);
 
 
 --
@@ -3197,13 +3169,6 @@ CREATE INDEX accounting_lines_fy2025_member_uuid_idx ON public.accounting_lines_
 --
 
 CREATE INDEX accounting_lines_fy2026_account_uuid_idx ON public.accounting_lines_fy2026 USING btree (account_uuid);
-
-
---
--- Name: accounting_lines_fy2026_analytical_asset_uuid_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX accounting_lines_fy2026_analytical_asset_uuid_idx ON public.accounting_lines_fy2026 USING btree (analytical_asset_uuid) WHERE (analytical_asset_uuid IS NOT NULL);
 
 
 --
@@ -3221,10 +3186,10 @@ CREATE INDEX accounting_lines_fy2026_fiscal_year_uuid_idx ON public.accounting_l
 
 
 --
--- Name: accounting_lines_fy2026_member_uuid_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: accounting_lines_fy2026_tiers_uuid_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX accounting_lines_fy2026_member_uuid_idx ON public.accounting_lines_fy2026 USING btree (member_uuid) WHERE (member_uuid IS NOT NULL);
+CREATE INDEX accounting_lines_fy2026_tiers_uuid_idx ON public.accounting_lines_fy2026 USING btree (tiers_uuid) WHERE (tiers_uuid IS NOT NULL);
 
 
 --
@@ -3746,20 +3711,6 @@ CREATE INDEX ix_accounting_entry_template_lines_account_uuid ON public.accountin
 
 
 --
--- Name: ix_accounting_entry_template_lines_analytical_asset_uuid; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_accounting_entry_template_lines_analytical_asset_uuid ON public.accounting_entry_template_lines USING btree (analytical_asset_uuid);
-
-
---
--- Name: ix_accounting_entry_template_lines_member_uuid; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_accounting_entry_template_lines_member_uuid ON public.accounting_entry_template_lines USING btree (member_uuid);
-
-
---
 -- Name: ix_accounting_entry_template_lines_template_uuid; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4201,13 +4152,6 @@ ALTER INDEX public.ix_lines_account ATTACH PARTITION public.accounting_lines_def
 
 
 --
--- Name: accounting_lines_default_analytical_asset_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.ix_lines_asset ATTACH PARTITION public.accounting_lines_default_analytical_asset_uuid_idx;
-
-
---
 -- Name: accounting_lines_default_entry_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
@@ -4222,13 +4166,6 @@ ALTER INDEX public.ix_lines_fiscal_year ATTACH PARTITION public.accounting_lines
 
 
 --
--- Name: accounting_lines_default_member_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.ix_lines_member ATTACH PARTITION public.accounting_lines_default_member_uuid_idx;
-
-
---
 -- Name: accounting_lines_default_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
@@ -4236,17 +4173,17 @@ ALTER INDEX public.pk_accounting_lines ATTACH PARTITION public.accounting_lines_
 
 
 --
+-- Name: accounting_lines_default_tiers_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.ix_lines_tiers ATTACH PARTITION public.accounting_lines_default_tiers_uuid_idx;
+
+
+--
 -- Name: accounting_lines_fy2025_account_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
 ALTER INDEX public.ix_lines_account ATTACH PARTITION public.accounting_lines_fy2025_account_uuid_idx;
-
-
---
--- Name: accounting_lines_fy2025_analytical_asset_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.ix_lines_asset ATTACH PARTITION public.accounting_lines_fy2025_analytical_asset_uuid_idx;
 
 
 --
@@ -4264,13 +4201,6 @@ ALTER INDEX public.ix_lines_fiscal_year ATTACH PARTITION public.accounting_lines
 
 
 --
--- Name: accounting_lines_fy2025_member_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.ix_lines_member ATTACH PARTITION public.accounting_lines_fy2025_member_uuid_idx;
-
-
---
 -- Name: accounting_lines_fy2025_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
@@ -4278,17 +4208,17 @@ ALTER INDEX public.pk_accounting_lines ATTACH PARTITION public.accounting_lines_
 
 
 --
+-- Name: accounting_lines_fy2025_tiers_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.ix_lines_tiers ATTACH PARTITION public.accounting_lines_fy2025_tiers_uuid_idx;
+
+
+--
 -- Name: accounting_lines_fy2026_account_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
 ALTER INDEX public.ix_lines_account ATTACH PARTITION public.accounting_lines_fy2026_account_uuid_idx;
-
-
---
--- Name: accounting_lines_fy2026_analytical_asset_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.ix_lines_asset ATTACH PARTITION public.accounting_lines_fy2026_analytical_asset_uuid_idx;
 
 
 --
@@ -4306,17 +4236,17 @@ ALTER INDEX public.ix_lines_fiscal_year ATTACH PARTITION public.accounting_lines
 
 
 --
--- Name: accounting_lines_fy2026_member_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.ix_lines_member ATTACH PARTITION public.accounting_lines_fy2026_member_uuid_idx;
-
-
---
 -- Name: accounting_lines_fy2026_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
 ALTER INDEX public.pk_accounting_lines ATTACH PARTITION public.accounting_lines_fy2026_pkey;
+
+
+--
+-- Name: accounting_lines_fy2026_tiers_uuid_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.ix_lines_tiers ATTACH PARTITION public.accounting_lines_fy2026_tiers_uuid_idx;
 
 
 --
@@ -5200,5 +5130,5 @@ ALTER TABLE ONLY public.vi_type_catalog
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 37aY4g9CtdLOOe0oOTLdYc2koobxqDdGidIK094FxnRIP8hPASchMRU5PHQpSY4
+\unrestrict Rjyucgk8e8gyWn26VTCF0rnrCPazPY1QczP7MIuoVHwIlqEMjMpTU0mdokBScb8
 

@@ -711,7 +711,7 @@ export function MemberBulkBillingPage() {
               debit: lineAmount,
               credit: '0.0000',
               description: desc,
-              member_uuid: m.uuid,
+              tiers_uuid: m.uuid,
             },
             {
               account_uuid: revenueAccountUuid,

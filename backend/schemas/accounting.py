@@ -68,6 +68,7 @@ class AccountCreateRequest(AccountBase):
     """Request to create an account."""
     parent_account_uuid: Optional[UUID] = None
     replacement_account_uuid: Optional[UUID] = None
+    require_id: int = 0  # 0=none,1=member,2=asset,3=supplier
 
 
 class AccountResponse(AccountBase):
@@ -76,6 +77,7 @@ class AccountResponse(AccountBase):
     parent_account_uuid: Optional[UUID] = None
     archived_at: Optional[datetime] = None
     replacement_account_uuid: Optional[UUID] = None
+    require_id: int = 0  # 0=none,1=member,2=asset,3=supplier
 
     class Config:
         from_attributes = True
@@ -115,8 +117,7 @@ class AccountingLineBase(BaseModel):
 
 class AccountingLineCreateRequest(AccountingLineBase):
     """Request to add a line to an entry."""
-    member_uuid: Optional[UUID] = None
-    analytical_asset_uuid: Optional[UUID] = None
+    tiers_uuid: Optional[UUID] = None
     tax_code: Optional[str] = Field(default=None, max_length=64)
     tax_rate: Optional[Decimal] = Field(default=None, decimal_places=4)
     tax_base: Optional[Decimal] = Field(default=None, decimal_places=4)
@@ -128,11 +129,10 @@ class AccountingLineResponse(AccountingLineBase):
     uuid: UUID
     entry_uuid: UUID
     fiscal_year_uuid: UUID
-    member_uuid: Optional[UUID] = None
-    member_account_id_snapshot: Optional[str] = None
-    member_first_name: Optional[str] = None
-    member_last_name: Optional[str] = None
-    analytical_asset_uuid: Optional[UUID] = None
+    tiers_uuid: Optional[UUID] = None
+    # Display fields resolved by join (semantics depend on account.require_id)
+    tiers_display_ref: Optional[str] = None   # account_id for members, registration for assets
+    tiers_display_name: Optional[str] = None  # full name for members, asset name for assets
     analytical_asset_code: Optional[str] = None
     analytical_asset_name: Optional[str] = None
     tax_code: Optional[str] = None
@@ -225,8 +225,7 @@ class AccountingEntryTemplateLineBase(BaseModel):
 
 class AccountingEntryTemplateLineCreateRequest(AccountingEntryTemplateLineBase):
     """Request line for a reusable entry template."""
-    member_uuid: Optional[UUID] = None
-    analytical_asset_uuid: Optional[UUID] = None
+    tiers_uuid: Optional[UUID] = None
 
 
 class AccountingEntryTemplateLineResponse(AccountingEntryTemplateLineBase):
@@ -234,8 +233,7 @@ class AccountingEntryTemplateLineResponse(AccountingEntryTemplateLineBase):
     uuid: UUID
     template_uuid: UUID
     sort_order: int
-    member_uuid: Optional[UUID] = None
-    analytical_asset_uuid: Optional[UUID] = None
+    tiers_uuid: Optional[UUID] = None
 
     class Config:
         from_attributes = True

@@ -147,8 +147,7 @@ async def generate_entry(
                 debit=line_data["debit"],
                 credit=line_data["credit"],
                 description=line_data["description"],
-                member_uuid=line_data.get("member_uuid"),
-                analytical_asset_uuid=line_data.get("analytical_asset_uuid"),
+                tiers_uuid=line_data.get("tiers_uuid"),
             )
         )
 
@@ -380,8 +379,7 @@ def _calculate_line_amounts(
             "debit": line.debit,
             "credit": line.credit,
             "description": line.description,
-            "member_uuid": line.member_uuid,
-            "analytical_asset_uuid": line.analytical_asset_uuid,
+            "tiers_uuid": line.tiers_uuid,
             "formula_type": line.formula_type,
         }
 

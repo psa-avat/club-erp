@@ -784,6 +784,7 @@ class AccountingAccount(Base):
     __table_args__ = (
         CheckConstraint("type IN (1, 2, 3, 4, 5)", name="chk_account_type"),
         CheckConstraint("normal_balance IN (1, 2)", name="chk_account_normal_balance"),
+        CheckConstraint("require_id IN (0, 1, 2, 3)", name="chk_account_require_id"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -797,6 +798,8 @@ class AccountingAccount(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     archived_at = Column(DateTime(timezone=True), nullable=True)
     replacement_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
+    # 0=none, 1=member, 2=asset, 3=supplier — declares what entity tiers_uuid must reference on lines
+    require_id = Column(SmallInteger, nullable=False, default=0)
 
     entries_lines = relationship("AccountingLine", back_populates="account")
     template_lines = relationship("AccountingEntryTemplateLine", back_populates="account")
@@ -869,11 +872,8 @@ class AccountingLine(Base):
     fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid"), nullable=False, index=True)
     entry_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)
     account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
-    # Member dimension
-    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid"), nullable=True, index=True)
-    member_account_id_snapshot = Column(String(32), nullable=True)
-    # Analytical dimension
-    analytical_asset_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
+    # Entity dimension — interpreted via account.require_id (0=none,1=member,2=asset,3=supplier)
+    tiers_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
     # Amounts
     debit = Column(Numeric(10, 4), nullable=False, default=0.0)
     credit = Column(Numeric(10, 4), nullable=False, default=0.0)
@@ -887,7 +887,6 @@ class AccountingLine(Base):
 
     entry = relationship("AccountingEntry", back_populates="lines")
     account = relationship("AccountingAccount", back_populates="entries_lines")
-    member = relationship("Member")
 
     def __repr__(self):
         return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"
@@ -952,8 +951,7 @@ class AccountingEntryTemplateLine(Base):
     template_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_entry_templates.uuid", ondelete="CASCADE"), nullable=False, index=True)
     account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
     sort_order = Column(SmallInteger, nullable=False, default=1)
-    member_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
-    analytical_asset_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
+    tiers_uuid = Column(UUID(as_uuid=True), nullable=True)
     debit = Column(Numeric(10, 4), nullable=False, default=0.0)
     credit = Column(Numeric(10, 4), nullable=False, default=0.0)
     description = Column(String(255), nullable=True)

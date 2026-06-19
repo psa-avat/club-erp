@@ -146,7 +146,7 @@ export function SupplierInvoicePage() {
             debit: '0.0000',
             credit: amt,
             description: supplierName.trim(),
-            member_uuid: supplierMemberUuid.trim() === '' ? null : supplierMemberUuid,
+            tiers_uuid: supplierMemberUuid.trim() === '' ? null : supplierMemberUuid,
           },
         ],
       })

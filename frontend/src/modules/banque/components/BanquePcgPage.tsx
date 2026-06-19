@@ -85,7 +85,7 @@ export function BanquePcgPage() {
   function addRow() {
     setDraftItems((prev) => [
       ...prev,
-      { code: '', name: '', type: 1, is_posting_allowed: true, is_reconcilable: false },
+      { code: '', name: '', type: 1, is_posting_allowed: true, is_reconcilable: false, require_id: 0 },
     ])
   }
 
@@ -131,6 +131,7 @@ export function BanquePcgPage() {
           type: Number(item.type ?? 1),
           is_posting_allowed: Boolean(item.is_posting_allowed ?? true),
           is_reconcilable: Boolean(item.is_reconcilable ?? false),
+          require_id: Number(item.require_id ?? 0),
         } satisfies PcgSeedItem
       })
       setDraftItems(normalized)
@@ -215,6 +216,7 @@ export function BanquePcgPage() {
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.type')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.posting')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.reconcilable')}</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.columns.requireId')}</th>
                     <th className="px-3 py-2 text-left font-semibold text-slate-700">{t('pcg.actions')}</th>
                   </tr>
                 </thead>
@@ -260,6 +262,18 @@ export function BanquePcgPage() {
                         />
                       </td>
                       <td className="px-3 py-2">
+                        <select
+                          value={item.require_id}
+                          onChange={(e) => updateItem(index, { require_id: Number(e.target.value) })}
+                          className="h-7 rounded border border-slate-300 bg-white px-1 text-xs"
+                        >
+                          <option value={0}>{t('pcg.requireId.none')}</option>
+                          <option value={1}>{t('pcg.requireId.member')}</option>
+                          <option value={2}>{t('pcg.requireId.asset')}</option>
+                          <option value={3}>{t('pcg.requireId.supplier')}</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
                         <Button size="sm" variant="ghost" type="button" onClick={() => removeRow(index)}>
                           {t('pcg.delete')}
                         </Button>
@@ -268,7 +282,7 @@ export function BanquePcgPage() {
                   ))}
                   {draftItems.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-sm text-slate-500">
+                      <td colSpan={7} className="py-6 text-center text-sm text-slate-500">
                         {t('pcg.empty')}
                       </td>
                     </tr>

@@ -143,7 +143,7 @@ export function MemberInvoiceDialog({
             debit: amtStr,
             credit: '0.0000',
             description: desc,
-            member_uuid: memberUuid,
+            tiers_uuid: memberUuid,
           },
           {
             account_uuid: revenueAccountUuid,

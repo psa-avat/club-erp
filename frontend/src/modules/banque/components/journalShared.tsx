@@ -92,7 +92,7 @@ export type LineFormState = {
   account_uuid: string
   amount: string // signed: positive = debit, negative = credit
   description: string
-  member_uuid: string
+  tiers_uuid: string  // UUID of member, asset, or supplier depending on account.require_id
   // Formula (optional — defaults to 'fixed' in buildModelLines)
   formula_type?: FormulaType
   formula_params?: {
@@ -142,7 +142,7 @@ export function toErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function emptyLine(): LineFormState {
-  return { account_uuid: '', amount: '', description: '', member_uuid: '', formula_type: 'fixed' }
+  return { account_uuid: '', amount: '', description: '', tiers_uuid: '', formula_type: 'fixed' }
 }
 
 export function emptyEntryForm(today: string): EntryFormState {
@@ -225,7 +225,7 @@ export function mapEntryToForm(entry: AccountingEntry): EntryFormState {
         account_uuid: line.account_uuid,
         amount: amount.toFixed(2),
         description: line.description ?? '',
-        member_uuid: line.member_uuid ?? '',
+        tiers_uuid: line.tiers_uuid ?? '',
       }
     }),
   }
@@ -253,7 +253,7 @@ export function mapModelToForm(model: AccountingEntryModel): ModelFormState {
         account_uuid: line.account_uuid,
         amount: amount.toFixed(2),
         description: line.description ?? '',
-        member_uuid: line.member_uuid ?? '',
+        tiers_uuid: line.tiers_uuid ?? '',
         formula_type: (line.formula_type as FormulaType | undefined) ?? 'fixed',
         formula_params: line.formula_params ?? undefined,
       }
@@ -271,7 +271,7 @@ export function buildEntryLines(lines: LineFormState[]): AccountingEntryLinePayl
       debit,
       credit,
       description: line.description.trim() === '' ? null : line.description.trim(),
-      member_uuid: line.member_uuid.trim() === '' ? null : line.member_uuid.trim(),
+      tiers_uuid: line.tiers_uuid.trim() === '' ? null : line.tiers_uuid.trim(),
     }
   })
 }
@@ -286,7 +286,7 @@ export function buildModelLines(lines: LineFormState[]): AccountingEntryModelLin
       debit,
       credit,
       description: line.description.trim() === '' ? null : line.description.trim(),
-      member_uuid: line.member_uuid.trim() === '' ? null : line.member_uuid.trim(),
+      tiers_uuid: line.tiers_uuid.trim() === '' ? null : line.tiers_uuid.trim(),
       formula_type: line.formula_type ?? 'fixed',
       formula_params: line.formula_params ?? null,
     }
@@ -468,12 +468,12 @@ export function LineEditor({
                 </td>
                 <td className="px-3 py-2">
                   <SearchableSelect
-                    value={line.member_uuid}
+                    value={line.tiers_uuid}
                     options={memberOptions}
                     disabled={disabled}
                     clearable
                     clearLabel={t('journal.forms.clearTiers')}
-                    onChange={(value) => onChange(index, { member_uuid: value })}
+                    onChange={(value) => onChange(index, { tiers_uuid: value })}
                     placeholder={t('journal.forms.selectTiers')}
                     searchPlaceholder={t('journal.forms.searchTiers')}
                     noResultsText={t('journal.forms.noTiersResults')}

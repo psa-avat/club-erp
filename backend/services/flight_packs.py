@@ -676,7 +676,7 @@ async def _load_pack_context(
             AccountingEntry.uuid.in_(
                 select(AccountingLine.entry_uuid).where(
                     AccountingLine.fiscal_year_uuid == fiscal_year_uuid,
-                    AccountingLine.member_uuid == member_uuid,
+                    AccountingLine.tiers_uuid == member_uuid,
                     AccountingLine.debit > 0,
                 )
             ),
@@ -876,7 +876,7 @@ async def upsert_rem_entry(
             AccountingEntry.journal_uuid == rem_journal_uuid,
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
             AccountingEntry.reference == reference,
-            AccountingLine.member_uuid == member_uuid,
+            AccountingLine.tiers_uuid == member_uuid,
         )
         .order_by(AccountingEntry.created_at.desc())
         .limit(1)
@@ -1012,7 +1012,7 @@ async def discount_review_for_member(
                 .join(AccountingLine)
                 .where(
                     AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
-                    AccountingLine.member_uuid == member_uuid,
+                    AccountingLine.tiers_uuid == member_uuid,
                     AccountingLine.debit > 0,
                 )
             ),
@@ -1034,7 +1034,7 @@ async def discount_review_for_member(
         .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
         .where(
             ValidatedFlight.accounting_entry_uuid.isnot(None),
-            AccountingLine.member_uuid == member_uuid,
+            AccountingLine.tiers_uuid == member_uuid,
             AccountingLine.debit > 0,
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
         )
@@ -1165,12 +1165,12 @@ async def discount_review(
         )
 
     lines_result = await db.execute(
-        select(AccountingLine.member_uuid)
+        select(AccountingLine.tiers_uuid)
         .join(AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid)
         .join(ValidatedFlight, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
         .where(
             ValidatedFlight.accounting_entry_uuid.isnot(None),
-            AccountingLine.member_uuid.isnot(None),
+            AccountingLine.tiers_uuid.isnot(None),
             AccountingLine.debit > 0,
             AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
         )

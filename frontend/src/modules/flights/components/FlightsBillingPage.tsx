@@ -384,7 +384,7 @@ function FlightPreviewPanel({ preview }: FlightPreviewPanelProps) {
                   {line.account_code ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-slate-700">
-                  {line.member_account_id_snapshot ?? "—"}
+                  {line.tiers_uuid ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-slate-700">
                   {line.description ?? "—"}
