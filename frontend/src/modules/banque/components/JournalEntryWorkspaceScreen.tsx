@@ -30,6 +30,7 @@ import { Label } from '../../../components/ui/label'
 import { SectionHeader } from '../../../components/ui/section-header'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import { useMembersQuery } from '../../members/api'
+import { useAssetsQuery } from '../../assets/api'
 import {
   useAccountingEntryQuery,
   useAccountsQuery,
@@ -82,6 +83,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
   const accountsQuery = useAccountsQuery(canView)
   const modelsQuery = useAccountingEntryModelsQuery(canView)
   const membersQuery = useMembersQuery({ search: '' })
+  const assetsQuery = useAssetsQuery({}, canView)
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
@@ -104,8 +106,8 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
   const models = modelsQuery.data ?? []
   const allMembers = membersQuery.data ?? []
-  
   const members = allMembers
+  const assets = assetsQuery.data ?? []
 
   const forcedEntryFiscalYearUuid = entryFiscalYearUuid || entryForm.fiscal_year_uuid || null
   const forcedEntryQuery = useAccountingEntryQuery(
@@ -539,6 +541,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
             lines={entryForm.lines}
             accounts={accounts}
             members={members}
+            assets={assets}
             onChange={updateEntryLine}
             onAdd={() => setEntryForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}
             onRemove={(index) =>

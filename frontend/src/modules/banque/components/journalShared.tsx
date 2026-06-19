@@ -334,6 +334,7 @@ export function LineEditor({
   lines,
   accounts,
   members,
+  assets,
   onChange,
   onAdd,
   onRemove,
@@ -342,8 +343,9 @@ export function LineEditor({
 }: {
   title: string
   lines: LineFormState[]
-  accounts: Array<{ uuid: string; code: string; name: string }>
-  members: Array<{ uuid: string; first_name: string; last_name: string }>
+  accounts: Array<{ uuid: string; code: string; name: string; require_id: number }>
+  members: Array<{ uuid: string; account_id: string; first_name: string; last_name: string }>
+  assets: Array<{ uuid: string; code: string; name: string }>
   onChange: (index: number, patch: Partial<LineFormState>) => void
   onAdd: () => void
   onRemove: (index: number) => void
@@ -352,9 +354,18 @@ export function LineEditor({
 }) {
   const summary = totals(lines)
   const balanced = isBalanced(lines)
-  const memberOptions = members.map((member) => ({
-    value: member.uuid,
-    label: `${member.first_name} ${member.last_name}`.trim(),
+
+  const memberOptions = members
+    .filter((m) => !m.account_id.startsWith('FO-'))
+    .map((m) => ({ value: m.uuid, label: `${m.last_name} ${m.first_name}`.trim() }))
+
+  const supplierOptions = members
+    .filter((m) => m.account_id.startsWith('FO-'))
+    .map((m) => ({ value: m.uuid, label: `${m.last_name} ${m.first_name} (${m.account_id})`.trim() }))
+
+  const assetOptions = assets.map((a) => ({
+    value: a.uuid,
+    label: `${a.code} · ${a.name}`,
   }))
 
   return (
@@ -375,13 +386,15 @@ export function LineEditor({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {lines.map((line, index) => (
+            {lines.map((line, index) => {
+              const requireId = accounts.find((a) => a.uuid === line.account_uuid)?.require_id ?? 0
+              return (
               <tr key={index}>
                 <td className="sticky left-0 z-10 bg-card px-3 py-2">
                   <select
                     value={line.account_uuid}
                     disabled={disabled}
-                    onChange={(event) => onChange(index, { account_uuid: event.target.value })}
+                    onChange={(event) => onChange(index, { account_uuid: event.target.value, tiers_uuid: '' })}
                     className="h-9 w-48 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm"
                   >
                     <option value="">{t('journal.forms.selectAccount')}</option>
@@ -467,18 +480,26 @@ export function LineEditor({
                   />
                 </td>
                 <td className="px-3 py-2">
-                  <SearchableSelect
-                    value={line.tiers_uuid}
-                    options={memberOptions}
-                    disabled={disabled}
-                    clearable
-                    clearLabel={t('journal.forms.clearTiers')}
-                    onChange={(value) => onChange(index, { tiers_uuid: value })}
-                    placeholder={t('journal.forms.selectTiers')}
-                    searchPlaceholder={t('journal.forms.searchTiers')}
-                    noResultsText={t('journal.forms.noTiersResults')}
-                    className="w-48 min-w-[12rem]"
-                  />
+                  {requireId === 0 ? (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  ) : (
+                    <SearchableSelect
+                      value={line.tiers_uuid}
+                      options={
+                        requireId === 2 ? assetOptions
+                        : requireId === 3 ? supplierOptions
+                        : memberOptions
+                      }
+                      disabled={disabled}
+                      clearable
+                      clearLabel={t('journal.forms.clearTiers')}
+                      onChange={(value) => onChange(index, { tiers_uuid: value })}
+                      placeholder={t('journal.forms.selectTiers')}
+                      searchPlaceholder={t('journal.forms.searchTiers')}
+                      noResultsText={t('journal.forms.noTiersResults')}
+                      className="w-48 min-w-[12rem]"
+                    />
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => onRemove(index)}>
@@ -486,7 +507,8 @@ export function LineEditor({
                   </Button>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
           <tfoot className="bg-muted text-xs text-muted-foreground">
             <tr>

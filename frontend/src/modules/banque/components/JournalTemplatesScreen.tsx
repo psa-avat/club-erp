@@ -73,6 +73,7 @@ import {
 } from '../../../components/ui/sheet'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import { useMembersQuery } from '../../members/api'
+import { useAssetsQuery } from '../../assets/api'
 import {
   useAccountingEntryModelsQuery,
   useAccountsQuery,
@@ -113,11 +114,13 @@ export function JournalTemplatesScreen() {
   const accountsQuery = useAccountsQuery(canView)
   const modelsQuery = useAccountingEntryModelsQuery(canView)
   const membersQuery = useMembersQuery({ search: '' })
+  const assetsQuery = useAssetsQuery({}, canView)
 
   const journals = journalsQuery.data ?? []
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
   const models = modelsQuery.data ?? []
   const members = membersQuery.data?.filter((m) => m.status === 1) ?? []
+  const assets = assetsQuery.data ?? []
 
   const [modelForm, setModelForm] = useState<ModelFormState>(() => emptyModelForm())
   const [selectedModelUuid, setSelectedModelUuid] = useState<string | null>(null)
@@ -612,6 +615,7 @@ export function JournalTemplatesScreen() {
                 lines={modelForm.lines}
                 accounts={accounts}
                 members={members}
+                assets={assets}
                 onChange={updateModelLine}
                 onAdd={() => setModelForm((prev) => ({ ...prev, lines: [...prev.lines, emptyLine()] }))}
                 onRemove={(index) =>
