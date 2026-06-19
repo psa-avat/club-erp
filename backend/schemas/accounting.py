@@ -389,6 +389,7 @@ class PcgSeedItem(BaseModel):
     type: int = Field(ge=1, le=5)          # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue
     is_posting_allowed: bool = True
     is_reconcilable: bool = False
+    require_id: int = Field(default=0, ge=0, le=3)  # 0=none,1=member,2=asset,3=supplier
 
 
 class PcgSeedExportResponse(BaseModel):
