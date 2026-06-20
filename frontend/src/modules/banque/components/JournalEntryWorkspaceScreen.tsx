@@ -50,7 +50,6 @@ import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
   ENTRY_STATE_DRAFT,
   ENTRY_STATE_POSTED,
-  JournalPageShell,
   LineEditor,
   buildEntryLines,
   decimalOrZero,
@@ -75,7 +74,6 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
-  const canManageModels = useCapability('MANAGE_SYSTEM_SETTINGS')
   const today = new Date().toISOString().slice(0, 10)
 
   const fiscalYearsQuery = useFiscalYearsQuery(canView)
@@ -348,7 +346,7 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
   const postedAtLabel = selectedEntry?.posted_at ? new Date(selectedEntry.posted_at).toLocaleString() : '—'
 
   return (
-    <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
+    <section className="space-y-4">
       {anyError && <Alert>{anyError}</Alert>}
       {successMessage && (
         <Banner variant="success" message={successMessage} onDismiss={() => setSuccessMessage(null)} />
@@ -656,6 +654,6 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
         onConfirm={handleCreateReversal}
         t={t}
       />
-    </JournalPageShell>
+    </section>
   )
 }

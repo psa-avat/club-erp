@@ -101,6 +101,11 @@ export const fr = {
       financeComptabilite: 'Comptabilité',
       financeSettings: 'Paramètres',
 
+      // Rapports (nouveau groupe dédié)
+      reportsSection: 'Rapports',
+      reportsStatements: 'Résultat & Bilan',
+      reportsLedger: 'Grand livre',
+
       // Finance (sous-clés legacy — conservées pour rétrocompat)
       banqueOverview: 'Aperçu',
       banqueOps: 'Opérations',
@@ -141,10 +146,12 @@ export const fr = {
       // Administration
       admin: 'Admin',
       adminAudit: 'Audit',
+      configExercices: 'Exercices comptables',
+      configPcg: 'Plan comptable',
+      configFinance: 'Finance',
       configHelloasso: 'HelloAsso',
       configPlanche: 'Planche',
       configStorage: 'Stockage',
-      configBanque: 'Banque',
 
       // UI
       modules: 'Modules',
@@ -1280,12 +1287,21 @@ export const fr = {
       },
       accounting: {
         title: 'Comptabilité',
-        description: 'Journal, exercices fiscaux, plan comptable et rapports.',
+        description: 'Journal, brouillons, modèles et plan comptable.',
         tabs: {
           journal: 'Journal',
-          fiscalYears: 'Exercices',
-          pcg: 'Plan comptable',
-          reports: 'Rapports',
+          brouillons: 'Brouillons',
+          modeles: 'Modèles',
+          recurrentes: 'Récurrentes',
+          comptes: 'Plan comptable',
+        },
+      },
+      reports: {
+        title: 'Rapports financiers',
+        description: 'États financiers et grand livre analytique.',
+        tabs: {
+          statements: 'Résultat & Bilan',
+          ledger: 'Grand livre',
         },
       },
       tarifs: {
@@ -2149,6 +2165,24 @@ export const fr = {
         supplier: 'Fournisseur',
       },
     },
+    grandLivre: {
+      title: 'Grand livre',
+      account: 'Compte',
+      selectAccount: 'Sélectionner un compte…',
+      selectAccountPrompt: 'Sélectionnez un compte pour afficher son grand livre.',
+      allYears: 'Tous les exercices',
+      postedOnly: 'Validées seulement',
+      openingBalance: "Solde à l'ouverture",
+      journal: 'Journal',
+      sequence: 'N°',
+      libelle: 'Libellé',
+      tiers: 'Tiers',
+      debit: 'Débit',
+      credit: 'Crédit',
+      runningBalance: 'Solde',
+      totals: 'Totaux',
+      empty: 'Aucun mouvement pour ce compte.',
+    },
   },
   admin: {
     management: {
@@ -2162,6 +2196,9 @@ export const fr = {
       settings: 'Paramètres système',
     },
     settings: {
+      exercices: 'Exercices comptables',
+      pcg: 'Plan comptable',
+      finance: 'Finance',
       helloasso: 'HelloAsso',
       planche: 'Planche',
       storage: 'Stockage',

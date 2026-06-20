@@ -41,7 +41,7 @@ import {
   useReverseAccountingEntryMutation,
 } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { entryStateLabel, totals, JournalPageShell, entryStateBadgeClass, useDebounce, decimalOrZero, toErrorMessage } from './journalShared'
+import { entryStateLabel, totals, entryStateBadgeClass, useDebounce, decimalOrZero, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
 
 type SortKey = 'entry_date' | 'journal' | 'description' | 'reference' | 'amount' | 'state'
@@ -93,12 +93,16 @@ function normalizeAmountFilter(value: string): string | undefined {
   return /^\d+(\.\d{1,4})?$/.test(normalized) ? normalized : undefined
 }
 
-export function JournalEntriesScreen() {
+type Props = {
+  defaultState?: number
+  lockState?: boolean
+}
+
+export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   const { t } = useTranslation('banque')
   const navigate = useNavigate()
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
-  const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
 
   const fiscalYearsQuery = useFiscalYearsQuery(canView)
   const journalsQuery = useJournalsQuery(canView)
@@ -107,7 +111,10 @@ export function JournalEntriesScreen() {
   const PAGE_SIZE = 25
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
-  const [filters, setFilters] = useState<JournalFilters>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<JournalFilters>({
+    ...DEFAULT_FILTERS,
+    ...(defaultState !== undefined ? { state: defaultState } : {}),
+  })
   const [page, setPage] = useState(0)
   const [selectedEntryUuids, setSelectedEntryUuids] = useState<string[]>([])
   const debouncedSearch = useDebounce(filters.search, 350)
@@ -348,7 +355,7 @@ export function JournalEntriesScreen() {
 
   return (
     <>
-    <JournalPageShell canPost={canPost} canManageModels={canManageModels} t={t}>
+    <section className="space-y-4">
       {anyError && <Alert>{anyError}</Alert>}
       {successMessage && (
         <Banner variant="success" message={successMessage} onDismiss={() => setSuccessMessage(null)} />
@@ -380,6 +387,7 @@ export function JournalEntriesScreen() {
               ))}
             </select>
           </div>
+          {!lockState && (
           <div className="space-y-1">
             <Label>{t('journal.entries.state')}</Label>
             <select
@@ -393,6 +401,7 @@ export function JournalEntriesScreen() {
               <option value={3}>{t('journal.entries.states.cancelled')}</option>
             </select>
           </div>
+          )}
           <div className="space-y-1">
             <Label>{t('journal.entries.search')}</Label>
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
@@ -775,7 +784,7 @@ export function JournalEntriesScreen() {
           </div>
         )}
       </div>
-    </JournalPageShell>
+    </section>
 
     {canPost && selectedEntryUuids.length > 0 && (
       <StickyActionBar>

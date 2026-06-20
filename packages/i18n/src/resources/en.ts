@@ -101,6 +101,11 @@ export const en = {
       financeComptabilite: 'Accounting',
       financeSettings: 'Settings',
 
+      // Reports (new dedicated section)
+      reportsSection: 'Reports',
+      reportsStatements: 'P&L & Balance sheet',
+      reportsLedger: 'General ledger',
+
       // Finance (legacy sub-keys — kept for backward compat)
       banqueOverview: 'Overview',
       banqueOps: 'Operations',
@@ -141,10 +146,12 @@ export const en = {
       // Administration
       admin: 'Admin',
       adminAudit: 'Audit',
+      configExercices: 'Fiscal years',
+      configPcg: 'Chart of accounts',
+      configFinance: 'Finance',
       configHelloasso: 'HelloAsso',
       configPlanche: 'Planche',
       configStorage: 'Storage',
-      configBanque: 'Accounting',
 
       // UI
       modules: 'Modules',
@@ -1284,12 +1291,21 @@ export const en = {
       },
       accounting: {
         title: 'Accounting',
-        description: 'Journal, fiscal years, chart of accounts and reports.',
+        description: 'Journal, drafts, templates and chart of accounts.',
         tabs: {
           journal: 'Journal',
-          fiscalYears: 'Fiscal years',
-          pcg: 'Chart of accounts',
-          reports: 'Reports',
+          brouillons: 'Drafts',
+          modeles: 'Templates',
+          recurrentes: 'Recurring',
+          comptes: 'Chart of accounts',
+        },
+      },
+      reports: {
+        title: 'Financial reports',
+        description: 'Financial statements and general ledger.',
+        tabs: {
+          statements: 'P&L & Balance sheet',
+          ledger: 'General ledger',
         },
       },
       tarifs: {
@@ -2142,6 +2158,24 @@ export const en = {
         supplier: 'Supplier',
       },
     },
+    grandLivre: {
+      title: 'General ledger',
+      account: 'Account',
+      selectAccount: 'Select an account…',
+      selectAccountPrompt: 'Select an account to display its ledger.',
+      allYears: 'All fiscal years',
+      postedOnly: 'Posted only',
+      openingBalance: 'Opening balance',
+      journal: 'Journal',
+      sequence: 'No.',
+      libelle: 'Description',
+      tiers: 'Party',
+      debit: 'Debit',
+      credit: 'Credit',
+      runningBalance: 'Balance',
+      totals: 'Totals',
+      empty: 'No movements for this account.',
+    },
   },
   admin: {
     management: {
@@ -2155,6 +2189,9 @@ export const en = {
       settings: 'System settings',
     },
     settings: {
+      exercices: 'Fiscal years',
+      pcg: 'Chart of accounts',
+      finance: 'Finance',
       helloasso: 'HelloAsso',
       planche: 'Planche',
       storage: 'Storage',

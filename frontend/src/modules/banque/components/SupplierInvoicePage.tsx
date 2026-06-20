@@ -140,7 +140,18 @@ export function SupplierInvoicePage() {
         description: supplierName.trim(),
         reference: invoiceRef.trim() || null,
         lines: [
-          { account_uuid: expenseAccountUuid, debit: amt, credit: '0.0000', description: supplierName.trim() },
+          {
+            account_uuid: expenseAccountUuid,
+            debit: amt,
+            credit: '0.0000',
+            description: supplierName.trim(),
+            tiers_uuid: (() => {
+              const acc = accounts.find((a) => a.uuid === expenseAccountUuid)
+              if (!acc || acc.require_id === 0) return null
+              if (acc.require_id === 3) return supplierMemberUuid.trim() || null
+              return null
+            })(),
+          },
           {
             account_uuid: supplierAccountUuid,
             debit: '0.0000',

@@ -30,6 +30,7 @@ import { WorkspaceShell, SubWorkspaceShell } from '@/components/ui/workspace-she
 import { HelloAssoIntegrationPage } from '@/modules/helloasso/components/HelloAssoIntegrationPage'
 import { PlancheIntegrationPage } from '@/modules/planche/components/PlancheIntegrationPage'
 import { StorageSettingsPage } from '@/modules/storage/components/StorageSettingsPage'
+import { BanqueFiscalYearsPage, BanquePcgPage, BanqueSettingsPage } from '@/modules/banque'
 import {
   useAdminCapabilitiesQuery,
   useAdminRolesQuery,
@@ -143,6 +144,21 @@ export function AdminPage() {
           content: (
             <SubWorkspaceShell
               tabs={[
+                {
+                  value: 'exercices',
+                  label: t('settings.exercices'),
+                  content: <BanqueFiscalYearsPage />,
+                },
+                {
+                  value: 'pcg',
+                  label: t('settings.pcg'),
+                  content: <BanquePcgPage />,
+                },
+                {
+                  value: 'finance',
+                  label: t('settings.finance'),
+                  content: <BanqueSettingsPage />,
+                },
                 {
                   value: 'helloasso',
                   label: t('settings.helloasso'),

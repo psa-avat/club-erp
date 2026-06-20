@@ -74,7 +74,6 @@ export const shellNavItems: ShellNavItem[] = [
   },
 
   // ── 5. Finance — workspace unifié (priorité #5) ────────────────────────────
-  // Tous les enfants pointent vers /workspace/finance?tab=xxx (Phase B complète).
   {
     to: '/workspace/finance',
     labelKey: 'nav.finance',
@@ -84,7 +83,17 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/workspace/finance?tab=ventes', labelKey: 'nav.financeSales' },
       { to: '/workspace/finance?tab=achats', labelKey: 'nav.financeAchats' },
       { to: '/workspace/finance?tab=comptabilite', labelKey: 'nav.financeComptabilite' },
-      { to: '/workspace/finance?tab=parametres', labelKey: 'nav.financeSettings', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+    ],
+  },
+
+  // ── 5b. Rapports financiers (priorité #5b) ─────────────────────────────────
+  {
+    to: '/workspace/reports',
+    labelKey: 'nav.reportsSection',
+    requiredCapability: 'VIEW_FINANCIALS',
+    children: [
+      { to: '/workspace/reports', labelKey: 'nav.reportsStatements' },
+      { to: '/workspace/reports?tab=grand-livre', labelKey: 'nav.reportsLedger' },
     ],
   },
 
@@ -138,10 +147,12 @@ export const shellNavItems: ShellNavItem[] = [
     children: [
       { to: '/admin', labelKey: 'nav.admin', requiredCapability: 'MANAGE_USERS' },
       { to: '/admin/audit', labelKey: 'nav.adminAudit', requiredCapability: 'MANAGE_USERS' },
+      { to: '/admin?tab=parametres&subtab=exercices', labelKey: 'nav.configExercices', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/admin?tab=parametres&subtab=pcg', labelKey: 'nav.configPcg', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/admin?tab=parametres&subtab=finance', labelKey: 'nav.configFinance', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/admin?tab=parametres&subtab=helloasso', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/admin?tab=parametres&subtab=planche', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/admin?tab=parametres&subtab=stockage', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/workspace/finance?tab=parametres', labelKey: 'nav.configBanque', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
 ]

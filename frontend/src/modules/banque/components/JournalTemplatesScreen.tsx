@@ -105,7 +105,11 @@ function fmtEUR(n: number) {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n)
 }
 
-export function JournalTemplatesScreen() {
+type TemplatesProps = {
+  recurrenceFilter?: number[]
+}
+
+export function JournalTemplatesScreen({ recurrenceFilter }: TemplatesProps = {}) {
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
   const canManageModels = useCapability('MANAGE_ACCOUNTING_SETTINGS')
@@ -118,9 +122,13 @@ export function JournalTemplatesScreen() {
 
   const journals = journalsQuery.data ?? []
   const accounts = accountsQuery.data?.filter((account) => account.is_posting_allowed) ?? []
-  const models = modelsQuery.data ?? []
+  const allModels = modelsQuery.data ?? []
+  const models = recurrenceFilter
+    ? allModels.filter((m) => recurrenceFilter.includes(m.recurrence_type))
+    : allModels
   const members = membersQuery.data?.filter((m) => m.status === 1) ?? []
   const assets = assetsQuery.data ?? []
+  const isManualOnly = recurrenceFilter?.length === 1 && recurrenceFilter[0] === 1
 
   const [modelForm, setModelForm] = useState<ModelFormState>(() => emptyModelForm())
   const [selectedModelUuid, setSelectedModelUuid] = useState<string | null>(null)
@@ -165,7 +173,11 @@ export function JournalTemplatesScreen() {
 
   function openNewTemplate() {
     setSelectedModelUuid(null)
-    setModelForm((prev) => ({ ...emptyModelForm(), journal_uuid: prev.journal_uuid }))
+    setModelForm((prev) => ({
+      ...emptyModelForm(),
+      journal_uuid: prev.journal_uuid,
+      ...(isManualOnly ? { recurrence_type: 1 } : {}),
+    }))
     setIsEditorOpen(true)
   }
 
@@ -331,6 +343,7 @@ export function JournalTemplatesScreen() {
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         {/* ── Actions ─────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {!isManualOnly && (
           <Button
             variant="outline"
             onClick={() => void handleGenerateAll()}
@@ -339,6 +352,7 @@ export function JournalTemplatesScreen() {
             <CalendarClock className="mr-2 h-4 w-4" />
             {t('journal.models.recurring.generateDue', { count: kpis.due })}
           </Button>
+          )}
           {canManageModels && (
             <Button onClick={openNewTemplate}>
               <Plus className="mr-2 h-4 w-4" />
@@ -540,6 +554,7 @@ export function JournalTemplatesScreen() {
                     </SelectContent>
                   </Select>
                 </div>
+                {!isManualOnly && (
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('journal.models.recurrence.label')}</Label>
                   <Select
@@ -551,12 +566,13 @@ export function JournalTemplatesScreen() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {RECURRENCE_OPTIONS.map((value) => (
+                      {RECURRENCE_OPTIONS.filter((v) => !recurrenceFilter || recurrenceFilter.includes(v)).map((value) => (
                         <SelectItem key={value} value={String(value)}>{recurrenceLabel(value, t)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('journal.models.recurring.validFrom')}</Label>
                   <Input

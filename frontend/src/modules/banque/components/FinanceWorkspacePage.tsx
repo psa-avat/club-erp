@@ -21,16 +21,15 @@
 
 import { useTranslation } from "react-i18next";
 import {
-  BarChart3,
   Banknote,
+  BookOpen,
   Building2,
-  Calendar,
   CreditCard,
   FileText,
   LayoutDashboard,
+  List,
   Receipt,
   Repeat,
-  Settings,
   TableProperties,
 } from "lucide-react";
 
@@ -38,12 +37,9 @@ import { WorkspaceShell, SubWorkspaceShell } from "@/components/ui/workspace-she
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
 
-import { BanqueJournalTemplatesPage } from "./BanqueJournalTemplatesPage";
-import { BanqueSettingsPage } from "./BanqueSettingsPage";
-import { BanqueJournalEntriesPage } from "./BanqueJournalEntriesPage";
-import { BanqueFiscalYearsPage } from "./BanqueFiscalYearsPage";
-import { BanquePcgPage } from "./BanquePcgPage";
-import { FinancialReportsPage } from "./FinancialReportsPage";
+import { BanqueCoaPage } from "./BanqueCoaPage";
+import { JournalEntriesScreen } from "./JournalEntriesScreen";
+import { JournalTemplatesScreen } from "./JournalTemplatesScreen";
 import { MemberBulkBillingPage } from "./MemberBulkBillingPage";
 import { OpsSalesTab } from "./OpsSalesTab";
 import { SupplierInvoicePage } from "./SupplierInvoicePage";
@@ -134,26 +130,32 @@ function ComptabiliteSection() {
         {
           value: "journal",
           label: t("workspace.accounting.tabs.journal", "Journal"),
+          icon: List,
+          content: <JournalEntriesScreen defaultState={2} />,
+        },
+        {
+          value: "brouillons",
+          label: t("workspace.accounting.tabs.brouillons", "Brouillons"),
           icon: FileText,
-          content: <BanqueJournalEntriesPage />,
+          content: <JournalEntriesScreen lockState defaultState={1} />,
         },
         {
-          value: "exercices",
-          label: t("workspace.accounting.tabs.fiscalYears", "Exercices"),
-          icon: Calendar,
-          content: <BanqueFiscalYearsPage />,
-        },
-        {
-          value: "pcg",
-          label: t("workspace.accounting.tabs.pcg", "Plan comptable"),
+          value: "modeles",
+          label: t("workspace.accounting.tabs.modeles", "Modèles"),
           icon: TableProperties,
-          content: <BanquePcgPage />,
+          content: <JournalTemplatesScreen recurrenceFilter={[1]} />,
         },
         {
-          value: "rapports",
-          label: t("workspace.accounting.tabs.reports", "Rapports"),
-          icon: BarChart3,
-          content: <FinancialReportsPage />,
+          value: "recurrentes",
+          label: t("workspace.accounting.tabs.recurrentes", "Récurrentes"),
+          icon: Repeat,
+          content: <JournalTemplatesScreen recurrenceFilter={[2, 3, 4]} />,
+        },
+        {
+          value: "comptes",
+          label: t("workspace.accounting.tabs.comptes", "Plan comptable"),
+          icon: BookOpen,
+          content: <BanqueCoaPage />,
         },
       ]}
     />
@@ -200,37 +202,10 @@ export function FinanceWorkspacePage() {
           content: <AchatsSection />,
         },
         {
-          value: "recurring",
-          label: t("workspace.finance.tabs.recurring", "Récurrentes"),
-          icon: Repeat,
-          content: <BanqueJournalTemplatesPage />,
-        },
-        {
           value: "comptabilite",
           label: t("workspace.finance.tabs.comptabilite", "Comptabilité"),
           icon: TableProperties,
           content: <ComptabiliteSection />,
-        },
-        {
-          value: "rapprochement",
-          label: t("workspace.finance.tabs.reconciliation", "Rapprochement"),
-          icon: FileText,
-          content: (
-            <PlaceholderPage
-              title={t("workspace.finance.reconciliation.title", "Rapprochement bancaire")}
-              description={t(
-                "workspace.finance.reconciliation.description",
-                "Import relevé bancaire, matching avec les écritures, et résolution des écarts.",
-              )}
-              eta="Phase 9"
-            />
-          ),
-        },
-        {
-          value: "parametres",
-          label: t("workspace.finance.tabs.settings", "Paramètres"),
-          icon: Settings,
-          content: <BanqueSettingsPage />,
         },
       ]}
     />

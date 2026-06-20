@@ -123,6 +123,12 @@ function SearchableSelect({
     } else if (e.key === 'End') {
       e.preventDefault()
       setActiveIndex(filtered.length - 1)
+    } else if (e.key === 'Backspace') {
+      setSearch(prev => prev.slice(0, -1))
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // When focus is trapped in a modal (Sheet/Dialog), the portal search input can't
+      // receive focus. Handle printable chars here so typing still filters the list.
+      setSearch(prev => prev + e.key)
     }
   }
 
@@ -144,6 +150,7 @@ function SearchableSelect({
       left: `${rect.left}px`,
       width: `${rect.width}px`,
       zIndex: 9999,
+      pointerEvents: 'auto', // override body pointer-events:none set by modal dialogs (Radix Sheet)
     })
   }, [open, containerRef])
 
