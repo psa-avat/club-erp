@@ -442,7 +442,7 @@ export function FinancialReportsPage() {
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
   const [activeTab, setActiveTab] = useState<Tab>('income')
-  const [postedOnly, setPostedOnly] = useState(true)
+  const [postedOnly, setPostedOnly] = useState(false)
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const activeFiscalYearData = useFiscalYearStore((s) => s.activeFiscalYearData)

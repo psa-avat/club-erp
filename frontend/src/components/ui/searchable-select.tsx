@@ -123,11 +123,14 @@ function SearchableSelect({
     } else if (e.key === 'End') {
       e.preventDefault()
       setActiveIndex(filtered.length - 1)
-    } else if (e.key === 'Backspace') {
+    } else if (e.target !== searchRef.current && e.key === 'Backspace') {
+      // Only when focus is NOT on the search input (modal case — input owns its own backspace)
       setSearch(prev => prev.slice(0, -1))
-    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    } else if (e.target !== searchRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       // When focus is trapped in a modal (Sheet/Dialog), the portal search input can't
-      // receive focus. Handle printable chars here so typing still filters the list.
+      // receive focus. Handle printable chars on the container so typing still filters.
+      // Guard: skip if the event originated from the search input — its onChange handles it,
+      // and React portal event bubbling would otherwise double-append the character.
       setSearch(prev => prev + e.key)
     }
   }

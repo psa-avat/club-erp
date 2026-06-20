@@ -99,7 +99,7 @@ export function GrandLivreScreen() {
   const [fiscalYearUuid, setFiscalYearUuid] = useState<string>(globalFiscalYearUuid ?? '')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [postedOnly, setPostedOnly] = useState(true)
+  const [postedOnly, setPostedOnly] = useState(false)
 
   const selectedAccount: AccountOption | undefined = accounts.find(
     (a) => a.uuid === selectedAccountUuid,
