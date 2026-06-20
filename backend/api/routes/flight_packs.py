@@ -274,7 +274,6 @@ async def list_pack_purchases(
         .options(
             joinedload(AccountingLine.entry),
             joinedload(AccountingLine.account),
-            joinedload(AccountingLine.member),
         )
         .where(
             AccountingLine.account_uuid.in_(sales_account_uuids),
