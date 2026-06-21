@@ -6,12 +6,18 @@
 This specification details the architecture, database schema, backend API routes, and frontend design required to implement a user-guided, manual synchronization workspace within **club-erp**. This enables administrative users to inspect flight log status metrics, check error returns from external federation endpoints, correct profiles locally, and trigger updates on demand.
 
 ---
-> **Note de révision:** Ce plan a été **corrigé** après analyse de l'API `https://api.gesasso.ffvp.fr/admin/doc` (authentification Digest, endpoints réels) et du code existant (modèles, routes, services, UI). Les sections 2 (schéma), 3 (backend) et 4 (frontend) ont été réécrites pour s'aligner sur l'architecture réelle du projet.
+> **Note de révision (v2):** Ce plan a été **corrigé** après analyse de l'API `https://api.gesasso.ffvp.fr/admin/doc` et du code `gesasso.py` (PlancheBack). Corrections clés :
+> - **Authentification WSSE** (pas Digest) — `X-WSSE: UsernameToken Username, PasswordDigest=SHA1(nonce+created+secret), Nonce, Created`
+> - **`person_one_licence_number`** vient de `MemberSheet.licence_number`, peuplé via `GET /erp/pilots` (PlancheBack expose `licence_number` depuis `gesasso_data`, mis à jour chaque nuit)
+> - **Pas d'email disponible via GesAsso** — l'API retourne uniquement prénom, nom et infos de licence
+> - **Périmètre ERP** : push des vols validés + suivi du statut de transfert uniquement. La synchronisation des données membres/qualifications GesAsso est gérée exclusivement par **PlancheBack**
+> - **Sync manuelle** : aucun déclenchement automatique ; vols déjà transférés (status=2) ignorés sauf `force=True`
 
 ## 1. Objectives & User Workflow
-1. **Human-in-the-Loop Validation:** Provide absolute transparency before pushing data into the French Gliding Federation (FFVP) infrastructure.
-2. **Detailed Failure Auditing:** Store and display raw server errors (`JSONB` responses) to immediately expose missing data points (such as incomplete federal pilot license tokens or aircraft registration indices).
-3. **Idempotent Controls:** Enable targeted single-row or bulk-row overrides that replay synchronization tasks safely without duplicating ledger entries on GesAsso or OSRT.
+1. **Synchronisation 100% manuelle** : l'admin choisit explicitement quels vols envoyer et quand. Aucun déclenchement automatique.
+2. **Statut de transfert persistant** : chaque tentative d'envoi est tracée dans `federal_sync_logs`. L'admin voit immédiatement quels vols sont déjà transférés (status=2), en attente, ou en échec.
+3. **Protection contre les doublons** : un vol déjà transféré (status=2) est signalé comme "Déjà transféré" et **non renvoyé** sauf action explicite de forçage de l'admin.
+4. **Audit des échecs** : les erreurs HTTP/réseau sont stockées pour permettre la correction et le renvoi ciblé.
 
 ---
 
@@ -83,6 +89,22 @@ COMMENT ON VIEW public.federal_sync_status IS 'Dernier statut de synchronisation
 | 3    | Échec | Rouge "Échec" |
 | 4    | Exclu (forcé par admin) | Gris barré "Ignoré" |
 
+> **Périmètre** : La synchronisation des données membres/pilotes depuis GesAsso (qualifications, validité de licence) est gérée exclusivement par **PlancheBack**, pas par l'ERP. L'ERP se limite au push des vols validés vers GesAsso et au suivi de leur statut de transfert.
+
+### 2.3. Source du numéro de licence GesAsso
+
+PlancheBack synchronise chaque nuit les données GesAsso de chaque pilote (via `gesasso.py`) et stocke `licence_number` dans sa table `gesasso_data`. L'ERP récupère ce numéro via la route ERP existante **`GET /erp/pilots`**.
+
+**Action requise côté PlancheBack :** ajouter `licence_number: str | null` dans le schéma `ErpPilotListItem` (valeur issue de `gesasso_data.licence_number` joint sur `ffvp_id`).
+
+Flux :
+1. PlancheBack sync GesAsso chaque nuit → `gesasso_data.licence_number` peuplé
+2. ERP sync pilotes (`POST /erp/pilots/sync` + `GET /erp/pilots`) → reçoit `licence_number` dans chaque `ErpPilotListItem`
+3. ERP sauvegarde `licence_number` dans `MemberSheet.licence_number` lors de la sync pilotes
+4. Push GesAsso ERP → `person_one_licence_number` = `MemberSheet.licence_number`
+
+Aucune nouvelle route Planche n'est nécessaire — uniquement l'ajout du champ dans la réponse existante.
+
 ---
 
 ## 3. Backend Implementation
@@ -136,10 +158,11 @@ class FederalSyncService:
     Une instance par plateforme (gesasso, osrt, …), configurée avec
     un mapping d'endpoints et une fonction de transformation du vol.
     
-    Pour GesAsso (Digest Auth) :
-      - POST /flights-collection.json  → Création batch
-      - POST /flights.json             → Création unitaire
-      - PUT  /flights/{id}.json        → Mise à jour (si external_id connu)
+    Pour GesAsso (WSSE Auth — X-WSSE header, SHA1) :
+      - GET  /people/{ffvp_id}.json                → Infos pilote (nom, licence)
+      - GET  /people/{ffvp_id}/qualifications.json → Qualifications (SPL, FI, TMG…)
+      - POST /flights-collection.json              → Création batch de vols
+      - PUT  /flights/{id}.json                    → Mise à jour (si external_id connu)
     """
 
     PLATFORM = "gesasso"  # Surchargé par les sous-classes ou instances
@@ -226,15 +249,18 @@ class FederalSyncService:
     # Sync Orchestration
     # ------------------------------------------------------------------
     async def batch_sync_flights(
-        self, db: AsyncSession, flight_uuids: list[UUID], triggered_by: str = "system"
+        self, db: AsyncSession, flight_uuids: list[UUID],
+        triggered_by: str = "system", force: bool = False,
     ) -> dict[str, Any]:
         """
-        Synchronise une liste de vols.
+        Synchronise manuellement une liste de vols.
         
         Stratégie :
-        1. Si pas d'external_id connu → POST batch (création)
-        2. Si external_id connu → PUT (mise à jour)
-        3. Stocke un FederalSyncLog (status + external_id) à chaque tentative
+        1. Vols déjà transférés (dernier log status=2) → signalés "already_transferred",
+           non renvoyés sauf si force=True.
+        2. Vols sans external_id connu → POST batch (création).
+        3. Vols avec external_id connu (renvoi forcé) → PUT (mise à jour).
+        4. Stocke un FederalSyncLog par tentative.
         """
         result = await db.execute(
             select(ValidatedFlight).where(ValidatedFlight.uuid.in_(flight_uuids))
@@ -242,19 +268,24 @@ class FederalSyncService:
         flights = result.scalars().all()
 
         if not flights:
-            return {"status": "error", "detail": "No flights found", "synced": 0, "failed": 0}
+            return {"status": "error", "detail": "No flights found", "synced": 0, "failed": 0, "already_transferred": 0}
 
         synced = 0
         failed = 0
+        already_transferred = 0
         errors: list[str] = []
 
-        async with httpx.AsyncClient(auth=self.auth, timeout=30.0) as client:
-            # Déterminer nouveaux vs mises à jour via le dernier log connu
+        async with httpx.AsyncClient(timeout=30.0) as client:
             new_flights: list[ValidatedFlight] = []
             update_flights: list[ValidatedFlight] = []
 
             for flight in flights:
-                ext_id = await self.get_external_id(db, flight.uuid)
+                last_log = await self.get_latest_log(db, flight.uuid)
+                # Vol déjà transféré avec succès → skip sauf forçage explicite
+                if last_log and last_log.status == 2 and not force:
+                    already_transferred += 1
+                    continue
+                ext_id = last_log.external_id if last_log else None
                 if ext_id:
                     update_flights.append(flight)
                 else:
@@ -329,18 +360,47 @@ class FederalSyncService:
             "total": len(flight_uuids),
             "synced": synced,
             "failed": failed,
+            "already_transferred": already_transferred,
             "errors": errors,
         }
 
 
+def _make_wsse_headers(username: str, secret: str) -> dict[str, str]:
+    """
+    Génère un header WSSE UsernameToken pour l'API GesAsso.
+    
+    Format : X-WSSE: UsernameToken Username="...", PasswordDigest="...", Nonce="...", Created="..."
+    PasswordDigest = base64( SHA1( nonce_bytes + created_str + secret_str ) )
+    """
+    import os, hashlib, base64
+    nonce_bytes = os.urandom(16)
+    b64_nonce = base64.b64encode(nonce_bytes).decode()
+    created = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    sha1_input = nonce_bytes + created.encode() + secret.encode()
+    password_digest = base64.b64encode(hashlib.sha1(sha1_input).digest()).decode()
+    return {
+        "X-WSSE": (
+            f'UsernameToken Username="{username}", '
+            f'PasswordDigest="{password_digest}", '
+            f'Nonce="{b64_nonce}", '
+            f'Created="{created}"'
+        )
+    }
+
+
 class GesassoSyncService(FederalSyncService):
-    """Implémentation GesAsso avec Digest Auth et mapping spécifique."""
+    """Implémentation GesAsso avec WSSE Auth et mapping spécifique."""
 
     PLATFORM = "gesasso"
 
     def __init__(self, base_url: str, username: str, password: str, association_code: str):
-        auth = httpx.DigestAuth(username=username, password=password)
-        super().__init__(platform="gesasso", base_url=base_url, auth=auth, association_code=association_code)
+        self._username = username
+        self._password = password
+        # GesAsso utilise WSSE, pas Digest — on passe auth=None et on gère les headers manuellement
+        super().__init__(platform="gesasso", base_url=base_url, auth=None, association_code=association_code)
+
+    def _wsse_headers(self) -> dict[str, str]:
+        return _make_wsse_headers(self._username, self._password)
 
     def map_flight(self, flight: ValidatedFlight) -> dict[str, Any]:
         """
@@ -353,8 +413,9 @@ class GesassoSyncService(FederalSyncService):
         date                      | flight.jour (YYYY-MM-DD)
         association_code          | self.association_code
         aircraft_registration     | flight.asset_code
-        person_one_licence_number | licence du pilote (via Member.ffvp_id)
-        person_two_licence_number | licence du second pilote
+        person_one_licence_number | MemberSheet.licence_number du pilote
+                                  |   (peuplé via la sync pilotes Planche — voir ci-dessous)
+        person_two_licence_number | MemberSheet.licence_number du second pilote
         instruction_flight        | type_of_flight IN (0, 5, 6)
         takeoff_time              | flight.takeoff_time (HH:MM)
         landing_time              | flight.landing_time (HH:MM)
@@ -404,7 +465,9 @@ class GesassoSyncService(FederalSyncService):
     ) -> list[dict[str, Any]]:
         url = f"{self.base_url}/flights-collection.json"
         payloads = [self.map_flight(f) for f in flights]
-        response = await client.post(url, json={"flight_collection": payloads})
+        response = await client.post(
+            url, json={"flight_collection": payloads}, headers=self._wsse_headers()
+        )
         response.raise_for_status()
         return response.json()
 
@@ -412,7 +475,9 @@ class GesassoSyncService(FederalSyncService):
         self, client: httpx.AsyncClient, external_id: str, flight: ValidatedFlight
     ) -> dict[str, Any]:
         url = f"{self.base_url}/flights/{external_id}.json"
-        response = await client.put(url, json=self.map_flight(flight))
+        response = await client.put(
+            url, json=self.map_flight(flight), headers=self._wsse_headers()
+        )
         response.raise_for_status()
         return response.json()
 ```
@@ -452,6 +517,7 @@ federal_sync_guard = Depends(require_capability(CAP_FEDERAL_SYNC))
 
 class SyncRequest(BaseModel):
     flight_uuids: list[UUID]
+    force: bool = False  # Si True, renvoie même les vols déjà transférés (status=2)
 
 
 class SyncStatusItem(BaseModel):
@@ -485,6 +551,7 @@ async def trigger_gesasso_sync(
         db=db,
         flight_uuids=payload.flight_uuids,
         triggered_by=current_user.email or str(current_user.id),
+        force=payload.force,
     )
     return result
 
@@ -557,9 +624,12 @@ Chaque plateforme externe (GesAsso, OSRT, et toute future) a sa propre configura
 {
   "url": "https://api.gesasso.ffvp.fr",
   "user": "monClub",
-  "secret": "xxxxxxxx"
+  "secret": "xxxxxxxx",
+  "association_code": "XXXXXXXX"
 }
 ```
+
+> `association_code` est le code club FFVP, requis dans chaque payload de vol (`association_code` dans `POST /flights-collection.json`). Il n'est pas nécessaire pour la synchronisation des données pilotes (`/people/{id}.json`).
 
 **Exemple pour OSRT (`system_settings` key = `OSRT_SETTINGS`) :**
 
@@ -602,7 +672,8 @@ class PlatformConfig(BaseModel):
     url: str
     user: str
     secret: str
-    extra: dict | None = None  # params supplémentaires propres à la plateforme
+    association_code: str | None = None  # requis pour GesAsso (code club FFVP)
+    extra: dict | None = None  # params supplémentaires futurs
 
 
 class FederalSyncConfigResponse(BaseModel):
@@ -745,12 +816,15 @@ interface SyncStatusItem {
 
 /** Statuts de synchronisation */
 const STATUS_MAP: Record<number, { label: string; icon: React.ElementType; variant: "outline" | "warning" | "success" | "destructive" | "secondary" }> = {
-  0: { label: "Non envoyé",     icon: Clock,         variant: "outline" },
-  1: { label: "En attente",     icon: Clock,         variant: "warning" },
-  2: { label: "Synchronisé",     icon: CheckCircle2,  variant: "success" },
-  3: { label: "Échec",          icon: AlertCircle,    variant: "destructive" },
-  4: { label: "Ignoré",         icon: XCircle,        variant: "secondary" },
+  0: { label: "Non envoyé",      icon: Clock,         variant: "outline" },
+  1: { label: "En attente",      icon: Clock,         variant: "warning" },
+  2: { label: "Transféré",       icon: CheckCircle2,  variant: "success" },
+  3: { label: "Échec",           icon: AlertCircle,   variant: "destructive" },
+  4: { label: "Ignoré",          icon: XCircle,       variant: "secondary" },
 };
+
+// Les vols status=2 sont affichés "Transféré" et exclus de la sélection par défaut.
+// Le bouton "Forcer le renvoi" envoie SyncRequest avec force=true pour les réenvoyer.
 
 interface FederalSyncPageProps {
   platform: "gesasso" | "osrt";
@@ -770,13 +844,13 @@ export function FederalSyncPage({ platform, label }: FederalSyncPageProps) {
 
   // POST /api/v1/flights/sync-{platform}
   const syncMutation = useMutation({
-    mutationFn: (flightUuids: string[]) =>
-      apiClient.post(`/flights/sync-${platform}`, { flight_uuids: flightUuids }),
+    mutationFn: ({ flightUuids, force = false }: { flightUuids: string[]; force?: boolean }) =>
+      apiClient.post(`/flights/sync-${platform}`, { flight_uuids: flightUuids, force }).then(r => r.data),
     onSuccess: (result) => {
-      toast.success(`${result.synced} vol(s) synchronisé(s)`);
-      if (result.failed > 0) {
-        toast.error(`${result.failed} échec(s)`);
-      }
+      const parts = [`${result.synced} transféré(s)`];
+      if (result.already_transferred > 0) parts.push(`${result.already_transferred} déjà transféré(s) (ignorés)`);
+      if (result.failed > 0) parts.push(`${result.failed} échec(s)`);
+      toast.success(parts.join(" · "));
       queryClient.invalidateQueries({ queryKey: ["flights", "sync-status"] });
     },
     onError: () => toast.error("Erreur lors de la synchronisation"),
@@ -829,10 +903,17 @@ export function FederalSyncPage({ platform, label }: FederalSyncPageProps) {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Synchronisation {label}</h2>
         <Button
-          onClick={() => syncMutation.mutate(Array.from(selected))}
+          onClick={() => syncMutation.mutate({ flightUuids: Array.from(selected) })}
           disabled={selected.size === 0 || syncMutation.isPending}
         >
-          🚀 Lancer la synchronisation ({selected.size} vols)
+          Lancer la synchronisation ({selected.size} vols)
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => syncMutation.mutate({ flightUuids: Array.from(selected), force: true })}
+          disabled={selected.size === 0 || syncMutation.isPending}
+        >
+          Forcer le renvoi
         </Button>
       </div>
       <DataTable columns={columns} data={syncStatus || []} loading={isLoading} />
@@ -1135,27 +1216,33 @@ Module `OSRT_SETTINGS` :
 ## 6. Plan d'Implémentation
 
 ### Phase 1 — Foundation (jour 1-2)
-1. Migration SQL `052_federal_sync_columns.sql`
+1. Migration SQL `052_federal_sync_logs.sql` (table `federal_sync_logs` + vue `federal_sync_status`)
 2. Nouvelle capability `CAP_FEDERAL_SYNC` dans `constants.py`
-3. Modèle : ajouter les champs Python dans `ValidatedFlight` (SQLAlchemy)
-4. `SystemSetting` pour la configuration GesAsso + OSRT
+3. Modèle ORM : ajouter `FederalSyncLog` dans `models.py`
+4. `SystemSetting` pour la configuration GesAsso (`GESASSO_SETTINGS` avec `association_code`) + OSRT
+5. **PlancheBack** : ajouter `licence_number` dans `ErpPilotListItem` (issu de `gesasso_data.licence_number`)
+6. **ERP** : lors de la sync pilotes (`GET /erp/pilots`), sauvegarder `licence_number` dans `MemberSheet.licence_number`
 
-### Phase 2 — Backend Sync GesAsso (jour 3-5)
-1. Service `GesassoSyncService` dans `services/gesasso_sync.py`
-2. Routes `POST /flights/sync-gesasso` et `GET /flights/sync-status`
-3. Route de configuration GesAsso (GET/PUT)
-4. Tests unitaires (`backend/tests/test_gesasso_sync.py`)
+### Phase 2 — Backend Sync vols GesAsso (jour 2-4)
+1. Service `GesassoSyncService` (vol push) dans `services/federal_sync.py`
+   - WSSE auth (`_make_wsse_headers`), **pas** DigestAuth
+   - `map_flight` lit `MemberSheet.licence_number` pour `person_one_licence_number`
+   - Vols déjà transférés (status=2) : skip sauf `force=True`
+   - Validation pré-envoi : rejet + log status=3 si `licence_number` manquant
+2. Routes `POST /flights/sync-gesasso`, `GET /flights/sync-status`
+3. Route de configuration (GET/PUT `/admin/federal-sync/config`)
+4. Tests unitaires (`backend/tests/test_gesasso_flight_sync.py`)
 
-### Phase 3 — Backend Sync OSRT (jour 5-7)
-1. Déterminer le format du champ `data` de `setAeronefActivite` (test réel)
+### Phase 3 — Backend Sync OSRT (jour 4-6)
+1. Déterminer le format du champ `data` de `setAeronefActivite` (test réel avec club)
 2. Service `OsrtSyncService` dans `services/osrt_sync.py`
 3. Routes `POST /flights/sync-osrt`
 4. Route de configuration OSRT (GET/PUT)
 5. Tests unitaires (`backend/tests/test_osrt_sync.py`)
 
-### Phase 4 — Frontend (jour 7-10)
-1. `GesassoSyncPage.tsx` — grille avec sélection, statuts, envoi
-2. `OsrtSyncPage.tsx` — grille identique, adaptée aux statuts OSRT
+### Phase 4 — Frontend (jour 6-10)
+1. `GesassoSyncPage.tsx` — grille vols avec sélection, badges statut, bouton "Lancer" et "Forcer le renvoi"
+2. `OsrtSyncPage.tsx` — grille identique adaptée OSRT
 3. Intégration dans `FlightsWorkspacePage.tsx`
 4. Hooks API dans `modules/flights/api/index.ts`
 
@@ -1163,13 +1250,10 @@ Module `OSRT_SETTINGS` :
 
 ## 7. Références
 
----
-
-## 7. Références
-
-- API GesAsso documentée : `https://api.gesasso.ffvp.fr/admin/doc`
-- Code existant Planche : `backend/services/planche_integration.py` (pattern à suivre)
-- Modèle validé : `backend/models.py` (class `ValidatedFlight`)
+- API GesAsso documentée : `https://api.gesasso.ffvp.fr/admin/doc` (auth Digest admin/doc ; WSSE pour les appels API)
+- Implémentation de référence : `docs/gesasso.py` (PlancheBack — authentification WSSE, endpoints pilotes, qualifications)
+- Code existant Planche : `backend/services/planche_integration.py` (pattern async + AuditLog à suivre)
+- Modèles ORM : `backend/models.py` (`ValidatedFlight`, `Member`, `MemberSheet`)
 - Routes existantes : `backend/api/routes/flights.py`, `backend/api/routes/planche.py`
 - Frontend existant : `frontend/src/modules/flights/components/FlightsWorkspacePage.tsx`
 
@@ -1179,19 +1263,42 @@ Module `OSRT_SETTINGS` :
 
 Avant de merger :
 
-- [ ] Les colonnes de statut sont sur `validated_flights` (pas une table séparée)
-- [ ] La capability `CAP_FEDERAL_SYNC` est définie et seedée
-- [ ] Le service GesAsso utilise `httpx.DigestAuth` (authentification Digest)
-- [ ] Le service OSRT utilise SOAP 1.1 RPC encodé (`httpx` + construction XML manuelle)
-- [ ] Les routes utilisent `AsyncSession` et `require_capability`
-- [ ] Les imports suivent le chemin `from api.dependencies import get_db` (pas `app.`)
-- [ ] Les payloads GesAsso utilisent `/flights-collection` pour le batch
-- [ ] Les vols existants sont envoyés en PUT avec leur `gesasso_id`
-- [ ] L'association_code GesAsso est stocké dans `SystemSetting` (module GESASSO_SETTINGS)
-- [ ] Les credentials OSRT sont stockés dans `SystemSetting` (module OSRT_SETTINGS)
-- [ ] Le format du champ `data` de `setAeronefActivite` a été déterminé par test réel
-- [ ] Les erreurs réseau et HTTP sont capturées avec savepoint isolation
+**Schéma & modèles**
+- [ ] Migration `052_federal_sync_logs.sql` appliquée (table `federal_sync_logs` + vue `federal_sync_status`)
+- [ ] ORM `FederalSyncLog` ajouté dans `models.py`
+
+**Configuration**
+- [ ] `CAP_FEDERAL_SYNC` définie et seedée dans `constants.py`
+- [ ] `GESASSO_SETTINGS` contient `url`, `user`, `secret`, `association_code`
+- [ ] `OSRT_SETTINGS` contient `code_gnav`, `mot_de_passe`, `endpoint`
+
+**Auth GesAsso (WSSE — pas Digest)**
+- [ ] `_make_wsse_headers(username, secret)` implémenté avec SHA1 + base64
+- [ ] Tous les appels GesAsso (flight push) utilisent WSSE
+- [ ] `httpx.DigestAuth` **absent** du code GesAsso
+
+**Sync vols (push — 100% manuelle, hors PlancheBack)**
+- [ ] Aucun déclenchement automatique — uniquement via action admin dans l'UI
+- [ ] `batch_sync_flights` vérifie le dernier log : si status=2 et `force=False` → `already_transferred++`, vol ignoré
+- [ ] `SyncRequest` expose `force: bool = False` ; le frontend a un bouton "Forcer le renvoi"
+- [ ] La réponse inclut `already_transferred` en plus de `synced` / `failed`
+- [ ] Toast frontend affiche les 3 compteurs distinctement
+- [ ] **PlancheBack** : `ErpPilotListItem` inclut `licence_number` (de `gesasso_data.licence_number`)
+- [ ] **ERP** : sync pilotes Planche (`GET /erp/pilots`) sauvegarde `licence_number` → `MemberSheet.licence_number`
+- [ ] `map_flight` lit `MemberSheet.licence_number` pour `person_one_licence_number`
+- [ ] Vols rejetés (`licence_number` manquant) → statut=3 dans `federal_sync_logs`, pas d'appel API
+- [ ] Payloads GesAsso utilisent `/flights-collection.json` pour le batch
+- [ ] Vols avec external_id connu (renvoi forcé) → `PUT /flights/{id}.json`
+
+**OSRT**
+- [ ] Service OSRT utilise SOAP 1.1 RPC encodé (`httpx` + XML manuel)
+- [ ] Format du champ `data` de `setAeronefActivite` déterminé par test réel avec le club
+
+**Qualité**
+- [ ] Les routes utilisent `AsyncSession` et `require_capability(CAP_FEDERAL_SYNC)`
+- [ ] Les imports suivent `from api.dependencies import get_db`
+- [ ] AuditLog créé pour chaque batch (membres et vols)
+- [ ] Tests : `test_gesasso_flight_sync.py`, `test_osrt_sync.py`
 - [ ] Le frontend utilise les hooks TanStack Query existants
 - [ ] Les clés i18n existantes (`nav.gesassoSync`, `nav.osrtSync`) sont réutilisées
-- [ ] Les placeholders UI sont remplacés par les vrais composants (GesassoSyncPage, OsrtSyncPage)
-- [ ] Les tests backend couvrent le mapping, l'envoi, et les guards de capacité (GesAsso + OSRT)
+- [ ] Les placeholders UI sont remplacés par les vrais composants
