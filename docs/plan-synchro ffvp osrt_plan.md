@@ -6,12 +6,13 @@
 This specification details the architecture, database schema, backend API routes, and frontend design required to implement a user-guided, manual synchronization workspace within **club-erp**. This enables administrative users to inspect flight log status metrics, check error returns from external federation endpoints, correct profiles locally, and trigger updates on demand.
 
 ---
-> **Note de révision (v2):** Ce plan a été **corrigé** après analyse de l'API `https://api.gesasso.ffvp.fr/admin/doc` et du code `gesasso.py` (PlancheBack). Corrections clés :
-> - **Authentification WSSE** (pas Digest) — `X-WSSE: UsernameToken Username, PasswordDigest=SHA1(nonce+created+secret), Nonce, Created`
-> - **`person_one_licence_number`** vient de `MemberSheet.licence_number`, peuplé via `GET /erp/pilots` (PlancheBack expose `licence_number` depuis `gesasso_data`, mis à jour chaque nuit)
-> - **Pas d'email disponible via GesAsso** — l'API retourne uniquement prénom, nom et infos de licence
-> - **Périmètre ERP** : push des vols validés + suivi du statut de transfert uniquement. La synchronisation des données membres/qualifications GesAsso est gérée exclusivement par **PlancheBack**
-> - **Sync manuelle** : aucun déclenchement automatique ; vols déjà transférés (status=2) ignorés sauf `force=True`
+> **Note de révision (v3 — 2026-06-21) :**
+> - **Auth GesAsso : WSSE** (pas Digest) — `X-WSSE: UsernameToken Username, PasswordDigest=SHA1(nonce+created+secret), Nonce, Created`
+> - **L'ERP lit GesAsso directement** via `GET /people/{ffvp_id}.json` — aucune dépendance à PlancheBack pour les données membres.
+> - **Champs lus depuis GesAsso** : `first_name`, `last_name`, `email`, téléphone (mobile prioritaire), `licence.licenceNumber`, `licence.seasonStartDate`, `licence.seasonEndDate`.
+> - **Qualifications** : non gérées par l'ERP — domaine exclusif de PlancheBack.
+> - **Backend implémenté** : `backend/services/gesasso_client.py` (`WsseAuth` + `GesAssoClient`), `backend/schemas/gesasso.py`, `backend/api/routes/gesasso.py`.
+> - **Sync manuelle uniquement** : aucun déclenchement automatique ; vols déjà transférés (status=2) ignorés sauf `force=True`.
 
 ## 1. Objectives & User Workflow
 1. **Synchronisation 100% manuelle** : l'admin choisit explicitement quels vols envoyer et quand. Aucun déclenchement automatique.
@@ -89,21 +90,33 @@ COMMENT ON VIEW public.federal_sync_status IS 'Dernier statut de synchronisation
 | 3    | Échec | Rouge "Échec" |
 | 4    | Exclu (forcé par admin) | Gris barré "Ignoré" |
 
-> **Périmètre** : La synchronisation des données membres/pilotes depuis GesAsso (qualifications, validité de licence) est gérée exclusivement par **PlancheBack**, pas par l'ERP. L'ERP se limite au push des vols validés vers GesAsso et au suivi de leur statut de transfert.
+> **Périmètre** : Les qualifications GesAsso (SPL, FI, TMG…) sont gérées exclusivement par PlancheBack. L'ERP gère : (1) les données personnelles des membres via lecture directe GesAsso, (2) le push des vols validés vers GesAsso.
 
-### 2.3. Source du numéro de licence GesAsso
+### 2.3. Données membres lues depuis GesAsso (lecture directe ERP)
 
-PlancheBack synchronise chaque nuit les données GesAsso de chaque pilote (via `gesasso.py`) et stocke `licence_number` dans sa table `gesasso_data`. L'ERP récupère ce numéro via la route ERP existante **`GET /erp/pilots`**.
+L'ERP appelle `GET /people/{ffvp_id}.json` (WSSE) et mappe les champs comme suit :
 
-**Action requise côté PlancheBack :** ajouter `licence_number: str | null` dans le schéma `ErpPilotListItem` (valeur issue de `gesasso_data.licence_number` joint sur `ffvp_id`).
+| Champ GesAsso | Chemin JSON | Champ ERP | Modèle ERP | Note |
+|---|---|---|---|---|
+| Prénom | `personal_info.first_name` | `first_name` | `Member` | |
+| Nom | `personal_info.last_name` | `last_name` | `Member` | |
+| Email | `personal_info.email` | `email` | `Member` | |
+| Téléphone | `personal_info.mobile_phone_number` | `phone` | `Member` | Mobile prioritaire ; fallback sur `phone_number` si absent |
+| N° licence | `personal_info.licence.licenceNumber` | `licence_number` | `MemberSheet` (année courante) | |
+| Début saison | `personal_info.licence.seasonStartDate` | `season_start_date` | `MemberSheet` | **Nouvelle colonne — migration 053** |
+| Fin saison | `personal_info.licence.seasonEndDate` | `season_end_date` | `MemberSheet` | **Nouvelle colonne — migration 053** ; badge `Expirée` si < aujourd'hui |
 
-Flux :
-1. PlancheBack sync GesAsso chaque nuit → `gesasso_data.licence_number` peuplé
-2. ERP sync pilotes (`POST /erp/pilots/sync` + `GET /erp/pilots`) → reçoit `licence_number` dans chaque `ErpPilotListItem`
-3. ERP sauvegarde `licence_number` dans `MemberSheet.licence_number` lors de la sync pilotes
-4. Push GesAsso ERP → `person_one_licence_number` = `MemberSheet.licence_number`
+Flux admin :
+1. Admin ouvre "Synchronisation GesAsso membres" (workspace membres)
+2. Pour chaque membre avec un `ffvp_id`, l'ERP appelle `GET /api/v1/gesasso/members/{uuid}/pilot-data`
+3. Le backend interroge GesAsso (WSSE) et retourne `personal_info`
+4. L'admin sélectionne les membres → "Appliquer" met à jour `Member` + `MemberSheet` (année courante)
+5. Push vols GesAsso → `person_one_licence_number` = `MemberSheet.licence_number`
 
-Aucune nouvelle route Planche n'est nécessaire — uniquement l'ajout du champ dans la réponse existante.
+Endpoints backend (déjà implémentés) :
+- `GET /api/v1/gesasso/pilot/{ffvp_id}` — lookup direct par FFVP ID
+- `GET /api/v1/gesasso/members/{member_uuid}/pilot-data` — lookup via UUID membre ERP
+- `GET/PUT /api/v1/gesasso/settings` — configuration credentials WSSE
 
 ---
 
@@ -1302,3 +1315,241 @@ Avant de merger :
 - [ ] Le frontend utilise les hooks TanStack Query existants
 - [ ] Les clés i18n existantes (`nav.gesassoSync`, `nav.osrtSync`) sont réutilisées
 - [ ] Les placeholders UI sont remplacés par les vrais composants
+
+---
+
+## 7. GesAsso Member Data Sync (v3 — Direct ERP Integration)
+
+> **Contexte :** PlancheBack n'est plus utilisé pour remonter les données membres. L'ERP lit GesAsso directement via `GesAssoClient` (WSSE). Cette section couvre le backend déjà livré et le frontend à implémenter.
+
+### 7.1. Backend livré (2026-06-21) ✅
+
+| Fichier | Contenu |
+|---------|---------|
+| `backend/services/gesasso_client.py` | `WsseAuth(httpx.Auth)` + `GesAssoClient.get_pilot_personal_info` — appel unique `GET /people/{ffvp_id}.json` |
+| `backend/schemas/gesasso.py` | `GesAssoSettingsPayload`, `GesAssoSettingsResponse`, `GesAssoPilotLookupResponse` |
+| `backend/api/routes/gesasso.py` | `GET/PUT /api/v1/gesasso/settings`, `GET /api/v1/gesasso/pilot/{ffvp_id}`, `GET /api/v1/gesasso/members/{uuid}/pilot-data` |
+| `backend/main.py` | Router `gesasso` enregistré |
+
+Credentials stockés dans `system_settings` sous le module `gesasso` : `{ base_url, username, secret }`.
+
+### 7.2. Frontend — API module `frontend/src/modules/members/api/index.ts`
+
+Ajouter les hooks suivants dans le module members (ou dans un fichier `gesasso.ts` dédié dans `frontend/src/modules/integrations/`) :
+
+```typescript
+// Types
+export type GesAssoPilotData = {
+  ffvp_id: number
+  personal_info: {
+    first_name: string | null
+    last_name: string | null
+    email: string | null
+    phone_number: string | null        // fixe
+    mobile_phone_number: string | null // prioritaire pour le champ ERP phone
+    licence: {
+      licenceNumber: string | null
+      seasonStartDate: string | null   // → MemberSheet.season_start_date
+      seasonEndDate: string | null     // → MemberSheet.season_end_date
+    } | null
+  }
+}
+
+// Hook: lookup par UUID membre ERP
+export function useGesAssoPilotDataQuery(memberUuid: string | null, enabled = false) {
+  return useQuery<GesAssoPilotData>({
+    queryKey: ['gesasso', 'member', memberUuid],
+    queryFn: async () => {
+      const { data } = await apiClient.get(
+        `/api/v1/gesasso/members/${memberUuid}/pilot-data`,
+        getAuthRequestConfig()
+      )
+      return data
+    },
+    enabled: enabled && !!memberUuid,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+
+// Hook: lookup direct par FFVP ID
+export function useGesAssoPilotByFfvpQuery(ffvpId: number | null, enabled = false) {
+  return useQuery<GesAssoPilotData>({
+    queryKey: ['gesasso', 'pilot', ffvpId],
+    queryFn: async () => {
+      const { data } = await apiClient.get(
+        `/api/v1/gesasso/pilot/${ffvpId}`,
+        getAuthRequestConfig()
+      )
+      return data
+    },
+    enabled: enabled && ffvpId != null,
+    staleTime: 60_000,
+    retry: false,
+  })
+}
+```
+
+### 7.3. Frontend — Page "Synchronisation GesAsso membres"
+
+**Fichier :** `frontend/src/modules/members/components/GesAssoSyncPage.tsx`
+
+**Route :** Ajouter un tab `gesasso` dans `MemberWorkspaceShell` ou une entrée de navigation dédiée `nav.gesassoMemberSync` dans `navigation.ts` (sous workspace/members) avec `requiredCapability: 'MANAGE_USERS'`.
+
+**Comportement :**
+
+1. Charge tous les membres (`useAllMembersQuery` ou filtre `has_ffvp_id=true`)
+2. Affiche un tableau avec colonnes :
+   - Membre (nom ERP / prénom ERP)
+   - FFVP ID (badge "Manquant" si null)
+   - Email ERP vs GesAsso
+   - Téléphone ERP vs GesAsso (`mobile_phone_number` prioritaire, fallback `phone_number`)
+   - N° licence ERP (`MemberSheet.licence_number`) vs GesAsso (`licenceNumber`)
+   - Validité saison GesAsso (`seasonStartDate` → `seasonEndDate`) — badge `badge-destructive` "Expirée" si `seasonEndDate` < aujourd'hui
+   - Bouton "Récupérer" par ligne → déclenche le lookup individuel
+   - Statut : `Conforme` / `Différent` / `Non trouvé` / `Sans FFVP ID`
+   - Checkbox pour sélection batch
+3. Bouton "Récupérer tout" → lance les lookups pour tous les membres avec `ffvp_id`
+4. Bouton "Appliquer la sélection" → pour chaque membre sélectionné :
+   - `PATCH /api/v1/members/{uuid}` avec `{ first_name, last_name, email, phone }`
+   - `PUT /api/v1/members/{uuid}/sheets` avec `{ licence_number, season_start_date, season_end_date, year: currentYear }`
+5. Erreurs inline par ligne : 404 → "Pilote non trouvé sur GesAsso", 502 → "API GesAsso inaccessible", 422 → "Aucun FFVP ID"
+
+**Structure de la colonne statut :**
+
+| Condition | Badge | Action disponible |
+|-----------|-------|-------------------|
+| `ffvp_id` null | `badge-warning` "Sans FFVP ID" | — |
+| Lookup non déclenché | gris "Non vérifié" | Bouton "Récupérer" |
+| Lookup en cours | spinner | — |
+| Erreur 404 | `badge-destructive` "Non trouvé" | — |
+| Erreur 502 | `badge-destructive` "API hors ligne" | — |
+| Données identiques | `badge-success` "Conforme" | — |
+| Données différentes | `badge-warning` "Différent" | Checkbox + "Appliquer" |
+
+### 7.4. Frontend — Bouton "Importer depuis GesAsso" dans le formulaire membre
+
+**Fichier :** `frontend/src/modules/members/components/MemberFormPage.tsx`
+
+Ajouter un bouton à côté du champ `ffvp_id`. Quand `ffvp_id` est renseigné :
+
+1. Bouton "Importer GesAsso" (icône `Download`, état `loading` pendant le fetch)
+2. Au clic → appelle `GET /api/v1/gesasso/pilot/{ffvp_id}`
+3. Si succès : pré-remplit les champs du formulaire ERP :
+   - `first_name` ← `personal_info.first_name`
+   - `last_name` ← `personal_info.last_name`
+   - `email` ← `personal_info.email`
+   - `phone` ← `personal_info.mobile_phone_number` (fallback : `personal_info.phone_number`)
+   - `licence_number` (MemberSheet année courante) ← `personal_info.licence.licenceNumber`
+   - `season_start_date` (MemberSheet) ← `personal_info.licence.seasonStartDate`
+   - `season_end_date` (MemberSheet) ← `personal_info.licence.seasonEndDate`
+4. Affiche un diff visuel (champ surligné en jaune si la valeur GesAsso diffère de la valeur ERP actuelle)
+5. Si erreur 404 : toast "Pilote non trouvé sur GesAsso (FFVP ID: {id})"
+6. Si erreur 502 : toast "API GesAsso inaccessible — vérifiez les paramètres de connexion"
+
+### 7.5. Navigation et i18n
+
+**`frontend/src/shell/navigation.ts`** — ajouter sous le groupe membres :
+```typescript
+{ to: '/workspace/members?tab=gesasso', labelKey: 'nav.gesassoMemberSync', requiredCapability: 'MANAGE_USERS' },
+```
+
+**`packages/i18n/src/resources/fr.ts`** (namespace `members`) :
+```typescript
+'gesassoSync.title': 'Synchronisation GesAsso membres',
+'gesassoSync.fetchAll': 'Récupérer tout',
+'gesassoSync.applySelected': 'Appliquer la sélection',
+'gesassoSync.status.noFfvpId': 'Sans FFVP ID',
+'gesassoSync.status.notChecked': 'Non vérifié',
+'gesassoSync.status.ok': 'Conforme',
+'gesassoSync.status.diff': 'Différent',
+'gesassoSync.status.notFound': 'Non trouvé',
+'gesassoSync.status.apiDown': 'API hors ligne',
+'gesassoSync.importButton': 'Importer GesAsso',
+'gesassoSync.licenceFederal': 'Licence fédérale',
+'gesassoSync.licenceValidity': 'Validité',
+```
+
+**`packages/i18n/src/resources/en.ts`** (namespace `members`) :
+```typescript
+'gesassoSync.title': 'GesAsso member sync',
+'gesassoSync.fetchAll': 'Fetch all',
+'gesassoSync.applySelected': 'Apply selected',
+'gesassoSync.status.noFfvpId': 'No FFVP ID',
+'gesassoSync.status.notChecked': 'Not checked',
+'gesassoSync.status.ok': 'Up to date',
+'gesassoSync.status.diff': 'Different',
+'gesassoSync.status.notFound': 'Not found',
+'gesassoSync.status.apiDown': 'API offline',
+'gesassoSync.importButton': 'Import from GesAsso',
+'gesassoSync.licenceFederal': 'Federal licence',
+'gesassoSync.licenceValidity': 'Validity',
+```
+
+### 7.6. Settings page — GesAsso credentials
+
+**Fichier :** `frontend/src/modules/admin/` ou `frontend/src/modules/integrations/`
+
+Dans la page d'administration des intégrations (ou en onglet dans la page Planche), ajouter un panneau "GesAsso" :
+- Champ `base_url` (URL de l'API, défaut `https://api.gesasso.ffvp.fr`)
+- Champ `username` (ex: `wsse_avat`)
+- Champ `secret` (mot de passe, masqué, envoyé seulement si modifié)
+- Bouton "Tester la connexion" → `GET /api/v1/gesasso/pilot/{test_ffvp_id}` pour valider les credentials
+
+Hooks :
+```typescript
+export function useGesAssoSettingsQuery() {
+  return useQuery({
+    queryKey: ['gesasso', 'settings'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/api/v1/gesasso/settings', getAuthRequestConfig())
+      return data
+    },
+  })
+}
+
+export function useUpdateGesAssoSettingsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { base_url: string; username: string; secret: string }) => {
+      const { data } = await apiClient.put('/api/v1/gesasso/settings', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['gesasso', 'settings'] }),
+  })
+}
+```
+
+### 7.7. Checklist v3
+
+**Backend (✅ livré)**
+- [x] `WsseAuth` implémenté comme `httpx.Auth` — nonce frais par requête
+- [x] `GesAssoClient.get_pilot_personal_info` — `GET /people/{ffvp_id}.json` uniquement (pas de qualifications)
+- [x] `GET /api/v1/gesasso/pilot/{ffvp_id}` — lookup direct
+- [x] `GET /api/v1/gesasso/members/{uuid}/pilot-data` — lookup via membre ERP
+- [x] `GET/PUT /api/v1/gesasso/settings` — configuration credentials
+- [x] Erreurs HTTP mappées : 404 → 404, autres → 502, réseau → 502
+- [x] Credentials non configurés → 503 avec message explicite
+- [x] Route enregistrée dans `main.py`
+
+**Backend (à implémenter — schema extension)**
+- [ ] `MemberSheet.season_start_date` + `season_end_date` ajoutés dans `backend/models.py`
+- [ ] Champs ajoutés dans `MemberSheetUpsertRequest` et `MemberSheetResponse` (`backend/schemas/members.py`)
+- [ ] Migration SQL `053_membersheet_season_dates.sql`
+- [ ] Champs ajoutés dans `frontend/src/modules/members/types/index.ts` (`MemberSheet` + `UpsertMemberSheetPayload`)
+
+**Frontend (à implémenter)**
+- [ ] Type `GesAssoPilotData` (sans qualifications) dans le module members
+- [ ] `useGesAssoPilotDataQuery(memberUuid)` — fetch par membre ERP
+- [ ] `useGesAssoPilotByFfvpQuery(ffvpId)` — fetch direct
+- [ ] `useGesAssoSettingsQuery` + `useUpdateGesAssoSettingsMutation`
+- [ ] Page `GesAssoSyncPage.tsx` — tableau membres × données GesAsso (colonnes : nom, email, téléphone, licence, validité saison)
+- [ ] Colonne statut : badges `Conforme` / `Différent` / `Non trouvé` / `Sans FFVP ID` ; badge `Expirée` si `seasonEndDate` < aujourd'hui
+- [ ] Batch "Récupérer tout" + sélection + "Appliquer" (met à jour `Member` + `MemberSheet`)
+- [ ] Bouton "Importer GesAsso" dans `MemberFormPage.tsx`
+- [ ] Pré-remplissage : `first_name`, `last_name`, `email`, `phone` (mobile prioritaire), `licence_number`, `season_start_date`, `season_end_date`
+- [ ] Diff visuel champs modifiés (surligné si différent)
+- [ ] Navigation `nav.gesassoMemberSync` dans `navigation.ts`
+- [ ] Page settings GesAsso dans le module admin/integrations
+- [ ] Toutes les clés i18n `fr` + `en` ajoutées
+- [ ] Capabilities : `MANAGE_USERS` pour le sync membres, `MANAGE_SYSTEM_SETTINGS` pour les settings
