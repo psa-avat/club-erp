@@ -21,7 +21,7 @@ All colors are OKLCH-based CSS variables. Use these Tailwind utility names — *
 | Primary action fill | `bg-primary` |
 | Destructive action fill | `bg-destructive` |
 | Success fill | `bg-success` |
-| Warning fill | `bg-warning` |
+| Warning fill | `bg-[var(--warning)]` (no utility — use CSS var directly or `badge-warning`) |
 | Default text | `text-foreground` |
 | Secondary text | `text-muted-foreground` |
 | Text on primary bg | `text-primary-foreground` |
@@ -46,7 +46,7 @@ All colors are OKLCH-based CSS variables. Use these Tailwind utility names — *
 
 ### Provider requirement
 
-All components must render inside `ThemeProvider` (for CSS variables) and `SonnerToaster` (for toasts). In designs, wrap in the provided shell that includes both.
+No explicit React provider is needed for CSS variables — they are applied globally via the stylesheet. Toasts require `Toaster` to be mounted once at the app root (it is part of `WorkspaceShell`).
 
 ### Composition model
 
