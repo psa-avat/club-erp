@@ -163,6 +163,7 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         useful_life_years=asset.useful_life_years,
         notes=asset.notes,
         is_active=asset.is_active,
+        osrt_sync_enabled=asset.osrt_sync_enabled,
         created_at=asset.created_at,
         updated_at=asset.updated_at,
         asset_type=asset_type,

@@ -119,6 +119,7 @@ export type AssetDetail = {
   depreciation_duration_months: number | null
   residual_value: string | null
   is_active: boolean
+  osrt_sync_enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -161,6 +162,7 @@ export type CreateAssetPayload = {
   depreciation_start_date?: string | null
   depreciation_duration_months?: number | null
   residual_value?: string | null
+  osrt_sync_enabled?: boolean
 }
 
 export type UpdateAssetPayload = Partial<CreateAssetPayload>

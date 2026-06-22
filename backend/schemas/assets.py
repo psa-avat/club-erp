@@ -115,6 +115,7 @@ class AssetCreateRequest(BaseModel):
     residual_value: Optional[Decimal] = Field(default=None, ge=0)
     useful_life_years: Optional[int] = Field(default=None, ge=1, le=100)
     notes: Optional[str] = None
+    osrt_sync_enabled: bool = False
 
     @model_validator(mode="after")
     def check_private_owner(self) -> "AssetCreateRequest":
@@ -142,6 +143,7 @@ class AssetUpdateRequest(BaseModel):
     useful_life_years: Optional[int] = Field(default=None, ge=1, le=100)
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    osrt_sync_enabled: Optional[bool] = None
 
 
 class AssetStatusTransitionRequest(BaseModel):
@@ -195,6 +197,7 @@ class AssetResponse(BaseModel):
     useful_life_years: Optional[int]
     notes: Optional[str]
     is_active: bool
+    osrt_sync_enabled: bool
     created_at: datetime
     updated_at: datetime
     asset_type: Optional[AssetTypeResponse] = None

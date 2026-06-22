@@ -1069,6 +1069,7 @@ class Asset(Base):
     useful_life_years = Column(SmallInteger, nullable=True)
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
+    osrt_sync_enabled = Column(Boolean, nullable=False, default=False)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

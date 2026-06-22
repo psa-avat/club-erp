@@ -82,6 +82,7 @@ type FormState = {
   depreciation_start_date: string
   depreciation_duration_months: string
   residual_value: string
+  osrt_sync_enabled: boolean
 }
 
 const EMPTY_FORM: FormState = {
@@ -101,6 +102,7 @@ const EMPTY_FORM: FormState = {
   depreciation_start_date: '',
   depreciation_duration_months: '',
   residual_value: '',
+  osrt_sync_enabled: false,
 }
 
 // �"?�"? Decimal Input �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
@@ -187,6 +189,7 @@ export function AssetFormPage() {
         ? String(asset.depreciation_duration_months)
         : '',
       residual_value: asset.residual_value ?? '',
+      osrt_sync_enabled: asset.osrt_sync_enabled ?? false,
     })
   }, [assetQuery.data])
 
@@ -215,6 +218,7 @@ export function AssetFormPage() {
         ? Number(form.depreciation_duration_months)
         : null,
       residual_value: form.residual_value.trim() || null,
+      osrt_sync_enabled: form.osrt_sync_enabled,
     }
   }
 
@@ -549,6 +553,21 @@ export function AssetFormPage() {
               onChange={(v) => set('residual_value', v)}
             />
           </div>
+        </div>
+
+        {/* Integrations */}
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('form.sectionIntegrations')}</h2>
+          <label className="flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              checked={form.osrt_sync_enabled}
+              onChange={(e) => set('osrt_sync_enabled', e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 accent-slate-700"
+            />
+            <span className="text-sm text-slate-700">{t('form.osrtSyncEnabled')}</span>
+          </label>
+          <p className="mt-1 pl-7 text-xs text-slate-500">{t('form.osrtSyncEnabledHint')}</p>
         </div>
 
         {/* Actions */}
