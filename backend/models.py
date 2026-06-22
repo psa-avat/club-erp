@@ -534,6 +534,8 @@ class MemberSheet(Base):
     expense_access_token_hash = Column(String(255), nullable=True)
     expense_access_enabled = Column(Boolean, nullable=False, default=False)
     portal_password_hash = Column(String(255), nullable=True, comment="SHA256 hash of portal password; if NULL, default = ffvp_id_YYYYMMDD")
+    season_start_date = Column(Date, nullable=True)
+    season_end_date = Column(Date, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -1405,6 +1407,38 @@ class AuditLog(Base):
 
     def __repr__(self):
         return f"<AuditLog operation={self.operation_type} status={self.status} at={self.created_at}>"
+
+
+class FederalSyncLog(Base):
+    """
+    One row per synchronisation attempt for a validated flight toward a federal platform.
+    The latest row (by attempt_at DESC) per (validated_flight_uuid, platform) is the current status.
+    """
+
+    __tablename__ = "federal_sync_logs"
+    __table_args__ = (
+        CheckConstraint("platform IN ('gesasso', 'osrt')", name="chk_fsl_platform"),
+        CheckConstraint("status IN (0, 1, 2, 3, 4)", name="chk_fsl_status"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    validated_flight_uuid = Column(
+        UUID(as_uuid=True),
+        ForeignKey("validated_flights.uuid", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    platform = Column(String(16), nullable=False)
+    # 0=pas envoyé, 1=en attente, 2=succès, 3=échec, 4=exclu
+    status = Column(SmallInteger, nullable=False, default=0)
+    external_id = Column(String(64), nullable=True)
+    attempt_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    flight = relationship("ValidatedFlight")
+
+    def __repr__(self):
+        return f"<FederalSyncLog flight={self.validated_flight_uuid} platform={self.platform} status={self.status}>"
 
 
 class ViOriginType(IntEnum):

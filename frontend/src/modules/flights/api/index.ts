@@ -271,3 +271,59 @@ export function useUpdateFlightBillingFieldsMutation() {
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Federal sync (GesAsso / OSRT)
+// ---------------------------------------------------------------------------
+
+export type SyncStatusItem = {
+  flight_uuid: string
+  platform: string
+  status: number
+  external_id: string | null
+  last_attempt_at: string | null
+}
+
+export type SyncResult = {
+  status: string
+  platform: string
+  total: number
+  synced: number
+  failed: number
+  already_transferred: number
+  errors: string[]
+}
+
+export const federalSyncQueryKeys = {
+  status: (platform: string) => ['flights', 'sync-status', platform] as const,
+}
+
+export function useFederalSyncStatusQuery(platform: "gesasso" | "osrt") {
+  return useQuery<SyncStatusItem[]>({
+    queryKey: federalSyncQueryKeys.status(platform),
+    queryFn: async () => {
+      const { data } = await apiClient.get<SyncStatusItem[]>(
+        `/api/v1/flights/sync-status?platform=${platform}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useFederalSyncMutation(platform: "gesasso" | "osrt") {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ flightUuids, force = false }: { flightUuids: string[]; force?: boolean }) => {
+      const { data } = await apiClient.post<SyncResult>(
+        `/api/v1/flights/sync-${platform}`,
+        { flight_uuids: flightUuids, force },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: federalSyncQueryKeys.status(platform) })
+    },
+  })
+}

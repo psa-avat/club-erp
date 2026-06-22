@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AsyncSessionLocal, init_db, engine
 from api.security import get_current_user, get_user_capabilities, get_user_roles
-from api.routes import auth, admin, members, accounting, assets, flights, flight_packs, gesasso, helloasso, member_portal, planche, storage, vi
+from api.routes import auth, admin, members, accounting, assets, flights, flight_packs, federal_sync, gesasso, helloasso, member_portal, planche, storage, vi
 from models import User
 from gestionlog import LogConfig
 from services.accounting import ensure_default_journals, ensure_default_system_settings
@@ -230,6 +230,7 @@ app.include_router(accounting.router)
 app.include_router(assets.router)
 app.include_router(helloasso.router)
 app.include_router(flights.router)
+app.include_router(federal_sync.router)
 app.include_router(planche.router)
 app.include_router(gesasso.router)
 app.include_router(vi.router)

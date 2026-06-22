@@ -2580,6 +2580,18 @@ export const fr = {
       filterApply: 'Filtrer',
       filterClear: 'Effacer les filtres',
     },
+    federalSync: {
+      title: 'Synchronisation {{label}}',
+      colFlight: 'Vol (UUID)',
+      colStatus: 'Statut {{label}}',
+      colExternalId: 'ID externe',
+      colLastAttempt: 'Dernière tentative',
+      syncSelected: 'Envoyer ({{count}})',
+      forceResend: 'Forcer le renvoi',
+      forceHint: 'Renvoie même les vols déjà transférés',
+      selectedCount: '{{count}} vol(s) sélectionné(s)',
+      empty: 'Aucun vol synchronisé sur cette plateforme.',
+    },
   },
   vi: {
     workspace: {

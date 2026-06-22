@@ -139,6 +139,8 @@ class MemberSheetUpsertRequest(BaseModel):
     fare_type: int = Field(ge=1, le=5)
     hours_count: Decimal = Field(default=Decimal("0"), ge=0)
     expense_access_enabled: bool = False
+    season_start_date: Optional[date] = None
+    season_end_date: Optional[date] = None
 
 
 class RegistrationCompletionRequest(BaseModel):
@@ -217,6 +219,8 @@ class MemberSheetResponse(BaseModel):
     fare_type: int
     hours_count: Decimal
     expense_access_enabled: bool
+    season_start_date: Optional[date] = None
+    season_end_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 

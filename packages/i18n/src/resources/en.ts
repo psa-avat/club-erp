@@ -2565,6 +2565,18 @@ export const en = {
       filterApply: 'Filter',
       filterClear: 'Clear filters',
     },
+    federalSync: {
+      title: 'Sync {{label}}',
+      colFlight: 'Flight (UUID)',
+      colStatus: '{{label}} Status',
+      colExternalId: 'External ID',
+      colLastAttempt: 'Last attempt',
+      syncSelected: 'Send ({{count}})',
+      forceResend: 'Force resend',
+      forceHint: 'Resend even already-transferred flights',
+      selectedCount: '{{count}} flight(s) selected',
+      empty: 'No flights synchronised on this platform.',
+    },
   },
   vi: {
     workspace: {

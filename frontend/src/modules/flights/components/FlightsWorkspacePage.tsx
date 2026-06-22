@@ -22,8 +22,8 @@ import { useTranslation } from "react-i18next";
 import { Plane, Tags, Database, ArrowLeftRight, Plug } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
-import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { FlightsBillingPage } from "./FlightsBillingPage";
+import { FederalSyncPage } from "./FederalSyncPage";
 import { OpsPacksTab } from "../../banque";
 import { PlancheFlightsPullPage } from "../../planche";
 
@@ -69,33 +69,15 @@ export function FlightsWorkspacePage() {
         },
         {
           value: "gesasso",
-          label: t("workspace.tabs.gesasso", "Envoi Gesasso"),
+          label: t("workspace.tabs.gesasso", "Envoi GesAsso"),
           icon: ArrowLeftRight,
-          content: (
-            <PlaceholderPage
-              title={t("workspace.gesasso.title", "Envoi Gesasso")}
-              description={t(
-                "workspace.gesasso.description",
-                "Envoi des données vers Gesasso pour la gestion des envois postaux.",
-              )}
-              eta="Phase 8"
-            />
-          ),
+          content: <FederalSyncPage platform="gesasso" label="GesAsso" />,
         },
         {
           value: "osrt",
           label: t("workspace.tabs.osrt", "Envoi OSRT"),
           icon: Plug,
-          content: (
-            <PlaceholderPage
-              title={t("workspace.osrt.title", "Envoi OSRT")}
-              description={t(
-                "workspace.osrt.description",
-                "Envoi des temps machine vers OSRT.",
-              )}
-              eta="Phase 8"
-            />
-          ),
+          content: <FederalSyncPage platform="osrt" label="OSRT" />,
         },
         {
           value: "sync",
