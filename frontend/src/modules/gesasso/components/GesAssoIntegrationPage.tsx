@@ -22,7 +22,9 @@ import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle } from 'lucide-react'
 
 import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,7 +32,9 @@ import {
   useGesAssoSettingsQuery,
   useUpdateGesAssoSettingsMutation,
   useGesAssoPilotLookupMutation,
+  useTestFlightPushMutation,
   type GesAssoSettings,
+  type TestFlightPushResult,
 } from '../api'
 
 function toErrorMessage(error: unknown): string {
@@ -54,10 +58,14 @@ export function GesAssoIntegrationPage() {
   const settingsQuery = useGesAssoSettingsQuery(true)
   const updateMutation = useUpdateGesAssoSettingsMutation()
   const pilotLookupMutation = useGesAssoPilotLookupMutation()
+  const testFlightMutation = useTestFlightPushMutation()
 
   const [formState, setFormState] = useState<GesAssoSettings>(EMPTY_SETTINGS)
   const [testFfvpId, setTestFfvpId] = useState('')
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [testFlightUuid, setTestFlightUuid] = useState('')
+  const [testFlightDryRun, setTestFlightDryRun] = useState(true)
+  const [testFlightResult, setTestFlightResult] = useState<TestFlightPushResult | null>(null)
 
   useEffect(() => {
     const s = settingsQuery.data?.settings
@@ -86,6 +94,16 @@ export function GesAssoIntegrationPage() {
     } catch (err) {
       setTestResult({ ok: false, message: toErrorMessage(err) })
     }
+  }
+
+  async function handleTestFlight() {
+    if (!testFlightUuid.trim()) return
+    setTestFlightResult(null)
+    const result = await testFlightMutation.mutateAsync({
+      flight_uuid: testFlightUuid.trim(),
+      dry_run: testFlightDryRun,
+    })
+    setTestFlightResult(result)
   }
 
   const updatedAt = settingsQuery.data?.updated_at
@@ -173,6 +191,89 @@ export function GesAssoIntegrationPage() {
             <div className={`mt-3 flex items-center gap-2 text-sm ${testResult.ok ? 'text-green-700' : 'text-destructive'}`}>
               {testResult.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
               <span>{testResult.message}</span>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('gesasso.testFlightTitle')}</CardTitle>
+          <CardDescription>{t('gesasso.testFlightDescription')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2 items-end">
+            <div className="space-y-1 flex-1 min-w-48">
+              <Label htmlFor="test-flight-uuid">{t('gesasso.testFlightUuidLabel')}</Label>
+              <Input
+                id="test-flight-uuid"
+                value={testFlightUuid}
+                onChange={(e) => setTestFlightUuid(e.target.value)}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                className="font-mono text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2 pb-1">
+              <Checkbox
+                id="dry-run"
+                checked={testFlightDryRun}
+                onCheckedChange={(v) => setTestFlightDryRun(Boolean(v))}
+              />
+              <Label htmlFor="dry-run" className="cursor-pointer">{t('gesasso.testFlightDryRun')}</Label>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleTestFlight}
+              disabled={!testFlightUuid.trim() || testFlightMutation.isPending}
+            >
+              {testFlightMutation.isPending ? t('gesasso.testing') : t('gesasso.testFlightButton')}
+            </Button>
+          </div>
+
+          {testFlightMutation.error ? (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <XCircle className="h-4 w-4 shrink-0" />
+              <span>{toErrorMessage(testFlightMutation.error)}</span>
+            </div>
+          ) : null}
+
+          {testFlightResult ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 text-sm">
+                <span className="text-muted-foreground">{t('gesasso.testFlightFfvpId')}</span>
+                {testFlightResult.ffvp_id
+                  ? <Badge variant="outline">{testFlightResult.ffvp_id}</Badge>
+                  : <Badge variant="destructive">{t('gesasso.testFlightNoFfvpId')}</Badge>
+                }
+                {!testFlightResult.dry_run && testFlightResult.response_status != null ? (
+                  <>
+                    <span className="text-muted-foreground ml-2">{t('gesasso.testFlightResponseStatus')}</span>
+                    <Badge variant={testFlightResult.response_status < 300 ? 'outline' : 'destructive'}>
+                      {testFlightResult.response_status}
+                    </Badge>
+                  </>
+                ) : null}
+                {testFlightResult.error ? (
+                  <Badge variant="destructive">{testFlightResult.error}</Badge>
+                ) : null}
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">{t('gesasso.testFlightPayload')}</p>
+                <pre className="text-xs bg-muted rounded p-3 overflow-x-auto">
+                  {JSON.stringify(testFlightResult.payload, null, 2)}
+                </pre>
+              </div>
+              {!testFlightResult.dry_run && testFlightResult.response_body != null ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">{t('gesasso.testFlightResponse')}</p>
+                  <pre className="text-xs bg-muted rounded p-3 overflow-x-auto">
+                    {typeof testFlightResult.response_body === 'string'
+                      ? testFlightResult.response_body
+                      : JSON.stringify(testFlightResult.response_body, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </CardContent>

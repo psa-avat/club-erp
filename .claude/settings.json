@@ -8,7 +8,9 @@
       "Bash(python3 -c \"import json; print\\(len\\(json.load\\(open\\('/tmp/batch2_corrected.json'\\)\\)\\)\\)\")",
       "Bash(echo \"Count: $\\(python3 -c \"import json; print\\(len\\(json.load\\(open\\('/tmp/batch2_corrected.json'\\)\\)\\)\\)\"\\)\")",
       "Bash(git commit -m ' *)",
-      "Bash(python3 -m json.tool)"
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import ast, sys; ast.parse\\(open\\('backend/services/federal_sync.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('backend/api/routes/gesasso.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")"
     ]
   }
 }

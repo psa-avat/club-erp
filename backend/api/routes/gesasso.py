@@ -26,13 +26,14 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import require_capability
 from constants import CAP_MANAGE_USERS, CAP_MANAGE_SYSTEM_SETTINGS
-from models import Member, User
+from models import Member, User, ValidatedFlight
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.gesasso import (
     GESASSO_SETTINGS_MODULE,
@@ -41,6 +42,7 @@ from schemas.gesasso import (
     GesAssoPilotLookupResponse,
 )
 from services.accounting import get_system_setting, upsert_system_setting
+from services.federal_sync import GesassoSyncService
 from services.gesasso_client import GesAssoClient
 
 router = APIRouter(prefix="/api/v1/gesasso", tags=["gesasso"])
@@ -188,3 +190,122 @@ async def lookup_member_pilot_data(
             detail="Could not reach GesAsso API. Check connectivity and settings.",
         )
     return GesAssoPilotLookupResponse(ffvp_id=member.ffvp_id, personal_info=personal_info)
+
+
+# ---------------------------------------------------------------------------
+# Test flight push
+# ---------------------------------------------------------------------------
+
+class TestFlightPushRequest(BaseModel):
+    flight_uuid: UUID
+    dry_run: bool = True
+
+
+class TestFlightPushResponse(BaseModel):
+    flight_uuid: str
+    pilot_erp_id: str | None
+    ffvp_id: str | None
+    payload: dict[str, Any]
+    dry_run: bool
+    response_status: int | None = None
+    response_body: Any = None
+    error: str | None = None
+
+
+@router.post("/test-flight-push", response_model=TestFlightPushResponse)
+async def test_flight_push(
+    req: TestFlightPushRequest,
+    _: User = settings_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Build the GesAsso payload for a single flight and optionally send it.
+    Use dry_run=true (default) to inspect the payload without sending.
+    Use dry_run=false to actually POST to GesAsso and see the response.
+    """
+    # Load flight
+    res = await db.execute(select(ValidatedFlight).where(ValidatedFlight.uuid == req.flight_uuid))
+    flight = res.scalar_one_or_none()
+    if flight is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flight not found.")
+
+    # Resolve ffvp_id for the pilot
+    ffvp_id_str: str | None = None
+    if flight.pilot_erp_id:
+        try:
+            pilot_uuid = UUID(str(flight.pilot_erp_id))
+            mr = await db.execute(select(Member.ffvp_id).where(Member.uuid == pilot_uuid))
+            row = mr.scalar_one_or_none()
+            if row is not None:
+                ffvp_id_str = str(row)
+        except Exception:
+            pass
+
+    # Load settings to build service
+    setting = await get_system_setting(db, GESASSO_SETTINGS_MODULE)
+    cfg = _get_gesasso_settings(setting.settings if setting else {})
+    if not cfg.get("username") or not cfg.get("secret"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GesAsso credentials not configured.",
+        )
+
+    service = GesassoSyncService(
+        base_url=cfg["base_url"],
+        username=cfg["username"],
+        password=cfg["secret"],
+        association_code=cfg.get("association_code", ""),
+    )
+    service._ffvp_map = {str(flight.pilot_erp_id): ffvp_id_str} if ffvp_id_str else {}
+    payload = service.map_flight(flight)
+
+    if req.dry_run:
+        return TestFlightPushResponse(
+            flight_uuid=str(req.flight_uuid),
+            pilot_erp_id=str(flight.pilot_erp_id) if flight.pilot_erp_id else None,
+            ffvp_id=ffvp_id_str,
+            payload=payload,
+            dry_run=True,
+        )
+
+    # Actually send to GesAsso
+    import httpx as _httpx
+    from services.federal_sync import _make_wsse_headers
+    headers = _make_wsse_headers(cfg["username"], cfg["secret"])
+    url = f"{cfg['base_url'].rstrip('/')}/flights-collection.json"
+    try:
+        async with _httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            resp = await client.post(
+                url,
+                json={"flight_collection": [payload]},
+                headers=headers,
+            )
+        return TestFlightPushResponse(
+            flight_uuid=str(req.flight_uuid),
+            pilot_erp_id=str(flight.pilot_erp_id) if flight.pilot_erp_id else None,
+            ffvp_id=ffvp_id_str,
+            payload=payload,
+            dry_run=False,
+            response_status=resp.status_code,
+            response_body=resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text,
+        )
+    except _httpx.HTTPStatusError as exc:
+        return TestFlightPushResponse(
+            flight_uuid=str(req.flight_uuid),
+            pilot_erp_id=str(flight.pilot_erp_id) if flight.pilot_erp_id else None,
+            ffvp_id=ffvp_id_str,
+            payload=payload,
+            dry_run=False,
+            response_status=exc.response.status_code,
+            response_body=exc.response.text,
+            error=f"HTTP {exc.response.status_code}",
+        )
+    except _httpx.RequestError as exc:
+        return TestFlightPushResponse(
+            flight_uuid=str(req.flight_uuid),
+            pilot_erp_id=str(flight.pilot_erp_id) if flight.pilot_erp_id else None,
+            ffvp_id=ffvp_id_str,
+            payload=payload,
+            dry_run=False,
+            error=f"Network error: {str(exc)[:200]}",
+        )

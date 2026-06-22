@@ -116,3 +116,27 @@ export function useGesAssoMemberPilotDataMutation() {
     },
   })
 }
+
+export type TestFlightPushResult = {
+  flight_uuid: string
+  pilot_erp_id: string | null
+  ffvp_id: string | null
+  payload: Record<string, unknown>
+  dry_run: boolean
+  response_status: number | null
+  response_body: unknown
+  error: string | null
+}
+
+export function useTestFlightPushMutation() {
+  return useMutation({
+    mutationFn: async (params: { flight_uuid: string; dry_run: boolean }) => {
+      const { data } = await apiClient.post<TestFlightPushResult>(
+        '/api/v1/gesasso/test-flight-push',
+        params,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}

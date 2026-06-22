@@ -31,7 +31,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import AuditLog, FederalSyncLog, MemberSheet, ValidatedFlight
+from models import AuditLog, FederalSyncLog, Member, ValidatedFlight
 
 logger = logging.getLogger(__name__)
 
@@ -287,14 +287,14 @@ class GesassoSyncService(FederalSyncService):
         super().__init__(platform="gesasso", base_url=base_url, association_code=association_code)
         self._username = username
         self._password = password
-        # Populated by batch_sync_flights before API calls
-        self._licence_map: dict[str, str | None] = {}
+        # Populated by batch_sync_flights before API calls: pilot_erp_id → str(ffvp_id)
+        self._ffvp_map: dict[str, str] = {}
 
     def _wsse_headers(self) -> dict[str, str]:
         return _make_wsse_headers(self._username, self._password)
 
     # ------------------------------------------------------------------
-    # Override batch_sync_flights to add licence pre-check
+    # Override batch_sync_flights to add ffvp_id pre-check
     # ------------------------------------------------------------------
 
     async def batch_sync_flights(
@@ -304,7 +304,6 @@ class GesassoSyncService(FederalSyncService):
         triggered_by: str = "system",
         force: bool = False,
     ) -> dict[str, Any]:
-        # Load all flights first to look up licence numbers
         result = await db.execute(
             select(ValidatedFlight).where(ValidatedFlight.uuid.in_(flight_uuids))
         )
@@ -319,37 +318,36 @@ class GesassoSyncService(FederalSyncService):
                 "already_transferred": 0,
             }
 
-        # Look up MemberSheet.licence_number for all pilots (current season year)
-        year = date.today().year
+        # Build ffvp_id map: pilot_erp_id (member UUID str) → str(ffvp_id)
         pilot_uuids_str = list({f.pilot_erp_id for f in flights if f.pilot_erp_id})
         if pilot_uuids_str:
             try:
                 pilot_uuids = [UUID(u) for u in pilot_uuids_str]
-                lr = await db.execute(
-                    select(MemberSheet.member_uuid, MemberSheet.licence_number)
-                    .where(MemberSheet.member_uuid.in_(pilot_uuids))
-                    .where(MemberSheet.year == year)
+                mr = await db.execute(
+                    select(Member.uuid, Member.ffvp_id).where(Member.uuid.in_(pilot_uuids))
                 )
-                self._licence_map = {str(row.member_uuid): row.licence_number for row in lr.all()}
+                self._ffvp_map = {
+                    str(row.uuid): str(row.ffvp_id)
+                    for row in mr.all()
+                    if row.ffvp_id is not None
+                }
             except Exception:
-                self._licence_map = {}
+                self._ffvp_map = {}
         else:
-            self._licence_map = {}
+            self._ffvp_map = {}
 
-        # Pre-reject flights with missing licence_number
+        # Pre-reject flights whose pilot has no ffvp_id
         rejected_count = 0
         valid_uuids: list[UUID] = []
         for f in flights:
             pilot_id = str(f.pilot_erp_id) if f.pilot_erp_id else ""
-            licence = self._licence_map.get(pilot_id)
-            if not licence:
+            if not self._ffvp_map.get(pilot_id):
                 await self._write_log(db, f.uuid, status=3)
                 rejected_count += 1
                 logger.warning(
-                    "gesasso_sync: flight %s rejected — pilot %s has no licence_number for year %s",
+                    "gesasso_sync: flight %s rejected — pilot %s has no ffvp_id",
                     f.uuid,
                     pilot_id,
-                    year,
                 )
             else:
                 valid_uuids.append(f.uuid)
@@ -365,7 +363,7 @@ class GesassoSyncService(FederalSyncService):
                 total_records=len(flight_uuids),
                 success_count=0,
                 failure_count=rejected_count,
-                error_message="All flights rejected: pilot licence_number missing for current year",
+                error_message="All flights rejected: pilot has no ffvp_id",
                 triggered_by=triggered_by,
             )
             db.add(audit)
@@ -377,7 +375,7 @@ class GesassoSyncService(FederalSyncService):
                 "synced": 0,
                 "failed": rejected_count,
                 "already_transferred": 0,
-                "errors": ["All flights rejected: pilot licence_number missing for current year"],
+                "errors": ["All flights rejected: pilot has no ffvp_id"],
             }
 
         # Delegate to base class for the actual sync
@@ -408,9 +406,9 @@ class GesassoSyncService(FederalSyncService):
         }
 
         pilot_id = str(flight.pilot_erp_id) if flight.pilot_erp_id else ""
-        licence = self._licence_map.get(pilot_id)
-        if licence:
-            payload["person_one_licence_number"] = licence
+        ffvp_id = self._ffvp_map.get(pilot_id)
+        if ffvp_id:
+            payload["person_one_licence_number"] = ffvp_id
 
         if flight.asset_code:
             payload["aircraft_registration"] = flight.asset_code
