@@ -85,10 +85,10 @@ const SCREEN_CATEGORY_LABEL_KEYS: Record<number, string> = {
 
 function screenTabClass(isActive: boolean) {
   return [
-    'rounded-shape-sm border px-3 py-1.5 text-xs font-medium transition-colors',
+    'rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
     isActive
-      ? 'border-primary bg-primary text-on-primary'
-      : 'border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container',
+      ? 'border-primary bg-primary text-primary-foreground'
+      : 'border-border bg-background text-muted-foreground hover:bg-muted',
   ].join(' ')
 }
 
@@ -289,12 +289,12 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
               {t('list.screenTabs.business')}
             </NavLink>
           </div>
-          <p className="text-xs text-on-surface-variant">
-            <span className="font-medium text-on-surface">{t(activeScreenMeta.titleKey)}:</span>{' '}
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{t(activeScreenMeta.titleKey)}:</span>{' '}
             {t(activeScreenMeta.descriptionKey)}
           </p>
-          <p className="text-xs text-on-surface-variant">
-            <span className="font-medium text-on-surface">{t('list.includedCategories')}:</span>{' '}
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{t('list.includedCategories')}:</span>{' '}
             {screenCategoryLabels.join(', ')}
           </p>
         </CardContent>
@@ -429,8 +429,8 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
       />
 
       {totalMembers > PAGE_SIZE ? (
-        <div className="flex items-center justify-between rounded-shape-md border border-outline-variant bg-surface px-4 py-3">
-          <p className="text-sm text-on-surface-variant">
+        <div className="flex items-center justify-between rounded-md border bg-card px-4 py-3">
+          <p className="text-sm text-muted-foreground">
             {t('list.paginationSummary', {
               start: page * PAGE_SIZE + 1,
               end: Math.min((page + 1) * PAGE_SIZE, totalMembers),
@@ -463,7 +463,7 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
       ) : null}
 
       {/* ── Directory legend ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-on-surface-variant">
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-green-500" /> Actif — pleinement opérationnel
         </span>

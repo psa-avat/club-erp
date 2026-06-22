@@ -133,7 +133,7 @@ export function WorkspaceShell({
   const [activeTab, setActiveTab] = useActiveTab(tabs, defaultTab);
 
   return (
-    <div className={cn("mx-auto flex max-w-7xl flex-col gap-6", className)}>
+    <div className={cn("flex w-full flex-col gap-6", className)}>
       <PageHeader title={title} description={description} actions={actions} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

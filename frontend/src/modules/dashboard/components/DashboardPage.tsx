@@ -106,7 +106,7 @@ export function DashboardPage() {
   const selectedCount = 7 // TODO: état checkbox géré
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHeader
         title={t('home.title')}
         supportingText={t('home.description')}
