@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { WorkspaceShell, SubWorkspaceShell } from '@/components/ui/workspace-shell'
+import { GesAssoIntegrationPage } from '@/modules/gesasso/components/GesAssoIntegrationPage'
 import { HelloAssoIntegrationPage } from '@/modules/helloasso/components/HelloAssoIntegrationPage'
 import { PlancheIntegrationPage } from '@/modules/planche/components/PlancheIntegrationPage'
 import { StorageSettingsPage } from '@/modules/storage/components/StorageSettingsPage'
@@ -168,6 +169,11 @@ export function AdminPage() {
                   value: 'planche',
                   label: t('settings.planche'),
                   content: <PlancheIntegrationPage />,
+                },
+                {
+                  value: 'gesasso',
+                  label: t('settings.gesasso'),
+                  content: <GesAssoIntegrationPage />,
                 },
                 {
                   value: 'stockage',

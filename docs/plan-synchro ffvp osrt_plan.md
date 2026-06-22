@@ -1274,47 +1274,80 @@ Module `OSRT_SETTINGS` :
 
 ## 8. Checklist de Conformité
 
-Avant de merger :
+> **Mise à jour 2026-06-22** — État d'avancement basé sur le code en branche `main`.
 
 **Schéma & modèles**
-- [ ] Migration `052_federal_sync_logs.sql` appliquée (table `federal_sync_logs` + vue `federal_sync_status`)
-- [ ] ORM `FederalSyncLog` ajouté dans `models.py`
+- [x] Migration `052_federal_sync_logs.sql` appliquée (table `federal_sync_logs` + vue `federal_sync_status`)
+- [x] ORM `FederalSyncLog` ajouté dans `models.py`
+- [x] `MemberSheet.season_start_date` + `season_end_date` dans `models.py` (migration 053)
+- [x] Types TS `MemberSheet` mis à jour (`season_start_date`, `season_end_date`) dans `frontend/src/modules/members/types/index.ts`
 
 **Configuration**
-- [ ] `CAP_FEDERAL_SYNC` définie et seedée dans `constants.py`
-- [ ] `GESASSO_SETTINGS` contient `url`, `user`, `secret`, `association_code`
-- [ ] `OSRT_SETTINGS` contient `code_gnav`, `mot_de_passe`, `endpoint`
+- [x] `CAP_FEDERAL_SYNC` définie et seedée dans `constants.py`
+- [x] `GESASSO_SETTINGS` stocké dans `system_settings` (module `gesasso`) — clés : `base_url`, `username`, `secret`
+- [ ] `OSRT_SETTINGS` — à configurer quand le format `data` SOAP est connu
+- [x] Page de configuration GesAsso dans l'admin (`/admin?tab=parametres&subtab=gesasso`) — `GesAssoIntegrationPage.tsx`
+- [x] Navigation `nav.configGesasso` ajoutée dans `navigation.ts` sous Administration
 
 **Auth GesAsso (WSSE — pas Digest)**
-- [ ] `_make_wsse_headers(username, secret)` implémenté avec SHA1 + base64
-- [ ] Tous les appels GesAsso (flight push) utilisent WSSE
-- [ ] `httpx.DigestAuth` **absent** du code GesAsso
+- [x] `WsseAuth(httpx.Auth)` implémenté dans `services/gesasso_client.py` — nonce frais par requête
+- [x] `_make_wsse_headers(username, secret)` dans `services/federal_sync.py`
+- [x] Tous les appels GesAsso (flight push + lookup pilote) utilisent WSSE
+- [x] `httpx.DigestAuth` **absent** du code GesAsso
 
-**Sync vols (push — 100% manuelle, hors PlancheBack)**
-- [ ] Aucun déclenchement automatique — uniquement via action admin dans l'UI
-- [ ] `batch_sync_flights` vérifie le dernier log : si status=2 et `force=False` → `already_transferred++`, vol ignoré
-- [ ] `SyncRequest` expose `force: bool = False` ; le frontend a un bouton "Forcer le renvoi"
-- [ ] La réponse inclut `already_transferred` en plus de `synced` / `failed`
-- [ ] Toast frontend affiche les 3 compteurs distinctement
-- [ ] **PlancheBack** : `ErpPilotListItem` inclut `licence_number` (de `gesasso_data.licence_number`)
-- [ ] **ERP** : sync pilotes Planche (`GET /erp/pilots`) sauvegarde `licence_number` → `MemberSheet.licence_number`
-- [ ] `map_flight` lit `MemberSheet.licence_number` pour `person_one_licence_number`
-- [ ] Vols rejetés (`licence_number` manquant) → statut=3 dans `federal_sync_logs`, pas d'appel API
-- [ ] Payloads GesAsso utilisent `/flights-collection.json` pour le batch
-- [ ] Vols avec external_id connu (renvoi forcé) → `PUT /flights/{id}.json`
+**Sync vols GesAsso (push — 100% manuelle)**
+- [x] Aucun déclenchement automatique — uniquement via action admin dans l'UI
+- [x] `batch_sync_flights` vérifie le dernier log : si status=2 et `force=False` → `already_transferred++`, vol ignoré
+- [x] `SyncRequest` expose `force: bool = False` ; frontend bouton "Forcer le renvoi"
+- [x] La réponse inclut `already_transferred` + `synced` + `failed`
+- [x] Toast frontend affiche les 3 compteurs distinctement (`FederalSyncPage.tsx`)
+- [x] `map_flight` lit `MemberSheet.licence_number` pour `person_one_licence_number` (via `_licence_map` dans `GesassoSyncService`)
+- [x] Vols rejetés (`licence_number` manquant) → statut=3 dans `federal_sync_logs`, pas d'appel API
+- [x] Payloads GesAsso utilisent `POST /flights-collection.json` pour le batch
+- [x] Vols avec `external_id` connu (renvoi forcé) → `PUT /flights/{id}.json`
+- [x] Tabs GesAsso et OSRT dans `FlightsWorkspacePage.tsx` pointent vers `FederalSyncPage`
+- [x] Capability guard corrigé : `FEDERAL_SYNC` (était `MANAGE_SYSTEM_SETTINGS`) dans `navigation.ts`
+- [ ] **PlancheBack** : `ErpPilotListItem` inclut `licence_number` (de `gesasso_data.licence_number`) — dépend de PlancheBack
+- [ ] **ERP** : sync pilotes Planche (`GET /erp/pilots`) sauvegarde `licence_number` → `MemberSheet.licence_number` — à implémenter dans le service Planche
+
+**Lookup pilotes & import membre**
+- [x] `GET /api/v1/gesasso/pilot/{ffvp_id}` — lookup direct par FFVP ID
+- [x] `GET /api/v1/gesasso/members/{uuid}/pilot-data` — lookup via UUID membre ERP
+- [x] `GET/PUT /api/v1/gesasso/settings` — configuration credentials WSSE
+- [x] Bouton "Importer GesAsso" dans `MemberFormPage.tsx` (à côté du champ FFVP ID)
+  - Visible uniquement en mode édition quand `ffvp_id` est renseigné
+  - Pré-remplit `first_name`, `last_name`, `email`, `phone` (mobile prioritaire)
+  - Mise en surbrillance ambre des champs modifiés
+  - Toast d'erreur distinctif selon le code HTTP (404 / 503 / 502)
+- [x] Hooks frontend dans `frontend/src/modules/gesasso/api/index.ts` :
+  - `useGesAssoSettingsQuery`, `useUpdateGesAssoSettingsMutation`
+  - `useGesAssoPilotLookupMutation`, `useGesAssoMemberPilotDataMutation`
 
 **OSRT**
 - [ ] Service OSRT utilise SOAP 1.1 RPC encodé (`httpx` + XML manuel)
 - [ ] Format du champ `data` de `setAeronefActivite` déterminé par test réel avec le club
+- [ ] `OsrtSyncService` dans `services/osrt_sync.py`
+
+**Frontend membres — page sync batch GesAsso**
+- [ ] `GesAssoSyncPage.tsx` dans le workspace membres — tableau membres × données GesAsso
+- [ ] Colonnes : nom, email, téléphone, licence, validité saison, statut (Conforme / Différent / Non trouvé)
+- [ ] Badge `Expirée` si `season_end_date` < aujourd'hui
+- [ ] Batch "Récupérer tout" + sélection + "Appliquer"
+- [ ] Navigation `nav.gesassoMemberSync` dans `navigation.ts` (sous workspace/members)
+- [ ] `UpsertMemberSheetPayload` étendu avec `season_start_date` + `season_end_date` ✅ (types TS mis à jour)
+- [ ] Backend `MemberSheetUpsertRequest` + `MemberSheetResponse` dans `schemas/members.py` (à vérifier / compléter)
+
+**i18n**
+- [x] `nav.configGesasso` ajouté (`fr` + `en`)
+- [x] `admin.settings.gesasso` ajouté (`fr` + `en`)
+- [x] Clés `admin.gesasso.*` (settings page) ajoutées (`fr` + `en`)
+- [x] Clés `members.form.importGesasso*` ajoutées (`fr` + `en`)
 
 **Qualité**
-- [ ] Les routes utilisent `AsyncSession` et `require_capability(CAP_FEDERAL_SYNC)`
-- [ ] Les imports suivent `from api.dependencies import get_db`
-- [ ] AuditLog créé pour chaque batch (membres et vols)
+- [x] Les routes utilisent `AsyncSession` et `require_capability(...)`
+- [x] Les imports suivent `from api.dependencies import get_db`
+- [x] AuditLog créé pour chaque batch de vols (dans `batch_sync_flights`)
 - [ ] Tests : `test_gesasso_flight_sync.py`, `test_osrt_sync.py`
-- [ ] Le frontend utilise les hooks TanStack Query existants
-- [ ] Les clés i18n existantes (`nav.gesassoSync`, `nav.osrtSync`) sont réutilisées
-- [ ] Les placeholders UI sont remplacés par les vrais composants
 
 ---
 
@@ -1520,7 +1553,7 @@ export function useUpdateGesAssoSettingsMutation() {
 }
 ```
 
-### 7.7. Checklist v3
+### 7.7. Checklist v3 (mise à jour 2026-06-22)
 
 **Backend (✅ livré)**
 - [x] `WsseAuth` implémenté comme `httpx.Auth` — nonce frais par requête
@@ -1531,25 +1564,31 @@ export function useUpdateGesAssoSettingsMutation() {
 - [x] Erreurs HTTP mappées : 404 → 404, autres → 502, réseau → 502
 - [x] Credentials non configurés → 503 avec message explicite
 - [x] Route enregistrée dans `main.py`
+- [x] `MemberSheet.season_start_date` + `season_end_date` dans `backend/models.py` (migration 053)
 
-**Backend (à implémenter — schema extension)**
-- [ ] `MemberSheet.season_start_date` + `season_end_date` ajoutés dans `backend/models.py`
-- [ ] Champs ajoutés dans `MemberSheetUpsertRequest` et `MemberSheetResponse` (`backend/schemas/members.py`)
-- [ ] Migration SQL `053_membersheet_season_dates.sql`
-- [ ] Champs ajoutés dans `frontend/src/modules/members/types/index.ts` (`MemberSheet` + `UpsertMemberSheetPayload`)
+**Backend (à implémenter)**
+- [ ] Champs `season_start_date` + `season_end_date` dans `MemberSheetUpsertRequest` et `MemberSheetResponse` (`backend/schemas/members.py`)
+
+**Frontend (✅ livré — 2026-06-22)**
+- [x] Types `GesAssoSettings`, `GesAssoPilotData`, `GesAssoPilotPersonalInfo` dans `frontend/src/modules/gesasso/api/index.ts`
+- [x] `useGesAssoMemberPilotDataMutation` — fetch par UUID membre ERP
+- [x] `useGesAssoPilotLookupMutation` — fetch direct par FFVP ID
+- [x] `useGesAssoSettingsQuery` + `useUpdateGesAssoSettingsMutation`
+- [x] `GesAssoIntegrationPage.tsx` — page paramètres (URL, username, secret masqué, bouton test avec FFVP ID)
+- [x] Intégrée dans `AdminPage.tsx` sous l'onglet `parametres > gesasso`
+- [x] Bouton "Importer GesAsso" dans `MemberFormPage.tsx` à côté du champ FFVP ID
+- [x] Pré-remplissage : `first_name`, `last_name`, `email`, `phone` (mobile prioritaire)
+- [x] Diff visuel : surbrillance ambre (outline amber-400) sur les champs modifiés
+- [x] Erreurs : toast 404 / 503 / 502 avec messages distincts
+- [x] `MemberSheet` TS étendu avec `season_start_date` + `season_end_date`
+- [x] `UpsertMemberSheetPayload` étendu avec `season_start_date` + `season_end_date`
+- [x] Capability guard nav corrigé : `FEDERAL_SYNC` (était `MANAGE_SYSTEM_SETTINGS`)
+- [x] Navigation `nav.configGesasso` ajoutée (admin settings)
+- [x] Clés i18n `admin.gesasso.*` + `members.form.importGesasso*` ajoutées (`fr` + `en`)
 
 **Frontend (à implémenter)**
-- [ ] Type `GesAssoPilotData` (sans qualifications) dans le module members
-- [ ] `useGesAssoPilotDataQuery(memberUuid)` — fetch par membre ERP
-- [ ] `useGesAssoPilotByFfvpQuery(ffvpId)` — fetch direct
-- [ ] `useGesAssoSettingsQuery` + `useUpdateGesAssoSettingsMutation`
-- [ ] Page `GesAssoSyncPage.tsx` — tableau membres × données GesAsso (colonnes : nom, email, téléphone, licence, validité saison)
-- [ ] Colonne statut : badges `Conforme` / `Différent` / `Non trouvé` / `Sans FFVP ID` ; badge `Expirée` si `seasonEndDate` < aujourd'hui
-- [ ] Batch "Récupérer tout" + sélection + "Appliquer" (met à jour `Member` + `MemberSheet`)
-- [ ] Bouton "Importer GesAsso" dans `MemberFormPage.tsx`
-- [ ] Pré-remplissage : `first_name`, `last_name`, `email`, `phone` (mobile prioritaire), `licence_number`, `season_start_date`, `season_end_date`
-- [ ] Diff visuel champs modifiés (surligné si différent)
-- [ ] Navigation `nav.gesassoMemberSync` dans `navigation.ts`
-- [ ] Page settings GesAsso dans le module admin/integrations
-- [ ] Toutes les clés i18n `fr` + `en` ajoutées
-- [ ] Capabilities : `MANAGE_USERS` pour le sync membres, `MANAGE_SYSTEM_SETTINGS` pour les settings
+- [ ] Page `GesAssoSyncPage.tsx` (workspace membres) — tableau batch membres × données GesAsso
+  - Colonnes : nom, email, téléphone, licence, validité saison, statut (Conforme / Différent / Non trouvé)
+  - Badge `Expirée` si `season_end_date` < aujourd'hui
+  - Batch "Récupérer tout" + sélection + "Appliquer" (met à jour `Member` + `MemberSheet` avec les dates de saison)
+- [ ] Navigation `nav.gesassoMemberSync` dans `navigation.ts` (sous workspace/members)

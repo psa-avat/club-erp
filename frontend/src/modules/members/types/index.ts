@@ -45,6 +45,8 @@ export type MemberSheet = {
   member_uuid: string
   year: number
   licence_number: string | null
+  season_start_date: string | null
+  season_end_date: string | null
   fare_type: number
   hours_count: string
   expense_access_enabled: boolean
@@ -210,6 +212,8 @@ export type ReplaceCommitteeMembersPayload = {
 
 export type UpsertMemberSheetPayload = {
   licence_number?: string
+  season_start_date?: string | null
+  season_end_date?: string | null
   fare_type: number
   hours_count: string
   expense_access_enabled: boolean

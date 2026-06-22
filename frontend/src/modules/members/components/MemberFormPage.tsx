@@ -21,6 +21,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { Download } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
@@ -29,6 +31,7 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { PageHeader } from '@club-erp/ui'
 import { useCreateMemberMutation, useMemberQuery, useUpdateMemberMutation } from '../api'
+import { useGesAssoMemberPilotDataMutation, useGesAssoPilotLookupMutation } from '@/modules/gesasso/api'
 import { useMembersStore } from '../store'
 import type { UpdateMemberPayload } from '../types'
 import {
@@ -98,8 +101,83 @@ export function MemberFormPage() {
   const updateMemberMutation = useUpdateMemberMutation()
 
   const [memberForm, setMemberForm] = useState<MemberFormState>(() => createEmptyMemberForm())
+  const [gesassoHighlights, setGesassoHighlights] = useState<Set<string>>(new Set())
   const isBusinessCategory = memberForm.member_category === '8'
   const isPermanentCategory = ['5', '7', '8'].includes(memberForm.member_category)
+
+  const gesassoMutation = useGesAssoMemberPilotDataMutation()
+  const gesassoPilotMutation = useGesAssoPilotLookupMutation()
+
+  async function handleImportGesasso() {
+    const ffvpId = parseInt(memberForm.ffvp_id, 10)
+    if (!memberUuid && isNaN(ffvpId)) return
+    try {
+      const result = memberUuid
+        ? await gesassoMutation.mutateAsync(memberUuid)
+        : await gesassoPilotMutation.mutateAsync(ffvpId)
+      const info = result.personal_info
+      const updates: Partial<MemberFormState> = {}
+      const changed: string[] = []
+
+      if (info.first_name && info.first_name !== memberForm.first_name) {
+        updates.first_name = info.first_name
+        changed.push('first_name')
+      }
+      if (info.last_name && info.last_name !== memberForm.last_name) {
+        updates.last_name = info.last_name
+        changed.push('last_name')
+      }
+      if (info.email && info.email !== memberForm.email) {
+        updates.email = info.email
+        changed.push('email')
+      }
+      const phone = info.mobile_phone_number ?? info.phone_number
+      if (phone && phone !== memberForm.phone) {
+        updates.phone = phone
+        changed.push('phone')
+      }
+      if (info.birth_date && info.birth_date !== memberForm.date_of_birth) {
+        updates.date_of_birth = info.birth_date
+        changed.push('date_of_birth')
+      }
+      if (info.civility) {
+        const civility = info.civility.toUpperCase()
+        const genre = civility === 'MR' ? '1' : civility === 'MME' ? '2' : null
+        if (genre && genre !== memberForm.genre) {
+          updates.genre = genre
+          changed.push('genre')
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        setMemberForm((current) => ({ ...current, ...updates }))
+        setGesassoHighlights(new Set(changed))
+        const fieldLabels: Record<string, string> = {
+          first_name: t('form.firstName'),
+          last_name: t('form.lastName'),
+          email: t('form.email'),
+          phone: t('form.phone'),
+          date_of_birth: t('form.birthDate'),
+          genre: t('form.genre'),
+        }
+        toast.success(t('form.importGesassoApplied', { fields: changed.map((f) => fieldLabels[f] ?? f).join(', ') }))
+      } else {
+        toast.info('Données GesAsso identiques aux valeurs actuelles.')
+      }
+    } catch (err: unknown) {
+      const status =
+        typeof err === 'object' && err !== null && 'response' in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : undefined
+      if (status === 404) {
+        toast.error(t('form.importGesassoError404', { id: memberForm.ffvp_id }))
+      } else if (status === 503) {
+        toast.error(t('form.importGesassoError503'))
+      } else {
+        toast.error(t('form.importGesassoErrorApi'))
+      }
+    }
+  }
 
   useEffect(() => {
     if (isBusinessCategory && hasBusinessOnlyFields(memberForm)) {
@@ -165,52 +243,64 @@ export function MemberFormPage() {
               <CardDescription>{t('form.description')}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
-              <TextField
-                id="member-first-name"
-                label={t('form.firstName')}
-                value={memberForm.first_name}
-                onChange={(value) => setMemberForm({ ...memberForm, first_name: value })}
-              />
-              <TextField
-                id="member-last-name"
-                label={t('form.lastName')}
-                value={memberForm.last_name}
-                onChange={(value) => setMemberForm({ ...memberForm, last_name: value })}
-              />
-              <TextField
-                id="member-email"
-                label={t('form.email')}
-                type="email"
-                value={memberForm.email}
-                onChange={(value) => setMemberForm({ ...memberForm, email: value })}
-              />
-              <TextField
-                id="member-phone"
-                label={t('form.phone')}
-                value={memberForm.phone}
-                onChange={(value) => setMemberForm({ ...memberForm, phone: value })}
-              />
+              <div className={gesassoHighlights.has('first_name') ? 'rounded-md outline outline-2 outline-amber-400' : ''}>
+                <TextField
+                  id="member-first-name"
+                  label={t('form.firstName')}
+                  value={memberForm.first_name}
+                  onChange={(value) => setMemberForm({ ...memberForm, first_name: value })}
+                />
+              </div>
+              <div className={gesassoHighlights.has('last_name') ? 'rounded-md outline outline-2 outline-amber-400' : ''}>
+                <TextField
+                  id="member-last-name"
+                  label={t('form.lastName')}
+                  value={memberForm.last_name}
+                  onChange={(value) => setMemberForm({ ...memberForm, last_name: value })}
+                />
+              </div>
+              <div className={gesassoHighlights.has('email') ? 'rounded-md outline outline-2 outline-amber-400' : ''}>
+                <TextField
+                  id="member-email"
+                  label={t('form.email')}
+                  type="email"
+                  value={memberForm.email}
+                  onChange={(value) => setMemberForm({ ...memberForm, email: value })}
+                />
+              </div>
+              <div className={gesassoHighlights.has('phone') ? 'rounded-md outline outline-2 outline-amber-400' : ''}>
+                <TextField
+                  id="member-phone"
+                  label={t('form.phone')}
+                  value={memberForm.phone}
+                  onChange={(value) => setMemberForm({ ...memberForm, phone: value })}
+                />
+              </div>
               {isBusinessCategory ? null : (
                 <>
-                  <SelectField
-                    id="member-genre"
-                    label={t('form.genre')}
-                    options={[
-                      { value: '0', label: t('genres.unspecified') },
-                      { value: '1', label: t('genres.male') },
-                      { value: '2', label: t('genres.female') },
-                      { value: '3', label: t('genres.other') },
-                    ]}
-                    value={memberForm.genre}
-                    onChange={(value) => setMemberForm({ ...memberForm, genre: value })}
-                  />
-                  <TextField
-                    id="member-birthdate"
-                    label={t('form.birthDate')}
-                    type="date"
-                    value={memberForm.date_of_birth}
-                    onChange={(value) => setMemberForm({ ...memberForm, date_of_birth: value })}
-                  />
+                  <div className={gesassoHighlights.has('genre') ? 'rounded-md outline outline-2 outline-amber-400' : ''}>
+                    <SelectField
+                      id="member-genre"
+                      label={t('form.genre')}
+                      options={[
+                        { value: '0', label: t('genres.unspecified') },
+                        { value: '1', label: t('genres.male') },
+                        { value: '2', label: t('genres.female') },
+                        { value: '3', label: t('genres.other') },
+                      ]}
+                      value={memberForm.genre}
+                      onChange={(value) => setMemberForm({ ...memberForm, genre: value })}
+                    />
+                  </div>
+                  <div className={gesassoHighlights.has('date_of_birth') ? 'rounded-md outline outline-2 outline-amber-400' : ''}>
+                    <TextField
+                      id="member-birthdate"
+                      label={t('form.birthDate')}
+                      type="date"
+                      value={memberForm.date_of_birth}
+                      onChange={(value) => setMemberForm({ ...memberForm, date_of_birth: value })}
+                    />
+                  </div>
                 </>
               )}
             </CardContent>
@@ -281,13 +371,33 @@ export function MemberFormPage() {
                 </>
               ) : (
                 <>
-                  <TextField
-                    id="member-ffvp"
-                    label={t('form.ffvp')}
-                    type="number"
-                    value={memberForm.ffvp_id}
-                    onChange={(value) => setMemberForm({ ...memberForm, ffvp_id: value })}
-                  />
+                  <div className="space-y-2">
+                    <Label htmlFor="member-ffvp">{t('form.ffvp')}</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="member-ffvp"
+                        type="number"
+                        value={memberForm.ffvp_id}
+                        onChange={(e) => setMemberForm({ ...memberForm, ffvp_id: e.target.value })}
+                        className="flex-1"
+                      />
+                      {memberForm.ffvp_id ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleImportGesasso}
+                          disabled={gesassoMutation.isPending || gesassoPilotMutation.isPending}
+                          title={t('form.importGesasso')}
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          {gesassoMutation.isPending || gesassoPilotMutation.isPending
+                            ? t('form.importGesassoLoading')
+                            : t('form.importGesasso')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                   <TextField
                     id="member-account-id"
                     label={t('form.accountId')}

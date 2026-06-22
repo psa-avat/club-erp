@@ -103,8 +103,8 @@ async def update_gesasso_settings(
     setting = await upsert_system_setting(
         db,
         module_name=GESASSO_SETTINGS_MODULE,
-        settings=payload.model_dump(),
-        updated_by=current_user.id,
+        request=SystemSettingUpdateRequest(settings=payload.model_dump()),
+        user_id=current_user.id,
     )
     await db.commit()
     await db.refresh(setting)

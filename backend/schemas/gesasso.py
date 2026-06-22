@@ -56,6 +56,8 @@ class GesAssoPilotPersonalInfo(BaseModel):
     email: Optional[str] = None
     phone_number: Optional[str] = None
     mobile_phone_number: Optional[str] = None
+    civility: Optional[str] = None
+    birth_date: Optional[str] = None
     licence: Optional[GesAssoLicenceInfo] = None
 
 

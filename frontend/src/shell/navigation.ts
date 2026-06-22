@@ -36,8 +36,8 @@ export const shellNavItems: ShellNavItem[] = [
     children: [
       { to: '/workspace/flights', labelKey: 'nav.flights', requiredCapability: 'EDIT_FLIGHTS' },
       { to: '/workspace/flights?tab=packs', labelKey: 'nav.packs', requiredCapability: 'MANAGE_PRICES' },
-      { to: '/workspace/flights?tab=gesasso', labelKey: 'nav.gesassoSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
-      { to: '/workspace/flights?tab=osrt', labelKey: 'nav.osrtSync', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/workspace/flights?tab=gesasso', labelKey: 'nav.gesassoSync', requiredCapability: 'FEDERAL_SYNC' },
+      { to: '/workspace/flights?tab=osrt', labelKey: 'nav.osrtSync', requiredCapability: 'FEDERAL_SYNC' },
       { to: '/workspace/flights?tab=sync', labelKey: 'nav.plancheFlightsFetch', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },
@@ -152,6 +152,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/admin?tab=parametres&subtab=finance', labelKey: 'nav.configFinance', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/admin?tab=parametres&subtab=helloasso', labelKey: 'nav.configHelloasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/admin?tab=parametres&subtab=planche', labelKey: 'nav.configPlanche', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
+      { to: '/admin?tab=parametres&subtab=gesasso', labelKey: 'nav.configGesasso', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
       { to: '/admin?tab=parametres&subtab=stockage', labelKey: 'nav.configStorage', requiredCapability: 'MANAGE_SYSTEM_SETTINGS' },
     ],
   },
