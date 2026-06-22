@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import json; print\\(len\\(json.load\\(open\\('/tmp/batch1.json'\\)\\)\\)\\)\")",
+      "Bash(echo \"Batch 1 count: $\\(python3 -c \"import json; print\\(len\\(json.load\\(open\\('/tmp/batch1.json'\\)\\)\\)\\)\"\\)\")",
+      "Bash(python3)",
+      "Bash(python3 -c \"import json; print\\(len\\(json.load\\(open\\('/tmp/batch2_corrected.json'\\)\\)\\)\\)\")",
+      "Bash(echo \"Count: $\\(python3 -c \"import json; print\\(len\\(json.load\\(open\\('/tmp/batch2_corrected.json'\\)\\)\\)\\)\"\\)\")",
+      "Bash(git commit -m ' *)",
+      "Bash(python3 -m json.tool)"
+    ]
+  }
+}
