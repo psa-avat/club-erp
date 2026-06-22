@@ -322,12 +322,13 @@ class GesassoSyncService(FederalSyncService):
         pilot_uuids_str = list({f.pilot_erp_id for f in flights if f.pilot_erp_id})
         if pilot_uuids_str:
             try:
-                pilot_uuids = [UUID(u) for u in pilot_uuids_str]
                 mr = await db.execute(
-                    select(Member.uuid, Member.ffvp_id).where(Member.uuid.in_(pilot_uuids))
+                    select(Member.account_id, Member.ffvp_id).where(
+                        Member.account_id.in_(pilot_uuids_str)
+                    )
                 )
                 self._ffvp_map = {
-                    str(row.uuid): str(row.ffvp_id)
+                    str(row.account_id): str(row.ffvp_id)
                     for row in mr.all()
                     if row.ffvp_id is not None
                 }

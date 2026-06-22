@@ -31,6 +31,17 @@ export type GesAssoSettings = {
   base_url: string
   username: string
   secret: string
+  association_code: string
+}
+
+export type RecentFlightItem = {
+  uuid: string
+  jour: string
+  asset_code: string
+  takeoff_time: string
+  landing_time: string
+  pilot_name: string
+  pilot_erp_id: string
 }
 
 export type GesAssoSettingsResponse = {
@@ -126,6 +137,21 @@ export type TestFlightPushResult = {
   response_status: number | null
   response_body: unknown
   error: string | null
+}
+
+export function useRecentFlightsQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['gesasso', 'recent-flights'] as const,
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<RecentFlightItem[]>(
+        '/api/v1/gesasso/recent-flights',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    staleTime: 60_000,
+  })
 }
 
 export function useTestFlightPushMutation() {

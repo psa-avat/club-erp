@@ -33,6 +33,7 @@ class GesAssoSettingsPayload(BaseModel):
     base_url: str = Field(default="https://api.gesasso.ffvp.fr", min_length=1)
     username: str = Field(min_length=1)
     secret: str = Field(min_length=1)
+    association_code: Optional[str] = Field(default="")
 
 
 class GesAssoSettingsResponse(BaseModel):

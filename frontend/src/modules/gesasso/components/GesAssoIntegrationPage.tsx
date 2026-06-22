@@ -29,9 +29,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   useGesAssoSettingsQuery,
   useUpdateGesAssoSettingsMutation,
   useGesAssoPilotLookupMutation,
+  useRecentFlightsQuery,
   useTestFlightPushMutation,
   type GesAssoSettings,
   type TestFlightPushResult,
@@ -50,6 +58,7 @@ const EMPTY_SETTINGS: GesAssoSettings = {
   base_url: 'https://api.gesasso.ffvp.fr',
   username: '',
   secret: '',
+  association_code: '',
 }
 
 export function GesAssoIntegrationPage() {
@@ -58,6 +67,7 @@ export function GesAssoIntegrationPage() {
   const settingsQuery = useGesAssoSettingsQuery(true)
   const updateMutation = useUpdateGesAssoSettingsMutation()
   const pilotLookupMutation = useGesAssoPilotLookupMutation()
+  const recentFlightsQuery = useRecentFlightsQuery()
   const testFlightMutation = useTestFlightPushMutation()
 
   const [formState, setFormState] = useState<GesAssoSettings>(EMPTY_SETTINGS)
@@ -70,7 +80,12 @@ export function GesAssoIntegrationPage() {
   useEffect(() => {
     const s = settingsQuery.data?.settings
     if (s) {
-      setFormState({ base_url: s.base_url || EMPTY_SETTINGS.base_url, username: s.username || '', secret: s.secret || '' })
+      setFormState({
+        base_url: s.base_url || EMPTY_SETTINGS.base_url,
+        username: s.username || '',
+        secret: s.secret || '',
+        association_code: s.association_code || '',
+      })
     }
   }, [settingsQuery.data])
 
@@ -157,6 +172,16 @@ export function GesAssoIntegrationPage() {
                 autoComplete="new-password"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="gesasso-association-code">{t('gesasso.associationCode')}</Label>
+              <Input
+                id="gesasso-association-code"
+                value={formState.association_code}
+                onChange={(e) => updateField('association_code', e.target.value)}
+                placeholder="XXXXXXXX"
+                autoComplete="off"
+              />
+            </div>
             <Button type="submit" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? t('gesasso.saving') : t('gesasso.save')}
             </Button>
@@ -203,15 +228,20 @@ export function GesAssoIntegrationPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2 items-end">
-            <div className="space-y-1 flex-1 min-w-48">
-              <Label htmlFor="test-flight-uuid">{t('gesasso.testFlightUuidLabel')}</Label>
-              <Input
-                id="test-flight-uuid"
-                value={testFlightUuid}
-                onChange={(e) => setTestFlightUuid(e.target.value)}
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                className="font-mono text-sm"
-              />
+            <div className="space-y-1 flex-1 min-w-60">
+              <Label>{t('gesasso.testFlightUuidLabel')}</Label>
+              <Select value={testFlightUuid} onValueChange={(v) => { setTestFlightUuid(v); setTestFlightResult(null) }}>
+                <SelectTrigger>
+                  <SelectValue placeholder={recentFlightsQuery.isLoading ? t('gesasso.testing') : t('gesasso.testFlightPickerPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(recentFlightsQuery.data ?? []).map((f) => (
+                    <SelectItem key={f.uuid} value={f.uuid}>
+                      {f.jour} — {f.asset_code} {f.takeoff_time}→{f.landing_time} · {f.pilot_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2 pb-1">
               <Checkbox

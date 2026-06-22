@@ -55,6 +55,7 @@ DEFAULT_GESASSO_SETTINGS: dict[str, Any] = {
     "base_url": "https://api.gesasso.ffvp.fr",
     "username": "",
     "secret": "",
+    "association_code": "",
 }
 
 
@@ -229,12 +230,13 @@ async def test_flight_push(
     if flight is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flight not found.")
 
-    # Resolve ffvp_id for the pilot
+    # Resolve ffvp_id for the pilot via account_id (pilot_erp_id = Member.account_id)
     ffvp_id_str: str | None = None
     if flight.pilot_erp_id:
         try:
-            pilot_uuid = UUID(str(flight.pilot_erp_id))
-            mr = await db.execute(select(Member.ffvp_id).where(Member.uuid == pilot_uuid))
+            mr = await db.execute(
+                select(Member.ffvp_id).where(Member.account_id == str(flight.pilot_erp_id))
+            )
             row = mr.scalar_one_or_none()
             if row is not None:
                 ffvp_id_str = str(row)
@@ -309,3 +311,58 @@ async def test_flight_push(
             dry_run=False,
             error=f"Network error: {str(exc)[:200]}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Recent validated flights (for flight picker)
+# ---------------------------------------------------------------------------
+
+class RecentFlightItem(BaseModel):
+    uuid: str
+    jour: str
+    asset_code: str
+    takeoff_time: str
+    landing_time: str
+    pilot_name: str
+    pilot_erp_id: str
+
+
+@router.get("/recent-flights", response_model=list[RecentFlightItem])
+async def list_recent_flights(
+    limit: int = Query(default=30, ge=1, le=100),
+    _: User = settings_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return recent validated flights with pilot names for the flight test picker."""
+    from sqlalchemy import desc
+    from models import Member as _Member
+
+    stmt = (
+        select(
+            ValidatedFlight.uuid,
+            ValidatedFlight.jour,
+            ValidatedFlight.asset_code,
+            ValidatedFlight.takeoff_time,
+            ValidatedFlight.landing_time,
+            ValidatedFlight.pilot_erp_id,
+            _Member.first_name,
+            _Member.last_name,
+        )
+        .outerjoin(_Member, _Member.account_id == ValidatedFlight.pilot_erp_id)
+        .order_by(desc(ValidatedFlight.jour), ValidatedFlight.takeoff_time)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    return [
+        RecentFlightItem(
+            uuid=str(r.uuid),
+            jour=r.jour.isoformat() if r.jour else "",
+            asset_code=r.asset_code or "",
+            takeoff_time=r.takeoff_time or "",
+            landing_time=r.landing_time or "",
+            pilot_erp_id=r.pilot_erp_id or "",
+            pilot_name=f"{r.first_name or ''} {r.last_name or ''}".strip() or r.pilot_erp_id or "?",
+        )
+        for r in rows
+    ]
