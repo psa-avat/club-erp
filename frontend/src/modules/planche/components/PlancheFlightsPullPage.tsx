@@ -35,7 +35,7 @@ import {
   type FlightFetchResponse,
 } from '../../flights/api'
 
-type FetchMode = 'incremental' | 'daterange'
+type FetchMode = 'incremental' | 'daterange' | 'force'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -112,6 +112,7 @@ export function PlancheFlightsPullPage() {
     if (mode === 'incremental') {
       return { cursor: syncCursorFlights || undefined, limit: 500 }
     }
+    // daterange and force both send a date range without cursor
     return {
       from_date: fromDate || null,
       to_date: toDate || null,
@@ -121,10 +122,19 @@ export function PlancheFlightsPullPage() {
 
   function canConfirm(): boolean {
     if (!canFetch) return false
-    if (mode === 'daterange') {
+    if (mode === 'daterange' || mode === 'force') {
       return Boolean(fromDate && toDate)
     }
     return true
+  }
+
+  function handleModeChange(newMode: FetchMode) {
+    setMode(newMode)
+    if (newMode === 'force' && !fromDate && !toDate) {
+      const year = new Date().getFullYear()
+      setFromDate(`${year}-01-01`)
+      setToDate(`${year}-12-31`)
+    }
   }
 
   async function handleFetch() {
@@ -259,7 +269,7 @@ export function PlancheFlightsPullPage() {
         {/* Mode Selector */}
         <div className="space-y-3">
           <p className="text-sm font-semibold text-slate-800">{t('flightsFetch.mode.label')}</p>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <button
               type="button"
               className={`rounded-lg border p-4 text-left transition-all ${
@@ -267,7 +277,7 @@ export function PlancheFlightsPullPage() {
                   ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
                   : 'border-outline-variant bg-slate-50 hover:bg-slate-100'
               }`}
-              onClick={() => setMode('incremental')}
+              onClick={() => handleModeChange('incremental')}
             >
               <p className="text-sm font-semibold text-slate-900">{t('flightsFetch.mode.incremental')}</p>
               <p className="mt-1 text-xs text-slate-600">{t('flightsFetch.mode.incrementalDesc')}</p>
@@ -279,16 +289,28 @@ export function PlancheFlightsPullPage() {
                   ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
                   : 'border-outline-variant bg-slate-50 hover:bg-slate-100'
               }`}
-              onClick={() => setMode('daterange')}
+              onClick={() => handleModeChange('daterange')}
             >
               <p className="text-sm font-semibold text-slate-900">{t('flightsFetch.mode.dateRange')}</p>
               <p className="mt-1 text-xs text-slate-600">{t('flightsFetch.mode.dateRangeDesc')}</p>
             </button>
+            <button
+              type="button"
+              className={`rounded-lg border p-4 text-left transition-all ${
+                mode === 'force'
+                  ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200'
+                  : 'border-amber-200 bg-amber-50/50 hover:bg-amber-50'
+              }`}
+              onClick={() => handleModeChange('force')}
+            >
+              <p className="text-sm font-semibold text-amber-900">{t('flightsFetch.mode.force')}</p>
+              <p className="mt-1 text-xs text-amber-700">{t('flightsFetch.mode.forceDesc')}</p>
+            </button>
           </div>
         </div>
 
-        {/* Date Range Inputs */}
-        {mode === 'daterange' && (
+        {/* Date Range Inputs (daterange + force modes) */}
+        {(mode === 'daterange' || mode === 'force') && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="flights-fetch-from">{t('flightsFetch.mode.from')}</Label>
@@ -313,21 +335,27 @@ export function PlancheFlightsPullPage() {
 
         {/* Validation Messages */}
         {!canFetch && <Alert>{t('flightsFetch.validation.configureFirst')}</Alert>}
-        {mode === 'daterange' && (!fromDate || !toDate) && canFetch && (
+        {(mode === 'daterange' || mode === 'force') && (!fromDate || !toDate) && canFetch && (
           <Alert>{t('flightsFetch.validation.selectDateRange')}</Alert>
+        )}
+        {mode === 'force' && fromDate && toDate && (
+          <Alert variant="warning">{t('flightsFetch.validation.forceWarning')}</Alert>
         )}
         {errorMessage && <Alert>{errorMessage}</Alert>}
 
         {/* Fetch Button */}
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={busy || !canFetch || (mode === 'daterange' && (!fromDate || !toDate))}
+            disabled={busy || !canFetch || ((mode === 'daterange' || mode === 'force') && (!fromDate || !toDate))}
             onClick={() => setConfirmOpen(true)}
             type="button"
+            variant={mode === 'force' ? 'destructive' : 'default'}
           >
             {fetchMutation.isPending
               ? t('flightsFetch.actions.fetching')
-              : t('flightsFetch.actions.fetchNow')}
+              : mode === 'force'
+                ? t('flightsFetch.actions.forceSync')
+                : t('flightsFetch.actions.fetchNow')}
           </Button>
         </div>
 
@@ -431,10 +459,15 @@ export function PlancheFlightsPullPage() {
           <p id="planche-flights-fetch-confirm-body" className="text-sm text-slate-600">
             {mode === 'incremental'
               ? t('flightsFetch.confirm.descriptionIncremental')
-              : t('flightsFetch.confirm.descriptionDateRange', {
-                  from: fromDate || '...',
-                  to: toDate || '...',
-                })}
+              : mode === 'force'
+                ? t('flightsFetch.confirm.descriptionForce', {
+                    from: fromDate || '...',
+                    to: toDate || '...',
+                  })
+                : t('flightsFetch.confirm.descriptionDateRange', {
+                    from: fromDate || '...',
+                    to: toDate || '...',
+                  })}
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -442,10 +475,12 @@ export function PlancheFlightsPullPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                 {t('flightsFetch.mode.label')}
               </p>
-              <p className="text-sm font-medium text-slate-900">
+              <p className={`text-sm font-medium ${mode === 'force' ? 'text-amber-700' : 'text-slate-900'}`}>
                 {mode === 'incremental'
                   ? t('flightsFetch.mode.incremental')
-                  : t('flightsFetch.mode.dateRange')}
+                  : mode === 'force'
+                    ? t('flightsFetch.mode.force')
+                    : t('flightsFetch.mode.dateRange')}
               </p>
             </div>
             <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
