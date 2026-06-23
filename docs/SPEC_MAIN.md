@@ -1,209 +1,213 @@
+# ERP Club — Spécification Principale
 
-This files describe the main menu of ERP_CLUB.
+> Version : 2026-06 · Licence : AGPL-3.0
 
-This menu is based on already exiting part and future ones.
-I have tried to split the functionnalities into modules.
+Ce document décrit la structure générale de l'ERP, les modules existants et le menu principal. Il sert de point d'entrée pour l'architecture fonctionnelle.
 
-We'll keep the existing modules  :
-    - Admin : administration tasks
-    - assets: management of flying and non flying assets
-    - banque: all bank related functions
-    - club  : club management
-    - dashboard : general dashboard module
-    - flights : 
-    - helloasso :
-    - members:
-    - members-portal
-    - planche
-    - princing :
-    - storage :
-    - vi : (vol d'initiation)
+---
 
-# ERP CLUB
+## Architecture technique
 
-## architecture
+| Composant | Technologie |
+|-----------|-------------|
+| Base de données | PostgreSQL |
+| Backend | Python + FastAPI |
+| Frontend | React + Vite (TypeScript) |
+| Stockage fichiers | S3 / RustFS |
+| Conteneurs | Docker / Docker Compose |
 
-    - database : postgres
-    - backend  : python + fastapi
-    - frontend : react + vite
-    - storage  : S3 / rustfs
+---
 
-    Each component is embeded in a docker container.
+## Outils externes intégrés
 
-### External tools 
+| Outil | Rôle |
+|-------|------|
+| **Planche** | Application de terrain pour la gestion des vols. L'ERP pousse membres, machines et bons VI ; Planche retourne les vols validés. |
+| **GesAsso** | Logiciel fédéral de gestion des licences pilotes. Reçoit les vols validés. |
+| **OSRT** | Logiciel fédéral de navigabilité. Reçoit les heures de vol par machine. |
+| **HelloAsso** | Plateforme de vente en ligne des bons d'initiation. |
+| **Click & Glide** | Gestion du planning d'activités (à alimenter par l'ERP ou à remplacer). |
 
-    - Planche  : APP developped by ourselves that handles the flights tracking. This app need to know pilots, machines and active vouchers sold ( ERP source of truth) and provides validated flights with all the informations ( Planche is the source of truth)
-    - Gesasso  : this is a federal software to which we send validated flight once integrated into the ERP ( pilots license validity)
-    - OSRT     : this is a federal software to which we send validated flight time by machine ( aeroworthiness )
-    - HELLOASSO: External software from which initiation flight are bought ( vouchers)
-    - Click&Glide : Extenal software that manages activity schedule ( to be feeded by ERP or to be replaced ? )
+---
 
-## functionnalities
+## Modules
 
-    The main goals of ERP CLUB is to facilitate a glider club management. 
-    It can be used by dedicated users and has a member portal.
+### Modules en production
 
-    We need to have the following functions :
+| Module | Description |
+|--------|-------------|
+| `admin` | Gestion des utilisateurs, rôles, capacités, paramètres système, audit |
+| `assets` | Inventaire des aéronefs et équipements, propriété, statut, amortissement |
+| `banque` | Comptes bancaires, rapprochement |
+| `club` | Paramètres généraux du club |
+| `dashboard` | Tableau de bord KPI |
+| `flights` | Import vols depuis Planche, suivi du cycle de vie |
+| `flight_billing` | Facturation brute des vols, journal FL |
+| `flight_packs` | Gestion et consommation des packs de vols, journal REM |
+| `helloasso` | Import des bons VI vendus sur HelloAsso |
+| `members` | Annuaire membres, inscriptions annuelles, comités |
+| `member-portal` | Portail libre-service membre (carnet de vol, solde, dépenses) |
+| `planche` | Configuration et synchronisation Planche |
+| `pricing` | Versions de tarifs, lignes de tarif, packs tarifaires |
+| `reporting` | Rapports financiers (résultat, bilan, grand livre, balance) |
+| `storage` | Gestion des fichiers et pièces jointes |
+| `vi` | Bons d'initiation, types de VI, planification |
+| `accounting` | Plan comptable, exercices fiscaux, journaux, écritures, modèles, récurrents |
+| `gesasso` | Synchronisation vols vers GesAsso |
+| `federal_sync` | Synchronisation fédérale OSRT |
+| `planning` | Planning d'activités et créneaux |
+| `daily-ops` | Opérations journalières |
+| `rh` | Ressources humaines (congés, planning, charges) |
+| `integrations` | Vue centralisée des intégrations tierces |
 
-### members management
+---
 
-    Members should be registered for the current year to practice an activity. We have full members, temporary members, non flying members, short period, volunteer , external , business 
-    Registered members pay a subscription fee for the year. If it subscibes from the 1st of october, it'll be registered for the full following year too.
+## Fonctionnalités par domaine
 
-    - member directory : we have 3 types of members :  core members, external members (clubs ...), business members ( suppliers)
-    - member registration management (active members)
-    - member anonymisation (unregistred members)
+### Gestion des membres
 
-    - member balance sheet
-    - member logbook
-    - member expense
+- Annuaire : membres actifs, temporaires, non-volants, pilotes externes, bénévoles, organisations, clients/fournisseurs
+- Inscription annuelle avec génération d'écritures comptables
+- Fiches membres : carnet de vol, solde, dépenses, documents
+- Comités avec responsable, membres et budget
+- Identification unique `ME<ANNÉE>-<NNNN>` / `EXT-<NNNN>` / `FO-<NNNN>`
+- Synchronisation des membres vers Planche
 
-    members are pushed to the planche which is using them in flights declarations. 
+### Gestion des aéronefs
 
-### committes 
+- Types d'aéronefs avec catégorie et durée d'amortissement
+- Fiches aéronefs : immatriculation, propriété (club / privé avec co-propriétaires), statut, suivi comptable
+- États : Opérationnel, En maintenance, Hors service, Cédé, Vendu
+- Synchronisation des aéronefs actifs vers Planche
 
-    We manage committees. 
-    A committee has members, a responsble, actions and a budget
+### Vols et facturation
 
-### Asset management 
+- Import des vols validés depuis Planche (pull avec gestion des révisions)
+- Types de vols : instruction, solo, initiation, partage, passager, lâcher, supervisé, essai
+- Méthodes de lancement : extérieur, treuil, remorqueur, autonome
+- Facturation brut-d'abord + journal de remises séparé
+- Résolution des tarifs par machine (planeur et machine de lancement)
+- Workflow : importé → prévisualisé → appliqué → posté → corrigé
+- Packs de vols avec consommation FIFO et recalcul rétroactif
 
-    We define asset types and assets. Some asset are private gliders. For club gliders we also follow the depreciation of the asset.
-    
-    Assets are pushed to the planche which is using them in flights declarations. 
+### Vols d'initiation (VI)
 
-### Prices 
+- Types de VI avec tarif associé
+- Import des bons vendus sur HelloAsso
+- Planification avec affectation instructeur / appareil
+- Synchronisation des bons actifs vers Planche
 
-    Prices are associated to an asset type or are general.
-    Prices have a version and an application date range. Prices can change during the year.
-    We also manage packs that offer discounts on the flights prices. Packs have a start application date. Packs can't cross a fiscal year.
+### Comptabilité
 
+- Double entrée obligatoire, PCG associatif français
+- Exercices fiscaux explicites (Ouvert, Clôturé, Réouvert)
+- Journaux : VT, HA, BQ, CS, OD, AN, FL, REM
+- Workflow brouillon → posté (corrections par contre-passation uniquement)
+- Précision monétaire `NUMERIC(10,4)` (backend) / `decimal.js` (frontend)
+- Modèles d'écritures et opérations récurrentes
+- Rapports : compte de résultat, bilan, grand livre, balance
 
-### flights 
+### Tarifs et prix
 
-    Flights are synchronized ( pulled) from the planche and stored into the ERP database.
-    If flights are modified on the planche side they are pulled again with a revision.
-    Flight are billed on the price gross base and discounts are applied separately. Pack can be purshased after a flight is billed.
+- Versions de tarifs par période et type d'aéronef
+- États : Brouillon, Active, Archivée
+- Lignes de tarif avec paliers progressifs
+- Packs tarifaires liés à un exercice fiscal (non reportables)
 
+### Portail membre
 
-### Finance & accounting
+- Accès séparé de l'ERP administratif
+- Carnet de vol personnel, solde, dépenses, bénévolat, packs disponibles
+- Rechargement de compte (si activé)
 
-    We need to manage a ledger with different journals.
-    Entries can be in drat or posted mode.
-    We need to have KPI and finacial reports
-    We manage a french PCG 
-    We have bank accounts to follow ( + reconciliation )
-    We need entries model
-    We need to manage recuring operations
-    Budget definition : we have the current bugdet prepared for the fiscal year and one for the next fiscal year.
-    Budget reports or KPI
+### Administration
 
+- Utilisateurs, rôles et capacités
+- Paramètres des intégrations externes (Planche, HelloAsso, GesAsso, Email, OSRT)
+- Stockage S3 / RustFS
+- Journal d'audit
 
-### Employees
+---
 
-    We need to register accounting entries for charges , salaries ...
-    We need to manage a leave workflow with authorization, a schedule 
-    We need to register the activitie ( hours made by day)
+## Menu principal (navigation frontend)
 
-### activitie
+```
+Dashboard
+  └── Membres / Aéronefs / Vols / Comptabilité
 
-    We need to have an activities schedule module
+Club
+  ├── Membres
+  │   └── Fiche membre (carnet / solde / dépenses / bénévolat / documents) → portail
+  ├── Aéronefs
+  │   ├── Types d'aéronefs
+  │   └── Liste des aéronefs
+  ├── Comités
+  └── RH
+      ├── Planning
+      └── Congés
 
-### members portal
+Vols
+  ├── Vols (facturation)
+  ├── Packs
+  └── Vols d'Initiation
+      ├── Types de VI
+      ├── Bons VI
+      └── Planning
 
-    Each member can access to a external portal
-    this portal provides : logbook, balance sheet , expenses for the club , volunteer expense (for fiscal discount), account charging function
+Intégrations
+  ├── Planche
+  ├── HelloAsso
+  ├── GesAsso
+  └── OSRT
 
-### sales & suppliers
+Comptabilité
+  ├── Plan comptable
+  ├── Exercices fiscaux
+  ├── Banque
+  │   ├── Comptes
+  │   └── Rapprochement
+  ├── Tarifs
+  │   ├── Paramètres généraux
+  │   ├── Types de vols
+  │   └── Versions de tarifs (aéronef ou global)
+  ├── Écritures
+  │   ├── Modèles
+  │   └── Opérations récurrentes
+  ├── Journaux
+  ├── Ventes
+  ├── Fournisseurs
+  │   └── Factures
+  └── Rapports financiers
+      ├── Compte de résultat
+      └── Bilan
 
-    We need to sell items to ours members 
-    We need to register suppliers invoices and payments 
+Admin
+  ├── Utilisateurs / Rôles / Capacités
+  ├── Paramètres
+  │   ├── Stockage
+  │   ├── Planche
+  │   ├── HelloAsso
+  │   ├── GesAsso
+  │   ├── Email
+  │   ├── OSRT
+  │   └── Click & Glide
+  └── Journal d'audit
+```
 
+---
 
+## Documents de référence
 
-## Main menu
-
-- Dashboard  
-    -Members
-    -Assets
-    -Flights
-    -Accounting
-
-
--Club
-    -Members
-      -Member sheet ( logbook / balance / Expenses / Volunteer / Documents)  ==> link to external portal
-    -Assets
-        -type of assets
-        -asset list
-    -Committes
-        -Committes + link with members
-
-    -Employees  ( do we need an external portal acces ?)
-        -Schedulle 
-        -Leaves
-
-    -Schedulle
-        -Activities
-
-        
-
--Flights
-    -Flights ( billing)
-    -Packs ( purchase / consumption / balance)
-    -Initiation flights
-        -Type of VI
-        -Vouchers
-        -Schedulle
-
--External tools
-    -Planche
-    -HelloAsso
-    -Gesasso
-    -OSRT
-    -ClicknGlide
-
--Accounting
-    -Charts of accounts
-    -Fiscal years
-    -Banck
-        -accounts
-        -Reconciliation & Alignment
-
-    -Pricing
-        -General settings
-        -type of flights
-        -Pricing ( asset or general)
-
-
-    -Entries
-        -models
-        -Recurring operations
-
-    -Journal 
-
-    -Sales 
-        -Sales
-
-    -Suppliers
-        -invoice
-
-    -Financial reports 
-        -Income statement
-        -Balance sheet
-
--Admin
-    -Users / roles /capabilities
-    -Settings
-        -storage
-        -planche
-        -helloasso
-        -gesasso
-        -email
-        -osrt
-        -clicknglide
-
-    -Audit trail 
-
-
-
-
+| Document | Description |
+|----------|-------------|
+| `docs/USER_GUIDE.md` | Guide utilisateur complet |
+| `docs/SPEC_ROLES_CAPABILITIES.md` | Rôles, capacités et autorisation |
+| `docs/SPEC_MEMBERS.md` | Spécification module Membres |
+| `docs/SPEC_ACCOUNTING.md` | Spécification module Comptabilité |
+| `docs/SPEC_ASSETS.md` | Spécification module Aéronefs |
+| `docs/SPEC_FLIGHTS_BILLING.md` | Spécification facturation vols |
+| `docs/Flight_Billing_Specification_And_User_Manual.md` | Manuel opérationnel facturation |
+| `docs/ARCHITECTURE_GLOBAL_FISCAL_YEAR.md` | Architecture exercice fiscal |
+| `frontend/DESIGN_SYSTEM.md` | Conventions UI/UX frontend |
+| `deploy/README.md` | Déploiement et opérations |
+| `docs/migrations/` | Historique des migrations SQL (001–054) |
