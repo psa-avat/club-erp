@@ -26,9 +26,9 @@
 ## 1. Prerequisites
 
 | Tool | Min version | Notes |
-|---|---|---|
+|------|-------------|-------|
 | Docker | 25+ | Compose v2 built-in (`docker compose`) |
-| pnpm | 10.5.2 | Only needed to run frontend outside Docker |
+| pnpm | 10.33.0 | Only needed to run frontend outside Docker |
 | Python | 3.13 | Only needed to run backend outside Docker |
 
 ---
@@ -45,12 +45,15 @@ cp deploy/.env.example deploy/.env
 ### Key variables
 
 | Variable | Dev default | Production value |
-|---|---|---|
+|----------|-------------|-----------------|
 | `DATABASE_URL` | local `erp-db` container | `@carnet-db:5432/erp_club_db` via `db_network` |
 | `ENVIRONMENT` | `DEV` (set by override) | `PROD` (set by compose.yml) |
+| `CLUB_SLUG` | `avat` | `avat` |
 | `ERP_HOST` | — | `avat.erp-club.psa-avat.fr` |
 | `CORS_ORIGINS` | `http://localhost:*` | `https://avat.erp-club.psa-avat.fr` |
 | `JWT_SECRET_KEY` | any string | generated strong key |
+| `RUSTFS_ACCESS_KEY` | `rustfsadmin` | strong key |
+| `RUSTFS_SECRET_KEY` | `ChangeMe123!` | strong secret |
 
 Generate a JWT secret:
 ```bash
@@ -61,17 +64,31 @@ python -c "import secrets, base64; print(base64.b64encode(secrets.token_bytes(32
 
 ## 3. Local development
 
-The local stack brings up three containers: **postgres** (`erp-db-dev`), **backend**, **frontend**.
 Docker Compose automatically merges `docker-compose.yml` + `docker-compose.override.yml` when run from `deploy/`.
+
+### Dev containers
+
+| Container | Image | Host port(s) | Role |
+|-----------|-------|--------------|------|
+| `erp-db-dev` | postgres:18-alpine | `127.0.0.1:5432` | Local PostgreSQL |
+| `erp-rustfs-dev` | rustfs/rustfs | `127.0.0.1:9000` (S3 API), `192.168.0.120:9001` (console) | Object storage |
+| `erp-backend` | built from `backend/` | `0.0.0.0:8000` | FastAPI / uvicorn |
+| `erp-frontend` | built from monorepo root | `0.0.0.0:8080` | Nginx + Vite build |
+| `erp-dozzle-dev` | amir20/dozzle | `9999` | Log viewer |
 
 ### 3.1 First-time setup
 
 ```bash
 # 1. Create your local .env
 cp deploy/.env.example deploy/.env
-# Set POSTGRES_PASSWORD and JWT_SECRET_KEY (other dev defaults are fine)
+# Edit: set POSTGRES_PASSWORD, JWT_SECRET_KEY, RUSTFS_SECRET_KEY (other dev defaults are fine)
 
-# 2. Build and start
+# 2. Create the Docker volumes (once per machine — they persist across docker compose down)
+docker volume create pgdata_dev
+docker volume create rustfsdata_dev
+docker volume create rustfslogs_dev
+
+# 3. Build images from source and start the stack (run from deploy/)
 cd deploy
 docker compose build
 docker compose up -d
@@ -83,12 +100,13 @@ The `init-db/erp.sql` script runs automatically on first start and creates the f
 
 ```bash
 docker compose ps
-# Expected: erp-db-dev, erp-backend, erp-frontend, erp-dozzle-dev all healthy/running
+# Expected: erp-db-dev, erp-rustfs-dev, erp-backend, erp-frontend, erp-dozzle-dev — all healthy/running
 
-curl http://localhost:8000/health          # backend
-# Browser: http://localhost:8080           # frontend (Nginx)
-# Browser: http://localhost:9999           # Dozzle log viewer
-# Swagger: http://localhost:8000/docs
+curl http://localhost:8000/health        # backend health
+# Browser: http://localhost:8080         # frontend (Nginx + SPA)
+# Browser: http://localhost:8000/api/v1/docs  # FastAPI Swagger UI (DEV only)
+# Browser: http://localhost:9999         # Dozzle log viewer
+# Browser: http://localhost:9001         # RustFS console (use 192.168.0.120 if on remote host)
 ```
 
 ### 3.3 Vite hot-reload instead of the Nginx container
@@ -101,7 +119,7 @@ docker compose up -d erp-db erp-backend
 # Run frontend with Vite (from repo root)
 cd ..
 pnpm --filter @club-erp/web dev
-# → http://localhost:5173  (Vite proxies /api to localhost:8000)
+# → http://localhost:5173  (Vite proxies /api → localhost:8000)
 ```
 
 ### 3.4 Rebuild after code changes
@@ -109,6 +127,7 @@ pnpm --filter @club-erp/web dev
 ```bash
 cd deploy
 docker compose build erp-backend && docker compose up -d erp-backend   # single service
+docker compose build erp-frontend && docker compose up -d erp-frontend
 docker compose build && docker compose up -d                             # everything
 ```
 
@@ -117,14 +136,15 @@ docker compose build && docker compose up -d                             # every
 ```bash
 docker compose logs -f                  # all services
 docker compose logs -f erp-backend
+docker compose logs -f erp-frontend
 docker compose logs -f erp-db-dev
 ```
 
 ### 3.6 Stop / clean up
 
 ```bash
-docker compose down          # stop, keep DB volume
-docker compose down -v       # stop + delete local postgres volume (full reset)
+docker compose down            # stop, keep volumes
+docker compose down -v         # stop + delete local postgres volume (full reset)
 ```
 
 ---
@@ -154,6 +174,8 @@ Internet
 **Why two networks?**
 - Putting `carnet-db` on `web_network` would expose the database to every container on that network (Traefik, other apps). Unsafe.
 - `db_network` is a small, purpose-built bridge that only connects `carnet-back`, `erp-backend`, and `carnet-db`.
+
+The frontend Nginx container proxies `/api/*` → `http://erp-backend:8000` internally, so only one public hostname is needed and the backend is never exposed via Traefik.
 
 ---
 
@@ -195,8 +217,6 @@ And add at the top-level `networks:` block:
     external: true
     name: db_network
 ```
-
-Then also connect `carnet-back` to `db_network` if it is not already using the default network to reach the DB (check its `DATABASE_URL`).
 
 Option B survives container recreation. Do both A + B for immediate effect.
 
@@ -247,10 +267,9 @@ GRANT  CONNECT ON DATABASE erp_club_db TO   erpuser;
 ### 6.3 Apply the schema
 
 ```bash
-# Copy init script into the running container, then execute it
-docker cp /opt/club-erp/deploy/init-db/erp.sql carnet-db:/tmp/erp.sql
-docker exec -it carnet-db psql -U erpuser -d erp_club_db -f /tmp/erp.sql
-docker exec carnet-db rm /tmp/erp.sql
+# Pipe the init script directly into the container (no file copy needed)
+docker exec -i carnet-db psql -U erpuser -d erp_club_db \
+  < /opt/club-erp/deploy/init-db/erp.sql
 ```
 
 ### 6.4 Verify
@@ -258,7 +277,7 @@ docker exec carnet-db rm /tmp/erp.sql
 ```bash
 docker exec -it carnet-db psql -U erpuser -d erp_club_db -c "\dt"
 # Expected tables: users, roles, capabilities, user_roles, role_capabilities,
-#                  user_settings, auth_challenges, trusted_devices, session_tokens
+#                  user_settings, auth_challenges, trusted_devices, session_tokens, ...
 ```
 
 ### 6.5 Update `deploy/.env`
@@ -288,8 +307,7 @@ docker compose ps
 curl https://avat.erp-club.psa-avat.fr/api/health
 ```
 
-Traefik will automatically obtain a TLS certificate for `avat.erp-club.psa-avat.fr`
-via the `*.erp-club.psa-avat.fr` wildcard DNS entry you've added.
+Traefik will automatically obtain a TLS certificate via the `*.erp-club.psa-avat.fr` wildcard DNS entry.
 
 ---
 
@@ -313,6 +331,7 @@ on its configured schedule — see §10 for GHCR credential setup.
 ## 9. Database operations – backup, restore, seeding
 
 > All commands target `carnet-db` — the shared postgres container on the VPS.
+> For local dev, replace `carnet-db` with `erp-db-dev` and ensure the stack is running.
 
 ### 9.1 Backup
 
@@ -340,21 +359,12 @@ docker exec carnet-db pg_dump \
   > /opt/backups/erp_schema_$(date +%Y%m%d).sql
 ```
 
-**Data only:**
-```bash
-docker exec carnet-db pg_dump \
-  -U erpuser -d erp_club_db \
-  --data-only --no-owner \
-  > /opt/backups/erp_data_$(date +%Y%m%d).sql
-```
-
 **Automate with a daily cron (03:00):**
 ```bash
 crontab -e
 # Add this line:
 0 3 * * * docker exec carnet-db pg_dump -U erpuser -d erp_club_db -Fc --no-owner > /opt/backups/erp_$(date +\%Y\%m\%d).pgdump && find /opt/backups -name 'erp_*.pgdump' -mtime +30 -delete
 ```
-_(The `find` at the end auto-deletes backups older than 30 days.)_
 
 ### 9.2 Restore
 
@@ -389,7 +399,7 @@ ssh user@your-vps \
   > /tmp/erp_prod.pgdump
 
 # 2. Restore into your local dev container
-cd deploy && docker compose up -d erp-db   # make sure it's running
+cd deploy && docker compose up -d erp-db
 docker exec -i erp-db-dev pg_restore \
   -U erpuser -d erp_club_db \
   --no-owner --clean \
@@ -398,19 +408,15 @@ docker exec -i erp-db-dev pg_restore \
 
 ### 9.4 Run ad-hoc SQL
 
-**Single statement:**
 ```bash
+# Single statement
 docker exec -it carnet-db psql -U erpuser -d erp_club_db \
   -c "SELECT count(*) FROM users;"
-```
 
-**Run a SQL file (pipe — no copy needed):**
-```bash
+# Run a SQL file (pipe — no copy needed)
 docker exec -i carnet-db psql -U erpuser -d erp_club_db < my_script.sql
-```
 
-**Interactive psql session:**
-```bash
+# Interactive psql session
 docker exec -it carnet-db psql -U erpuser -d erp_club_db
 ```
 
@@ -427,29 +433,19 @@ Useful psql meta-commands:
 
 ### 9.5 Re-apply accounting SQL safely vs full reset
 
-Use this quick decision table:
-
 | Goal | Script | Data impact |
-|---|---|---|
-| Apply missing/updated accounting objects on an existing DB | `/opt/club-erp/docs/account.safe.sql` | Non-destructive |
-| Rebuild accounting schema from scratch (empty DB/local reset) | `/opt/club-erp/docs/account.sql` | Destructive for accounting tables |
+|------|--------|-------------|
+| Apply missing/updated accounting objects on an existing DB | `docs/account.safe.sql` | Non-destructive |
+| Rebuild accounting schema from scratch (empty DB / local reset) | `docs/account.sql` | Destructive for accounting tables |
 
-**Safe re-apply (recommended on existing DB):**
 ```bash
+# Safe re-apply (recommended on existing DB)
 docker exec -i carnet-db psql -U erpuser -d erp_club_db \
   < /opt/club-erp/docs/account.safe.sql
-```
 
-**Full reset/rebuild (only when you intentionally want a clean slate):**
-```bash
+# Full reset/rebuild (only when you intentionally want a clean slate)
 docker exec -i carnet-db psql -U erpuser -d erp_club_db \
   < /opt/club-erp/docs/account.sql
-```
-
-If you still use the legacy bootstrap script, this remains valid:
-```bash
-docker exec -i carnet-db psql -U erpuser -d erp_club_db \
-  < /opt/club-erp/deploy/init-db/erp.sql
 ```
 
 ### 9.6 Quick table stats
@@ -475,18 +471,16 @@ labels:
 ### How it differs from CarnetDeVol (GitLab registry)
 
 | | CarnetDeVol | ERP Club |
-|---|---|---|
+|--|-------------|---------|
 | Registry | `registry.gitlab.com` | `ghcr.io` (GitHub Container Registry) |
 | Auth method | GitLab deploy token | GitHub PAT **or** anonymous (public repo) |
 | Credential location | `~/.docker/config.json` on the VPS | Same — `~/.docker/config.json` |
 
-Watchtower reads credentials from the host's Docker config file — **the mechanism is identical**,
-only the registry URL and token type differ.
+Watchtower reads credentials from the host's Docker config file — the mechanism is identical, only the registry URL and token type differ.
 
 ### Case A – Public GitHub repository (recommended)
 
-If both the GitHub repository **and** its packages are set to **Public**, GHCR images can be
-pulled without any authentication. Watchtower works with zero extra configuration.
+If both the GitHub repository **and** its packages are set to **Public**, GHCR images can be pulled without any authentication. Watchtower works with zero extra configuration.
 
 > GitHub packages visibility is set separately from the repository:
 > `GitHub → your package → Package settings → Change visibility → Public`
@@ -498,7 +492,6 @@ Create a **Personal Access Token (classic)** with the `read:packages` scope:
 
 Then authenticate on the VPS:
 ```bash
-# Replace with your GitHub username and PAT
 echo "ghp_YOUR_TOKEN_HERE" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 ```
 
@@ -508,27 +501,22 @@ cat ~/.docker/config.json | grep ghcr
 # Should show: "ghcr.io": { "auth": "..." }
 ```
 
-For Watchtower to use this file it must be mounted into the Watchtower container.
-A typical Watchtower compose entry looks like:
+For Watchtower to use this file it must be mounted into the Watchtower container:
 ```yaml
 watchtower:
   image: containrrr/watchtower
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
-    - /root/.docker/config.json:/config.json   # ← this line is the key
+    - /root/.docker/config.json:/config.json   # ← required for private registry auth
   environment:
     - WATCHTOWER_CLEANUP=true
     - WATCHTOWER_LABEL_ENABLE=true             # only update labelled containers
     - WATCHTOWER_POLL_INTERVAL=300             # check every 5 minutes
 ```
 
-If your Watchtower container already has this volume mount (it does for carnet GitLab),
-then simply running `docker login ghcr.io` on the host is all you need.
-
 ### Verify Watchtower is tracking ERP containers
 
 ```bash
-# Check Watchtower logs for mentions of erp-backend / erp-frontend
 docker logs watchtower 2>&1 | grep -i erp
 # Expected: "Found new ghcr.io/psa-avat/club-erp-backend:latest"
 ```
@@ -540,7 +528,7 @@ docker logs watchtower 2>&1 | grep -i erp
 Workflow: `.github/workflows/docker-publish.yml`
 
 | Trigger | Action |
-|---|---|
+|---------|--------|
 | Push to `main` | Builds both images, pushes `:latest` + `:main` to GHCR |
 | Push tag `v*.*.*` | Also tags `:1.2.3` and `:1.2` |
 | Pull request | Build only — validates Dockerfiles, no push |
@@ -549,7 +537,7 @@ No extra secrets needed for **public repos** — GitHub provides `GITHUB_TOKEN` 
 
 For **private repos**: `Settings → Actions → General → Workflow permissions → Read and write`.
 
-After images are pushed, Watchtower auto-updates within its poll interval, or you can force it:
+After images are pushed, Watchtower auto-updates within its poll interval, or force it manually:
 ```bash
 cd /opt/club-erp/deploy
 docker compose pull && docker compose up -d
@@ -560,41 +548,58 @@ docker compose pull && docker compose up -d
 ## 12. Useful daily commands
 
 ```bash
-# ── From deploy/ ──────────────────────────────────────────────────────────────
+# ── Stack management (from deploy/) ───────────────────────────────────────────
 
-docker compose ps                              # container status
-docker compose logs -f                         # tail all logs
-docker compose logs -f erp-backend             # backend logs only
-docker compose restart erp-backend             # restart without downtime
-docker compose pull && docker compose up -d    # update to latest images
+docker compose ps                                        # container status
+docker compose logs -f                                   # tail all logs
+docker compose logs -f erp-backend                       # backend logs only
+docker compose logs -f erp-frontend                      # frontend/nginx logs
+docker compose restart erp-backend                       # restart one service
+docker compose pull && docker compose up -d              # update to latest images
+docker compose build erp-backend && docker compose up -d erp-backend  # rebuild from source
+
+# ── Access URLs (local dev) ───────────────────────────────────────────────────
+
+# http://localhost:8080          – Frontend SPA
+# http://localhost:8000/health   – Backend health
+# http://localhost:8000/api/v1/docs – Swagger UI (DEV only)
+# http://localhost:9999          – Dozzle log viewer
+# http://localhost:9000          – RustFS S3 API
+# http://192.168.0.120:9001      – RustFS console
 
 # ── Database (VPS shared postgres) ────────────────────────────────────────────
 
 # Interactive psql
 docker exec -it carnet-db psql -U erpuser -d erp_club_db
 
-# Quick health / connectivity check
+# Quick connectivity check
 docker exec carnet-db psql -U erpuser -d erp_club_db -c "SELECT 1;"
 
 # Check which networks carnet-db is on
 docker inspect carnet-db --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
 
+# Backup (compressed)
+docker exec carnet-db pg_dump -U erpuser -d erp_club_db -Fc --no-owner \
+  > /opt/backups/erp_$(date +%Y%m%d_%H%M%S).pgdump
+
+# Restore from compressed backup
+docker exec -i carnet-db pg_restore -U erpuser -d erp_club_db \
+  --no-owner --no-privileges < /opt/backups/erp_YYYYMMDD_HHMMSS.pgdump
+
 # ── Database (local dev) ──────────────────────────────────────────────────────
 
 docker exec -it erp-db-dev psql -U erpuser -d erp_club_db
 ```
-docker exec carnet-db pg_dump -U erpuser -d erp_club_db -Fc --no-owner --no-privileges > /opt/backups/erp_$(date +%Y%m%d_%H%M%S).pgdump
 
-docker exec carnet-db pg_dump -U erpuser -d erp_club_db --no-owner --no-privileges > /opt/backups/erp_$(date +%Y%m%d_%H%M%S).sql
+---
 
-docker exec -i carnet-db psql -U erpuser -d erp_club_db < /opt/backups/erp_YYYYMMDD_HHMMSS.sql
+## Reference documentation
 
-Restore from .pgdump (custom format):
-docker exec -i carnet-db pg_restore -U erpuser -d erp_club_db --no-owner --no-privileges < /opt/backups/erp_YYYYMMDD_HHMMSS.pgdump
-
-If you need a full reset before restore (destructive):
-docker exec -it carnet-db psql -U erpuser -d erp_club_db -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-docker exec -i carnet-db psql -U erpuser -d erp_club_db < /opt/backups/erp_YYYYMMDD_HHMMSS.sql
-
-Quick verify after restore:
-docker exec -it carnet-db psql -U erpuser -d erp_club_db -c "\dt"
+| Document | Description |
+|----------|-------------|
+| `docs/USER_GUIDE.md` | End-user guide for all ERP modules |
+| `docs/SPEC_MAIN.md` | Module list, menu structure, feature inventory |
+| `docs/SPEC_ROLES_CAPABILITIES.md` | Roles, capabilities, 2FA parameters |
+| `docs/SPEC_ACCOUNTING.md` | Accounting module specification |
+| `docs/SPEC_FLIGHTS_BILLING.md` | Flight billing and pack specification |
+| `docs/migrations/` | Numbered SQL migrations (001–054+) |
