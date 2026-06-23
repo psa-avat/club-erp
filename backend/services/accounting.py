@@ -447,6 +447,7 @@ async def create_pricing_version(
     request: PricingVersionCreateRequest,
     user_id: int,
     asset_type_uuid: "UUID | None" = None,
+    exclude_uuid: "UUID | None" = None,
 ) -> PricingVersion:
     """Create pricing version with date overlap constraints."""
     if request.status != PRICING_STATUS_DRAFT:
@@ -470,6 +471,8 @@ async def create_pricing_version(
 
     candidate_end = request.to_date or date(9999, 12, 31)
     for version in existing_versions:
+        if exclude_uuid is not None and version.uuid == exclude_uuid:
+            continue
         existing_end = version.to_date or date(9999, 12, 31)
         overlaps = request.from_date <= existing_end and candidate_end >= version.from_date
         if overlaps:
@@ -698,6 +701,7 @@ async def clone_pricing_version(
         clone_request,
         user_id=user_id,
         asset_type_uuid=source_version.asset_type_uuid,
+        exclude_uuid=source_version_uuid,
     )
 
     source_items_result = await db.execute(
@@ -708,18 +712,21 @@ async def clone_pricing_version(
     )
     source_items = source_items_result.scalars().all()
 
+    q2 = Decimal("0.01")
     for source_item in source_items:
+        qty_quantizer = Decimal(10) ** -_from_qty_max_decimals(source_item.unit)
         item_request = PricingItemCreateRequest(
             flight_type_uuid=source_item.flight_type_uuid,
             name=source_item.name,
             unit=source_item.unit,
-            base_price=source_item.base_price,
-            age_discount_percent=source_item.age_discount_percent,
+            base_price=source_item.base_price.quantize(q2),
+            is_progressive=source_item.is_progressive,
+            age_discount_percent=source_item.age_discount_percent.quantize(q2),
             gl_account_credit_uuid=source_item.gl_account_credit_uuid,
             tiers=[
                 PricingItemTierCreate(
-                    from_qty=tier.from_qty,
-                    price=tier.price,
+                    from_qty=tier.from_qty.quantize(qty_quantizer),
+                    price=tier.price.quantize(q2),
                 )
                 for tier in sorted(source_item.tiers, key=lambda t: t.sort_order)
             ],
