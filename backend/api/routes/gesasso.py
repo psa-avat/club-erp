@@ -230,18 +230,35 @@ async def test_flight_push(
     if flight is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flight not found.")
 
-    # Resolve ffvp_id for the pilot via account_id (pilot_erp_id = Member.account_id)
-    ffvp_id_str: str | None = None
-    if flight.pilot_erp_id:
+    # Resolve ffvp_ids for pilot and second pilot (account_id = pilot_erp_id)
+    erp_ids = {i for i in [flight.pilot_erp_id, flight.second_pilot_erp_id] if i}
+    ffvp_map: dict[str, str] = {}
+    if erp_ids:
         try:
             mr = await db.execute(
-                select(Member.ffvp_id).where(Member.account_id == str(flight.pilot_erp_id))
+                select(Member.account_id, Member.ffvp_id).where(Member.account_id.in_(erp_ids))
             )
-            row = mr.scalar_one_or_none()
-            if row is not None:
-                ffvp_id_str = str(row)
+            ffvp_map = {str(r.account_id): str(r.ffvp_id) for r in mr.all() if r.ffvp_id is not None}
         except Exception:
             pass
+
+    # Resolve ffvp_id for winch/tow operator via trigram
+    if flight.launch_pilot_trigram:
+        try:
+            tr = await db.execute(
+                select(Member.trigram, Member.ffvp_id).where(Member.trigram == flight.launch_pilot_trigram)
+            )
+            row = tr.one_or_none()
+            if row and row.ffvp_id is not None:
+                ffvp_map[str(row.trigram)] = str(row.ffvp_id)
+        except Exception:
+            pass
+
+    # ffvp_id shown in the response is for the primary person (person_one)
+    is_instruction = flight.type_of_flight in (0, 5, 6)
+    person_one_id = str(flight.second_pilot_erp_id) if is_instruction and flight.second_pilot_erp_id \
+                    else str(flight.pilot_erp_id) if flight.pilot_erp_id else ""
+    ffvp_id_str = ffvp_map.get(person_one_id)
 
     # Load settings to build service
     setting = await get_system_setting(db, GESASSO_SETTINGS_MODULE)
@@ -258,7 +275,7 @@ async def test_flight_push(
         password=cfg["secret"],
         association_code=cfg.get("association_code", ""),
     )
-    service._ffvp_map = {str(flight.pilot_erp_id): ffvp_id_str} if ffvp_id_str else {}
+    service._ffvp_map = ffvp_map
     payload = service.map_flight(flight)
 
     if req.dry_run:

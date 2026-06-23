@@ -318,13 +318,14 @@ class GesassoSyncService(FederalSyncService):
                 "already_transferred": 0,
             }
 
-        # Build ffvp_id map: pilot_erp_id (member UUID str) → str(ffvp_id)
-        pilot_uuids_str = list({f.pilot_erp_id for f in flights if f.pilot_erp_id})
-        if pilot_uuids_str:
+        # Build ffvp_id map: account_id → str(ffvp_id) for all pilots and second pilots
+        all_erp_ids = {f.pilot_erp_id for f in flights if f.pilot_erp_id} | \
+                      {f.second_pilot_erp_id for f in flights if f.second_pilot_erp_id}
+        if all_erp_ids:
             try:
                 mr = await db.execute(
                     select(Member.account_id, Member.ffvp_id).where(
-                        Member.account_id.in_(pilot_uuids_str)
+                        Member.account_id.in_(all_erp_ids)
                     )
                 )
                 self._ffvp_map = {
@@ -337,21 +338,50 @@ class GesassoSyncService(FederalSyncService):
         else:
             self._ffvp_map = {}
 
-        # Pre-reject flights whose pilot has no ffvp_id
+        # Extend map with trigram → ffvp_id for winch/tow persons
+        all_trigrams = {f.launch_pilot_trigram for f in flights if f.launch_pilot_trigram}
+        if all_trigrams:
+            try:
+                tr = await db.execute(
+                    select(Member.trigram, Member.ffvp_id).where(
+                        Member.trigram.in_(all_trigrams)
+                    )
+                )
+                for row in tr.all():
+                    if row.ffvp_id is not None:
+                        self._ffvp_map[str(row.trigram)] = str(row.ffvp_id)
+            except Exception:
+                pass
+
+        # Pre-reject flights with missing required ffvp_ids.
+        # For instruction flights person_one is the instructor (second_pilot_erp_id).
+        # For other flights person_one is the pilot (pilot_erp_id).
+        # For WINCH flights the winch operator (launch_pilot_trigram) is also required.
         rejected_count = 0
         valid_uuids: list[UUID] = []
         for f in flights:
-            pilot_id = str(f.pilot_erp_id) if f.pilot_erp_id else ""
-            if not self._ffvp_map.get(pilot_id):
+            is_instruction = f.type_of_flight in (0, 5, 6)
+            person_one_id = str(f.second_pilot_erp_id) if is_instruction and f.second_pilot_erp_id \
+                            else str(f.pilot_erp_id) if f.pilot_erp_id else ""
+            if not self._ffvp_map.get(person_one_id):
                 await self._write_log(db, f.uuid, status=3)
                 rejected_count += 1
                 logger.warning(
-                    "gesasso_sync: flight %s rejected — pilot %s has no ffvp_id",
-                    f.uuid,
-                    pilot_id,
+                    "gesasso_sync: flight %s rejected — person_one %s has no ffvp_id",
+                    f.uuid, person_one_id,
                 )
-            else:
-                valid_uuids.append(f.uuid)
+                continue
+            if f.launch_method == 1:  # WINCH — winch operator required
+                trigram = str(f.launch_pilot_trigram) if f.launch_pilot_trigram else ""
+                if not self._ffvp_map.get(trigram):
+                    await self._write_log(db, f.uuid, status=3)
+                    rejected_count += 1
+                    logger.warning(
+                        "gesasso_sync: flight %s rejected — winch operator trigram %r has no ffvp_id",
+                        f.uuid, trigram or "(none)",
+                    )
+                    continue
+            valid_uuids.append(f.uuid)
 
         if rejected_count:
             await db.commit()
@@ -391,14 +421,35 @@ class GesassoSyncService(FederalSyncService):
     # ------------------------------------------------------------------
 
     def map_flight(self, flight: ValidatedFlight) -> dict[str, Any]:
-        """Map a ValidatedFlight to a GesAsso POST /flights-collection.json payload."""
+        """Map a ValidatedFlight to a GesAsso POST /flights-collection.json payload.
+
+        Person roles:
+          - Instruction flight (type_of_flight 0/5/6):
+              person_one = instructor (second_pilot_erp_id)
+              person_two = student    (pilot_erp_id)
+          - Other flights:
+              person_one = pilot      (pilot_erp_id)
+              person_two = second pilot if present (second_pilot_erp_id)
+        """
+        # ERP launch_method: 0=extérieur, 1=treuil, 2=remorqueur, 3=autonome
         launching_mode_map = {
-            0: "AUTONOMOUS",
-            1: "WINCH",
-            2: "AIRCRAFT_TOWING",
-            3: "CAR_TOWING",
+            0: "AIRCRAFT_TOWING",   # extérieur — external/guest tow, best approximation
+            1: "WINCH",             # treuil
+            2: "AIRCRAFT_TOWING",   # remorqueur
+            3: "AUTONOMOUS",        # autonome (self-launch / TMG)
         }
         is_instruction = flight.type_of_flight in (0, 5, 6)
+
+        pilot_id = str(flight.pilot_erp_id) if flight.pilot_erp_id else ""
+        second_id = str(flight.second_pilot_erp_id) if flight.second_pilot_erp_id else ""
+
+        if is_instruction:
+            person_one_id = second_id   # instructor
+            person_two_id = pilot_id    # student
+        else:
+            person_one_id = pilot_id    # sole pilot or PIC
+            person_two_id = second_id   # second pilot if any
+
         payload: dict[str, Any] = {
             "date": flight.jour.isoformat() if flight.jour else None,
             "association_code": self.association_code,
@@ -406,10 +457,13 @@ class GesassoSyncService(FederalSyncService):
             "takeoff_count": flight.landing_count or 1,
         }
 
-        pilot_id = str(flight.pilot_erp_id) if flight.pilot_erp_id else ""
-        ffvp_id = self._ffvp_map.get(pilot_id)
-        if ffvp_id:
-            payload["person_one_licence_number"] = ffvp_id
+        p1_ffvp = self._ffvp_map.get(person_one_id)
+        if p1_ffvp:
+            payload["person_one_licence_number"] = p1_ffvp
+
+        p2_ffvp = self._ffvp_map.get(person_two_id) if person_two_id else None
+        if p2_ffvp:
+            payload["person_two_licence_number"] = p2_ffvp
 
         if flight.asset_code:
             payload["aircraft_registration"] = flight.asset_code
@@ -420,13 +474,26 @@ class GesassoSyncService(FederalSyncService):
         if flight.launch_method is not None:
             payload["launching_mode"] = launching_mode_map.get(flight.launch_method, "AUTONOMOUS")
         if flight.engine_time is not None:
-            payload["engine_duration"] = int(flight.engine_time)
+            payload["engine_duration"] = int(flight.engine_time*100)
         if flight.launch_asset_code:
-            payload["tow_aircraft_registration"] = flight.launch_asset_code
-        if flight.takeoff_location:
-            payload["takeoff_oaci_code"] = flight.takeoff_location
-        if flight.landed_location:
-            payload["landing_oaci_code"] = flight.landed_location
+            if flight.launch_method == 1:  # treuil → WINCH
+                payload["winch_registration"] = flight.launch_asset_code
+                winch_ffvp = self._ffvp_map.get(str(flight.launch_pilot_trigram)) \
+                             if flight.launch_pilot_trigram else None
+                if winch_ffvp:
+                    payload["winch_person_licence_number"] = winch_ffvp
+            else:
+                payload["tow_aircraft_registration"] = flight.launch_asset_code
+                tow_ffvp = self._ffvp_map.get(str(flight.launch_pilot_trigram)) \
+                           if flight.launch_pilot_trigram else None
+                if tow_ffvp:
+                    payload["tow_person_one_licence_number"] = tow_ffvp
+        takeoff_oaci = flight.takeoff_location or flight.aero
+        landing_oaci = flight.landed_location or flight.aero
+        if takeoff_oaci:
+            payload["takeoff_oaci_code"] = takeoff_oaci
+        if landing_oaci:
+            payload["landing_oaci_code"] = landing_oaci
         if flight.observations:
             payload["comment"] = flight.observations
         return payload
