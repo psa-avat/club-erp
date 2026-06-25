@@ -99,7 +99,7 @@ class PackDefinitionResponse(BaseModel):
 
 class MemberPackConsumptionCreate(BaseModel):
     """Record a pack consumption for a flight line."""
-    member_uuid: UUID
+    tiers_uuid: UUID
     flight_uuid: UUID
     pack_type: str
     valid_from: datetime = Field(description="Pack is applicable only to flights on or after this date")
@@ -114,7 +114,7 @@ class MemberPackConsumptionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     uuid: UUID
-    member_uuid: UUID
+    tiers_uuid: UUID
     flight_uuid: UUID
     pack_type: str
     pack_definition_uuid: Optional[UUID] = None

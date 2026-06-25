@@ -881,6 +881,7 @@ async def count_entries_endpoint(
     entry_date_to: date | None = None,
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
+    null_tiers: bool | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
@@ -899,6 +900,7 @@ async def count_entries_endpoint(
         entry_date_to=entry_date_to,
         amount_min=amount_min,
         amount_max=amount_max,
+        null_tiers=null_tiers,
     )
     return {"total": total}
 
@@ -917,6 +919,7 @@ async def list_entries_endpoint(
     entry_date_to: date | None = None,
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
+    null_tiers: bool | None = None,
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
@@ -937,6 +940,7 @@ async def list_entries_endpoint(
         entry_date_to=entry_date_to,
         amount_min=amount_min,
         amount_max=amount_max,
+        null_tiers=null_tiers,
         limit=limit,
         offset=offset,
     )

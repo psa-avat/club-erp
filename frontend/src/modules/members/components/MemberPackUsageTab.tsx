@@ -6,7 +6,7 @@
 */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, ShoppingBag, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, ShoppingBag, Loader2, Download } from 'lucide-react'
 
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { useActiveFiscalYearQuery, usePackPurchasesQuery } from '../../banque/api'
@@ -48,8 +48,71 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
     )
   }
 
+  function exportToCsv() {
+    const headers = [
+      t('ops.packs.pack', 'Forfait'),
+      t('ops.packs.date', 'Date achat'),
+      t('ops.packs.qtyBought', 'Acheté'),
+      t('ops.packs.qtyRemaining', 'Restant'),
+      t('ops.packs.price', 'Montant achat'),
+      t('ops.packs.flightDate', 'Date vol'),
+      t('ops.packs.assetCode', 'Machine'),
+      t('ops.packs.qtyConsumed', 'Qté cons.'),
+      t('ops.packs.unitDiscount', 'Remise unit.'),
+      t('ops.packs.totalDiscount', 'Remise totale'),
+    ]
+    const rows: string[][] = []
+    for (const p of purchases!.items) {
+      if (p.consumptions && p.consumptions.length > 0) {
+        for (const c of p.consumptions) {
+          rows.push([
+            p.pack_code ?? p.pack_type ?? '',
+            p.entry_date ?? '',
+            String(p.units_purchased),
+            String(p.units_remaining),
+            Number(p.amount).toFixed(2).replace('.', ','),
+            c.flight_date ?? '',
+            c.asset_code ?? '',
+            String(c.quantity_consumed),
+            Number(c.discount_unit_price).toFixed(2).replace('.', ','),
+            Number(c.total_discount_amount).toFixed(2).replace('.', ','),
+          ])
+        }
+      } else {
+        rows.push([
+          p.pack_code ?? p.pack_type ?? '',
+          p.entry_date ?? '',
+          String(p.units_purchased),
+          String(p.units_remaining),
+          Number(p.amount).toFixed(2).replace('.', ','),
+          '', '', '', '', '',
+        ])
+      }
+    }
+    const csv = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `forfaits-${memberUuid.slice(0, 8)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={exportToCsv}
+          className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {t('ops.packs.exportCsv', 'Exporter CSV')}
+        </button>
+      </div>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">

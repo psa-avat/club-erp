@@ -248,7 +248,7 @@ async def record_consumption(
     """Record a pack consumption row for a flight line."""
     consumption = MemberPackConsumption(
         uuid=uuid4(),
-        member_uuid=request.member_uuid,
+        tiers_uuid=request.tiers_uuid,
         flight_uuid=request.flight_uuid,
         pack_type=request.pack_type,
         valid_from=request.valid_from,
@@ -283,7 +283,7 @@ async def list_consumptions_for_member(
 ) -> list[MemberPackConsumption]:
     """List all pack consumptions for a given member, optionally filtered by type."""
     stmt = select(MemberPackConsumption).where(
-        MemberPackConsumption.member_uuid == member_uuid
+        MemberPackConsumption.tiers_uuid == member_uuid
     )
     if pack_type is not None:
         stmt = stmt.where(MemberPackConsumption.pack_type == pack_type)
@@ -427,7 +427,7 @@ async def create_pack_purchase_entry(
         fiscal_year_uuid=fy.uuid,
         entry_uuid=entry_uuid,
         account_uuid=receivable.uuid,
-        member_uuid=member_uuid,
+        tiers_uuid=member_uuid,
         debit=amount,
     ))
 
@@ -550,7 +550,7 @@ async def compute_rem_adjustment(
     result = await db.execute(
         select(func.coalesce(func.sum(MemberPackConsumption.total_discount_amount), 0))
         .where(
-            MemberPackConsumption.member_uuid == member_uuid,
+            MemberPackConsumption.tiers_uuid == member_uuid,
             MemberPackConsumption.created_at >= period_start,
             MemberPackConsumption.created_at < period_end,
         )
@@ -692,7 +692,10 @@ async def _load_pack_context(
             continue
 
         activated_at = _parse_valid_from(entry.description, entry.entry_date)
-        remaining = _dec(line.credit)
+        # remaining is in the pack's own units (hours, launches…), NOT the monetary
+        # credit on the accounting line.  Using line.credit (euros) was wrong: it
+        # prevented depletion and broke FIFO switching between multiple packs.
+        remaining = _dec(pd.quantity_allowance)
 
         pack_slots.append(_PackSlot(
             pack_def=pd,
@@ -766,8 +769,15 @@ async def _apply_flight_consumptions(
     total_discount = Decimal("0")
     has_any_discount = False
 
+    member_uuid_str = str(member.uuid)
     for line in preview.applied_lines:
         if not line.pricing_item_uuid:
+            continue
+
+        # Only apply pack discounts to billing lines charged to this specific member.
+        # Shared flights produce one line per payer; without this guard, lines
+        # belonging to the other pilot would also consume from Marion's pack.
+        if line.payer_member_uuid and line.payer_member_uuid != member_uuid_str:
             continue
 
         pi_key = str(line.pricing_item_uuid)
@@ -811,7 +821,7 @@ async def _apply_flight_consumptions(
 
             db.add(MemberPackConsumption(
                 uuid=uuid4(),
-                member_uuid=member.uuid,
+                tiers_uuid=member.uuid,
                 flight_uuid=flight.uuid,
                 pack_type=slot.pack_def.pack_type,
                 pack_definition_uuid=slot.pack_def.uuid,
@@ -934,7 +944,7 @@ async def upsert_rem_entry(
         fiscal_year_uuid=fiscal_year_uuid,
         entry_uuid=entry.uuid,
         account_uuid=receivable.uuid,
-        member_uuid=member_uuid,
+        tiers_uuid=member_uuid,
         credit=total_discount,
     ))
 
@@ -997,7 +1007,7 @@ async def discount_review_for_member(
     # -------------------------------------------------------------------
     await db.execute(
         delete(MemberPackConsumption).where(
-            MemberPackConsumption.member_uuid == member_uuid,
+            MemberPackConsumption.tiers_uuid == member_uuid,
             MemberPackConsumption.flight_uuid.isnot(None),
         )
     )
@@ -1112,7 +1122,7 @@ async def discount_review_for_member(
             await db.execute(
                 update(MemberPackConsumption)
                 .where(
-                    MemberPackConsumption.member_uuid == member_uuid,
+                    MemberPackConsumption.tiers_uuid == member_uuid,
                     MemberPackConsumption.flight_uuid.isnot(None),
                 )
                 .values(accounting_entry_uuid=rem_entry.uuid)

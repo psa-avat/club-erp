@@ -132,6 +132,14 @@ def _parse_date(val: str) -> str:
     raise ValueError(f"Cannot parse date: {val!r}")
 
 
+def _to_dmy(iso_date: str) -> str:
+    """YYYY-MM-DD → DD/MM/YYYY for CSV output."""
+    try:
+        return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        return iso_date
+
+
 def _normalize_name(s: str) -> str:
     """Lowercase, strip diacritics and whitespace for fuzzy name matching."""
     s = (s or "").strip().lower()
@@ -183,6 +191,16 @@ def load_erp_lookups(conn) -> dict:
         prefix = code[:3]
         if prefix not in accounts_by_prefix:
             accounts_by_prefix[prefix] = uuid
+
+    # Fallback members for 411 lines: EXT-0000 (legacy pilot n=1), EXT-0002 (collective labels)
+    cur.execute(
+        "SELECT uuid::text, account_id FROM members WHERE account_id IN ('EXT-0000', 'EXT-0002')"
+    )
+    _ext_members: dict[str, dict] = {}
+    for _uuid, _aid in cur.fetchall():
+        _ext_members[_aid] = {"uuid": _uuid, "account_id": _aid}
+    member_ext_0000 = _ext_members.get("EXT-0000")
+    member_ext_0002 = _ext_members.get("EXT-0002")
 
     # Members: uuid, account_id, ffvp_id (bigint), first_name, last_name
     cur.execute(
@@ -249,13 +267,13 @@ def load_erp_lookups(conn) -> dict:
     # Fallback: (jour, asset_code, pilot_erp_id) — first match only (legacy behavior)
     cur.execute(
         "SELECT uuid::text, jour::text, asset_code, pilot_erp_id::text, "
-        "       accounting_entry_uuid::text, takeoff_time "
+        "       accounting_entry_uuid::text, takeoff_time, type_of_flight "
         "FROM validated_flights"
     )
     flights_by_key: dict[tuple, dict] = {}        # fallback: (date, ac, pilot)
     flights_by_key_time: dict[tuple, dict] = {}   # precise: (date, ac, pilot, time)
     erp_flights_all: list[dict] = []
-    for uuid, jour, asset_code, pilot_erp_id, ae_uuid, takeoff_time in cur.fetchall():
+    for uuid, jour, asset_code, pilot_erp_id, ae_uuid, takeoff_time, type_of_flight in cur.fetchall():
         f = {
             "uuid": uuid,
             "jour": jour,
@@ -263,6 +281,7 @@ def load_erp_lookups(conn) -> dict:
             "pilot_erp_id": pilot_erp_id,
             "accounting_entry_uuid": ae_uuid,
             "takeoff_time": takeoff_time or "",
+            "type_of_flight": type_of_flight,  # 2 = initiation
         }
         erp_flights_all.append(f)
         base_key = (jour, asset_code, pilot_erp_id)
@@ -272,9 +291,9 @@ def load_erp_lookups(conn) -> dict:
             time_key = (jour, asset_code, pilot_erp_id, _normalize_time(takeoff_time))
             flights_by_key_time[time_key] = f
 
-    # Existing pack consumptions (idempotency): set of (flight_uuid, member_uuid)
+    # Existing pack consumptions (idempotency): set of (flight_uuid, tiers_uuid)
     cur.execute(
-        "SELECT flight_uuid::text, member_uuid::text FROM member_pack_consumptions"
+        "SELECT flight_uuid::text, tiers_uuid::text FROM member_pack_consumptions"
     )
     existing_consumptions: set[tuple] = {(r[0], r[1]) for r in cur.fetchall()}
 
@@ -295,6 +314,28 @@ def load_erp_lookups(conn) -> dict:
         r[0]: Decimal(str(r[1])) for r in cur.fetchall()
     }
 
+    # FL journal lines by account code: code → {debit, credit} (for summary report)
+    cur.execute(
+        """
+        SELECT aa.code,
+               COALESCE(SUM(al.debit), 0),
+               COALESCE(SUM(al.credit), 0)
+        FROM accounting_entries ae
+        JOIN accounting_lines al
+            ON al.entry_uuid = ae.uuid AND al.fiscal_year_uuid = ae.fiscal_year_uuid
+        JOIN accounting_journals aj ON aj.uuid = ae.journal_uuid
+        JOIN accounting_accounts aa ON aa.uuid = al.account_uuid
+        WHERE aj.code = 'FL' AND ae.fiscal_year_uuid = %s
+        GROUP BY aa.code
+        ORDER BY aa.code
+        """,
+        (fy_uuid,),
+    )
+    fl_by_account: dict[str, dict] = {
+        r[0]: {"debit": Decimal(str(r[1])), "credit": Decimal(str(r[2]))}
+        for r in cur.fetchall()
+    }
+
     cur.close()
 
     return {
@@ -312,6 +353,9 @@ def load_erp_lookups(conn) -> dict:
         "flights_by_key_time": flights_by_key_time,
         "existing_consumptions": existing_consumptions,
         "fl_entry_gross": fl_entry_gross,
+        "fl_by_account": fl_by_account,
+        "member_ext_0000": member_ext_0000,
+        "member_ext_0002": member_ext_0002,
     }
 
 
@@ -532,6 +576,19 @@ def build_accounting_entries(
                             f"not in V_pilotes_2026.csv — tiers_uuid left null"
                         )
                         stats["warnings"] += 1
+                if tiers_uuid is None and n_pilote == "1":
+                    fallback = lookups.get("member_ext_0000")
+                    if fallback:
+                        tiers_uuid = fallback["uuid"]
+                        member_account_id = fallback["account_id"] or ""
+                if tiers_uuid is None:
+                    line_label = (line.get(col_label) or "").lower()
+                    _EXT_KEYWORDS = ("helloasso", "vols", "vol", "jd", "vi","V.I")
+                    if any(kw in line_label for kw in _EXT_KEYWORDS):
+                        fallback = lookups.get("member_ext_0002")
+                        if fallback:
+                            tiers_uuid = fallback["uuid"]
+                            member_account_id = fallback["account_id"] or ""
 
             line_dict: dict = {
                 "account_uuid": account_uuid,
@@ -675,7 +732,7 @@ def build_pack_consumptions(
                         Decimal("0.0001"), rounding=ROUND_HALF_UP
                     )
                     consumptions.append({
-                        "member_uuid": pilot_uuid,
+                        "tiers_uuid": pilot_uuid,
                         "flight_uuid": flight_uuid,
                         "pack_type": "flight_hours",
                         "quantity_consumed": str(qty),
@@ -718,7 +775,7 @@ def build_pack_consumptions(
                         Decimal("0.0001"), rounding=ROUND_HALF_UP
                     )
                     consumptions.append({
-                        "member_uuid": copilot_uuid,
+                        "tiers_uuid": copilot_uuid,
                         "flight_uuid": flight_uuid,
                         "pack_type": "flight_hours",
                         "quantity_consumed": str(qty),
@@ -774,7 +831,7 @@ def build_gap_report(
     missing_rows: list[dict] = []   # MISSING_FROM_ERP with full legacy detail
     price_gap_rows: list[dict] = [] # MATCHED + billed + price_diff != 0
 
-    stats = {
+    stats: dict = {
         "legacy_total": 0,
         "matched": 0,
         "multi_matched": 0,
@@ -784,6 +841,16 @@ def build_gap_report(
         "price_mismatch": 0,
         "missing_from_erp": 0,
         "missing_from_legacy": 0,
+        # Gross totals — regular flights
+        "sum_vulcain_gross_regular": Decimal("0"),
+        "sum_erp_gross_regular": Decimal("0"),
+        "price_match_regular": 0,
+        "price_mismatch_regular": 0,
+        # Gross totals — initiation flights (type_de_vol=7 / type_of_flight=2)
+        "sum_vulcain_gross_initiation": Decimal("0"),
+        "sum_erp_gross_initiation": Decimal("0"),
+        "price_match_initiation": 0,
+        "price_mismatch_initiation": 0,
     }
 
     for row in flight_rows:
@@ -825,17 +892,27 @@ def build_gap_report(
             ae_uuid = erp_flight.get("accounting_entry_uuid") or ""
             erp_gross = fl_entry_gross.get(ae_uuid, Decimal("0")) if ae_uuid else Decimal("0")
             is_billed = bool(ae_uuid) and erp_gross > 0
+
+            # Initiation: Vulcain type_de_vol=7 OR ERP type_of_flight=2
+            is_initiation = (type_vol == "7") or (erp_flight.get("type_of_flight") == 2)
+            suffix = "initiation" if is_initiation else "regular"
+
             if is_billed:
                 stats["matched_billed"] += 1
+                stats[f"sum_erp_gross_{suffix}"] += erp_gross
+                stats[f"sum_vulcain_gross_{suffix}"] += prix_gross
             else:
                 stats["matched_unbilled"] += 1
+                stats[f"sum_vulcain_gross_{suffix}"] += prix_gross
             price_diff = erp_gross - prix_gross if is_billed else Decimal("0")
 
             if is_billed:
                 if abs(price_diff) <= Decimal("0.05"):
                     stats["price_match"] += 1
+                    stats[f"price_match_{suffix}"] += 1
                 else:
                     stats["price_mismatch"] += 1
+                    stats[f"price_mismatch_{suffix}"] += 1
                     price_gap_rows.append({
                         "vulcain_n": n_str,
                         "date": date_str,
@@ -843,6 +920,7 @@ def build_gap_report(
                         "pilot_legacy_id": n_pilote,
                         "pilot_erp_id": pilot_erp_id,
                         "pilot_name": pilot_name,
+                        "is_initiation": "Y" if is_initiation else "N",
                         "takeoff": _normalize_time(takeoff_raw),
                         "landing": _normalize_time(landing_raw),
                         "duration_min": temps,
@@ -859,6 +937,7 @@ def build_gap_report(
                 "aircraft": aircraft,
                 "pilot_legacy_id": n_pilote,
                 "pilot_erp_id": pilot_erp_id,
+                "is_initiation": "Y" if is_initiation else "N",
                 "status": "MATCHED",
                 "vulcain_gross": str(prix_gross.quantize(Decimal("0.01"))),
                 "erp_gross": str(erp_gross.quantize(Decimal("0.01"))) if is_billed else "",
@@ -874,6 +953,7 @@ def build_gap_report(
                 "aircraft": aircraft,
                 "pilot_legacy_id": n_pilote,
                 "pilot_erp_id": pilot_erp_id,
+                "is_initiation": "Y" if type_vol == "7" else "N",
                 "status": "MISSING_FROM_ERP",
                 "vulcain_gross": str(prix_gross.quantize(Decimal("0.01"))),
                 "erp_gross": "",
@@ -908,6 +988,7 @@ def build_gap_report(
                 "aircraft": f["asset_code"] or "",
                 "pilot_legacy_id": "",
                 "pilot_erp_id": f["pilot_erp_id"] or "",
+                "is_initiation": "Y" if f.get("type_of_flight") == 2 else "N",
                 "status": "MISSING_FROM_LEGACY",
                 "vulcain_gross": "",
                 "erp_gross": "",
@@ -949,6 +1030,10 @@ def write_outputs(
     member_map: dict,
     pilot_rows: list[dict],
     warnings: list[str],
+    fl_by_account: dict,
+    vulcain_vvo_by_account: dict,
+    unresolved_in_entries: dict | None = None,
+    unresolved_in_flights: dict | None = None,
 ) -> dict:
     """Write all output files. Returns summary stats."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -976,7 +1061,7 @@ def write_outputs(
                 for line in entry.get("_lines_full", []):
                     w.writerow({
                         "num_ecriture": entry.get("reference", ""),
-                        "date": entry.get("entry_date", ""),
+                        "date": _to_dmy(entry.get("entry_date", "")),
                         "journal": journal_code,
                         "label": line.get("description", ""),
                         "account_code": line.get("_account_code", ""),
@@ -1015,7 +1100,7 @@ def write_outputs(
 
     # 4. Gap report CSV
     gap_cols = ["vulcain_n", "date", "aircraft", "pilot_legacy_id", "pilot_erp_id",
-                "status", "vulcain_gross", "erp_gross", "price_diff",
+                "is_initiation", "status", "vulcain_gross", "erp_gross", "price_diff",
                 "erp_flight_uuid", "erp_entry_uuid"]
     gap_path = OUTPUT_DIR / "gap_report_flights.csv"
     with open(gap_path, "w", encoding="utf-8", newline="") as f:
@@ -1037,7 +1122,7 @@ def write_outputs(
 
     # 4c. Price mismatch CSV (MATCHED + billed + price_diff != 0)
     price_cols = ["vulcain_n", "date", "aircraft", "pilot_legacy_id", "pilot_erp_id",
-                  "pilot_name", "takeoff", "landing", "duration_min",
+                  "pilot_name", "is_initiation", "takeoff", "landing", "duration_min",
                   "vulcain_gross", "erp_gross", "price_diff",
                   "erp_flight_uuid", "erp_entry_uuid"]
     price_path = OUTPUT_DIR / "price_mismatches.csv"
@@ -1065,6 +1150,33 @@ def write_outputs(
                 "YES" if m else "NO",
             ])
     print(f"  Written member mapping ({len(member_map)} pilots) → {mapping_path.name}")
+
+    # 5b. Unresolved pilots CSV (for manual review)
+    unresolved_path = OUTPUT_DIR / "unresolved_pilots.csv"
+    unresolved_rows = [
+        (n, pilot_index.get(n, {}))
+        for n, m in sorted(member_map.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+        if m is None
+    ]
+    _in_entries = unresolved_in_entries or {}
+    _in_flights = unresolved_in_flights or {}
+    with open(unresolved_path, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["n_pilote", "nom", "prénom", "num_FFVV", "nb_ecritures", "ecritures", "nb_vols", "vols"])
+        for n, pr in unresolved_rows:
+            entries_list = _in_entries.get(n, [])
+            flights_list = _in_flights.get(n, [])
+            w.writerow([
+                n,
+                pr.get("nom", ""),
+                pr.get("prénom") or pr.get("prenom", ""),
+                pr.get("num_FFVV", ""),
+                len(entries_list),
+                "; ".join(entries_list),
+                len(flights_list),
+                "; ".join(flights_list),
+            ])
+    print(f"  Written {len(unresolved_rows):>5} unresolved pilots → {unresolved_path.name}")
 
     # 6. Warnings file
     if warnings:
@@ -1105,6 +1217,69 @@ def write_outputs(
         f"  Not billed in ERP:           {gap_stats.get('matched_unbilled', 0)}",
         f"  Price matches (≤0.05 diff):  {gap_stats.get('price_match', 0)}",
         f"  Price mismatches:            {gap_stats.get('price_mismatch', 0)}",
+        f"    of which regular flights:  {gap_stats.get('price_mismatch_regular', 0)}",
+        f"    of which initiation:       {gap_stats.get('price_mismatch_initiation', 0)}  (expected — different billing method)",
+        "",
+    ]
+
+    # Gross totals split by flight category
+    sv_reg  = gap_stats.get("sum_vulcain_gross_regular",    Decimal("0"))
+    se_reg  = gap_stats.get("sum_erp_gross_regular",        Decimal("0"))
+    sv_ini  = gap_stats.get("sum_vulcain_gross_initiation", Decimal("0"))
+    se_ini  = gap_stats.get("sum_erp_gross_initiation",     Decimal("0"))
+    sv_tot  = sv_reg + sv_ini
+    se_tot  = se_reg + se_ini
+    summary_lines += [
+        "--- Flight Gross Totals (matched flights) ---",
+        f"                            {'Vulcain':>12}   {'ERP (billed)':>12}   {'Diff':>12}",
+        f"  Regular flights           {sv_reg:>12.2f}   {se_reg:>12.2f}   {se_reg - sv_reg:>12.2f}",
+        f"  Initiation flights        {sv_ini:>12.2f}   {se_ini:>12.2f}   {se_ini - sv_ini:>12.2f}",
+        f"  TOTAL                     {sv_tot:>12.2f}   {se_tot:>12.2f}   {se_tot - sv_tot:>12.2f}",
+        "  Note: Vulcain column includes unbilled flights; ERP column shows billed only.",
+        "",
+    ]
+
+    # ERP FL journal by account
+    summary_lines += ["--- ERP FL Journal — By Account ---"]
+    if fl_by_account:
+        col_w = max(len(k) for k in fl_by_account) + 2
+        total_fl_debit = Decimal("0")
+        total_fl_credit = Decimal("0")
+        for code, amounts in sorted(fl_by_account.items()):
+            d = amounts["debit"]
+            c = amounts["credit"]
+            total_fl_debit += d
+            total_fl_credit += c
+            summary_lines.append(
+                f"  {code:<{col_w}}  debit={d:>12.2f}  credit={c:>12.2f}"
+            )
+        summary_lines.append(
+            f"  {'TOTAL':<{col_w}}  debit={total_fl_debit:>12.2f}  credit={total_fl_credit:>12.2f}"
+        )
+    else:
+        summary_lines.append("  (no FL journal entries found)")
+    summary_lines.append("")
+
+    # Vulcain VVO journal by account
+    summary_lines += ["--- Vulcain VVO Journal — By Account ---"]
+    if vulcain_vvo_by_account:
+        col_w = max(len(k) for k in vulcain_vvo_by_account) + 2
+        total_vvo_debit = Decimal("0")
+        total_vvo_credit = Decimal("0")
+        for code, amounts in sorted(vulcain_vvo_by_account.items()):
+            d = amounts["debit"]
+            c = amounts["credit"]
+            total_vvo_debit += d
+            total_vvo_credit += c
+            summary_lines.append(
+                f"  {code:<{col_w}}  debit={d:>12.2f}  credit={c:>12.2f}"
+            )
+        summary_lines.append(
+            f"  {'TOTAL':<{col_w}}  debit={total_vvo_debit:>12.2f}  credit={total_vvo_credit:>12.2f}"
+        )
+    else:
+        summary_lines.append("  (no VVO journal entries found)")
+    summary_lines += [
         "",
         f"--- Warnings: {len(warnings)} ---",
     ]
@@ -1177,6 +1352,34 @@ def main() -> None:
     if unresolved:
         print(f"  WARNING: {len(unresolved)} pilots unresolved: {unresolved[:10]}{'…' if len(unresolved) > 10 else ''}")
 
+    # Index which accounting entries and flights each unresolved pilot appears in
+    unresolved_set = {n for n, m in member_map.items() if m is None}
+    unresolved_in_entries: dict[str, list[str]] = {n: [] for n in unresolved_set}
+    unresolved_in_flights: dict[str, list[str]] = {n: [] for n in unresolved_set}
+    if unresolved_set:
+        if accounting_rows:
+            _s = accounting_rows[0]
+            _col_np = _find_col(_s, ["num_pilote"])
+            _col_ne = _find_col(_s, ["num_écriture", "num_ecriture", "num_Ã©criture"])
+            for _row in accounting_rows:
+                _np = (_row.get(_col_np) or "").strip()
+                if _np in unresolved_set:
+                    _ne = (_row.get(_col_ne) or "").strip()
+                    if _ne and _ne not in unresolved_in_entries[_np]:
+                        unresolved_in_entries[_np].append(_ne)
+        if flight_rows:
+            _sf = flight_rows[0]
+            _col_fn = _find_col(_sf, ["n"])
+            _col_fp = _find_col(_sf, ["n_pilote"])
+            _col_fc = _find_col(_sf, ["n_copilote"])
+            for _row in flight_rows:
+                _fn = (_row.get(_col_fn) or "").strip()
+                for _col in (_col_fp, _col_fc):
+                    _np = (_row.get(_col) or "").strip()
+                    if _np in unresolved_set:
+                        if _fn and _fn not in unresolved_in_flights[_np]:
+                            unresolved_in_flights[_np].append(_fn)
+
     # Step 1: Accounting entries
     print("\nStep 1 — Accounting entries (non-flight)…")
     entries_by_journal = build_accounting_entries(accounting_rows, member_map, lookups, warnings)
@@ -1191,6 +1394,28 @@ def main() -> None:
     # Step 3: Gap report
     print("Step 3 — Flight gap report…")
     gap_report, missing_flights, price_gap = build_gap_report(flight_rows, member_map, lookups, warnings)
+
+    # Compute Vulcain VVO by-account from accounting CSV (VVO rows skipped from import)
+    vulcain_vvo_by_account: dict[str, dict] = {}
+    if accounting_rows:
+        s = accounting_rows[0]
+        col_jrn = _find_col(s, ["journal"])
+        col_cpt = _find_col(s, ["compte"])
+        col_deb = _find_col(s, ["débit", "debit", "dÃ©bit"])
+        col_crd = _find_col(s, ["crédit", "credit", "crÃ©dit"])
+        for row in accounting_rows:
+            if (row.get(col_jrn) or "").strip().upper() != "VVO":
+                continue
+            compte = (row.get(col_cpt) or "").strip()
+            prefix = compte[:3] if len(compte) >= 3 else compte
+            if not prefix:
+                continue
+            d = _clean_amount(row.get(col_deb) or "")
+            c = _clean_amount(row.get(col_crd) or "")
+            if prefix not in vulcain_vvo_by_account:
+                vulcain_vvo_by_account[prefix] = {"debit": Decimal("0"), "credit": Decimal("0")}
+            vulcain_vvo_by_account[prefix]["debit"] += d
+            vulcain_vvo_by_account[prefix]["credit"] += c
 
     if dry_run:
         print("\n[DRY RUN] No files written. Remove --dry-run to generate output.")
@@ -1211,6 +1436,10 @@ def main() -> None:
         member_map,
         pilot_rows,
         warnings,
+        fl_by_account=lookups["fl_by_account"],
+        vulcain_vvo_by_account=vulcain_vvo_by_account,
+        unresolved_in_entries=unresolved_in_entries,
+        unresolved_in_flights=unresolved_in_flights,
     )
 
     print()

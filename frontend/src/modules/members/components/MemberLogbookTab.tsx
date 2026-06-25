@@ -20,7 +20,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, Download } from 'lucide-react'
 
 import { Input } from '../../../components/ui/input'
 import { DataTable } from '../../../components/ui/data-table'
@@ -133,6 +133,20 @@ function ExpandedRowContent({ flight, t }: { flight: LogbookItem; t: (key: strin
           <span className="font-medium text-slate-500">{t('logbookGrossAmount')} :</span>{' '}
           <span className="text-slate-800">{formatMoney(flight.gross_amount)} €</span>
         </div>
+        {flight.has_discount && flight.net_amount !== null && (
+          <div>
+            <span className="font-medium text-slate-500">{t('logbookNetAmount')} :</span>{' '}
+            <span className="font-semibold text-emerald-700">{formatMoney(flight.net_amount)} €</span>
+          </div>
+        )}
+        {flight.has_discount && flight.gross_amount !== null && flight.net_amount !== null && (
+          <div>
+            <span className="font-medium text-slate-500">{t('logbookDiscount')} :</span>{' '}
+            <span className="font-medium text-blue-700">
+              -{formatMoney(String(Number(flight.gross_amount) - Number(flight.net_amount)))} €
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Errors */}
@@ -273,12 +287,26 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
     {
       key: 'amount',
       header: t('logbookAmount'),
-      className: 'min-w-[100px] text-right',
-      cell: (row) => (
-        <span className={`text-sm font-medium ${Number(row.gross_amount) > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
-          {formatMoney(row.gross_amount)} €
-        </span>
-      ),
+      className: 'min-w-[110px] text-right',
+      cell: (row) => {
+        if (row.has_discount && row.gross_amount !== null && row.net_amount !== null) {
+          const discount = Number(row.gross_amount) - Number(row.net_amount)
+          return (
+            <div className="text-right">
+              <div className="text-sm font-semibold text-emerald-700">{formatMoney(row.net_amount)} €</div>
+              <div className="text-xs text-slate-400 line-through">{formatMoney(row.gross_amount)} €</div>
+              {discount > 0 && (
+                <div className="text-xs text-blue-600">-{formatMoney(String(discount))} €</div>
+              )}
+            </div>
+          )
+        }
+        return (
+          <span className={`text-sm font-medium ${Number(row.gross_amount) > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
+            {formatMoney(row.gross_amount)} €
+          </span>
+        )
+      },
     },
   ]
 
@@ -286,6 +314,44 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
 
   const pilotColumns = makeColumns(expandedPilot, (uuid) => setExpandedPilot(expandedPilot === uuid ? null : uuid))
   const instructorColumns = makeColumns(expandedInstructor, (uuid) => setExpandedInstructor(expandedInstructor === uuid ? null : uuid))
+
+  function exportToCsv() {
+    const headers = [
+      t('logbookDate'), t('logbookMachine'), t('logbookType'), t('logbookRole'),
+      t('logbookDurationLabel'), t('logbookPilot'), t('logbookSecondPilot'),
+      t('logbookLaunchLabel'), t('logbookBilling'),
+      t('logbookGrossAmount'), t('logbookNetAmount'), t('logbookDiscount'),
+    ]
+    const rows = flights.map(r => {
+      const gross = r.gross_amount !== null ? Number(r.gross_amount) : null
+      const net = r.net_amount !== null ? Number(r.net_amount) : null
+      const discount = gross !== null && net !== null ? gross - net : null
+      return [
+        r.flight_date,
+        r.asset_code ?? '',
+        r.type_label ?? String(r.type_of_flight),
+        roleLabel(r.role, t),
+        r.duration_minutes !== null ? String(r.duration_minutes) : '',
+        r.pilot_name ?? '',
+        r.second_pilot_name ?? '',
+        r.launch_label ?? String(r.launch_method),
+        r.billing_quote_state ?? '',
+        gross !== null ? gross.toFixed(2).replace('.', ',') : '',
+        net !== null ? net.toFixed(2).replace('.', ',') : '',
+        discount !== null ? discount.toFixed(2).replace('.', ',') : '',
+      ]
+    })
+    const csv = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `carnet-vols-${memberUuid.slice(0, 8)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-4">
@@ -352,8 +418,19 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           <option value="launch">{t('logbookViewByLaunch')}</option>
         </select>
 
-        <div className="ml-auto text-xs text-slate-400">
-          {data ? `${data.total} ${t('logbookGroupFlights').toLowerCase()}` : ''}
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-slate-400">
+            {data ? `${data.total} ${t('logbookGroupFlights').toLowerCase()}` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={exportToCsv}
+            disabled={flights.length === 0}
+            className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {t('logbookExportCsv')}
+          </button>
         </div>
       </div>
 

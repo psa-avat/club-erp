@@ -390,6 +390,35 @@ async def list_pack_purchases(
             consumptions=consumption_detail,
         ))
 
+    # FIFO distribution: when a member has bought multiple slots of the same
+    # pack type, each slot's units_consumed/units_remaining must be computed
+    # by depleting slots in valid_from ASC order, not by subtracting the total
+    # consumed from each slot individually (which would give -4.5h on both rows).
+    from collections import defaultdict
+
+    group_indices: dict[tuple, list[int]] = defaultdict(list)
+    for i, item in enumerate(items):
+        key = (str(item.member_uuid) if item.member_uuid else "", item.pack_type or "")
+        group_indices[key].append(i)
+
+    for indices in group_indices.values():
+        if len(indices) <= 1:
+            continue
+        # Sort slot indices by valid_from ASC → oldest slot depleted first
+        indices_sorted = sorted(
+            indices,
+            key=lambda i: items[i].valid_from or date.min,
+        )
+        # Total consumed is identical for every slot in this group (same member+pack_type query)
+        remaining_to_distribute = items[indices_sorted[0]].units_consumed
+        for i in indices_sorted:
+            consumed_this = min(remaining_to_distribute, items[i].units_purchased)
+            items[i] = items[i].model_copy(update={
+                "units_consumed": consumed_this,
+                "units_remaining": items[i].units_purchased - consumed_this,
+            })
+            remaining_to_distribute = max(Decimal("0"), remaining_to_distribute - consumed_this)
+
     total_amount = sum(item.amount for item in items)
     return PackPurchaseListResponse(items=items, total=total_amount)
 

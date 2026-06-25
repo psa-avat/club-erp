@@ -321,7 +321,7 @@ async def get_flight_billing_detail(
     cons_result = await db.execute(
         select(MemberPackConsumption).where(
             MemberPackConsumption.flight_uuid == flight_uuid,
-            MemberPackConsumption.member_uuid == member_uuid,
+            MemberPackConsumption.tiers_uuid == member_uuid,
         )
     )
     cons_rows = cons_result.scalars().all()

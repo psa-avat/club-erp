@@ -1688,7 +1688,7 @@ class MemberPackConsumption(Base):
     __tablename__ = "member_pack_consumptions"
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    member_uuid = Column(
+    tiers_uuid = Column(
         UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False, index=True
     )
     flight_uuid = Column(
@@ -1727,4 +1727,4 @@ class MemberPackConsumption(Base):
     )
 
     def __repr__(self):
-        return f"<MemberPackConsumption member={self.member_uuid} flight={self.flight_uuid} type={self.pack_type}>"
+        return f"<MemberPackConsumption member={self.tiers_uuid} flight={self.flight_uuid} type={self.pack_type}>"

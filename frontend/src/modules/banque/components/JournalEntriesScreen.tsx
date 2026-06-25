@@ -26,6 +26,7 @@ import { Alert } from '../../../components/ui/alert'
 import { Banner } from '../../../components/ui/banner'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
+import { Checkbox } from '../../../components/ui/checkbox'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { StickyActionBar } from '../../../components/ui/sticky-action-bar'
@@ -57,6 +58,7 @@ type JournalFilters = {
   entry_date_to: string
   amount_min: string
   amount_max: string
+  null_tiers: boolean
 }
 
 const DEFAULT_FILTERS: JournalFilters = {
@@ -70,6 +72,7 @@ const DEFAULT_FILTERS: JournalFilters = {
   entry_date_to: '',
   amount_min: '',
   amount_max: '',
+  null_tiers: false,
 }
 
 function formatDateFr(isoDate: string): string {
@@ -145,6 +148,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       entry_date_to: filters.entry_date_to || undefined,
       amount_min: normalizeAmountFilter(filters.amount_min),
       amount_max: normalizeAmountFilter(filters.amount_max),
+      null_tiers: filters.null_tiers || undefined,
     }),
     [
       activeFiscalYearUuid,
@@ -158,6 +162,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       filters.entry_date_to,
       filters.amount_min,
       filters.amount_max,
+      filters.null_tiers,
     ],
   )
 
@@ -467,6 +472,16 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
               onChange={(event) => setFilters((prev) => ({ ...prev, amount_max: event.target.value }))}
               placeholder="99999.99"
             />
+          </div>
+          <div className="flex items-center gap-2 self-end pb-2">
+            <Checkbox
+              id="null-tiers-filter"
+              checked={filters.null_tiers}
+              onCheckedChange={(checked) => setFilters((prev) => ({ ...prev, null_tiers: checked === true }))}
+            />
+            <Label htmlFor="null-tiers-filter" className="cursor-pointer">
+              {t('journal.entries.nullTiers')}
+            </Label>
           </div>
         </div>
       </div>

@@ -1437,6 +1437,7 @@ async def list_accounting_entries(
     entry_date_to: date | None = None,
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
+    null_tiers: bool | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[AccountingEntry]:
@@ -1467,6 +1468,7 @@ async def list_accounting_entries(
         entry_date_to=entry_date_to,
         amount_min=amount_min,
         amount_max=amount_max,
+        null_tiers=null_tiers,
     )
 
     result = await db.scalars(stmt)
@@ -1493,6 +1495,7 @@ async def count_accounting_entries(
     entry_date_to: date | None = None,
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
+    null_tiers: bool | None = None,
 ) -> int:
     """Return the total count of accounting entries matching the given filters."""
     stmt = select(func.count()).select_from(AccountingEntry)
@@ -1510,6 +1513,7 @@ async def count_accounting_entries(
         entry_date_to=entry_date_to,
         amount_min=amount_min,
         amount_max=amount_max,
+        null_tiers=null_tiers,
     )
     result = await db.scalar(stmt)
     return result or 0
@@ -1530,6 +1534,7 @@ def _apply_accounting_entry_filters(
     entry_date_to: date | None = None,
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
+    null_tiers: bool | None = None,
 ):
     if fiscal_year_uuid is not None:
         stmt = stmt.where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
@@ -1626,6 +1631,21 @@ def _apply_accounting_entry_filters(
                 | AccountingEntry.reference.ilike(term)
                 | AccountingEntry.sequence_number.ilike(term)
             )
+
+    if null_tiers:
+        stmt = stmt.where(
+            exists(
+                select(AccountingLine.uuid)
+                .select_from(AccountingLine)
+                .join(AccountingAccount, AccountingAccount.uuid == AccountingLine.account_uuid)
+                .where(
+                    AccountingLine.entry_uuid == AccountingEntry.uuid,
+                    AccountingAccount.code.like("411%"),
+                    AccountingLine.tiers_uuid.is_(None),
+                )
+                .correlate(AccountingEntry)
+            )
+        )
 
     return stmt
 

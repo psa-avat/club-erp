@@ -131,7 +131,7 @@ function ComptabiliteSection() {
           value: "journal",
           label: t("workspace.accounting.tabs.journal", "Journal"),
           icon: List,
-          content: <JournalEntriesScreen defaultState={2} />,
+          content: <JournalEntriesScreen defaultState={0} />,
         },
         {
           value: "brouillons",

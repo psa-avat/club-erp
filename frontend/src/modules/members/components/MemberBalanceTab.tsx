@@ -4,9 +4,9 @@
     - members: Balance & Deposits tab — account summary, entries table, deposit form
     Copyright (C) 2026  SAFORCADA Patrick
 */
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, Landmark, PiggyBank, ArrowDownToLine } from 'lucide-react'
+import { Building2, Landmark, PiggyBank, ArrowDownToLine, Download, LayoutList } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -136,16 +136,89 @@ function DepositSection({ memberUuid, mode, t }: { memberUuid: string; mode: Wor
   )
 }
 
+function GroupedEntriesTable({ items, t }: { items: AccountEntryItem[]; t: (key: string) => string }) {
+  const groups = useMemo(() => {
+    const map = new Map<string, AccountEntryItem[]>()
+    for (const item of items) {
+      const key = item.journal_code ?? '—'
+      const grp = map.get(key)
+      if (grp) grp.push(item)
+      else map.set(key, [item])
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [items])
+
+  if (items.length === 0) {
+    return <div className="p-8 text-center text-sm text-slate-500">{t('balanceEmpty')}</div>
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 bg-slate-50 text-left">
+            <th className="px-4 py-2 text-xs font-medium text-slate-500">{t('balanceDate')}</th>
+            <th className="px-4 py-2 text-xs font-medium text-slate-500">{t('balanceDescription')}</th>
+            <th className="px-4 py-2 text-xs font-medium text-slate-500">{t('balanceRef')}</th>
+            <th className="px-4 py-2 text-xs font-medium text-slate-500">{t('balanceState')}</th>
+            <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">{t('balanceDebit')}</th>
+            <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">{t('balanceCredit')}</th>
+          </tr>
+        </thead>
+        {groups.map(([journal, entries]) => {
+          const groupDebit = entries.reduce((sum, r) => sum + Math.abs(Number(r.debit)), 0)
+          const groupCredit = entries.reduce((sum, r) => sum + Math.abs(Number(r.credit)), 0)
+          return (
+            <tbody key={journal}>
+              <tr className="bg-slate-100">
+                <td colSpan={6} className="px-4 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-slate-300 px-2 py-0.5 text-xs font-bold tracking-wider text-slate-700">{journal}</span>
+                    <span className="text-xs text-slate-500">
+                      {entries.length} {entries.length === 1 ? t('balanceEntry') : t('balanceEntries')}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+              {entries.map((r) => {
+                const b = stateBadge(r.state, t)
+                return (
+                  <tr key={r.entry_uuid} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-700">{formatDate(r.entry_date)}</td>
+                    <td className="px-4 py-2 text-slate-600">{r.description ?? '—'}</td>
+                    <td className="px-4 py-2 font-mono text-slate-600">{r.reference ?? '—'}</td>
+                    <td className="px-4 py-2">
+                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${b.class}`}>{b.label}</span>
+                    </td>
+                    <td className="px-4 py-2 text-right text-slate-700">{formatEuro(Math.abs(Number(r.debit)))}</td>
+                    <td className="px-4 py-2 text-right text-slate-700">{formatEuro(Math.abs(Number(r.credit)))}</td>
+                  </tr>
+                )
+              })}
+              <tr className="border-b border-slate-200 bg-slate-50">
+                <td colSpan={4} className="px-4 py-1.5 text-right text-xs font-semibold text-slate-500">{t('balanceGroupSubtotal')}</td>
+                <td className="px-4 py-1.5 text-right text-sm font-semibold text-slate-800">{formatEuro(groupDebit)}</td>
+                <td className="px-4 py-1.5 text-right text-sm font-semibold text-slate-800">{formatEuro(groupCredit)}</td>
+              </tr>
+            </tbody>
+          )
+        })}
+      </table>
+    </div>
+  )
+}
+
 export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
   const { t } = useTranslation('common')
   const { activeFiscalYearUuid } = useFiscalYearStore()
+  const [groupByJournal, setGroupByJournal] = useState(false)
 
   const clubSummary = useMemberAccountSummaryQuery(memberUuid, activeFiscalYearUuid)
   const portalSummary = useMemberPortalAccountSummaryQuery(activeFiscalYearUuid, mode === 'portal')
   const summary = mode === 'portal' ? portalSummary.data : clubSummary.data
 
-  const clubEntries = useMemberAccountEntriesQuery(memberUuid, { fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 })
-  const portalEntries = useMemberPortalAccountEntriesQuery({ fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 50 }, mode === 'portal')
+  const clubEntries = useMemberAccountEntriesQuery(memberUuid, { fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 500 })
+  const portalEntries = useMemberPortalAccountEntriesQuery({ fiscalYearUuid: activeFiscalYearUuid ?? undefined, limit: 500 }, mode === 'portal')
   const entries = mode === 'portal' ? portalEntries.data : clubEntries.data
 
   const columns: ColumnDef<AccountEntryItem>[] = [
@@ -158,23 +231,80 @@ export function MemberBalanceTab({ memberUuid, mode }: MemberBalanceTabProps) {
     { key: 'credit', header: t('balanceCredit'), className: 'min-w-[90px] text-right', cell: (r) => <span className="text-sm text-slate-700">{formatEuro(Math.abs(Number(r.credit)))}</span> },
   ]
 
-  // Compute debit/credit totals from the displayed entries
   const items = entries?.items ?? []
   const totalDebit = items.reduce((sum, r) => sum + Math.abs(Number(r.debit)), 0)
   const totalCredit = items.reduce((sum, r) => sum + Math.abs(Number(r.credit)), 0)
+
+  function exportToCsv() {
+    const headers = [t('balanceDate'), t('balanceJournal'), t('balanceDescription'), t('balanceRef'), t('balanceState'), t('balanceDebit'), t('balanceCredit')]
+    const rows = items.map(r => [
+      r.entry_date ?? '',
+      r.journal_code ?? '',
+      r.description ?? '',
+      r.reference ?? '',
+      stateBadge(r.state, t).label,
+      Math.abs(Number(r.debit)).toFixed(2).replace('.', ','),
+      Math.abs(Number(r.credit)).toFixed(2).replace('.', ','),
+    ])
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n')
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `compte-${memberUuid.slice(0, 8)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-4">
       <BalanceCards summary={summary} t={t} />
       <DepositSection memberUuid={memberUuid} mode={mode} t={t} />
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <DataTable
-          columns={columns}
-          data={items}
-          getRowKey={(r) => r.entry_uuid}
-          defaultSortKey="date"
-          emptyState={<div className="p-8 text-center text-sm text-slate-500">{t('balanceEmpty')}</div>}
-        />
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
+          <span className="text-xs text-slate-500">
+            {items.length} {items.length === 1 ? t('balanceEntry') : t('balanceEntries')}
+            {entries?.total !== undefined && entries.total > items.length && (
+              <span className="ml-1 text-amber-600">({t('balanceTotal')} : {entries.total})</span>
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={groupByJournal ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setGroupByJournal(v => !v)}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <LayoutList className="h-3.5 w-3.5" />
+              {t('balanceGroupByJournal')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToCsv}
+              disabled={items.length === 0}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {t('balanceExportCsv')}
+            </Button>
+          </div>
+        </div>
+
+        {groupByJournal ? (
+          <GroupedEntriesTable items={items} t={t} />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={items}
+            getRowKey={(r) => r.entry_uuid}
+            defaultSortKey="date"
+            emptyState={<div className="p-8 text-center text-sm text-slate-500">{t('balanceEmpty')}</div>}
+          />
+        )}
+
         {items.length > 0 && (
           <div className="border-t border-slate-100 bg-slate-50 p-3">
             <div className="flex items-center justify-end gap-2">

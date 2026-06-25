@@ -267,6 +267,7 @@ export type AccountingEntriesFilters = {
   entry_date_to?: string
   amount_min?: string
   amount_max?: string
+  null_tiers?: boolean
   limit?: number
   offset?: number
 }

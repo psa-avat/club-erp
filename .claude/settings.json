@@ -10,7 +10,12 @@
       "Bash(git commit -m ' *)",
       "Bash(python3 -m json.tool)",
       "Bash(python3 -c \"import ast, sys; ast.parse\\(open\\('backend/services/federal_sync.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
-      "Bash(python3 -c \"import ast; ast.parse\\(open\\('backend/api/routes/gesasso.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")"
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('backend/api/routes/gesasso.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(psql -h localhost -U erpadmin -d erp_club_db -c \"\\\\d member_pack_consumptions\")",
+      "Bash(docker exec *)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(grep -E \"\\\\.\\(py|ts\\)$\")",
+      "Bash(grep -E \"\\\\.py$\")"
     ]
   }
 }
