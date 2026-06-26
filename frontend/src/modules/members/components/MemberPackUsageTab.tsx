@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, ShoppingBag, Loader2, Download } from 'lucid
 import { Button } from '../../../components/ui/button'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { useActiveFiscalYearQuery, usePackPurchasesQuery } from '../../banque/api'
+import { exportTableToPdf } from '../../../lib/exportPdf'
 import type { WorkspaceMode } from '../types/workspace'
 
 const PAGE_SIZE = 50
@@ -120,9 +121,48 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
     URL.revokeObjectURL(url)
   }
 
+  function exportToPdf() {
+    const head = [[
+      t('ops.packs.pack', 'Forfait'),
+      t('ops.packs.date', 'Date'),
+      t('ops.packs.qtyBought', 'Acheté'),
+      t('ops.packs.qtyRemaining', 'Restant'),
+      t('ops.packs.price', 'Montant'),
+      t('ops.packs.totalDiscount', 'Remise'),
+    ]]
+    const body: (string | number)[][] = []
+    for (const p of items) {
+      body.push([
+        p.pack_code ?? p.pack_type ?? '',
+        p.entry_date ?? '',
+        String(p.units_purchased),
+        String(p.units_remaining),
+        `${Number(p.amount).toFixed(2)} EUR`,
+        Number(p.total_discount) > 0 ? `${Number(p.total_discount).toFixed(2)} EUR` : '—',
+      ])
+      for (const c of p.consumptions ?? []) {
+        body.push([
+          `  ↳ ${c.flight_date ?? '—'} · ${c.asset_code ?? '—'}`,
+          '',
+          c.quantity_consumed,
+          '',
+          '',
+          `${Number(c.total_discount_amount).toFixed(2)} EUR`,
+        ])
+      }
+    }
+    exportTableToPdf({
+      title: t('ops.packs.title', 'Forfaits'),
+      subtitle: `Export du ${new Date().toLocaleDateString('fr-FR')}`,
+      head,
+      body,
+      filename: `forfaits-${memberUuid.slice(0, 8)}.pdf`,
+    })
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={exportToCsv}
@@ -130,6 +170,14 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
         >
           <Download className="h-3.5 w-3.5" />
           {t('ops.packs.exportCsv', 'Exporter CSV')}
+        </button>
+        <button
+          type="button"
+          onClick={exportToPdf}
+          className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {t('ops.packs.exportPdf', 'Exporter PDF')}
         </button>
       </div>
 

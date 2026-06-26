@@ -27,6 +27,7 @@ import type { ColumnDef } from '../../../components/ui/data-table'
 import { useMemberLogbookQuery } from '../api'
 import { useMemberPortalLogbookQuery } from '../../member-portal/api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
+import { exportTableToPdf } from '../../../lib/exportPdf'
 import type { LogbookItem, LogbookFilters } from '../types'
 import type { WorkspaceMode } from '../types/workspace'
 
@@ -295,6 +296,34 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
     URL.revokeObjectURL(url)
   }
 
+  function exportToPdf() {
+    const head = [[
+      t('logbookDate'), t('logbookMachine'), t('logbookType'), t('logbookRole'),
+      t('logbookDurationLabel'), t('logbookPilot'), t('logbookSecondPilot'),
+      t('logbookLaunchLabel'), t('logbookBilling'),
+    ]]
+    const body = flights.map(r => [
+      r.flight_date ? new Date(r.flight_date).toLocaleDateString('fr-FR') : '',
+      r.asset_code ?? '',
+      r.type_label ?? String(r.type_of_flight),
+      roleLabel(r.role, t),
+      r.duration_minutes !== null ? formatMinutes(r.duration_minutes) : '',
+      r.pilot_name ?? '',
+      r.second_pilot_name ?? '',
+      r.launch_label ?? String(r.launch_method),
+      r.billing_quote_state ?? '',
+    ])
+    const subtitle = [dateFrom, dateTo].filter(Boolean).join(' → ') || undefined
+    exportTableToPdf({
+      title: t('logbookTitle', 'Carnet de vols'),
+      subtitle,
+      head,
+      body,
+      filename: `carnet-vols-${memberUuid.slice(0, 8)}.pdf`,
+      orientation: 'landscape',
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* ── KPI Strip ── */}
@@ -372,6 +401,15 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
           >
             <Download className="h-3.5 w-3.5" />
             {t('logbookExportCsv')}
+          </button>
+          <button
+            type="button"
+            onClick={exportToPdf}
+            disabled={flights.length === 0}
+            className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {t('logbookExportPdf', 'PDF')}
           </button>
         </div>
       </div>

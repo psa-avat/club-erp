@@ -6,7 +6,7 @@
 */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Plus, Loader2, RefreshCw, CheckCircle2, AlertTriangle, X, Pencil } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Loader2, RefreshCw, CheckCircle2, AlertTriangle, X, Pencil, Download } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
@@ -16,6 +16,7 @@ import { useCapability } from '../../../auth/hooks/useCapability'
 import { usePackPurchasesQuery, useDiscountReviewMutation, useMemberDiscountReviewMutation } from '../api'
 import { PackPurchaseDialog } from './PackPurchaseDialog'
 import { PackEditDialog } from './PackEditDialog'
+import { exportTableToPdf } from '../../../lib/exportPdf'
 import type { DiscountReviewResult, PackPurchaseLine } from '../api'
 
 const PAGE_SIZE = 50
@@ -85,6 +86,37 @@ export function OpsPacksTab() {
   const totalPages = purchases?.total_pages ?? 1
   const totalCount = purchases?.total_count ?? 0
 
+  function exportToPdf() {
+    const head = [[
+      t('ops.packs.member', 'Membre'),
+      t('ops.packs.pack', 'Forfait'),
+      t('ops.packs.date', 'Date'),
+      t('ops.packs.qtyBought', 'Acheté'),
+      t('ops.packs.qtyRemaining', 'Restant'),
+      t('ops.packs.price', 'Montant'),
+      t('ops.packs.totalDiscount', 'Remise'),
+    ]]
+    const body: (string | number)[][] = []
+    for (const p of items) {
+      body.push([
+        p.member_name ?? p.member_uuid,
+        p.pack_code ?? p.pack_type ?? '',
+        p.entry_date ?? '',
+        String(p.units_purchased),
+        String(p.units_remaining),
+        `${Number(p.amount).toFixed(2)} EUR`,
+        Number(p.total_discount) > 0 ? `${Number(p.total_discount).toFixed(2)} EUR` : '—',
+      ])
+    }
+    exportTableToPdf({
+      title: t('ops.packs.title', 'Forfaits'),
+      subtitle: `Export du ${new Date().toLocaleDateString('fr-FR')}`,
+      head,
+      body,
+      filename: `forfaits-${new Date().toISOString().slice(0, 10)}.pdf`,
+    })
+  }
+
   // Detect member boundaries for visual grouping
   function isMemberBoundary(index: number): boolean {
     if (index === 0) return true
@@ -113,6 +145,12 @@ export function OpsPacksTab() {
               {discountReviewMutation.isPending
                 ? t('ops.packs.discountReviewRunning', 'Calcul des remises…')
                 : t('ops.packs.discountReview', 'Appliquer les remises')}
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button size="sm" variant="secondary" onClick={exportToPdf}>
+              <Download className="mr-1 h-4 w-4" />
+              {t('ops.packs.exportPdf', 'PDF')}
             </Button>
           )}
           {canManagePrices && (
