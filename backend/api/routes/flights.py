@@ -658,7 +658,7 @@ async def patch_flight_billing_fields(
     return ValidatedFlightItem(
         uuid=str(flight.uuid),
         planche_uuid=flight.planche_uuid,
-        jour=flight.jour,
+        jour=flight.jour.isoformat() if flight.jour else None,
         pilot_erp_id=flight.pilot_erp_id,
         second_pilot_erp_id=flight.second_pilot_erp_id,
         charge_to_erp_id=flight.charge_to_erp_id,
@@ -668,9 +668,6 @@ async def patch_flight_billing_fields(
         launch_method=flight.launch_method,
         takeoff_time=flight.takeoff_time,
         landing_time=flight.landing_time,
-        engine_time=flight.engine_time,
-        landing_count=flight.landing_count,
-        flight_km=flight.flight_km,
         observations=flight.observations,
     )
 
@@ -726,6 +723,17 @@ async def post_flight_billing(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/{flight_uuid}/billing-unbill", status_code=status.HTTP_204_NO_CONTENT)
+async def unbill_flight_billing(
+    flight_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = flights_guard,
+):
+    """Delete the Draft FL entry linked to an applied flight and reset it to pending."""
+    service = FlightBillingApplyService(db)
+    await service.unbill_flight(flight_uuid)
 
 
 @router.post("/billing-batch-apply", response_model=FlightBillingBatchApplyResponse)

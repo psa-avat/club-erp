@@ -18,9 +18,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, ExternalLink, Download } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download } from 'lucide-react'
 
 import { Input } from '../../../components/ui/input'
 import { DataTable } from '../../../components/ui/data-table'
@@ -65,13 +64,6 @@ function billingStateBadge(state: string | null, t: (key: string) => string): { 
     default:
       return { label: state ?? '—', class: 'bg-slate-100 text-slate-500' }
   }
-}
-
-function formatMoney(amount: string | null | undefined): string {
-  if (amount === null || amount === undefined) return '—'
-  const numeric = Number(amount)
-  if (!Number.isFinite(numeric)) return amount
-  return numeric.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function roleLabel(role: string | null, t: (key: string) => string): string {
@@ -129,24 +121,6 @@ function ExpandedRowContent({ flight, t }: { flight: LogbookItem; t: (key: strin
           <span className="font-medium text-slate-500">{t('logbookSecondPilot')} :</span>{' '}
           <span className="text-slate-800">{flight.second_pilot_name ?? '—'}</span>
         </div>
-        <div>
-          <span className="font-medium text-slate-500">{t('logbookGrossAmount')} :</span>{' '}
-          <span className="text-slate-800">{formatMoney(flight.gross_amount)} €</span>
-        </div>
-        {flight.has_discount && flight.net_amount !== null && (
-          <div>
-            <span className="font-medium text-slate-500">{t('logbookNetAmount')} :</span>{' '}
-            <span className="font-semibold text-emerald-700">{formatMoney(flight.net_amount)} €</span>
-          </div>
-        )}
-        {flight.has_discount && flight.gross_amount !== null && flight.net_amount !== null && (
-          <div>
-            <span className="font-medium text-slate-500">{t('logbookDiscount')} :</span>{' '}
-            <span className="font-medium text-blue-700">
-              -{formatMoney(String(Number(flight.gross_amount) - Number(flight.net_amount)))} €
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Errors */}
@@ -164,7 +138,8 @@ function ExpandedRowContent({ flight, t }: { flight: LogbookItem; t: (key: strin
 // ---------------------------------------------------------------------------
 
 export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
-  const navigate = useNavigate()  ; const { t } = useTranslation('common');  const { activeFiscalYearData } = useFiscalYearStore()
+  const { t } = useTranslation('common')
+  const { activeFiscalYearData } = useFiscalYearStore()
   const fy = activeFiscalYearData
 
   const [dateFrom, setDateFrom] = useState(fy?.start_date ?? '')
@@ -284,30 +259,6 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
         )
       },
     },
-    {
-      key: 'amount',
-      header: t('logbookAmount'),
-      className: 'min-w-[110px] text-right',
-      cell: (row) => {
-        if (row.has_discount && row.gross_amount !== null && row.net_amount !== null) {
-          const discount = Number(row.gross_amount) - Number(row.net_amount)
-          return (
-            <div className="text-right">
-              <div className="text-sm font-semibold text-emerald-700">{formatMoney(row.net_amount)} €</div>
-              <div className="text-xs text-slate-400 line-through">{formatMoney(row.gross_amount)} €</div>
-              {discount > 0 && (
-                <div className="text-xs text-blue-600">-{formatMoney(String(discount))} €</div>
-              )}
-            </div>
-          )
-        }
-        return (
-          <span className={`text-sm font-medium ${Number(row.gross_amount) > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
-            {formatMoney(row.gross_amount)} €
-          </span>
-        )
-      },
-    },
   ]
 
   }
@@ -320,27 +271,18 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
       t('logbookDate'), t('logbookMachine'), t('logbookType'), t('logbookRole'),
       t('logbookDurationLabel'), t('logbookPilot'), t('logbookSecondPilot'),
       t('logbookLaunchLabel'), t('logbookBilling'),
-      t('logbookGrossAmount'), t('logbookNetAmount'), t('logbookDiscount'),
     ]
-    const rows = flights.map(r => {
-      const gross = r.gross_amount !== null ? Number(r.gross_amount) : null
-      const net = r.net_amount !== null ? Number(r.net_amount) : null
-      const discount = gross !== null && net !== null ? gross - net : null
-      return [
-        r.flight_date,
-        r.asset_code ?? '',
-        r.type_label ?? String(r.type_of_flight),
-        roleLabel(r.role, t),
-        r.duration_minutes !== null ? String(r.duration_minutes) : '',
-        r.pilot_name ?? '',
-        r.second_pilot_name ?? '',
-        r.launch_label ?? String(r.launch_method),
-        r.billing_quote_state ?? '',
-        gross !== null ? gross.toFixed(2).replace('.', ',') : '',
-        net !== null ? net.toFixed(2).replace('.', ',') : '',
-        discount !== null ? discount.toFixed(2).replace('.', ',') : '',
-      ]
-    })
+    const rows = flights.map(r => [
+      r.flight_date,
+      r.asset_code ?? '',
+      r.type_label ?? String(r.type_of_flight),
+      roleLabel(r.role, t),
+      r.duration_minutes !== null ? String(r.duration_minutes) : '',
+      r.pilot_name ?? '',
+      r.second_pilot_name ?? '',
+      r.launch_label ?? String(r.launch_method),
+      r.billing_quote_state ?? '',
+    ])
     const csv = [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
       .join('\n')
@@ -481,18 +423,6 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
                     {t('logbookEmptyPilot')}
                   </div>
                 }
-                actions={(row) =>
-                  mode === 'club' ? (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      title={t('logbookSeeOps')}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </button>
-                  ) : undefined
-                }
               />
             </div>
           </div>
@@ -514,18 +444,6 @@ export function MemberLogbookTab({ memberUuid, mode }: MemberLogbookTabProps) {
                   <div className="p-8 text-center text-sm text-slate-500">
                     {t('logbookEmptyInstructor')}
                   </div>
-                }
-                actions={(row) =>
-                  mode === 'club' ? (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/banque/operations?flight=${row.flight_uuid}`)}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      title={t('logbookSeeOps')}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </button>
-                  ) : undefined
                 }
               />
             </div>

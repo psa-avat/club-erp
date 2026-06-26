@@ -8,9 +8,12 @@ import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, ShoppingBag, Loader2, Download } from 'lucide-react'
 
+import { Button } from '../../../components/ui/button'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { useActiveFiscalYearQuery, usePackPurchasesQuery } from '../../banque/api'
 import type { WorkspaceMode } from '../types/workspace'
+
+const PAGE_SIZE = 50
 
 interface MemberPackUsageTabProps {
   memberUuid: string
@@ -28,8 +31,21 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
   const storeFyUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const { data: activeFy } = useActiveFiscalYearQuery(!storeFyUuid)
   const fiscalYearUuid = storeFyUuid ?? (activeFy?.uuid ?? null)
-  const { data: purchases, isLoading } = usePackPurchasesQuery(fiscalYearUuid, memberUuid, !!fiscalYearUuid)
+
+  const [page, setPage] = useState(1)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
+
+  const { data: purchases, isLoading } = usePackPurchasesQuery(
+    fiscalYearUuid,
+    memberUuid,
+    !!fiscalYearUuid,
+    undefined,
+    page,
+    PAGE_SIZE,
+  )
+
+  const items = purchases?.items ?? []
+  const totalPages = purchases?.total_pages ?? 1
 
   if (isLoading) {
     return (
@@ -39,7 +55,7 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
     )
   }
 
-  if (!purchases || purchases.items.length === 0) {
+  if (!purchases || items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-400">
         <ShoppingBag className="h-10 w-10" />
@@ -55,14 +71,15 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
       t('ops.packs.qtyBought', 'Acheté'),
       t('ops.packs.qtyRemaining', 'Restant'),
       t('ops.packs.price', 'Montant achat'),
+      t('ops.packs.totalDiscount', 'Remise'),
       t('ops.packs.flightDate', 'Date vol'),
       t('ops.packs.assetCode', 'Machine'),
       t('ops.packs.qtyConsumed', 'Qté cons.'),
       t('ops.packs.unitDiscount', 'Remise unit.'),
-      t('ops.packs.totalDiscount', 'Remise totale'),
+      t('ops.packs.totalDiscount', 'Remise totale vol'),
     ]
     const rows: string[][] = []
-    for (const p of purchases!.items) {
+    for (const p of items) {
       if (p.consumptions && p.consumptions.length > 0) {
         for (const c of p.consumptions) {
           rows.push([
@@ -71,6 +88,7 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
             String(p.units_purchased),
             String(p.units_remaining),
             Number(p.amount).toFixed(2).replace('.', ','),
+            Number(p.total_discount).toFixed(2).replace('.', ','),
             c.flight_date ?? '',
             c.asset_code ?? '',
             String(c.quantity_consumed),
@@ -85,6 +103,7 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
           String(p.units_purchased),
           String(p.units_remaining),
           Number(p.amount).toFixed(2).replace('.', ','),
+          Number(p.total_discount).toFixed(2).replace('.', ','),
           '', '', '', '', '',
         ])
       }
@@ -113,6 +132,7 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
           {t('ops.packs.exportCsv', 'Exporter CSV')}
         </button>
       </div>
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
@@ -120,13 +140,14 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
               <th className="w-8 px-2 py-3" />
               <th className="px-4 py-3 font-medium text-slate-600">{t('ops.packs.pack', 'Forfait')}</th>
               <th className="px-4 py-3 font-medium text-slate-600">{t('ops.packs.date', 'Date')}</th>
-              <th className="px-4 py-3 font-medium text-slate-600 text-right">{t('ops.packs.qtyBought', 'Acheté')}</th>
-              <th className="px-4 py-3 font-medium text-slate-600 text-right">{t('ops.packs.qtyRemaining', 'Restant')}</th>
-              <th className="px-4 py-3 font-medium text-slate-600 text-right">{t('ops.packs.price', 'Montant')}</th>
+              <th className="px-4 py-3 text-right font-medium text-slate-600">{t('ops.packs.qtyBought', 'Acheté')}</th>
+              <th className="px-4 py-3 text-right font-medium text-slate-600">{t('ops.packs.qtyRemaining', 'Restant')}</th>
+              <th className="px-4 py-3 text-right font-medium text-slate-600">{t('ops.packs.price', 'Montant')}</th>
+              <th className="px-4 py-3 text-right font-medium text-slate-600">{t('ops.packs.totalDiscount', 'Remise')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {purchases.items.map((p) => (
+            {items.map((p) => (
               <Fragment key={p.entry_uuid}>
                 <tr className="hover:bg-slate-50/50">
                   <td className="px-2 py-3">
@@ -153,11 +174,17 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
                   <td className="px-4 py-3 text-right font-mono text-slate-900">{p.units_purchased}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-900">{p.units_remaining}</td>
                   <td className="px-4 py-3 text-right font-mono text-slate-900">{formatEur(p.amount)}</td>
+                  <td className="px-4 py-3 text-right font-mono">
+                    {Number(p.total_discount) > 0 ? (
+                      <span className="text-blue-700">{formatEur(p.total_discount)}</span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                 </tr>
-                {/* Expanded: consumption flights detail */}
                 {expandedEntry === p.entry_uuid && p.consumptions?.length > 0 && (
                   <tr key={`${p.entry_uuid}-detail`}>
-                    <td colSpan={6} className="bg-slate-50 px-6 py-4">
+                    <td colSpan={7} className="bg-slate-50 px-6 py-4">
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           {t('ops.packs.flightsInvolved', 'Vols concernés')}
@@ -168,9 +195,9 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
                               <tr>
                                 <th className="px-3 py-2 font-medium text-slate-600">{t('ops.packs.flightDate', 'Date')}</th>
                                 <th className="px-3 py-2 font-medium text-slate-600">{t('ops.packs.assetCode', 'Machine')}</th>
-                                <th className="px-3 py-2 font-medium text-slate-600 text-right">{t('ops.packs.qtyConsumed', 'Qté cons.')}</th>
-                                <th className="px-3 py-2 font-medium text-slate-600 text-right">{t('ops.packs.unitDiscount', 'Remise unit.')}</th>
-                                <th className="px-3 py-2 font-medium text-slate-600 text-right">{t('ops.packs.totalDiscount', 'Remise totale')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-slate-600">{t('ops.packs.qtyConsumed', 'Qté cons.')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-slate-600">{t('ops.packs.unitDiscount', 'Remise unit.')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-slate-600">{t('ops.packs.totalDiscount', 'Remise totale')}</th>
                                 <th className="px-3 py-2 font-medium text-slate-600">{t('ops.packs.validFrom', 'Valide dès')}</th>
                               </tr>
                             </thead>
@@ -197,6 +224,31 @@ export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageT
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            {t('common.prev', 'Précédent')}
+          </Button>
+          <span className="px-2 text-sm text-slate-700">
+            {t('common.pageInfo', { defaultValue: 'Page {{page}}/{{total}}', page, total: totalPages })}
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            {t('common.next', 'Suivant')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

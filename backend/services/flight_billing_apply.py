@@ -181,6 +181,62 @@ class FlightBillingApplyService:
         entry = await self.apply_flight_billing(flight_uuid, fiscal_year_uuid, user_id)
         return await post_accounting_entry(self.db, entry.uuid, fiscal_year_uuid)
 
+    async def unbill_flight(self, flight_uuid: UUID) -> None:
+        """
+        Revert an 'applied' (Draft) billing for a flight.
+
+        Deletes the linked Draft FL accounting entry and all its lines,
+        then resets the flight back to 'pending'. Refuses if the entry is
+        already posted (state == 2).
+        """
+        result = await self.db.execute(
+            select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid)
+        )
+        flight = result.scalar_one_or_none()
+        if flight is None:
+            raise HTTPException(status_code=404, detail="Flight not found")
+
+        if flight.billing_quote_state != "applied":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Only flights with status 'applied' (Draft entry) can be unbilled.",
+            )
+
+        if flight.accounting_entry_uuid is None:
+            # Inconsistent state — reset anyway
+            flight.billing_quote_state = "pending"
+            await self.db.commit()
+            return
+
+        entry_result = await self.db.execute(
+            select(AccountingEntry).where(
+                AccountingEntry.uuid == flight.accounting_entry_uuid
+            )
+        )
+        entry = entry_result.scalar_one_or_none()
+
+        if entry is not None:
+            if entry.state == 2:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Cannot unbill: accounting entry is already posted.",
+                )
+            # Delete all lines first, then the entry
+            lines_result = await self.db.execute(
+                select(AccountingLine).where(
+                    AccountingLine.entry_uuid == entry.uuid
+                )
+            )
+            for line in lines_result.scalars().all():
+                await self.db.delete(line)
+            await self.db.flush()
+            await self.db.delete(entry)
+            await self.db.flush()
+
+        flight.accounting_entry_uuid = None
+        flight.billing_quote_state = "pending"
+        await self.db.commit()
+
     async def batch_apply(
         self,
         flight_uuids: list[UUID],

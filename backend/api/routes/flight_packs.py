@@ -23,8 +23,8 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -246,6 +246,9 @@ async def buy_pack_endpoint(
 async def list_pack_purchases(
     fiscal_year_uuid: UUID,
     member_uuid: UUID | None = None,
+    pilot_query: str | None = Query(None, description="Search by pilot name (partial match)"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
@@ -320,9 +323,24 @@ async def list_pack_purchases(
             if al.entry and member_by_entry.get(al.entry.uuid, (None, None))[0] == member_uuid
         ]
 
-    items: list[PackPurchaseLine] = []
-    entry_map: dict[UUID, int] = {}  # entry_uuid → index in items
+    # If pilot_query provided, keep only entries whose member name matches
+    if pilot_query and pilot_query.strip():
+        q = pilot_query.strip().lower()
+        filtered = []
+        for al in lines:
+            if not al.entry:
+                continue
+            _, member_obj = member_by_entry.get(al.entry.uuid, (None, None))
+            if member_obj is None:
+                continue
+            full_name = f"{member_obj.first_name or ''} {member_obj.last_name or ''}".lower()
+            if q in full_name or (member_obj.first_name and q in member_obj.first_name.lower()) or (member_obj.last_name and q in member_obj.last_name.lower()):
+                filtered.append(al)
+        lines = filtered
 
+    items: list[PackPurchaseLine] = []
+
+    import re
     for al in lines:
         entry = al.entry
         if not entry:
@@ -338,8 +356,8 @@ async def list_pack_purchases(
 
         # Get consumptions for this member + pack_type
         consumptions = await list_consumptions_for_member(db, entry_member_uuid, pack_def.pack_type)
-        total_consumed = sum(c.total_discount_amount for c in consumptions)
         units_consumed = sum(c.quantity_consumed for c in consumptions)
+        total_discount_eur = sum(c.total_discount_amount for c in consumptions)
 
         # Build consumption detail
         consumption_detail = []
@@ -365,7 +383,6 @@ async def list_pack_purchases(
         # Parse valid_from from description if present (stored as " | VALID_FROM:YYYY-MM-DD")
         valid_from = None
         desc = entry.description or ""
-        import re
         vf_match = re.search(r'VALID_FROM:(\d{4}-\d{2}-\d{2})', desc)
         if vf_match:
             try:
@@ -387,13 +404,13 @@ async def list_pack_purchases(
             units_purchased=pack_def.quantity_allowance,
             units_consumed=units_consumed,
             units_remaining=pack_def.quantity_allowance - units_consumed,
+            total_discount=total_discount_eur,
             consumptions=consumption_detail,
         ))
 
     # FIFO distribution: when a member has bought multiple slots of the same
     # pack type, each slot's units_consumed/units_remaining must be computed
-    # by depleting slots in valid_from ASC order, not by subtracting the total
-    # consumed from each slot individually (which would give -4.5h on both rows).
+    # by depleting slots in valid_from ASC order.
     from collections import defaultdict
 
     group_indices: dict[tuple, list[int]] = defaultdict(list)
@@ -404,23 +421,46 @@ async def list_pack_purchases(
     for indices in group_indices.values():
         if len(indices) <= 1:
             continue
-        # Sort slot indices by valid_from ASC → oldest slot depleted first
         indices_sorted = sorted(
             indices,
             key=lambda i: items[i].valid_from or date.min,
         )
-        # Total consumed is identical for every slot in this group (same member+pack_type query)
-        remaining_to_distribute = items[indices_sorted[0]].units_consumed
+        # Pre-FIFO totals (identical across all slots in the group)
+        total_units_all = items[indices_sorted[0]].units_consumed
+        total_discount_all = items[indices_sorted[0]].total_discount
+
+        remaining_to_distribute = total_units_all
         for i in indices_sorted:
             consumed_this = min(remaining_to_distribute, items[i].units_purchased)
+            discount_this = (
+                consumed_this / total_units_all * total_discount_all
+                if total_units_all > 0
+                else Decimal("0")
+            )
             items[i] = items[i].model_copy(update={
                 "units_consumed": consumed_this,
                 "units_remaining": items[i].units_purchased - consumed_this,
+                "total_discount": discount_this,
             })
             remaining_to_distribute = max(Decimal("0"), remaining_to_distribute - consumed_this)
 
+    # Sort by member name (case-insensitive) then by entry_date descending
+    items.sort(key=lambda x: ((x.member_name or "").lower(), -(x.entry_date.toordinal())))
+
     total_amount = sum(item.amount for item in items)
-    return PackPurchaseListResponse(items=items, total=total_amount)
+    total_count = len(items)
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+    page_items = items[offset: offset + page_size]
+
+    return PackPurchaseListResponse(
+        items=page_items,
+        total=total_amount,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 # ---------------------------------------------------------------------------

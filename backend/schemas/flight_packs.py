@@ -179,6 +179,7 @@ class PackPurchaseLine(BaseModel):
     units_purchased: Decimal = Decimal("0")
     units_consumed: Decimal = Decimal("0")
     units_remaining: Decimal = Decimal("0")
+    total_discount: Decimal = Decimal("0")
     consumptions: list[dict] = []
 
 
@@ -186,6 +187,10 @@ class PackPurchaseListResponse(BaseModel):
     """List of all pack purchases for a fiscal year."""
     items: list[PackPurchaseLine]
     total: Decimal = Decimal("0")
+    total_count: int = 0
+    page: int = 1
+    page_size: int = 50
+    total_pages: int = 0
 
 
 # ---------------------------------------------------------------------------

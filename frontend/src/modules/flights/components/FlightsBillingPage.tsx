@@ -45,6 +45,7 @@ import {
   Square,
   Percent,
   Info,
+  Undo2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ import {
   useFlightBillingApplyMutation,
   useFlightBillingPostMutation,
   useFlightBillingBatchApplyMutation,
+  useFlightBillingUnbillMutation,
   type BillableFlight,
   type FlightBillingPreviewResponse,
   type FlightBillingBatchPreviewResponse,
@@ -551,6 +553,7 @@ export function FlightsBillingPage() {
     useState<FlightBillingBatchPreviewResponse | null>(null);
   const [applyFlightUuid, setApplyFlightUuid] = useState<string | null>(null);
   const [postFlightUuid, setPostFlightUuid] = useState<string | null>(null);
+  const [unbillFlightUuid, setUnbillFlightUuid] = useState<string | null>(null);
 
   // ── Data ────────────────────────────────────────────────────────────
   const resolvedPilot = filterPilot || undefined;
@@ -575,6 +578,7 @@ export function FlightsBillingPage() {
   const previewMutation = useFlightBillingPreviewMutation();
   const applyMutation = useFlightBillingApplyMutation();
   const postMutation = useFlightBillingPostMutation();
+  const unbillMutation = useFlightBillingUnbillMutation();
   const batchPreviewMutation = useFlightBillingBatchPreviewMutation();
   const batchApplyMutation = useFlightBillingBatchApplyMutation();
 
@@ -690,6 +694,20 @@ export function FlightsBillingPage() {
       });
     } finally {
       setPostFlightUuid(null);
+    }
+  }
+
+  async function handleUnbill(flightUuid: string) {
+    setUnbillFlightUuid(flightUuid);
+    try {
+      await unbillMutation.mutateAsync(flightUuid);
+      setFlightPreviews((prev) => {
+        const next = { ...prev };
+        delete next[flightUuid];
+        return next;
+      });
+    } finally {
+      setUnbillFlightUuid(null);
     }
   }
 
@@ -1084,9 +1102,6 @@ export function FlightsBillingPage() {
                       {t("flights:table.launch", "Lancement")}
                     </th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">
-                      {t("ops.flights.total", "Total")}
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">
                       {t("ops.flights.discount", "Remise")}
                     </th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">
@@ -1170,9 +1185,6 @@ export function FlightsBillingPage() {
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-slate-700">
                           {formatLaunchMethod(f)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 font-mono text-sm text-slate-900">
-                          {f.total_preview ?? "—"}
                         </td>
                         <td className="px-3 py-2">
                           {f.has_discount ? (
@@ -1273,6 +1285,24 @@ export function FlightsBillingPage() {
                                   </button>
                                 </>
                               )}
+                              {canPost && f.status === "applied" && (
+                                <button
+                                  type="button"
+                                  className="rounded p-1 text-amber-500 hover:text-amber-700 disabled:opacity-40"
+                                  title={t(
+                                    "ops.flights.unbill",
+                                    "Annuler la facturation (Draft)",
+                                  )}
+                                  disabled={unbillFlightUuid === f.uuid}
+                                  onClick={() => handleUnbill(f.uuid)}
+                                >
+                                  {unbillFlightUuid === f.uuid ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Undo2 className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
@@ -1280,7 +1310,7 @@ export function FlightsBillingPage() {
                       {expandedFlight === f.uuid && (
                         <tr key={`${f.uuid}-expanded`}>
                           <td
-                            colSpan={13}
+                            colSpan={12}
                             className="bg-slate-50/50 px-6 py-4"
                           >
                             {/* Flight tags */}
@@ -1324,8 +1354,10 @@ export function FlightsBillingPage() {
                               </div>
                             )}
 
-                            {/* Editable billing fields */}
-                            <EditableChargeFields flight={f} />
+                            {/* Editable billing fields — only for unbilled flights */}
+                            {f.status === "pending" && (
+                              <EditableChargeFields flight={f} />
+                            )}
 
                             {/* Preview panel */}
                             {previewMutation.error &&

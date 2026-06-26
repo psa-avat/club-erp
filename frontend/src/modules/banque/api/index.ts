@@ -1266,6 +1266,7 @@ export type PackPurchaseLine = {
   units_purchased: string
   units_consumed: string
   units_remaining: string
+  total_discount: string
   consumptions: Array<{
     consumption_uuid: string
     flight_uuid: string
@@ -1282,6 +1283,10 @@ export type PackPurchaseLine = {
 export type PackPurchaseListResponse = {
   items: PackPurchaseLine[]
   total: string
+  total_count: number
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 export function useBuyPackMutation() {
@@ -1303,13 +1308,23 @@ export function useBuyPackMutation() {
   })
 }
 
-export function usePackPurchasesQuery(fiscalYearUuid: string | null, memberUuid?: string, enabled = true) {
+export function usePackPurchasesQuery(
+  fiscalYearUuid: string | null,
+  memberUuid?: string,
+  enabled = true,
+  pilotQuery?: string,
+  page = 1,
+  pageSize = 50,
+) {
   return useQuery({
-    queryKey: ['banque', 'packs', 'purchases', fiscalYearUuid, memberUuid],
+    queryKey: ['banque', 'packs', 'purchases', fiscalYearUuid, memberUuid, pilotQuery ?? '', page, pageSize],
     enabled: enabled && !!fiscalYearUuid,
     queryFn: async () => {
       const params = new URLSearchParams({ fiscal_year_uuid: fiscalYearUuid! })
       if (memberUuid) params.append('member_uuid', memberUuid)
+      if (pilotQuery) params.append('pilot_query', pilotQuery)
+      params.append('page', String(page))
+      params.append('page_size', String(pageSize))
       const { data } = await apiClient.get<PackPurchaseListResponse>(
         `/api/v1/packs/purchases?${params}`,
         getAuthRequestConfig(),
@@ -1765,6 +1780,23 @@ export function useFlightBillingBatchApplyMutation() {
         getAuthRequestConfig(),
       )
       return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'flights', 'billable'] })
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.entries({}) })
+    },
+  })
+}
+
+export function useFlightBillingUnbillMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (flightUuid: string) => {
+      await apiClient.post(
+        `/api/v1/flights/${flightUuid}/billing-unbill`,
+        {},
+        getAuthRequestConfig(),
+      )
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['banque', 'flights', 'billable'] })
