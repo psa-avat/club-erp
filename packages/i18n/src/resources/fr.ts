@@ -2119,6 +2119,7 @@ export const fr = {
         '6': 'Comptes de charges',
         '7': 'Comptes de produits',
         '8': 'Comptes spéciaux',
+        '9': 'Comptes analytiques',
       },
     },
     reports: {

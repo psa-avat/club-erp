@@ -902,5 +902,45 @@
     "is_posting_allowed": true,
     "is_reconcilable": false,
     "require_id": 0
+  },
+  {
+    "code": "9",
+    "name": "Comptes de comptabilité analytique",
+    "type": 9,
+    "is_posting_allowed": false,
+    "is_reconcilable": false,
+    "require_id": 0
+  },
+  {
+    "code": "90",
+    "name": "Comptes de reflet (liaison interne)",
+    "type": 9,
+    "is_posting_allowed": false,
+    "is_reconcilable": false,
+    "require_id": 0
+  },
+  {
+    "code": "902",
+    "name": "Reflet des charges d'exploitation",
+    "type": 9,
+    "is_posting_allowed": true,
+    "is_reconcilable": false,
+    "require_id": 0
+  },
+  {
+    "code": "92",
+    "name": "Comptes de coûts de revient par activité",
+    "type": 9,
+    "is_posting_allowed": false,
+    "is_reconcilable": false,
+    "require_id": 0
+  },
+  {
+    "code": "921",
+    "name": "Coûts de revient des Vols d'Initiation (VI / JD)",
+    "type": 9,
+    "is_posting_allowed": true,
+    "is_reconcilable": false,
+    "require_id": 2
   }
 ]

@@ -2108,6 +2108,7 @@ export const en = {
         '6': 'Expense accounts',
         '7': 'Revenue accounts',
         '8': 'Special accounts',
+        '9': 'Statistical accounts',
       },
     },
     reports: {

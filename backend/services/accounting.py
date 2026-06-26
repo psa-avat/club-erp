@@ -101,7 +101,7 @@ def validate_pcg_seed_items(items: list[dict]) -> list[str]:
     - No duplicate codes within the list.
     - Each code's parent (all strict prefixes of decreasing length) must exist in the list
       unless it is a single-character root (e.g. "1", "4", "5", "6", "7").
-    - type must be an integer in [1..5].
+    - type must be an integer in [1..5] or 9 (analytical).
     """
     errors: list[str] = []
     all_codes: set[str] = set()
@@ -117,8 +117,8 @@ def validate_pcg_seed_items(items: list[dict]) -> list[str]:
         all_codes.add(code)
 
         acct_type = item.get("type")
-        if not isinstance(acct_type, int) or acct_type not in range(1, 6):
-            errors.append(f"Row {idx} (code={code!r}): type must be an integer in [1..5], got {acct_type!r}.")
+        if not isinstance(acct_type, int) or acct_type not in {1, 2, 3, 4, 5, 9}:
+            errors.append(f"Row {idx} (code={code!r}): type must be an integer in [1..5] or 9 (analytical), got {acct_type!r}.")
 
     for code in sorted(duplicates):
         errors.append(f"Duplicate code: {code!r}.")
@@ -262,7 +262,7 @@ async def ensure_fiscal_year_partitions(
 
 def _normal_balance_for_account_type(account_type: int) -> int:
     """Return default normal balance for account type enum."""
-    return 1 if account_type in (1, 4) else 2
+    return 1 if account_type in (1, 4, 9) else 2
 
 
 def _parent_code(code: str, existing_codes: set[str]) -> str | None:

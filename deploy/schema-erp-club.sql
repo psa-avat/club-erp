@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict Rjyucgk8e8gyWn26VTCF0rnrCPazPY1QczP7MIuoVHwIlqEMjMpTU0mdokBScb8
+\restrict j86ChAM3tQfxcNm0LBUdmeeHDB5C56R7xCS89XsAiqF1YBF0kvnsKLz4uSsMqii
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -945,6 +945,7 @@ CREATE TABLE public.assets (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     created_by integer,
     updated_by integer,
+    osrt_sync_enabled boolean DEFAULT false NOT NULL,
     CONSTRAINT chk_asset_status CHECK ((status = ANY (ARRAY[1, 2, 3, 4, 5]))),
     CONSTRAINT chk_assets_depr_years CHECK (((depreciation_years IS NULL) OR (depreciation_years > 0))),
     CONSTRAINT chk_assets_ownership CHECK ((ownership = ANY (ARRAY[1, 2]))),
@@ -952,6 +953,13 @@ CREATE TABLE public.assets (
     CONSTRAINT chk_assets_residual_le_purchase CHECK (((residual_value IS NULL) OR (purchase_price IS NULL) OR (residual_value <= purchase_price))),
     CONSTRAINT chk_assets_residual_positive CHECK (((residual_value IS NULL) OR (residual_value >= (0)::numeric)))
 );
+
+
+--
+-- Name: COLUMN assets.osrt_sync_enabled; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.assets.osrt_sync_enabled IS 'Opt-in pour la déclaration des activités machine vers OSRT. FALSE par défaut (aucun envoi).';
 
 
 --
@@ -1116,6 +1124,23 @@ CREATE TABLE public.cost_provision_rules (
 
 
 --
+-- Name: federal_sync_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.federal_sync_logs (
+    uuid uuid NOT NULL,
+    validated_flight_uuid uuid NOT NULL,
+    platform character varying(16) NOT NULL,
+    status smallint NOT NULL,
+    external_id character varying(64),
+    attempt_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    CONSTRAINT chk_fsl_platform CHECK (((platform)::text = ANY ((ARRAY['gesasso'::character varying, 'osrt'::character varying])::text[]))),
+    CONSTRAINT chk_fsl_status CHECK ((status = ANY (ARRAY[0, 1, 2, 3, 4])))
+);
+
+
+--
 -- Name: flight_billing_settings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1241,7 +1266,7 @@ CREATE TABLE public.member_account_counters (
 
 CREATE TABLE public.member_pack_consumptions (
     uuid uuid DEFAULT gen_random_uuid() NOT NULL,
-    member_uuid uuid NOT NULL,
+    tiers_uuid uuid CONSTRAINT member_pack_consumptions_member_uuid_not_null NOT NULL,
     flight_uuid uuid NOT NULL,
     pack_type character varying(32) NOT NULL,
     quantity_consumed numeric(10,2) NOT NULL,
@@ -1357,6 +1382,8 @@ CREATE TABLE public.member_sheets (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by integer,
     portal_password_hash character varying(255),
+    season_start_date date,
+    season_end_date date,
     CONSTRAINT chk_member_sheets_fare_type CHECK (((fare_type >= 1) AND (fare_type <= 5))),
     CONSTRAINT chk_member_sheets_hours_count CHECK ((hours_count >= (0)::numeric)),
     CONSTRAINT chk_member_sheets_year CHECK (((year >= 2000) AND (year <= 9999)))
@@ -1382,6 +1409,20 @@ COMMENT ON COLUMN public.member_sheets.fare_type IS '1=Standard, 2=Student, 3=Di
 --
 
 COMMENT ON COLUMN public.member_sheets.portal_password_hash IS 'SHA256 hash of portal password. If NULL, default password = {ffvp_id}_{YYYYMMDD} (date of birth)';
+
+
+--
+-- Name: COLUMN member_sheets.season_start_date; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.member_sheets.season_start_date IS 'Début de validité de la licence GesAsso (seasonStartDate)';
+
+
+--
+-- Name: COLUMN member_sheets.season_end_date; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.member_sheets.season_end_date IS 'Fin de validité de la licence GesAsso (seasonEndDate) — badge Expirée si < aujourd''hui';
 
 
 --
@@ -2147,11 +2188,11 @@ CREATE VIEW public.vw_member_pack_balances AS
           WHERE ((ae.state = 2) AND (al.tiers_uuid IS NOT NULL))
           GROUP BY al.tiers_uuid, p_def.pack_type
         ), pack_consumptions AS (
-         SELECT member_pack_consumptions.member_uuid,
+         SELECT member_pack_consumptions.tiers_uuid AS member_uuid,
             member_pack_consumptions.pack_type,
             sum(member_pack_consumptions.quantity_consumed) AS total_consumed_units
            FROM public.member_pack_consumptions
-          GROUP BY member_pack_consumptions.member_uuid, member_pack_consumptions.pack_type
+          GROUP BY member_pack_consumptions.tiers_uuid, member_pack_consumptions.pack_type
         )
  SELECT p.member_uuid,
     p.pack_type,
@@ -2590,6 +2631,14 @@ ALTER TABLE ONLY public.cost_accrual_staging
 
 ALTER TABLE ONLY public.cost_provision_rules
     ADD CONSTRAINT cost_provision_rules_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: federal_sync_logs federal_sync_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.federal_sync_logs
+    ADD CONSTRAINT federal_sync_logs_pkey PRIMARY KEY (uuid);
 
 
 --
@@ -3389,17 +3438,17 @@ CREATE INDEX idx_mpc_flight ON public.member_pack_consumptions USING btree (flig
 
 
 --
--- Name: idx_mpc_member_pack; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_mpc_member_pack ON public.member_pack_consumptions USING btree (member_uuid, pack_type);
-
-
---
 -- Name: idx_mpc_pack_definition; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_mpc_pack_definition ON public.member_pack_consumptions USING btree (pack_definition_uuid);
+
+
+--
+-- Name: idx_mpc_tiers_pack; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mpc_tiers_pack ON public.member_pack_consumptions USING btree (tiers_uuid, pack_type);
 
 
 --
@@ -3865,6 +3914,13 @@ CREATE INDEX ix_cost_staging_rule ON public.cost_accrual_staging USING btree (co
 
 
 --
+-- Name: ix_federal_sync_logs_validated_flight_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_federal_sync_logs_validated_flight_uuid ON public.federal_sync_logs USING btree (validated_flight_uuid);
+
+
+--
 -- Name: ix_members_last_registration_date; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3886,10 +3942,10 @@ CREATE INDEX ix_mpc_flight ON public.member_pack_consumptions USING btree (fligh
 
 
 --
--- Name: ix_mpc_member_pack_type; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_mpc_tiers_pack_type; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_mpc_member_pack_type ON public.member_pack_consumptions USING btree (member_uuid, pack_type);
+CREATE INDEX ix_mpc_tiers_pack_type ON public.member_pack_consumptions USING btree (tiers_uuid, pack_type);
 
 
 --
@@ -4735,6 +4791,14 @@ ALTER TABLE ONLY public.cost_provision_rules
 
 
 --
+-- Name: federal_sync_logs federal_sync_logs_validated_flight_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.federal_sync_logs
+    ADD CONSTRAINT federal_sync_logs_validated_flight_uuid_fkey FOREIGN KEY (validated_flight_uuid) REFERENCES public.validated_flights(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: accounting_journals fk_accounting_journals_default_account; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4883,7 +4947,7 @@ ALTER TABLE ONLY public.member_pack_consumptions
 --
 
 ALTER TABLE ONLY public.member_pack_consumptions
-    ADD CONSTRAINT member_pack_consumptions_member_uuid_fkey FOREIGN KEY (member_uuid) REFERENCES public.members(uuid) ON DELETE CASCADE;
+    ADD CONSTRAINT member_pack_consumptions_member_uuid_fkey FOREIGN KEY (tiers_uuid) REFERENCES public.members(uuid) ON DELETE CASCADE;
 
 
 --
@@ -5130,5 +5194,5 @@ ALTER TABLE ONLY public.vi_type_catalog
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Rjyucgk8e8gyWn26VTCF0rnrCPazPY1QczP7MIuoVHwIlqEMjMpTU0mdokBScb8
+\unrestrict j86ChAM3tQfxcNm0LBUdmeeHDB5C56R7xCS89XsAiqF1YBF0kvnsKLz4uSsMqii
 

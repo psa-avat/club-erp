@@ -784,7 +784,7 @@ class AccountingAccount(Base):
 
     __tablename__ = "accounting_accounts"
     __table_args__ = (
-        CheckConstraint("type IN (1, 2, 3, 4, 5)", name="chk_account_type"),
+        CheckConstraint("type IN (1, 2, 3, 4, 5, 9)", name="chk_account_type"),
         CheckConstraint("normal_balance IN (1, 2)", name="chk_account_normal_balance"),
         CheckConstraint("require_id IN (0, 1, 2, 3)", name="chk_account_require_id"),
     )
@@ -792,7 +792,7 @@ class AccountingAccount(Base):
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     code = Column(String(32), nullable=False, unique=True, index=True)
     name = Column(String(255), nullable=False)
-    type = Column(SmallInteger, nullable=False)  # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue
+    type = Column(SmallInteger, nullable=False)  # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue,9=Analytical
     parent_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
     is_posting_allowed = Column(Boolean, nullable=False, default=True)
     normal_balance = Column(SmallInteger, nullable=False)  # 1=Debit, 2=Credit

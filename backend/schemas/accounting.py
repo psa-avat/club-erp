@@ -19,7 +19,7 @@
  """
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -386,7 +386,7 @@ class PcgSeedItem(BaseModel):
     """One entry in the PCG seed file."""
     code: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=255)
-    type: int = Field(ge=1, le=5)          # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue
+    type: Literal[1, 2, 3, 4, 5, 9]       # 1=Asset,2=Liability,3=Equity,4=Expense,5=Revenue,9=Analytical
     is_posting_allowed: bool = True
     is_reconcilable: bool = False
     require_id: int = Field(default=0, ge=0, le=3)  # 0=none,1=member,2=asset,3=supplier
