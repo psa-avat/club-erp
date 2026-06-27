@@ -70,7 +70,9 @@ from services.members import (
     list_member_logbook,
 )
 from schemas.accounting import FiscalYearResponse
+from schemas.flight_packs import PackPurchaseListResponse
 from services.accounting import list_fiscal_years
+from services.flight_packs import list_pack_purchases_for_member
 
 router = APIRouter(prefix="/api/v1/member-portal", tags=["member-portal"])
 
@@ -253,6 +255,24 @@ async def member_portal_account_packs(
 ):
     """List active packs with remaining quantities."""
     return await list_member_packs(db=db, member_uuid=member.uuid)
+
+
+@router.get("/packs/purchases", response_model=PackPurchaseListResponse)
+async def member_portal_pack_purchases(
+    fiscal_year_uuid: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    member: Member = Depends(get_member_portal_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """List pack purchases for the authenticated member in a given fiscal year."""
+    return await list_pack_purchases_for_member(
+        db=db,
+        fiscal_year_uuid=fiscal_year_uuid,
+        member_uuid=member.uuid,
+        page=page,
+        page_size=page_size,
+    )
 
 
 # ── Expenses ───────────────────────────────────────────────────────────────────

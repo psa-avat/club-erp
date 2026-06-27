@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, ShoppingBag, Loader2, Download } from 'lucid
 import { Button } from '../../../components/ui/button'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { useActiveFiscalYearQuery, usePackPurchasesQuery } from '../../banque/api'
+import { useMemberPortalFiscalYearsQuery, useMemberPortalPackPurchasesQuery } from '../../member-portal/api'
 import { exportTableToPdf } from '../../../lib/exportPdf'
 import type { WorkspaceMode } from '../types/workspace'
 
@@ -27,23 +28,47 @@ function formatEur(value: string | number | null | undefined): string {
   return Number.isFinite(n) ? `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} EUR` : '—'
 }
 
-export function MemberPackUsageTab({ memberUuid, mode: _mode }: MemberPackUsageTabProps) {
+export function MemberPackUsageTab({ memberUuid, mode }: MemberPackUsageTabProps) {
   const { t } = useTranslation(['banque', 'common'])
+
+  // Club mode: use admin fiscal year store
   const storeFyUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
-  const { data: activeFy } = useActiveFiscalYearQuery(!storeFyUuid)
-  const fiscalYearUuid = storeFyUuid ?? (activeFy?.uuid ?? null)
+  const { data: activeFy } = useActiveFiscalYearQuery(mode === 'club' && !storeFyUuid)
+  const clubFiscalYearUuid = mode === 'club' ? (storeFyUuid ?? (activeFy?.uuid ?? null)) : null
+
+  // Portal mode: use portal fiscal years endpoint, pick the most recent
+  const { data: portalFiscalYears } = useMemberPortalFiscalYearsQuery(mode === 'portal')
+  const portalFiscalYearUuid = mode === 'portal'
+    ? (portalFiscalYears && portalFiscalYears.length > 0
+        ? portalFiscalYears[portalFiscalYears.length - 1].uuid
+        : null)
+    : null
+
+  const fiscalYearUuid = mode === 'portal' ? portalFiscalYearUuid : clubFiscalYearUuid
 
   const [page, setPage] = useState(1)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
 
-  const { data: purchases, isLoading } = usePackPurchasesQuery(
-    fiscalYearUuid,
+  // Club mode uses admin endpoint (requires staff JWT)
+  const { data: clubPurchases, isLoading: clubLoading } = usePackPurchasesQuery(
+    mode === 'club' ? fiscalYearUuid : null,
     memberUuid,
-    !!fiscalYearUuid,
+    mode === 'club' && !!fiscalYearUuid,
     undefined,
     page,
     PAGE_SIZE,
   )
+
+  // Portal mode uses portal endpoint (requires portal JWT)
+  const { data: portalPurchases, isLoading: portalLoading } = useMemberPortalPackPurchasesQuery(
+    mode === 'portal' ? fiscalYearUuid : null,
+    page,
+    PAGE_SIZE,
+    mode === 'portal' && !!fiscalYearUuid,
+  )
+
+  const purchases = mode === 'portal' ? portalPurchases : clubPurchases
+  const isLoading = mode === 'portal' ? portalLoading : clubLoading
 
   const items = purchases?.items ?? []
   const totalPages = purchases?.total_pages ?? 1

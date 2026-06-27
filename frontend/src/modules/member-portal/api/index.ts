@@ -188,6 +188,35 @@ export function useMemberPortalDeposit() {
   })
 }
 
+// ── Pack Purchases ────────────────────────────────────────────────────────────
+
+import type { PackPurchaseListResponse } from '../../banque/api'
+
+async function fetchPortalPackPurchases(fiscalYearUuid: string, page: number, pageSize: number) {
+  const params = new URLSearchParams({
+    fiscal_year_uuid: fiscalYearUuid,
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  const { data } = await portalApiClient.get<PackPurchaseListResponse>(
+    `/api/v1/member-portal/packs/purchases?${params}`,
+  )
+  return data
+}
+
+export function useMemberPortalPackPurchasesQuery(
+  fiscalYearUuid: string | null,
+  page = 1,
+  pageSize = 50,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['member-portal', 'packs-purchases', fiscalYearUuid, page, pageSize],
+    queryFn: () => fetchPortalPackPurchases(fiscalYearUuid!, page, pageSize),
+    enabled: enabled && !!fiscalYearUuid,
+  })
+}
+
 // ── Tax Expenses ──────────────────────────────────────────────────────────────
 
 async function fetchTaxExpenses() {

@@ -1217,3 +1217,183 @@ async def discount_review(
         "rem_entries_created": len([d for d in details if d.get("rem_entry_uuid")]),
         "details": details,
     }
+
+
+# ---------------------------------------------------------------------------
+# Pack Purchase Listing (shared by admin and member portal)
+# ---------------------------------------------------------------------------
+
+async def list_pack_purchases_for_member(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+    member_uuid: UUID,
+    page: int = 1,
+    page_size: int = 50,
+) -> "PackPurchaseListResponse":
+    """
+    Return pack purchases for a specific member in a fiscal year.
+    Used by both the admin route (with member_uuid filter) and the member portal.
+    """
+    import re
+    from collections import defaultdict
+    from schemas.flight_packs import PackPurchaseListResponse, PackPurchaseLine
+    from sqlalchemy.orm import joinedload
+
+    # Find all pack sales accounts
+    pack_defs_result = await db.execute(
+        select(PackDefinition).where(PackDefinition.pack_sales_account_uuid.isnot(None))
+    )
+    pack_defs = list(pack_defs_result.scalars().all())
+    sales_account_uuids = [pd.pack_sales_account_uuid for pd in pack_defs if pd.pack_sales_account_uuid]
+
+    if not sales_account_uuids:
+        return PackPurchaseListResponse(items=[])
+
+    # Credit lines on pack sales accounts = pack purchases
+    lines_result = await db.execute(
+        select(AccountingLine)
+        .join(AccountingEntry, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .options(joinedload(AccountingLine.entry), joinedload(AccountingLine.account))
+        .where(
+            AccountingLine.account_uuid.in_(sales_account_uuids),
+            AccountingLine.fiscal_year_uuid == fiscal_year_uuid,
+            AccountingLine.credit > 0,
+        )
+        .order_by(AccountingEntry.entry_date.desc(), AccountingLine.uuid.asc())
+    )
+    lines = list(lines_result.unique().scalars().all())
+
+    # Member is on the debit (411 receivable) side of the entry
+    member_by_entry: dict[UUID, tuple[UUID | None, object | None]] = {}
+    if lines:
+        entry_uuids = [al.entry_uuid for al in lines if al.entry]
+        debit_lines_result = await db.execute(
+            select(AccountingLine).where(
+                AccountingLine.entry_uuid.in_(entry_uuids),
+                AccountingLine.tiers_uuid == member_uuid,
+                AccountingLine.debit > 0,
+            )
+        )
+        for dl in debit_lines_result.unique().scalars().all():
+            if dl.entry_uuid not in member_by_entry:
+                member_by_entry[dl.entry_uuid] = (dl.tiers_uuid, None)
+
+        if member_by_entry:
+            members_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
+            member_obj = members_result.scalar_one_or_none()
+            member_by_entry = {
+                entry_uuid: (tiers_uuid, member_obj)
+                for entry_uuid, (tiers_uuid, _) in member_by_entry.items()
+            }
+
+    # Keep only this member's purchase lines
+    lines = [
+        al for al in lines
+        if al.entry and member_by_entry.get(al.entry.uuid, (None, None))[0] == member_uuid
+    ]
+
+    items: list[PackPurchaseLine] = []
+    for al in lines:
+        entry = al.entry
+        if not entry:
+            continue
+
+        pack_def = next((pd for pd in pack_defs if pd.pack_sales_account_uuid == al.account_uuid), None)
+        if not pack_def:
+            continue
+
+        entry_member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
+
+        consumptions = await list_consumptions_for_member(db, entry_member_uuid, pack_def.pack_type)
+        units_consumed = sum(c.quantity_consumed for c in consumptions)
+        total_discount_eur = sum(c.total_discount_amount for c in consumptions)
+
+        consumption_detail = []
+        for c in consumptions:
+            flight_result = await db.execute(
+                select(ValidatedFlight).where(ValidatedFlight.uuid == c.flight_uuid)
+            )
+            flight = flight_result.scalar_one_or_none()
+            consumption_detail.append({
+                "consumption_uuid": str(c.uuid),
+                "flight_uuid": str(c.flight_uuid),
+                "flight_date": str(flight.jour) if flight else None,
+                "asset_code": flight.asset_code if flight else None,
+                "quantity_consumed": str(c.quantity_consumed),
+                "discount_unit_price": str(c.discount_unit_price),
+                "total_discount_amount": str(c.total_discount_amount),
+                "valid_from": str(c.valid_from.date()) if c.valid_from else None,
+                "pack_definition_uuid": str(c.pack_definition_uuid) if c.pack_definition_uuid else None,
+            })
+
+        member_name = f"{member_obj.first_name} {member_obj.last_name}" if member_obj else None
+
+        valid_from = None
+        desc = entry.description or ""
+        vf_match = re.search(r'VALID_FROM:(\d{4}-\d{2}-\d{2})', desc)
+        if vf_match:
+            try:
+                valid_from = date.fromisoformat(vf_match.group(1))
+            except (ValueError, TypeError):
+                pass
+
+        items.append(PackPurchaseLine(
+            entry_uuid=entry.uuid,
+            reference=entry.reference or "",
+            description=entry.description or "",
+            entry_date=entry.entry_date if hasattr(entry, 'entry_date') else entry.created_at.date(),
+            member_uuid=entry_member_uuid,
+            member_name=member_name,
+            pack_code=pack_def.code,
+            pack_type=pack_def.pack_type,
+            amount=al.credit or Decimal("0"),
+            valid_from=valid_from,
+            units_purchased=pack_def.quantity_allowance,
+            units_consumed=units_consumed,
+            units_remaining=pack_def.quantity_allowance - units_consumed,
+            total_discount=total_discount_eur,
+            consumptions=consumption_detail,
+        ))
+
+    # FIFO distribution across multiple slots of the same pack type
+    group_indices: dict[tuple, list[int]] = defaultdict(list)
+    for i, item in enumerate(items):
+        key = (str(item.member_uuid) if item.member_uuid else "", item.pack_type or "")
+        group_indices[key].append(i)
+
+    for indices in group_indices.values():
+        if len(indices) <= 1:
+            continue
+        indices_sorted = sorted(indices, key=lambda i: items[i].valid_from or date.min)
+        total_units_all = items[indices_sorted[0]].units_consumed
+        total_discount_all = items[indices_sorted[0]].total_discount
+        remaining_to_distribute = total_units_all
+        for i in indices_sorted:
+            consumed_this = min(remaining_to_distribute, items[i].units_purchased)
+            discount_this = (
+                consumed_this / total_units_all * total_discount_all
+                if total_units_all > 0
+                else Decimal("0")
+            )
+            items[i] = items[i].model_copy(update={
+                "units_consumed": consumed_this,
+                "units_remaining": items[i].units_purchased - consumed_this,
+                "total_discount": discount_this,
+            })
+            remaining_to_distribute = max(Decimal("0"), remaining_to_distribute - consumed_this)
+
+    items.sort(key=lambda x: ((x.member_name or "").lower(), -(x.entry_date.toordinal())))
+
+    total_amount = sum(item.amount for item in items)
+    total_count = len(items)
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+
+    return PackPurchaseListResponse(
+        items=items[offset: offset + page_size],
+        total=total_amount,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )

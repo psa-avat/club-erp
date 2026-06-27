@@ -15,7 +15,9 @@
       "Bash(docker exec *)",
       "Bash(curl -s http://localhost:8000/health)",
       "Bash(grep -E \"\\\\.\\(py|ts\\)$\")",
-      "Bash(grep -E \"\\\\.py$\")"
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(curl -s http://localhost:8000/api/v1/docs)",
+      "Bash(curl -s \"http://localhost:8000/api/v1/member-portal/packs/purchases\")"
     ]
   }
 }
