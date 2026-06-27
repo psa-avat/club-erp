@@ -33,7 +33,7 @@ COPY --from=builder /install /usr/local
 COPY --chown=appuser:appgroup . .
 
 # Remove dev artefacts that must not ship in production
-RUN rm -rf venv __pycache__ .env nohup.out start.bat tests/
+RUN rm -rf venv __pycache__ .env nohup.out start.bat tests/ tools/
 
 USER appuser
 
