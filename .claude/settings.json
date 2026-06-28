@@ -17,7 +17,9 @@
       "Bash(grep -E \"\\\\.\\(py|ts\\)$\")",
       "Bash(grep -E \"\\\\.py$\")",
       "Bash(curl -s http://localhost:8000/api/v1/docs)",
-      "Bash(curl -s \"http://localhost:8000/api/v1/member-portal/packs/purchases\")"
+      "Bash(curl -s \"http://localhost:8000/api/v1/member-portal/packs/purchases\")",
+      "Read(//home/erpadmin/.claude/plans/**)",
+      "Bash(PYTHONPATH=backend backend/venv/bin/python -m pytest backend/tests/ -x -q)"
     ]
   }
 }

@@ -23,16 +23,18 @@ import {
   Ticket,
   TableProperties,
   Calendar,
-  ShoppingCart,
   Database,
   ArrowLeftRight,
+  BookOpen,
+  GitMerge,
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { ViEntitlementsPage } from "./ViEntitlementsPage";
 import { ViTypesPage } from "./ViTypesPage";
 import { ViPlanningPage } from "./ViPlanningPage";
-import { HelloAssoPurchasesPage } from "../../helloasso";
+import { ViFinancePage } from "./ViFinancePage";
+import { ViReconciliationPage } from "./ViReconciliationPage";
 import { HelloAssoViImportPage } from "../../helloasso";
 import { PlancheViSyncPage } from "../../planche";
 
@@ -43,7 +45,7 @@ import { PlancheViSyncPage } from "../../planche";
  * - bons      → Gestion des Bons VI (ViEntitlementsPage)
  * - types     → Catalogue des types VI (ViTypesPage)
  * - planning  → Planification des Bons VI (ViPlanningPage)
- * - achats    → Achats HelloAsso (HelloAssoPurchasesPage)
+ * - finance   → Réalisations comptables VI (ViFinancePage)
  * - import    → Import VI depuis HelloAsso (HelloAssoViImportPage)
  * - sync      → Sync VI Planche (PlancheViSyncPage)
  */
@@ -77,10 +79,16 @@ export function ViWorkspacePage() {
           content: <ViPlanningPage />,
         },
         {
-          value: "achats",
-          label: t("workspace.tabs.purchases", "Achats HelloAsso"),
-          icon: ShoppingCart,
-          content: <HelloAssoPurchasesPage />,
+          value: "finance",
+          label: t("workspace.tabs.finance", "Réalisations"),
+          icon: BookOpen,
+          content: <ViFinancePage />,
+        },
+        {
+          value: "reconciliation",
+          label: "Réconciliation",
+          icon: GitMerge,
+          content: <ViReconciliationPage />,
         },
         {
           value: "import",

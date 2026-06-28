@@ -1,4 +1,6 @@
 export { ViTypesPage } from './components/ViTypesPage'
 export { ViEntitlementsPage } from './components/ViEntitlementsPage'
 export { ViPlanningPage } from './components/ViPlanningPage'
+export { ViFinancePage } from './components/ViFinancePage'
+export { ViReconciliationPage } from './components/ViReconciliationPage'
 export { ViWorkspacePage } from './components/ViWorkspacePage'

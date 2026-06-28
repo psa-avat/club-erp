@@ -29,6 +29,7 @@ from models import (
     PricingItemTier,
     PricingVersion,
     ValidatedFlight,
+    ViEntitlement,
     ViTypeCatalog,
 )
 from schemas.flights import (
@@ -87,6 +88,8 @@ class _ClubBillingInfo:
     is_club_billed: bool
     charge_account_uuid: UUID | None
     charge_account_code: str | None
+    # Set when the VI type has analytical accounts: D 921 / C 902 replaces D 6067 / C 706x
+    vi_analytical_credit_account: AccountingAccount | None = None
 
 
 def _dec(value: object, default: str = "0") -> Decimal:
@@ -274,32 +277,52 @@ class FlightBillingPreviewService:
 
     async def _resolve_charge_account(
         self, flight: ValidatedFlight, is_initiation: bool = True
-    ) -> tuple[UUID | None, str | None]:
+    ) -> tuple[UUID | None, str | None, AccountingAccount | None]:
         """
-        Resolve the charge account for a club-billed flight.
+        Resolve the charge/debit account for a club-billed flight.
 
-        For initiation flights (is_initiation=True):
+        For initiation VI flights with analytical accounts configured:
+            debit = vi_type.analytical_cost_account_uuid (e.g. 921)
+            credit_override = vi_type.analytical_reflection_account (e.g. 902)
+
+        For other initiation flights:
             vi_type_catalog.charge_account_uuid → settings.default_initiation_charge_account_uuid
 
         For other club-billed flights (is_initiation=False):
             settings.club_charge_account_uuid → settings.default_initiation_charge_account_uuid (fallback)
 
-        Returns (charge_account_uuid, charge_account_code).
+        Returns (charge_account_uuid, charge_account_code, vi_analytical_credit_account).
         """
         charge_account_uuid: UUID | None = None
         charge_account_code: str | None = None
+        vi_analytical_credit_account: AccountingAccount | None = None
 
         if is_initiation and flight.vi_erp_id:
-            # Initiation flight with a specific VI type → use its charge account
+            # vi_erp_id is the entitlement code (e.g. VI2026-0001), not the type code.
+            # Look up the entitlement and follow its vi_type relationship.
             vi_result = await self.db.execute(
-                select(ViTypeCatalog)
-                .options(joinedload(ViTypeCatalog.charge_account))
-                .where(ViTypeCatalog.code == flight.vi_erp_id)
+                select(ViEntitlement)
+                .options(
+                    joinedload(ViEntitlement.vi_type).options(
+                        joinedload(ViTypeCatalog.charge_account),
+                        joinedload(ViTypeCatalog.analytical_cost_account),
+                        joinedload(ViTypeCatalog.analytical_reflection_account),
+                    )
+                )
+                .where(ViEntitlement.code == flight.vi_erp_id)
             )
-            vi_type = vi_result.unique().scalar_one_or_none()
-            if vi_type and vi_type.charge_account_uuid:
-                charge_account_uuid = vi_type.charge_account_uuid
-                charge_account_code = vi_type.charge_account_code
+            entitlement = vi_result.unique().scalar_one_or_none()
+            vi_type = entitlement.vi_type if entitlement else None
+            if vi_type:
+                if vi_type.analytical_cost_account_uuid and vi_type.analytical_reflection_account_uuid:
+                    # VI analytical mode: D 921 / C 902
+                    charge_account_uuid = vi_type.analytical_cost_account_uuid
+                    charge_account_code = vi_type.analytical_cost_account.code if vi_type.analytical_cost_account else None
+                    vi_analytical_credit_account = vi_type.analytical_reflection_account
+                elif vi_type.charge_account_uuid:
+                    # Fallback to standard charge account override from VI type
+                    charge_account_uuid = vi_type.charge_account_uuid
+                    charge_account_code = vi_type.charge_account_code
 
         if charge_account_uuid is None and self._billing_settings:
             if is_initiation:
@@ -317,7 +340,7 @@ class FlightBillingPreviewService:
                 if acct:
                     charge_account_code = acct.code
 
-        return charge_account_uuid, charge_account_code
+        return charge_account_uuid, charge_account_code, vi_analytical_credit_account
 
     async def _resolve_club_billing(
         self, flight: ValidatedFlight
@@ -345,12 +368,14 @@ class FlightBillingPreviewService:
         # ── Detection 2: initiation flight with a resolvable charge account ──
         charge_account_uuid: UUID | None = None
         charge_account_code: str | None = None
+        vi_analytical_credit_account: AccountingAccount | None = None
         if not is_club_billed and is_initiation:
-            ca_uuid, ca_code = await self._resolve_charge_account(flight, is_initiation=True)
+            ca_uuid, ca_code, vi_credit = await self._resolve_charge_account(flight, is_initiation=True)
             if ca_uuid is not None:
                 is_club_billed = True
                 charge_account_uuid = ca_uuid
                 charge_account_code = ca_code
+                vi_analytical_credit_account = vi_credit
 
         if not is_club_billed:
             return _ClubBillingInfo(
@@ -359,7 +384,7 @@ class FlightBillingPreviewService:
 
         # Detection 1 (club member match): resolve charge account now if not already resolved
         if charge_account_uuid is None:
-            charge_account_uuid, charge_account_code = await self._resolve_charge_account(
+            charge_account_uuid, charge_account_code, _ = await self._resolve_charge_account(
                 flight, is_initiation=False
             )
 
@@ -367,6 +392,7 @@ class FlightBillingPreviewService:
             is_club_billed=True,
             charge_account_uuid=charge_account_uuid,
             charge_account_code=charge_account_code,
+            vi_analytical_credit_account=vi_analytical_credit_account,
         )
 
     async def preview_flight(
@@ -490,7 +516,8 @@ class FlightBillingPreviewService:
                 if quantity is None:
                     errors.append(_error("quantity_missing", f"Quantity cannot be calculated for price item {item.name}.", scope=machine.source))
                     continue
-                if item.gl_account_credit is None:
+                vi_credit = club.vi_analytical_credit_account
+                if item.gl_account_credit is None and vi_credit is None:
                     errors.append(_error("pricing_item_account_missing", f"Price item {item.name} has no credit account.", scope=machine.source))
                     continue
                 if not payers:
@@ -506,6 +533,7 @@ class FlightBillingPreviewService:
                         if payer.share <= 0:
                             continue
                         amount = _money(fixed_price * payer.share)
+                        eff_credit = vi_credit or item.gl_account_credit
                         preview_line = FlightBillingAppliedLinePreview(
                             source=machine.source,
                             payer_member_uuid=str(payer.member.uuid) if payer.member else None,
@@ -524,15 +552,15 @@ class FlightBillingPreviewService:
                             amount=amount,
                             debit_account_uuid=str(debit_account.uuid) if debit_account else None,
                             debit_account_code=debit_account.code if debit_account else None,
-                            credit_account_uuid=str(item.gl_account_credit.uuid),
-                            credit_account_code=item.gl_account_credit.code,
+                            credit_account_uuid=str(eff_credit.uuid) if eff_credit else None,
+                            credit_account_code=eff_credit.code if eff_credit else None,
                             pack_hours_before=Decimal("0"),
                             pack_hours_used=Decimal("0"),
                             pack_hours_after=Decimal("0"),
                         )
                         applied_lines.append(preview_line)
                         accounting_lines.extend(
-                            self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item, is_club_billed=club.is_club_billed)
+                            self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item, is_club_billed=club.is_club_billed, vi_credit_account=vi_credit)
                         )
                     continue
 
@@ -559,6 +587,7 @@ class FlightBillingPreviewService:
                     )
                     for line_quantity, normal_unit_price, applied_unit_price, discount_reason, before, used, after in split_lines:
                         amount = _money(line_quantity * applied_unit_price)
+                        eff_credit = vi_credit or item.gl_account_credit
                         preview_line = FlightBillingAppliedLinePreview(
                             source=machine.source,
                             payer_member_uuid=str(payer.member.uuid) if payer.member else None,
@@ -577,15 +606,15 @@ class FlightBillingPreviewService:
                             amount=amount,
                             debit_account_uuid=str(debit_account.uuid) if debit_account else None,
                             debit_account_code=debit_account.code if debit_account else None,
-                            credit_account_uuid=str(item.gl_account_credit.uuid),
-                            credit_account_code=item.gl_account_credit.code,
+                            credit_account_uuid=str(eff_credit.uuid) if eff_credit else None,
+                            credit_account_code=eff_credit.code if eff_credit else None,
                             pack_hours_before=before,
                             pack_hours_used=used,
                             pack_hours_after=after,
                         )
                         applied_lines.append(preview_line)
                         accounting_lines.extend(
-                            self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item, is_club_billed=club.is_club_billed)
+                            self._accounting_lines_for(preview_line, payer, machine.asset, debit_account, item, is_club_billed=club.is_club_billed, vi_credit_account=vi_credit)
                         )
 
         total_amount = _money(sum((line.amount for line in applied_lines), Decimal("0")))
@@ -998,11 +1027,22 @@ class FlightBillingPreviewService:
         debit_account: AccountingAccount | None,
         item: PricingItem,
         is_club_billed: bool = False,
+        vi_credit_account: AccountingAccount | None = None,
     ) -> list[FlightAccountingLinePreview]:
         description = f"{line.pricing_item_name} {line.asset_code}"
-        # Debit side (411 receivable): tiers_uuid = member who owes; for club-billed = None
-        debit_tiers_uuid = None if is_club_billed else (str(payer.member.uuid) if payer.member else None)
         asset_uuid = str(asset.uuid)
+
+        if vi_credit_account is not None:
+            # VI analytical mode: D 921 tiers=asset / C 902 tiers=None
+            debit_tiers_uuid = asset_uuid
+            credit_account = vi_credit_account
+            credit_tiers_uuid = None
+        else:
+            # Standard mode: D debit_account tiers=member (or None if club) / C 7xx tiers=asset
+            debit_tiers_uuid = None if is_club_billed else (str(payer.member.uuid) if payer.member else None)
+            credit_account = item.gl_account_credit
+            credit_tiers_uuid = asset_uuid
+
         return [
             FlightAccountingLinePreview(
                 side="debit",
@@ -1015,10 +1055,9 @@ class FlightBillingPreviewService:
             ),
             FlightAccountingLinePreview(
                 side="credit",
-                account_uuid=str(item.gl_account_credit.uuid) if item.gl_account_credit else None,
-                account_code=item.gl_account_credit.code if item.gl_account_credit else None,
-                # 7xx revenue: tiers_uuid = asset (source of revenue)
-                tiers_uuid=asset_uuid,
+                account_uuid=str(credit_account.uuid) if credit_account else None,
+                account_code=credit_account.code if credit_account else None,
+                tiers_uuid=credit_tiers_uuid,
                 debit=Decimal("0"),
                 credit=line.amount,
                 description=description,

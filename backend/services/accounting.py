@@ -1909,16 +1909,16 @@ async def delete_accounting_entry(
     entry_uuid: UUID,
     fiscal_year_uuid: UUID,
 ) -> None:
-    """Delete a Draft accounting entry and all its lines.
+    """Delete a Draft or Cancelled accounting entry and all its lines.
 
     Note: validated_flights referencing this entry are auto-unlinked by
     database trigger trg_unlink_flights_on_entry_delete on accounting_entries.
     """
     entry = await get_accounting_entry(db, entry_uuid, fiscal_year_uuid)
-    if entry.state != 1:
+    if entry.state not in (1, 3):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Cannot delete entry in state {entry.state} (Draft only)",
+            detail=f"Cannot delete entry in state {entry.state} (Draft or Cancelled only)",
         )
 
     # Clean up member_pack_consumptions rows that reference this entry

@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label'
 import { WorkspaceShell, SubWorkspaceShell } from '@/components/ui/workspace-shell'
 import { GesAssoIntegrationPage } from '@/modules/gesasso/components/GesAssoIntegrationPage'
 import { HelloAssoIntegrationPage } from '@/modules/helloasso/components/HelloAssoIntegrationPage'
+import { HelloAssoPurchasesPage } from '@/modules/helloasso/components/HelloAssoPurchasesPage'
 import { PlancheIntegrationPage } from '@/modules/planche/components/PlancheIntegrationPage'
 import { StorageSettingsPage } from '@/modules/storage/components/StorageSettingsPage'
 import { BanqueFiscalYearsPage, BanquePcgPage, BanqueSettingsPage } from '@/modules/banque'
@@ -163,7 +164,12 @@ export function AdminPage() {
                 {
                   value: 'helloasso',
                   label: t('settings.helloasso'),
-                  content: <HelloAssoIntegrationPage />,
+                  content: (
+                    <div className="space-y-8">
+                      <HelloAssoIntegrationPage />
+                      <HelloAssoPurchasesPage />
+                    </div>
+                  ),
                 },
                 {
                   value: 'planche',

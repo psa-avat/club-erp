@@ -26,6 +26,8 @@ export const viQueryKeys = {
   root: ['vi'] as const,
   types: ['vi', 'types'] as const,
   entitlements: (status?: number) => ['vi', 'entitlements', status ?? 'all'] as const,
+  accounting: (uuid: string) => ['vi', 'accounting', uuid] as const,
+  flightLinks: (uuid: string) => ['vi', 'flight-links', uuid] as const,
   staging: ['vi', 'staging'] as const,
 }
 
@@ -37,6 +39,80 @@ export type ViType = {
   is_active: boolean
   charge_account_uuid: string | null
   charge_account_code: string | null
+  // Accounting configuration
+  client_account_uuid: string | null
+  client_account_code: string | null
+  revenue_account_uuid: string | null
+  revenue_account_code: string | null
+  insurance_account_uuid: string | null
+  insurance_account_code: string | null
+  insurance_tiers_uuid: string | null
+  insurance_amount: number | null
+  max_flights: number
+  analytical_cost_account_uuid: string | null
+  analytical_cost_account_code: string | null
+  analytical_reflection_account_uuid: string | null
+  analytical_reflection_account_code: string | null
+}
+
+export type ViTypeAccountingPatch = {
+  client_account_uuid?: string | null
+  revenue_account_uuid?: string | null
+  insurance_account_uuid?: string | null
+  insurance_tiers_uuid?: string | null
+  insurance_amount?: number | null
+  max_flights?: number
+  analytical_cost_account_uuid?: string | null
+  analytical_reflection_account_uuid?: string | null
+}
+
+export type ViFlightLinkResponse = {
+  uuid: string
+  entitlement_uuid: string
+  flight_uuid: string | null
+  sequence: number
+  analytical_entry_uuid: string | null
+  analytical_state: number | null
+  notes: string | null
+  flight_date: string | null
+  aircraft_code: string | null
+  duration_minutes: number | null
+}
+
+export type ViAccountingEntryRef = {
+  entry_uuid: string | null
+  state: number | null   // 1=Draft 2=Posted 3=Cancelled
+  amount: string | null
+  entry_date: string | null
+}
+
+export type ViAccountingSummary = {
+  entitlement_uuid: string
+  entitlement_code: string
+  vi_type_code: string | null
+  amount_ttc: string | null
+  insurance_amount: string | null
+  flight_portion: string | null
+  buyer_member_uuid: string | null
+  buyer_member_name: string | null
+  is_generic: boolean
+  max_flights: number
+  flight_links: ViFlightLinkResponse[]
+  realization: ViAccountingEntryRef
+}
+
+export type ViFlightLinkCreate = {
+  flight_uuid: string
+}
+
+export type ViEntitlementAmountPatch = {
+  amount_ttc?: string | null
+  buyer_member_uuid?: string | null
+}
+
+export type ViRealizationEntryRequest = {
+  fiscal_year_uuid: string
+  entry_date?: string | null
 }
 
 export type ViEntitlement = {
@@ -53,6 +129,9 @@ export type ViEntitlement = {
   origin_ref: string | null
   notes: string | null
   status: number
+  is_generic: boolean
+  amount_ttc: string | null
+  flight_link_count: number
   created_at: string
   updated_at: string
 }
@@ -151,6 +230,7 @@ export function useCreateViEntitlementMutation() {
       code: string
       vi_type_uuid: string
       description?: string
+      amount_ttc?: string | null
       validity_date?: string | null
       scheduled_date?: string | null
       realisation_date?: string | null
@@ -159,6 +239,7 @@ export function useCreateViEntitlementMutation() {
       origin_ref?: string | null
       notes?: string | null
       status?: number
+      is_generic?: boolean
     }) => {
       const { data } = await apiClient.post<ViEntitlement>('/api/v1/vi/entitlements', payload, getAuthRequestConfig())
       return data
@@ -248,9 +329,17 @@ export function useViStagingQuery() {
   })
 }
 
+type ViImportPayload = {
+  status: 'active' | 'done'
+  source: 'items' | 'orders'
+  campaign_type?: string
+  page_size?: number
+  purchased_from_year?: number
+}
+
 export function useHelloassoViPreviewMutation() {
   return useMutation({
-    mutationFn: async (payload: { status: 'active' | 'done'; source: 'items' | 'orders'; campaign_type?: string; page_size?: number }) => {
+    mutationFn: async (payload: ViImportPayload) => {
       const { data } = await apiClient.post<ViImportPreview>('/api/v1/helloasso/vi/staging/preview', payload, getAuthRequestConfig())
       return data
     },
@@ -260,8 +349,25 @@ export function useHelloassoViPreviewMutation() {
 export function useHelloassoViImportMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { status: 'active' | 'done'; source: 'items' | 'orders'; campaign_type?: string; page_size?: number }) => {
+    mutationFn: async (payload: ViImportPayload) => {
       const { data } = await apiClient.post<ViImportResult>('/api/v1/helloasso/vi/staging/import', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.staging })
+    },
+  })
+}
+
+export function useDiscardViStagingMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (stagingUuid: string) => {
+      const { data } = await apiClient.post<ViStagingRow>(
+        `/api/v1/vi/staging/${stagingUuid}/discard`,
+        {},
+        getAuthRequestConfig(),
+      )
       return data
     },
     onSuccess: async () => {
@@ -279,6 +385,158 @@ export function usePromoteViStagingMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: viQueryKeys.root })
+    },
+  })
+}
+
+// ── VI Accounting hooks (Steps 2a+2b) ─────────────────────────────────────
+
+export function useViAccountingSummaryQuery(entitlementUuid: string | null) {
+  return useQuery({
+    queryKey: viQueryKeys.accounting(entitlementUuid ?? ''),
+    enabled: Boolean(entitlementUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<ViAccountingSummary>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/accounting`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function usePatchViAccountingMetaMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entitlementUuid, payload }: { entitlementUuid: string; payload: ViEntitlementAmountPatch }) => {
+      const { data } = await apiClient.patch<ViEntitlement>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/accounting-meta`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, { entitlementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.entitlements() })
+    },
+  })
+}
+
+export function useCreateViRealizationEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entitlementUuid, payload }: { entitlementUuid: string; payload: ViRealizationEntryRequest }) => {
+      const { data } = await apiClient.post<ViAccountingSummary>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/realization-entry`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, { entitlementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.entitlements() })
+    },
+  })
+}
+
+export function useCancelViRealizationEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (entitlementUuid: string) => {
+      const { data } = await apiClient.post<ViAccountingSummary>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/cancel-realization-entry`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, entitlementUuid) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.entitlements() })
+    },
+  })
+}
+
+// Archive a voucher: set realisation_date → auto sets status=REALIZED
+export function useArchiveViEntitlementMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entitlementUuid, date }: { entitlementUuid: string; date: string }) => {
+      const { data } = await apiClient.patch<ViEntitlement>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/realisation-date`,
+        { value: date },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.root })
+    },
+  })
+}
+
+export function useCreateViReimbursementEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      entitlementUuid,
+      fiscalYearUuid,
+      bankAccountUuid,
+      amountTtc,
+      notes,
+    }: {
+      entitlementUuid: string
+      fiscalYearUuid: string
+      bankAccountUuid: string
+      amountTtc?: string | null
+      notes?: string | null
+    }) => {
+      const { data } = await apiClient.post<ViEntitlement>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/reimbursement-entry`,
+        { fiscal_year_uuid: fiscalYearUuid, bank_account_uuid: bankAccountUuid, amount_ttc: amountTtc ?? null, notes: notes ?? null },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.root })
+    },
+  })
+}
+
+// ── VI Flight Link hooks ───────────────────────────────────────────────────
+
+export function useAddViFlightLinkMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entitlementUuid, payload }: { entitlementUuid: string; payload: ViFlightLinkCreate }) => {
+      const { data } = await apiClient.post<ViAccountingSummary>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/flight-links`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, { entitlementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+    },
+  })
+}
+
+export function useRemoveViFlightLinkMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entitlementUuid, linkUuid }: { entitlementUuid: string; linkUuid: string }) => {
+      const { data } = await apiClient.delete<ViAccountingSummary>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/flight-links/${linkUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, { entitlementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
     },
   })
 }

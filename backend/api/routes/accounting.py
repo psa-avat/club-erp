@@ -967,7 +967,7 @@ async def delete_entry_endpoint(
     _: User = post_guard,
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a Draft accounting entry."""
+    """Delete a Draft or Cancelled accounting entry."""
     await delete_accounting_entry(db, entry_uuid, fiscal_year_uuid)
     _log_accounting_audit(
         action="delete_entry",

@@ -27,13 +27,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_
+from sqlalchemy import not_, select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_EDIT_FLIGHTS, CAP_MANAGE_PLANCHE, TYPE_OF_FLIGHT_LABELS, LAUNCH_METHOD_LABELS
-from models import Member, User, ValidatedFlight
+from models import Member, User, ValidatedFlight, ViFlightLink
 from schemas.flights import (
     FlightBillingApplyItem,
     FlightBillingApplyRequest,
@@ -113,6 +113,7 @@ async def list_validated_flights(
     pilot_query: Optional[str] = Query(default=None, min_length=2, description="Search pilot by name or trigram"),
     asset_code: Optional[str] = Query(default=None, min_length=1, description="Filter: glider registration (partial match)"),
     erp_status: Optional[int] = Query(default=None, ge=0, le=2, description="Filter: erp_status (0=validated, 1=transferred, 2=modified)"),
+    unlinked_vi: Optional[bool] = Query(default=None, description="If true, exclude flights already linked to a VI entitlement"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
 ):
@@ -132,6 +133,15 @@ async def list_validated_flights(
         filters.append(ValidatedFlight.asset_code.ilike(f"%{asset_code}%"))
     if erp_status is not None:
         filters.append(ValidatedFlight.erp_status == erp_status)
+    if unlinked_vi:
+        filters.append(
+            not_(
+                select(ViFlightLink.uuid)
+                .where(ViFlightLink.flight_uuid == ValidatedFlight.uuid)
+                .correlate(ValidatedFlight)
+                .exists()
+            )
+        )
 
     # Pilot search: resolve member UUIDs first, then filter by pilot_erp_id OR second_pilot_erp_id
     pilot_member_uuids: list[str] = []
@@ -232,6 +242,7 @@ async def list_validated_flights(
             aero=r.aero,
             observations=r.observations,
             correction_reason=r.correction_reason,
+            vi_erp_id=r.vi_erp_id,
         ))
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
 

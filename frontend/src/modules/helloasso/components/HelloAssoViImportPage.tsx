@@ -12,7 +12,7 @@ import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { useHelloAssoItemDetailsMutation } from '../api'
-import { useHelloassoViImportMutation, useHelloassoViPreviewMutation, usePromoteViStagingMutation, useViStagingQuery, useViTypesQuery } from '../../vi/api'
+import { useDiscardViStagingMutation, useHelloassoViImportMutation, useHelloassoViPreviewMutation, usePromoteViStagingMutation, useViStagingQuery, useViTypesQuery } from '../../vi/api'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -43,9 +43,11 @@ export function HelloAssoViImportPage() {
   const previewMutation = useHelloassoViPreviewMutation()
   const importMutation = useHelloassoViImportMutation()
   const promoteMutation = usePromoteViStagingMutation()
+  const discardMutation = useDiscardViStagingMutation()
   const itemDetailsMutation = useHelloAssoItemDetailsMutation()
 
   const [status, setStatus] = useState<'active' | 'done'>('active')
+  const [purchasedFromYear, setPurchasedFromYear] = useState(2025)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [searchText, setSearchText] = useState('')
   const [promotionTypeUuid, setPromotionTypeUuid] = useState('')
@@ -74,9 +76,9 @@ export function HelloAssoViImportPage() {
 
   const filteredRows = useMemo(() => {
     let rows = stagingQuery.data ?? []
-    // Filter out promoted rows unless showPromoted is checked
+    // Hide promoted (2) and discarded (3) rows unless showPromoted is on
     if (!showPromoted) {
-      rows = rows.filter((row) => row.status !== 2)
+      rows = rows.filter((row) => row.status === 1)
     }
     if (searchText.trim()) {
       const lower = searchText.trim().toLowerCase()
@@ -126,12 +128,16 @@ export function HelloAssoViImportPage() {
   }
 
   async function runPreview() {
-    await previewMutation.mutateAsync({ source: 'items', status, campaign_type: 'Event' })
+    await previewMutation.mutateAsync({ source: 'items', status, campaign_type: 'Event', purchased_from_year: purchasedFromYear })
   }
 
   async function runImport() {
-    await importMutation.mutateAsync({ source: 'items', status, campaign_type: 'Event' })
+    await importMutation.mutateAsync({ source: 'items', status, campaign_type: 'Event', purchased_from_year: purchasedFromYear })
     await stagingQuery.refetch()
+  }
+
+  async function discardRow(stagingUuid: string) {
+    await discardMutation.mutateAsync(stagingUuid)
   }
 
   async function promoteSelected() {
@@ -157,7 +163,7 @@ export function HelloAssoViImportPage() {
 
   return (
     <section className="space-y-4">
-      <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-4 md:items-end">
+      <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-5 md:items-end">
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.source')}</label>
           <input
@@ -172,6 +178,17 @@ export function HelloAssoViImportPage() {
             <option value="active">Active</option>
             <option value="done">Done</option>
           </select>
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">À partir de l'année</label>
+          <input
+            type="number"
+            min={2000}
+            max={2100}
+            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+            value={purchasedFromYear}
+            onChange={(event) => setPurchasedFromYear(Number(event.target.value))}
+          />
         </div>
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.campaignType')}</label>
@@ -208,6 +225,7 @@ export function HelloAssoViImportPage() {
       {previewMutation.error ? <Alert>{toErrorMessage(previewMutation.error)}</Alert> : null}
       {importMutation.error ? <Alert>{toErrorMessage(importMutation.error)}</Alert> : null}
       {promoteMutation.error ? <Alert>{toErrorMessage(promoteMutation.error)}</Alert> : null}
+      {discardMutation.error ? <Alert>{toErrorMessage(discardMutation.error)}</Alert> : null}
       {itemDetailsMutation.error ? <Alert>{toErrorMessage(itemDetailsMutation.error)}</Alert> : null}
       {stagingQuery.error ? <Alert>{toErrorMessage(stagingQuery.error)}</Alert> : null}
 
@@ -221,7 +239,7 @@ export function HelloAssoViImportPage() {
               checked={showPromoted}
               onChange={(event) => setShowPromoted(event.target.checked)}
             />
-            {t('viImport.staging.showPromoted')}
+            Afficher tout (promus &amp; ignorés)
           </label>
           <Input
             className="w-64"
@@ -289,16 +307,28 @@ export function HelloAssoViImportPage() {
                         : t('viImport.table.statusStaging')}
                   </td>
                   <td className="px-3 py-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={itemDetailsMutation.isPending}
-                      onClick={() => {
-                        void getItemDetails(row.item_id)
-                      }}
-                    >
-                      {loadingDetailsItemId === row.item_id ? t('viImport.details.loading') : t('viImport.details.fetch')}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={itemDetailsMutation.isPending}
+                        onClick={() => { void getItemDetails(row.item_id) }}
+                      >
+                        {loadingDetailsItemId === row.item_id ? t('viImport.details.loading') : t('viImport.details.fetch')}
+                      </Button>
+                      {row.status === 1 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive border-destructive/30"
+                          disabled={discardMutation.isPending}
+                          title="Ignorer ce bon (traité par l'ancien système)"
+                          onClick={() => { void discardRow(row.uuid) }}
+                        >
+                          Ignorer
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

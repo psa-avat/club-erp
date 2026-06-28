@@ -27,9 +27,11 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
-from models import HelloAssoViStaging, ViEntitlement, ViEntitlementStatus, ViOriginType, ViTypeCatalog
+from decimal import Decimal
+
+from models import HelloAssoViStaging, ValidatedFlight, ViEntitlement, ViEntitlementStatus, ViFlightLink, ViOriginType, ViTypeCatalog
 from schemas.helloasso import HelloAssoPurchaseRecord
 from schemas.vi import ViEntitlementPayload, ViEntitlementUpdateRequest, ViTypeCatalogPayload, ViTypeCatalogUpdateRequest
 
@@ -46,8 +48,18 @@ def _assert_date_consistency(scheduled_date: date | None, realisation_date: date
         )
 
 
+_VI_TYPE_LOADS = [
+    joinedload(ViTypeCatalog.charge_account),
+    joinedload(ViTypeCatalog.client_account),
+    joinedload(ViTypeCatalog.revenue_account),
+    joinedload(ViTypeCatalog.insurance_account),
+    joinedload(ViTypeCatalog.analytical_cost_account),
+    joinedload(ViTypeCatalog.analytical_reflection_account),
+]
+
+
 async def list_vi_types(db: AsyncSession, active_only: bool = False) -> list[ViTypeCatalog]:
-    stmt = select(ViTypeCatalog).options(joinedload(ViTypeCatalog.charge_account))
+    stmt = select(ViTypeCatalog).options(*_VI_TYPE_LOADS)
     if active_only:
         stmt = stmt.where(ViTypeCatalog.is_active.is_(True))
     stmt = stmt.order_by(ViTypeCatalog.code)
@@ -75,11 +87,8 @@ async def create_vi_type(
     )
     db.add(row)
     await db.commit()
-    # Re-fetch with eager-loaded charge_account for serialization
     result = await db.execute(
-        select(ViTypeCatalog)
-        .options(joinedload(ViTypeCatalog.charge_account))
-        .where(ViTypeCatalog.uuid == row.uuid)
+        select(ViTypeCatalog).options(*_VI_TYPE_LOADS).where(ViTypeCatalog.uuid == row.uuid)
     )
     return result.unique().scalar_one()
 
@@ -87,7 +96,7 @@ async def create_vi_type(
 async def get_vi_type(db: AsyncSession, type_uuid: UUID) -> ViTypeCatalog:
     result = await db.execute(
         select(ViTypeCatalog)
-        .options(joinedload(ViTypeCatalog.charge_account))
+        .options(*_VI_TYPE_LOADS)
         .where(ViTypeCatalog.uuid == type_uuid)
     )
     row = result.unique().scalar_one_or_none()
@@ -122,13 +131,29 @@ async def update_vi_type(
     if payload.charge_account_uuid is not None:
         row.charge_account_uuid = payload.charge_account_uuid
 
+    # Accounting configuration — use model_fields_set so explicit null clears the field
+    _set = payload.model_fields_set
+    if "client_account_uuid" in _set:
+        row.client_account_uuid = payload.client_account_uuid
+    if "revenue_account_uuid" in _set:
+        row.revenue_account_uuid = payload.revenue_account_uuid
+    if "insurance_account_uuid" in _set:
+        row.insurance_account_uuid = payload.insurance_account_uuid
+    if "insurance_tiers_uuid" in _set:
+        row.insurance_tiers_uuid = payload.insurance_tiers_uuid
+    if "insurance_amount" in _set:
+        row.insurance_amount = payload.insurance_amount
+    if "max_flights" in _set and payload.max_flights is not None:
+        row.max_flights = payload.max_flights
+    if "analytical_cost_account_uuid" in _set:
+        row.analytical_cost_account_uuid = payload.analytical_cost_account_uuid
+    if "analytical_reflection_account_uuid" in _set:
+        row.analytical_reflection_account_uuid = payload.analytical_reflection_account_uuid
+
     row.updated_by = user_id
     await db.commit()
-    # Re-fetch with eager-loaded charge_account for serialization
     result = await db.execute(
-        select(ViTypeCatalog)
-        .options(joinedload(ViTypeCatalog.charge_account))
-        .where(ViTypeCatalog.uuid == row.uuid)
+        select(ViTypeCatalog).options(*_VI_TYPE_LOADS).where(ViTypeCatalog.uuid == row.uuid)
     )
     return result.unique().scalar_one()
 
@@ -140,7 +165,11 @@ async def list_vi_entitlements(
     scheduled_from: date | None = None,
     scheduled_to: date | None = None,
 ) -> list[ViEntitlement]:
-    stmt = select(ViEntitlement).options(joinedload(ViEntitlement.vi_type)).order_by(ViEntitlement.created_at.desc())
+    stmt = (
+        select(ViEntitlement)
+        .options(joinedload(ViEntitlement.vi_type), selectinload(ViEntitlement.flight_links))
+        .order_by(ViEntitlement.created_at.desc())
+    )
 
     if status_filter is not None:
         stmt = stmt.where(ViEntitlement.status == status_filter)
@@ -185,6 +214,7 @@ async def create_vi_entitlement(
         code=code,
         vi_type_uuid=payload.vi_type_uuid,
         description=payload.description,
+        amount_ttc=payload.amount_ttc,
         validity_date=payload.validity_date,
         scheduled_date=payload.scheduled_date,
         realisation_date=payload.realisation_date,
@@ -193,6 +223,7 @@ async def create_vi_entitlement(
         origin_ref=payload.origin_ref,
         notes=payload.notes,
         status=payload.status,
+        is_generic=payload.is_generic,
         updated_by=user_id,
     )
     db.add(row)
@@ -242,6 +273,10 @@ async def update_vi_entitlement(
         row.notes = payload.notes
     if payload.status is not None:
         row.status = payload.status
+    if payload.is_generic is not None:
+        row.is_generic = payload.is_generic
+    if payload.amount_ttc is not None:
+        row.amount_ttc = payload.amount_ttc
 
     _assert_date_consistency(row.scheduled_date, row.realisation_date)
 
@@ -346,10 +381,28 @@ async def list_vi_staging(
     return list(result.scalars().all())
 
 
+async def discard_vi_staging_row(db: AsyncSession, staging_uuid: UUID) -> HelloAssoViStaging:
+    """Set a staging row status to 3 (discarded). Guard: must be status=1 (staged)."""
+    result = await db.execute(select(HelloAssoViStaging).where(HelloAssoViStaging.uuid == staging_uuid))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staging row not found")
+    if row.status != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot discard staging row with status {row.status} (must be 1=staged)",
+        )
+    row.status = 3
+    await db.commit()
+    return row
+
+
 async def preview_staging_net_new(
     db: AsyncSession,
     records: list[HelloAssoPurchaseRecord],
+    purchased_from_year: int = 2025,
 ) -> dict[str, int]:
+    records = [r for r in records if r.date is None or r.date.year >= purchased_from_year]
     keys: list[int] = []
     for record in records:
         if record.item_id is not None:
@@ -372,7 +425,9 @@ async def preview_staging_net_new(
 async def import_helloasso_records_to_staging(
     db: AsyncSession,
     records: list[HelloAssoPurchaseRecord],
+    purchased_from_year: int = 2025,
 ) -> dict[str, int]:
+    records = [r for r in records if r.date is None or r.date.year >= purchased_from_year]
     if not records:
         total_stmt = select(func.count()).select_from(HelloAssoViStaging)
         return {
@@ -492,6 +547,14 @@ async def promote_staging_rows_to_entitlements(
 
     for row in rows:
         if row.promoted_vi_uuid is not None or row.status == 2:
+            # Already promoted — backfill amount_ttc if the entitlement still has none
+            if row.promoted_vi_uuid is not None and row.amount_cents is not None:
+                ent_result = await db.execute(
+                    select(ViEntitlement).where(ViEntitlement.uuid == row.promoted_vi_uuid)
+                )
+                ent = ent_result.scalar_one_or_none()
+                if ent is not None and ent.amount_ttc is None:
+                    ent.amount_ttc = Decimal(row.amount_cents) / 100
             already_promoted_count += 1
             continue
 
@@ -517,6 +580,7 @@ async def promote_staging_rows_to_entitlements(
                 origin_ref=f"item:{row.item_id}",
                 notes=row.phone,
                 status=int(ViEntitlementStatus.LOADED),
+                amount_ttc=Decimal(row.amount_cents) / 100 if row.amount_cents is not None else None,
                 updated_by=user_id,
             )
             db.add(entitlement)
@@ -524,6 +588,8 @@ async def promote_staging_rows_to_entitlements(
             promoted_uuid = entitlement.uuid
         else:
             promoted_uuid = existing_entitlement.uuid
+            if existing_entitlement.amount_ttc is None and row.amount_cents is not None:
+                existing_entitlement.amount_ttc = Decimal(row.amount_cents) / 100
 
         row.promoted_vi_uuid = promoted_uuid
         row.promoted_at = datetime.now(timezone.utc)
@@ -541,3 +607,110 @@ async def promote_staging_rows_to_entitlements(
         "failed_count": failed_count,
         "promoted_entitlement_uuids": promoted_entitlement_uuids,
     }
+
+
+# ── VI Flight Link CRUD ────────────────────────────────────────────────────
+
+def _parse_duration_minutes(takeoff: str | None, landing: str | None) -> int | None:
+    """Return flight duration in whole minutes from HH:MM strings, or None."""
+    try:
+        th, tm = (takeoff or "").split(":")
+        lh, lm = (landing or "").split(":")
+        start = int(th) * 60 + int(tm)
+        end = int(lh) * 60 + int(lm)
+        return end - start if end > start else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+async def list_vi_flight_links(db: AsyncSession, entitlement_uuid: UUID) -> list[ViFlightLink]:
+    result = await db.execute(
+        select(ViFlightLink)
+        .options(joinedload(ViFlightLink.flight))
+        .where(ViFlightLink.entitlement_uuid == entitlement_uuid)
+        .order_by(ViFlightLink.sequence)
+    )
+    return list(result.unique().scalars().all())
+
+
+async def add_vi_flight_link(
+    db: AsyncSession,
+    entitlement_uuid: UUID,
+    flight_uuid: UUID,
+    user_id: int,
+) -> ViFlightLink:
+    # Load entitlement with vi_type to check max_flights
+    ent_result = await db.execute(
+        select(ViEntitlement)
+        .options(joinedload(ViEntitlement.vi_type))
+        .where(ViEntitlement.uuid == entitlement_uuid)
+    )
+    entitlement = ent_result.unique().scalar_one_or_none()
+    if entitlement is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VI entitlement not found")
+
+    max_flights = entitlement.vi_type.max_flights if entitlement.vi_type else 1
+
+    # Count existing links
+    count_result = await db.execute(
+        select(func.count()).select_from(ViFlightLink).where(ViFlightLink.entitlement_uuid == entitlement_uuid)
+    )
+    current_count = int(count_result.scalar_one() or 0)
+    if current_count >= max_flights:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Max flights ({max_flights}) already reached for this entitlement",
+        )
+
+    # Check flight exists
+    flight_result = await db.execute(select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid))
+    flight = flight_result.scalar_one_or_none()
+    if flight is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flight not found")
+
+    # Check this flight is not already linked to any entitlement (one flight → one voucher)
+    dup_result = await db.execute(
+        select(func.count()).select_from(ViFlightLink).where(
+            ViFlightLink.flight_uuid == flight_uuid,
+        )
+    )
+    if int(dup_result.scalar_one() or 0) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ce vol est déjà associé à un bon VI",
+        )
+
+    sequence = current_count + 1
+    link = ViFlightLink(
+        entitlement_uuid=entitlement_uuid,
+        flight_uuid=flight_uuid,
+        sequence=sequence,
+    )
+    db.add(link)
+    # Load flight into link for response building
+    link.flight = flight
+    return link
+
+
+async def remove_vi_flight_link(
+    db: AsyncSession,
+    entitlement_uuid: UUID,
+    link_uuid: UUID,
+) -> None:
+    result = await db.execute(
+        select(ViFlightLink).where(
+            ViFlightLink.uuid == link_uuid,
+            ViFlightLink.entitlement_uuid == entitlement_uuid,
+        )
+    )
+    link = result.scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flight link not found")
+
+    if link.analytical_entry_uuid is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot remove a flight link that has an analytical accounting entry — cancel the entry first",
+        )
+
+    await db.delete(link)

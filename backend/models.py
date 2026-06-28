@@ -1479,6 +1479,39 @@ class ViTypeCatalog(Base):
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
         comment="Charge account for club-billed flights (initiation VI). Overrides flight_billing_settings.default_initiation_charge_account_uuid",
     )
+    # --- VI accounting configuration (Steps 1–4) ---
+    client_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Advance/liability account for VI payments (e.g. 419100). C in Step 1, D in Steps 2a+2b.",
+    )
+    revenue_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Revenue account for the flight portion of the voucher (e.g. 7067). C in Step 2a.",
+    )
+    insurance_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Supplier payable for insurance (e.g. 401-FFVP). C in Step 2b.",
+    )
+    insurance_tiers_uuid = Column(
+        UUID(as_uuid=True), nullable=True,
+        comment="Supplier entity UUID for insurance line tiers (e.g. FFVP). No FK — cross-entity.",
+    )
+    insurance_amount = Column(
+        Numeric(10, 4), nullable=True,
+        comment="Fixed insurance fee per VI voucher. Deducted from amount_ttc to compute flight portion.",
+    )
+    max_flights = Column(
+        SmallInteger, nullable=False, default=1,
+        comment="Maximum number of flights allowed under one entitlement (VI=2, JD=2, future types=N).",
+    )
+    analytical_cost_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Debit account for analytical cost entry (e.g. 921). Step 3.",
+    )
+    analytical_reflection_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Credit account for analytical reflection entry (e.g. 902). Step 3.",
+    )
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -1495,10 +1528,35 @@ class ViTypeCatalog(Base):
     updated_by_user = relationship("User")
     entitlements = relationship("ViEntitlement", back_populates="vi_type")
     charge_account = relationship("AccountingAccount", foreign_keys=[charge_account_uuid])
+    client_account = relationship("AccountingAccount", foreign_keys=[client_account_uuid])
+    revenue_account = relationship("AccountingAccount", foreign_keys=[revenue_account_uuid])
+    insurance_account = relationship("AccountingAccount", foreign_keys=[insurance_account_uuid])
+    analytical_cost_account = relationship("AccountingAccount", foreign_keys=[analytical_cost_account_uuid])
+    analytical_reflection_account = relationship("AccountingAccount", foreign_keys=[analytical_reflection_account_uuid])
 
     @property
     def charge_account_code(self) -> str | None:
         return self.charge_account.code if self.charge_account else None
+
+    @property
+    def client_account_code(self) -> str | None:
+        return self.client_account.code if self.client_account else None
+
+    @property
+    def revenue_account_code(self) -> str | None:
+        return self.revenue_account.code if self.revenue_account else None
+
+    @property
+    def insurance_account_code(self) -> str | None:
+        return self.insurance_account.code if self.insurance_account else None
+
+    @property
+    def analytical_cost_account_code(self) -> str | None:
+        return self.analytical_cost_account.code if self.analytical_cost_account else None
+
+    @property
+    def analytical_reflection_account_code(self) -> str | None:
+        return self.analytical_reflection_account.code if self.analytical_reflection_account else None
 
     def __repr__(self):
         return f"<ViTypeCatalog code={self.code} active={self.is_active}>"
@@ -1535,6 +1593,35 @@ class ViEntitlement(Base):
     origin_ref = Column(String(128), nullable=True, index=True)
     notes = Column(Text, nullable=True)
     status = Column(SmallInteger, nullable=False, default=int(ViEntitlementStatus.LOADED), index=True)
+    is_generic = Column(
+        Boolean, nullable=False, default=False,
+        comment="Catch-all placeholder voucher: bypasses individual flight-link and realization accounting.",
+    )
+    # --- VI accounting fields (Steps 1–4) ---
+    amount_ttc = Column(
+        Numeric(10, 4), nullable=True,
+        comment="Total voucher amount paid by buyer TTC (flight + insurance). From HelloAsso or manual.",
+    )
+    buyer_member_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True,
+        comment="Member who purchased the VI (may be EXT-NNNN before membership).",
+    )
+    purchase_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True,
+        comment="VI entry UUID for Step 1 (D bank / C 419100). Plain UUID — no FK across partitions.",
+    )
+    realization_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True,
+        comment="VI entry UUID for Steps 2a+2b (D 419100 / C 7067 + C 401-FFVP). Plain UUID.",
+    )
+    registered_member_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True,
+        comment="Member UUID after buyer registers (for Step 4 conversion). May differ from buyer_member_uuid.",
+    )
+    conversion_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True,
+        comment="OD entry UUID for Step 4 member conversion. Plain UUID.",
+    )
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -1551,6 +1638,9 @@ class ViEntitlement(Base):
     vi_type = relationship("ViTypeCatalog", back_populates="entitlements")
     updated_by_user = relationship("User")
     helloasso_staging_rows = relationship("HelloAssoViStaging", back_populates="promoted_vi")
+    buyer_member = relationship("Member", foreign_keys=[buyer_member_uuid])
+    registered_member = relationship("Member", foreign_keys=[registered_member_uuid])
+    flight_links = relationship("ViFlightLink", back_populates="entitlement", cascade="all, delete-orphan")
 
     @property
     def vi_type_code(self) -> str | None:
@@ -1558,6 +1648,40 @@ class ViEntitlement(Base):
 
     def __repr__(self):
         return f"<ViEntitlement code={self.code} status={self.status} type={self.vi_type_uuid}>"
+
+
+class ViFlightLink(Base):
+    """One-to-many: each flight attached to a VI entitlement, with its own analytical entry."""
+
+    __tablename__ = "vi_flight_links"
+    __table_args__ = (
+        UniqueConstraint("entitlement_uuid", "flight_uuid", name="uq_vi_flight_link"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    entitlement_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("vi_entitlements.uuid", ondelete="CASCADE"), nullable=False, index=True
+    )
+    flight_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("validated_flights.uuid", ondelete="SET NULL"), nullable=True, index=True,
+        comment="NULL if the slot is reserved but the flight not yet identified.",
+    )
+    sequence = Column(
+        SmallInteger, nullable=False, default=1,
+        comment="Flight number within this entitlement (1st, 2nd…).",
+    )
+    analytical_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True,
+        comment="OD analytical entry for this flight (D 921 / C 902). Plain UUID — no FK across partitions.",
+    )
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    entitlement = relationship("ViEntitlement", back_populates="flight_links")
+    flight = relationship("ValidatedFlight")
+
+    def __repr__(self):
+        return f"<ViFlightLink entitlement={self.entitlement_uuid} flight={self.flight_uuid} seq={self.sequence}>"
 
 
 class HelloAssoViStaging(Base):

@@ -19,7 +19,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { FileText, Calendar, TableProperties, BookOpen, BarChart3 } from "lucide-react";
+import { FileText, Calendar, TableProperties, BookOpen, BarChart3, Scale } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { BanqueJournalEntriesPage } from "./BanqueJournalEntriesPage";
@@ -27,6 +27,7 @@ import { BanqueFiscalYearsPage } from "./BanqueFiscalYearsPage";
 import { BanqueCoaPage } from "./BanqueCoaPage";
 import { BanquePcgPage } from "./BanquePcgPage";
 import { FinancialReportsPage } from "./FinancialReportsPage";
+import { AccountTrialBalancePage } from "./AccountTrialBalancePage";
 
 /**
  * AccountingWorkspacePage — Workspace Comptabilité.
@@ -77,6 +78,12 @@ export function AccountingWorkspacePage() {
           label: t("workspace.accounting.tabs.reports", "Rapports"),
           icon: BarChart3,
           content: <FinancialReportsPage />,
+        },
+        {
+          value: "balance",
+          label: t("workspace.accounting.tabs.trialBalance", "Balance"),
+          icon: Scale,
+          content: <AccountTrialBalancePage />,
         },
       ]}
     />

@@ -166,9 +166,6 @@ class FlightBillingApplyService:
         flight.accounting_entry_uuid = entry_uuid
         flight.billing_quote_state = "applied"
 
-        # Note: Pack consumptions and REM adjustment are handled separately
-        # in a dedicated discount review step — NOT during billing apply.
-
         await self.db.commit()
         await self.db.refresh(entry)
         return entry

@@ -38,6 +38,7 @@ export type FlightListFilters = {
   pilot_query?: string
   asset_code?: string
   erp_status?: number | null
+  unlinked_vi?: boolean
 }
 
 export type FlightFetchRequest = {
@@ -86,6 +87,7 @@ export type ValidatedFlightItem = {
   second_pilot_trigram: string | null
   observations: string | null
   correction_reason: string | null
+  vi_erp_id: string | null
 }
 
 export type ValidatedFlightListResponse = {
@@ -208,6 +210,7 @@ export function useFlightListQuery(page: number, pageSize: number, filters: Flig
       if (filters.erp_status !== null && filters.erp_status !== undefined) {
         params.erp_status = filters.erp_status
       }
+      if (filters.unlinked_vi) params.unlinked_vi = 'true'
 
       const { data } = await apiClient.get<ValidatedFlightListResponse>(
         '/api/v1/flights',

@@ -30,6 +30,7 @@ import {
   List,
   Receipt,
   Repeat,
+  Scale,
   TableProperties,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
 
 import { BanqueCoaPage } from "./BanqueCoaPage";
+import { AccountTrialBalancePage } from "./AccountTrialBalancePage";
 import { JournalEntriesScreen } from "./JournalEntriesScreen";
 import { JournalTemplatesScreen } from "./JournalTemplatesScreen";
 import { MemberBulkBillingPage } from "./MemberBulkBillingPage";
@@ -156,6 +158,12 @@ function ComptabiliteSection() {
           label: t("workspace.accounting.tabs.comptes", "Plan comptable"),
           icon: BookOpen,
           content: <BanqueCoaPage />,
+        },
+        {
+          value: "balance",
+          label: t("workspace.accounting.tabs.trialBalance", "Balance"),
+          icon: Scale,
+          content: <AccountTrialBalancePage />,
         },
       ]}
     />

@@ -75,6 +75,7 @@ class ValidatedFlightItem(BaseModel):
     second_pilot_trigram: str | None = None
     observations: str | None = None
     correction_reason: str | None = None
+    vi_erp_id: str | None = None
 
     class Config:
         from_attributes = True

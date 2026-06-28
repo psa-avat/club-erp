@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronLeft, ChevronRight, Pencil, Undo2, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Pencil, Undo2, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Banner } from '../../../components/ui/banner'
@@ -41,9 +41,11 @@ import {
   useJournalsQuery,
   useReverseAccountingEntryMutation,
 } from '../api'
+import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { entryStateLabel, totals, entryStateBadgeClass, useDebounce, decimalOrZero, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
+import type { AccountingEntry } from '../api'
 
 type SortKey = 'entry_date' | 'journal' | 'description' | 'reference' | 'amount' | 'state'
 type SortDirection = 'asc' | 'desc'
@@ -241,7 +243,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   }, [entriesView, groupByJournal, sortDirection, sortKey])
 
   const draftEntries = useMemo(
-    () => sortedEntriesView.map((row) => row.entry).filter((entry) => entry.state === 1),
+    () => sortedEntriesView.map((row) => row.entry).filter((entry) => entry.state === 1 || entry.state === 3),
     [sortedEntriesView],
   )
   const allVisibleDraftsSelected =
@@ -249,7 +251,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
 
   useEffect(() => {
     setSelectedEntryUuids((prev) => {
-      const allowedDrafts = new Set(entries.filter((entry) => entry.state === 1).map((entry) => entry.uuid))
+      const allowedDrafts = new Set(entries.filter((entry) => entry.state === 1 || entry.state === 3).map((entry) => entry.uuid))
       return prev.filter((uuid) => allowedDrafts.has(uuid))
     })
   }, [entries])
@@ -298,6 +300,64 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
     setSortDirection(column === 'entry_date' ? 'desc' : 'asc')
   }
 
+  const [isExporting, setIsExporting] = useState(false)
+
+  function csvEscape(value: string): string {
+    if (value.includes(';') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`
+    }
+    return value
+  }
+
+  async function handleExportCsv() {
+    if (!activeFiscalYearUuid) return
+    setIsExporting(true)
+    try {
+      const { data } = await apiClient.get<AccountingEntry[]>('/api/v1/accounting/entries', {
+        ...getAuthRequestConfig(),
+        params: { ...baseFilters, limit: 5000, offset: 0 },
+      })
+
+      const STATE_LABELS: Record<number, string> = { 1: 'Brouillon', 2: 'Validé', 3: 'Annulé' }
+      const headers = ['Date', 'Journal', 'Description', 'Référence', 'État', 'Compte', 'Libellé ligne', 'Débit', 'Crédit', 'Tiers']
+      const csvRows: string[] = ['﻿' + headers.join(';')]
+
+      for (const entry of data) {
+        const journal = journalByUuid.get(entry.journal_uuid)?.code ?? ''
+        const stateLabel = STATE_LABELS[entry.state] ?? String(entry.state)
+        for (const line of entry.lines) {
+          const accountLabel = accountLabelByUuid.get(line.account_uuid) ?? line.account_uuid
+          const tiersLabel = [line.tiers_display_ref, line.tiers_display_name].filter(Boolean).join(' — ')
+          const row = [
+            formatDateFr(entry.entry_date),
+            journal,
+            csvEscape(entry.description),
+            csvEscape(entry.reference ?? ''),
+            stateLabel,
+            csvEscape(accountLabel),
+            csvEscape(line.description ?? ''),
+            line.debit.replace('.', ','),
+            line.credit.replace('.', ','),
+            csvEscape(tiersLabel),
+          ].join(';')
+          csvRows.push(row)
+        }
+      }
+
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ecritures-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setLocalError('Erreur lors de l\'export CSV')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   async function handleBulkPost() {
     if (!activeFiscalYearUuid || selectedEntryUuids.length === 0) return
     setLocalError(null)
@@ -318,7 +378,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
     setLocalError(null)
     try {
       const selectedDrafts = entries.filter((entry) =>
-        selectedEntryUuids.includes(entry.uuid) && entry.state === 1,
+        selectedEntryUuids.includes(entry.uuid) && (entry.state === 1 || entry.state === 3),
       )
       for (const draft of selectedDrafts) {
         await deleteEntryMutation.mutateAsync({
@@ -526,6 +586,19 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                   </Button>
                 </>
               )}
+              {activeFiscalYearUuid && totalEntries > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={isExporting}
+                  onClick={() => { void handleExportCsv() }}
+                  title="Exporter les écritures filtrées en CSV"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  {isExporting ? 'Export…' : 'CSV'}
+                </Button>
+              )}
               {activeFiscalYearUuid && (
                 <Button
                   type="button"
@@ -616,7 +689,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                 <tbody>
                   {sortedEntriesView.map((row, index) => {
                     const { entry, journalCode, amount } = row
-                    const isDraftEntry = entry.state === 1
+                    const isDraftEntry = entry.state === 1 || entry.state === 3
                     const showGroupHeader = groupByJournal && (index === 0 || sortedEntriesView[index - 1].journalCode !== journalCode)
                     return (
                       <>

@@ -732,7 +732,7 @@ async def preview_helloasso_vi_staging_import_endpoint(
         campaign_type="Event",
         page_size=request.page_size,
     )
-    return await preview_staging_net_new(db=db, records=records)
+    return await preview_staging_net_new(db=db, records=records, purchased_from_year=request.purchased_from_year)
 
 
 @router.post("/vi/staging/import", response_model=ViHelloAssoImportResponse)
@@ -748,4 +748,4 @@ async def import_helloasso_vi_staging_endpoint(
         campaign_type="Event",
         page_size=request.page_size,
     )
-    return await import_helloasso_records_to_staging(db=db, records=records)
+    return await import_helloasso_records_to_staging(db=db, records=records, purchased_from_year=request.purchased_from_year)
