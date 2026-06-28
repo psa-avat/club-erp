@@ -25,6 +25,7 @@ import { useActiveFiscalYearQuery, useAccountsQuery, useFiscalYearsQuery } from 
 import {
   type ViEntitlement,
   useCreateViEntitlementMutation,
+  useCreateViPurchaseEntryMutation,
   useCreateViReimbursementEntryMutation,
   usePatchViEntitlementMutation,
   useViEntitlementsQuery,
@@ -70,11 +71,12 @@ function VoucherSheet({
   const createMutation = useCreateViEntitlementMutation()
   const patchMutation = usePatchViEntitlementMutation()
   const reimburseMutation = useCreateViReimbursementEntryMutation()
+  const purchaseMutation = useCreateViPurchaseEntryMutation()
 
-  // Queries for reimbursement form
+  // Queries for accounting forms (reimbursement + purchase entry)
   const fyQuery = useFiscalYearsQuery()
   const activeFyQuery = useActiveFiscalYearQuery()
-  const accountsQuery = useAccountsQuery(isEdit)
+  const accountsQuery = useAccountsQuery(true)
 
   const [code, setCode] = useState(row?.code ?? '')
   const [typeUuid, setTypeUuid] = useState(row?.vi_type_uuid ?? (activeTypes[0]?.uuid ?? ''))
@@ -98,14 +100,20 @@ function VoucherSheet({
   const [reimburseAmount, setReimburseAmount] = useState(
     row?.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '',
   )
+  // purchase entry state (create mode only)
+  const [withPurchaseEntry, setWithPurchaseEntry] = useState(false)
+  const [purchaseFyUuid, setPurchaseFyUuid] = useState('')
+  const [purchaseBankUuid, setPurchaseBankUuid] = useState('')
+  const [purchaseDate, setPurchaseDate] = useState('')
+  const [purchaseNotes, setPurchaseNotes] = useState('')
 
   const activeFyUuid = activeFyQuery.data?.uuid ?? ''
   const fiscalYears = (fyQuery.data ?? []).filter((fy) => fy.state !== 2)
   // Filter accounts to class 5 (cash & bank) for the bank account selector
   const bankAccounts = (accountsQuery.data ?? []).filter((a) => a.code.startsWith('5'))
 
-  const isPending = createMutation.isPending || patchMutation.isPending || reimburseMutation.isPending
-  const mutationError = createMutation.error ?? patchMutation.error ?? reimburseMutation.error
+  const isPending = createMutation.isPending || patchMutation.isPending || reimburseMutation.isPending || purchaseMutation.isPending
+  const mutationError = createMutation.error ?? patchMutation.error ?? reimburseMutation.error ?? purchaseMutation.error
 
   function resetToRow() {
     setCode(row?.code ?? '')
@@ -123,6 +131,11 @@ function VoucherSheet({
     setReimburseFyUuid('')
     setReimburseBankUuid('')
     setReimburseAmount(row?.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '')
+    setWithPurchaseEntry(false)
+    setPurchaseFyUuid('')
+    setPurchaseBankUuid('')
+    setPurchaseDate('')
+    setPurchaseNotes('')
   }
 
   function handleOpenChange(v: boolean) {
@@ -158,7 +171,7 @@ function VoucherSheet({
       if (Object.keys(payload).length === 0) { onOpenChange(false); return }
       await patchMutation.mutateAsync({ entitlementUuid: row.uuid, payload })
     } else {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         code,
         vi_type_uuid: typeUuid,
         description: description || undefined,
@@ -170,6 +183,16 @@ function VoucherSheet({
         status: statusVal,
         notes: notes || null,
       })
+      if (withPurchaseEntry && purchaseBankUuid && (purchaseFyUuid || activeFyUuid)) {
+        await purchaseMutation.mutateAsync({
+          entitlementUuid: created.uuid,
+          fiscalYearUuid: purchaseFyUuid || activeFyUuid,
+          bankAccountUuid: purchaseBankUuid,
+          entryDate: purchaseDate || null,
+          amountTtc: amount,
+          notes: purchaseNotes.trim() || null,
+        })
+      }
     }
     onOpenChange(false)
   }
@@ -353,13 +376,78 @@ function VoucherSheet({
             </div>
           </fieldset>
 
+          {/* ── Encaissement (create mode only) ── */}
+          {!isEdit && (
+            <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+              <legend className="text-sm font-medium px-1">Encaissement</legend>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={withPurchaseEntry}
+                  onChange={(e) => setWithPurchaseEntry(e.target.checked)}
+                />
+                Créer une écriture de paiement reçu (D Banque/Caisse / C 419)
+              </label>
+              {withPurchaseEntry && (
+                <div className="space-y-3 pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    Écriture brouillon dans le journal VI. Le montant du bon est utilisé.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Exercice fiscal</Label>
+                      <select
+                        className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                        value={purchaseFyUuid || activeFyUuid}
+                        onChange={(e) => setPurchaseFyUuid(e.target.value)}
+                      >
+                        {fiscalYears.map((fy) => (
+                          <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Date de l'écriture</Label>
+                      <Input
+                        type="date"
+                        value={purchaseDate}
+                        onChange={(e) => setPurchaseDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Compte banque/caisse (5xx) <span className="text-destructive">*</span></Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                      value={purchaseBankUuid}
+                      onChange={(e) => setPurchaseBankUuid(e.target.value)}
+                    >
+                      <option value="">Sélectionner…</option>
+                      {bankAccounts.map((a) => (
+                        <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Libellé (optionnel)</Label>
+                    <Input
+                      placeholder={`Encaissement bon VI ${code}`}
+                      value={purchaseNotes}
+                      onChange={(e) => setPurchaseNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </fieldset>
+          )}
+
           {/* ── Save ── */}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => handleOpenChange(false)}>
               Fermer
             </Button>
             <Button
-              disabled={isPending || !code || !typeUuid}
+              disabled={isPending || !code || !typeUuid || (withPurchaseEntry && !purchaseBankUuid)}
               onClick={() => { void handleSave() }}
             >
               {isEdit ? 'Enregistrer' : 'Créer le bon'}

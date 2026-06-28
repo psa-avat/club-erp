@@ -482,6 +482,117 @@ async def create_vi_reimbursement_entry(
     return entry
 
 
+async def create_vi_purchase_entry(
+    db: AsyncSession,
+    entitlement_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    bank_account_uuid: UUID,
+    entry_date,
+    amount_override: Decimal | None,
+    notes: str | None,
+    user_id: int,
+) -> AccountingEntry:
+    """
+    Create a purchase/encaissement entry in the VI journal (Step 1):
+      D bank/caisse (5xx)       amount
+      C client_advance (419xxx) amount
+
+    Sets entitlement.purchase_entry_uuid.
+    Does NOT commit — caller owns the transaction.
+    """
+    from datetime import date as _date
+
+    entitlement = await _load_entitlement_for_accounting(db, entitlement_uuid)
+
+    if entitlement.purchase_entry_uuid is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Une écriture d'encaissement existe déjà pour ce bon",
+        )
+
+    vi_type = entitlement.vi_type
+    if vi_type is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Type VI introuvable")
+
+    client_acc = vi_type.client_account
+    if client_acc is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Compte avances (419xxx) non configuré sur le type VI",
+        )
+
+    amount = amount_override if amount_override is not None else (
+        Decimal(str(entitlement.amount_ttc)) if entitlement.amount_ttc is not None else None
+    )
+    if amount is None or amount <= Decimal("0"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Montant TTC requis pour créer l'écriture d'encaissement",
+        )
+
+    bank_acc_result = await db.execute(
+        select(AccountingAccount).where(AccountingAccount.uuid == bank_account_uuid)
+    )
+    bank_acc = bank_acc_result.scalar_one_or_none()
+    if bank_acc is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Compte bancaire/caisse introuvable")
+
+    vi_journal = await _get_journal_by_code(db, JOURNAL_VI)
+    if vi_journal is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Journal VI introuvable")
+
+    eff_date = entry_date or _date.today()
+
+    entry_uuid = uuid4()
+    entry = AccountingEntry(
+        uuid=entry_uuid,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=vi_journal.uuid,
+        entry_date=eff_date,
+        reference=f"VI-ENC-{entitlement.code}",
+        description=notes or f"Encaissement bon VI {entitlement.code}",
+        state=1,  # Draft
+        created_by=user_id,
+    )
+    db.add(entry)
+    await db.flush()
+
+    # D bank/caisse (5xx)
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=bank_account_uuid,
+        tiers_uuid=None,
+        debit=amount,
+        credit=Decimal("0"),
+        description=f"Encaissement VI {entitlement.code}",
+    ))
+
+    # C client_advance (419xxx)
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=client_acc.uuid,
+        tiers_uuid=entitlement.buyer_member_uuid,
+        debit=Decimal("0"),
+        credit=amount,
+        description=f"Encaissement VI {entitlement.code}",
+    ))
+
+    await db.flush()
+
+    entitlement.purchase_entry_uuid = entry_uuid
+    entitlement.updated_by = user_id
+
+    logger.info(
+        "VI purchase entry: created draft entry %s for entitlement %s amount=%s",
+        entry_uuid, entitlement.code, amount,
+    )
+    return entry
+
+
 async def cancel_vi_realization_entry(
     db: AsyncSession,
     entitlement_uuid: UUID,

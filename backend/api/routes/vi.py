@@ -51,6 +51,7 @@ from schemas.vi import (
     ViPlanningDatePatchRequest,
     ViPromotionRequest,
     ViPromotionResponse,
+    ViPurchaseEntryRequest,
     ViRealizationEntryRequest,
     ViReimbursementEntryRequest,
     ViTypeCatalogPayload,
@@ -79,6 +80,7 @@ from services.vi import (
 )
 from services.vi_accounting import (
     cancel_vi_realization_entry,
+    create_vi_purchase_entry,
     create_vi_realization_entry,
     create_vi_reimbursement_entry,
 )
@@ -467,6 +469,31 @@ async def create_vi_reimbursement_entry_endpoint(
         entitlement_uuid=entitlement_uuid,
         fiscal_year_uuid=request.fiscal_year_uuid,
         bank_account_uuid=request.bank_account_uuid,
+        amount_override=request.amount_ttc,
+        notes=request.notes,
+        user_id=current_user.id,
+    )
+    await db.commit()
+    ent = await get_vi_entitlement(db=db, entitlement_uuid=entitlement_uuid)
+    await db.refresh(ent, attribute_names=["vi_type"])
+    return ent
+
+
+@router.post("/entitlements/{entitlement_uuid}/purchase-entry", response_model=ViEntitlementResponse)
+async def create_vi_purchase_entry_endpoint(
+    entitlement_uuid: UUID,
+    request: ViPurchaseEntryRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = _accounting_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Create an encaissement entry (D Banque/Caisse / C 419) for the VI entitlement (Step 1)."""
+    await create_vi_purchase_entry(
+        db=db,
+        entitlement_uuid=entitlement_uuid,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        bank_account_uuid=request.bank_account_uuid,
+        entry_date=request.entry_date,
         amount_override=request.amount_ttc,
         notes=request.notes,
         user_id=current_user.id,

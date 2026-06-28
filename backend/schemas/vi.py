@@ -105,6 +105,8 @@ class ViEntitlementResponse(BaseModel):
     status: int
     is_generic: bool = False
     amount_ttc: Decimal | None = None
+    purchase_entry_uuid: UUID | None = None
+    realization_entry_uuid: UUID | None = None
     flight_link_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -165,6 +167,14 @@ class ViEntitlementUpdateRequest(BaseModel):
     notes: str | None = None
     status: int | None = Field(default=None, ge=1, le=5)
     is_generic: bool | None = None
+
+
+class ViPurchaseEntryRequest(BaseModel):
+    fiscal_year_uuid: UUID
+    bank_account_uuid: UUID
+    entry_date: date | None = None
+    amount_ttc: Decimal | None = Field(default=None, ge=0, decimal_places=4)
+    notes: str | None = None
 
 
 class ViReimbursementEntryRequest(BaseModel):

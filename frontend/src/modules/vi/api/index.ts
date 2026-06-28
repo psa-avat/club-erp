@@ -131,6 +131,8 @@ export type ViEntitlement = {
   status: number
   is_generic: boolean
   amount_ttc: string | null
+  purchase_entry_uuid: string | null
+  realization_entry_uuid: string | null
   flight_link_count: number
   created_at: string
   updated_at: string
@@ -496,6 +498,43 @@ export function useCreateViReimbursementEntryMutation() {
       const { data } = await apiClient.post<ViEntitlement>(
         `/api/v1/vi/entitlements/${entitlementUuid}/reimbursement-entry`,
         { fiscal_year_uuid: fiscalYearUuid, bank_account_uuid: bankAccountUuid, amount_ttc: amountTtc ?? null, notes: notes ?? null },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.root })
+    },
+  })
+}
+
+export function useCreateViPurchaseEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      entitlementUuid,
+      fiscalYearUuid,
+      bankAccountUuid,
+      entryDate,
+      amountTtc,
+      notes,
+    }: {
+      entitlementUuid: string
+      fiscalYearUuid: string
+      bankAccountUuid: string
+      entryDate?: string | null
+      amountTtc?: string | null
+      notes?: string | null
+    }) => {
+      const { data } = await apiClient.post<ViEntitlement>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/purchase-entry`,
+        {
+          fiscal_year_uuid: fiscalYearUuid,
+          bank_account_uuid: bankAccountUuid,
+          entry_date: entryDate ?? null,
+          amount_ttc: amountTtc ?? null,
+          notes: notes ?? null,
+        },
         getAuthRequestConfig(),
       )
       return data

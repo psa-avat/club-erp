@@ -751,12 +751,12 @@ class FlightBillingPreviewService:
         return result.scalars().first()
 
     def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight, resolved_code: str | None = None) -> set[str]:
-        if source == "launch":
-            # 1. If a resolved code was found via FlightType.launch_type lookup, use ONLY that
-            if resolved_code:
-                return {resolved_code}
+        # If a resolved code was found via launch_type lookup, use ONLY that (applies to both sources)
+        if resolved_code:
+            return {resolved_code}
 
-            # 2. No specific launch_type mapping: fall back to defaults
+        if source == "launch":
+            # No specific launch_type mapping: fall back to defaults
             codes: set[str] = set()
             codes.update({"RMQ", "rmq", "remorque", "REMORQUE"})
 
@@ -815,18 +815,24 @@ class FlightBillingPreviewService:
             return _PricedMachine(source, asset, None, [])
 
         version = versions[0]
-        # For launch machines, resolve flight type via launch_type mapping.
-        # The launch_type value is shifted by launch_method to avoid collisions:
-        #   Winch (launch_method=1) → raw launch_type (0, 1, 2…)
-        #   Tow   (launch_method=2) → launch_type + 10 (10, 11, 12…)
+        # Resolve flight type via launch_type mapping.
+        # Shifts avoid collisions across launch methods:
+        #   Winch     (launch_method=1) → raw launch_type        (0,  1,  2…)
+        #   Tow       (launch_method=2) → launch_type + 10      (10, 11, 12…)
+        #   Autonome  (launch_method=3) → launch_type + 20      (20, 21, 22…)
+        # Applies to source="launch" (separate launch machine) and source="flight" for
+        # autonomous aircraft (launch_method=3) that act as their own propulsion.
         resolved_launch_code = None
-        if source == "launch" and flight.launch_type is not None and asset is not None:
+        needs_launch_type_lookup = (
+            source == "launch"
+            or (source == "flight" and flight.launch_method == 3)
+        )
+        if needs_launch_type_lookup and flight.launch_type is not None and asset is not None:
             search_type = int(flight.launch_type)
-            # Determine shift based on launch_method (1=treuil/winch, 2=remorqueur/tow)
             if flight.launch_method == 2:
                 search_type += 10  # tow: +10
-            # launch_method == 1 (winch): raw launch_type, no shift needed
-            # Other launch_method values (0=exterieur, 3=autonome): shift by asset category
+            elif flight.launch_method == 3:
+                search_type += 20  # autonome: +20
 
             ft_result = await self.db.execute(
                 select(FlightType).where(FlightType.launch_type == search_type)
