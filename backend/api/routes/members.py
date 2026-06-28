@@ -208,6 +208,7 @@ async def count_members_endpoint(
 async def list_member_options_endpoint(
     search: Optional[str] = Query(default=None),
     member_categories: Optional[str] = Query(default=None),
+    registered_for_year: Optional[int] = Query(default=None, ge=2000, le=9999),
     limit: int = Query(default=1000, ge=1, le=5000),
     _: User = members_guard,
     db: AsyncSession = Depends(get_db),
@@ -231,6 +232,7 @@ async def list_member_options_endpoint(
         db=db,
         search=search,
         member_categories=parsed_member_categories,
+        registered_for_year=registered_for_year,
         limit=limit,
     )
 

@@ -727,6 +727,7 @@ async def list_member_options(
     *,
     search: Optional[str] = None,
     member_categories: Optional[list[int]] = None,
+    registered_for_year: Optional[int] = None,
     limit: int = 1000,
 ) -> list[MemberOptionResponse]:
     """List lightweight member options for selectors."""
@@ -743,6 +744,14 @@ async def list_member_options(
         )
     if member_categories:
         query = query.where(Member.member_category.in_(member_categories))
+    if registered_for_year is not None:
+        query = query.where(
+            Member.uuid.in_(
+                select(MemberRegistration.member_uuid).where(
+                    MemberRegistration.registered_for_year == registered_for_year
+                )
+            )
+        )
 
     result = await db.execute(query.limit(limit))
     members = result.scalars().all()

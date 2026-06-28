@@ -806,7 +806,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
         <Button
           type="button"
           size="sm"
-          variant="ghost"
+          variant="destructive"
           disabled={deleteEntryMutation.isPending}
           onClick={() => setConfirmBulkDeleteOpen(true)}
         >

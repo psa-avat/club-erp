@@ -27,6 +27,7 @@ import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
 import { useMemberOptionsQuery } from '../../members/api'
 import { usePackDefinitionsQuery, useBuyPackMutation } from '../api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 
 interface PackPurchaseDialogProps {
   open: boolean
@@ -35,7 +36,8 @@ interface PackPurchaseDialogProps {
 
 export function PackPurchaseDialog({ open, onClose }: PackPurchaseDialogProps) {
   const { t } = useTranslation(['banque', 'common'])
-  const { data: memberOptions } = useMemberOptionsQuery()
+  const activeFiscalYearData = useFiscalYearStore((s) => s.activeFiscalYearData)
+  const { data: memberOptions } = useMemberOptionsQuery({ registered_for_year: activeFiscalYearData?.year })
   const { data: packDefs } = usePackDefinitionsQuery()
   const buyPackMutation = useBuyPackMutation()
 

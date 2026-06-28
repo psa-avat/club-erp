@@ -32,6 +32,7 @@ import {
   usePostAccountingEntryMutation,
   type JournalOption,
 } from '../api'
+import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { toErrorMessage } from './journalShared'
 
 // ---------------------------------------------------------------------------
@@ -56,8 +57,9 @@ export function MemberInvoiceDialog({
   fiscalYearUuid,
 }: MemberInvoiceDialogProps) {
   const { t } = useTranslation('banque')
+  const activeFiscalYearData = useFiscalYearStore((s) => s.activeFiscalYearData)
 
-  const membersQuery = useMemberOptionsQuery({ limit: 500 })
+  const membersQuery = useMemberOptionsQuery({ limit: 500, registered_for_year: activeFiscalYearData?.year })
   const accountsQuery = useAccountsQuery(open)
   const createMutation = useCreateAccountingEntryMutation()
   const postMutation = usePostAccountingEntryMutation()

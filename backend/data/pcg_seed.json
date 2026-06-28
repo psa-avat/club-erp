@@ -223,6 +223,22 @@
     "is_reconcilable": true,
     "require_id": 1
   },
+  { 
+    "code": "419",    
+    "type": 2,
+    "name": "Clients créditeurs",                 
+    "is_posting_allowed": false,
+    "is_reconcilable": false,
+    "require_id": 0
+  },
+  { 
+    "code": "419100", 
+    "type": 2, 
+    "name": "Avances reçues — Vols d'initiation", 
+    "is_posting_allowed": true,  
+    "is_reconcilable": true,  
+    "require_id": 1 
+  },
   {
     "code": "425",
     "name": "Personnel - Avances et acomptes",

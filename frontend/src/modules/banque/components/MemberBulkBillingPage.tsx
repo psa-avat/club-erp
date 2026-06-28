@@ -562,11 +562,12 @@ export function MemberBulkBillingPage() {
   const navigate = useNavigate()
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const activeFiscalYearData = useFiscalYearStore((s) => s.activeFiscalYearData)
 
   // ── Data queries ──────────────────────────────────────────────────────────
   const journalsQuery = useJournalsQuery()
   const accountsQuery = useAccountsQuery()
-  const membersQuery = useMemberOptionsQuery({ limit: 5000 })
+  const membersQuery = useMemberOptionsQuery({ limit: 5000, registered_for_year: activeFiscalYearData?.year })
   const versionsQuery = usePricingVersionsQuery()
 
   const vtJournal = useMemo(

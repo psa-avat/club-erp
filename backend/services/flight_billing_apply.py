@@ -26,21 +26,25 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models import (
+    AccountingAccount,
     AccountingEntry,
     AccountingLine,
     AccountingJournal,
     FlightBillingSettings,
+    MemberPackConsumption,
     ValidatedFlight,
 )
 from schemas.flight_billing import CloseRemPeriodResponse
 from services.flight_billing import _dec, _money, FlightBillingPreviewService
 from services.flight_packs import (
+    REM_DISCOUNT_REF_PREFIX,
     create_pack_purchase_entry,
+    get_account_by_code,
     record_consumption,
 )
 
@@ -188,6 +192,10 @@ class FlightBillingApplyService:
         Deletes the linked Draft FL accounting entry and all its lines,
         then resets the flight back to 'pending'. Refuses if the entry is
         already posted (state == 2).
+
+        If the flight had pack discounts, the MemberPackConsumption rows are
+        deleted and the member's REM discount entry is patched in-place (no full
+        FIFO re-run — just a re-sum of the remaining consumption rows).
         """
         result = await self.db.execute(
             select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid)
@@ -233,9 +241,158 @@ class FlightBillingApplyService:
             await self.db.delete(entry)
             await self.db.flush()
 
+        # Collect affected members before deleting their consumption rows so
+        # we can patch the REM entry without a full FIFO re-run.
+        fiscal_year_uuid: UUID | None = entry.fiscal_year_uuid if entry is not None else None  # type: ignore[assignment]
+        affected_members: list[UUID] = []
+        if flight.has_discount and fiscal_year_uuid is not None:
+            mpc_rows = await self.db.execute(
+                select(MemberPackConsumption.tiers_uuid).where(
+                    MemberPackConsumption.flight_uuid == flight_uuid
+                ).distinct()
+            )
+            affected_members = [row.tiers_uuid for row in mpc_rows.all()]
+
+        # Delete pack consumption rows — restores pack balance for re-billing.
+        await self.db.execute(
+            delete(MemberPackConsumption).where(
+                MemberPackConsumption.flight_uuid == flight_uuid
+            )
+        )
+
         flight.accounting_entry_uuid = None
         flight.billing_quote_state = "pending"
+        flight.has_discount = False
+        await self.db.flush()
+
+        # Patch each affected member's REM discount entry.
+        if affected_members and fiscal_year_uuid is not None:
+            for member_uuid in affected_members:
+                await self._patch_rem_entry(member_uuid, fiscal_year_uuid)
+
         await self.db.commit()
+
+    async def _patch_rem_entry(self, member_uuid: UUID, fiscal_year_uuid: UUID) -> None:
+        """
+        Update the member's aggregated REM discount entry after one flight's
+        pack consumptions have been deleted.
+
+        Strategy: re-sum the *remaining* MemberPackConsumption rows for this
+        member (other flights are untouched, so their amounts are still correct).
+        Then replace the two GL lines on the existing REM Draft entry with the
+        new total, or delete the entry entirely if nothing is left.
+
+        This avoids a full FIFO re-run (discount_review_for_member). The trade-off:
+        if another flight was billed at full price only because this flight
+        exhausted the pack, that flight won't gain a discount automatically — a
+        full review or re-billing is needed for that.
+        """
+        # Load billing settings to find the REM journal and discount account.
+        settings_result = await self.db.execute(
+            select(FlightBillingSettings).where(
+                FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
+            )
+        )
+        settings = settings_result.scalar_one_or_none()
+        if settings is None:
+            logger.warning(
+                "_patch_rem_entry: no billing settings for fiscal_year=%s, skipping REM patch",
+                fiscal_year_uuid,
+            )
+            return
+
+        # Sum remaining discount amounts for this member from still-billed flights.
+        # Join through ValidatedFlight → AccountingEntry to scope to the fiscal year.
+        sum_result = await self.db.execute(
+            select(
+                func.coalesce(func.sum(MemberPackConsumption.total_discount_amount), Decimal("0"))
+            )
+            .join(ValidatedFlight, MemberPackConsumption.flight_uuid == ValidatedFlight.uuid)
+            .join(AccountingEntry, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
+            .where(
+                MemberPackConsumption.tiers_uuid == member_uuid,
+                MemberPackConsumption.flight_uuid.isnot(None),
+                AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+            )
+        )
+        new_total = Decimal(str(sum_result.scalar() or 0))
+
+        # Locate the existing REM entry for this member / fiscal year.
+        reference = f"{REM_DISCOUNT_REF_PREFIX}{member_uuid}"
+        rem_result = await self.db.execute(
+            select(AccountingEntry)
+            .join(
+                AccountingLine,
+                and_(
+                    AccountingLine.entry_uuid == AccountingEntry.uuid,
+                    AccountingLine.tiers_uuid == member_uuid,
+                ),
+            )
+            .where(
+                AccountingEntry.journal_uuid == settings.rem_journal_uuid,
+                AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+                AccountingEntry.reference == reference,
+            )
+            .limit(1)
+        )
+        rem_entry = rem_result.scalar_one_or_none()
+
+        if rem_entry is None:
+            logger.info(
+                "_patch_rem_entry: no REM entry found for member=%s, nothing to patch",
+                member_uuid,
+            )
+            return
+
+        if rem_entry.state == 2:
+            logger.warning(
+                "_patch_rem_entry: REM entry %s is posted — cannot patch automatically",
+                rem_entry.uuid,
+            )
+            return
+
+        # Delete current GL lines.
+        await self.db.execute(
+            delete(AccountingLine).where(AccountingLine.entry_uuid == rem_entry.uuid)
+        )
+        await self.db.flush()
+
+        if new_total <= Decimal("0"):
+            # No remaining discounts for this member — remove the entry entirely.
+            await self.db.delete(rem_entry)
+            logger.info(
+                "_patch_rem_entry: deleted empty REM entry %s for member=%s",
+                rem_entry.uuid, member_uuid,
+            )
+            return
+
+        # Resolve accounts for the two balanced GL lines.
+        discount_account_uuid = settings.default_pack_discount_expense_account_uuid
+        receivable = await get_account_by_code(self.db, "411")
+        if receivable is None:
+            logger.error("_patch_rem_entry: account 411 not found — REM entry left empty")
+            return
+
+        self.db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=rem_entry.uuid,
+            account_uuid=discount_account_uuid,
+            debit=new_total,
+        ))
+        self.db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=rem_entry.uuid,
+            account_uuid=receivable.uuid,
+            tiers_uuid=member_uuid,
+            credit=new_total,
+        ))
+        await self.db.flush()
+        logger.info(
+            "_patch_rem_entry: patched REM entry %s for member=%s new_total=%s",
+            rem_entry.uuid, member_uuid, new_total,
+        )
 
     async def batch_apply(
         self,

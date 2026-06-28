@@ -52,6 +52,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useCapability } from "@/auth/hooks/useCapability";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
 import {
@@ -67,6 +68,7 @@ import {
   type FlightBillingBatchPreviewResponse,
 } from "../../banque/api";
 import { useUpdateFlightBillingFieldsMutation } from "../api";
+import { useMemberOptionsQuery } from "../../members/api";
 import { FlightDetailDialog } from "../../banque/components/FlightDetailDialog";
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -421,11 +423,20 @@ function FlightPreviewPanel({ preview }: FlightPreviewPanelProps) {
 function EditableChargeFields({ flight }: { flight: BillableFlight }) {
   const { t } = useTranslation("flights");
   const updateMutation = useUpdateFlightBillingFieldsMutation();
+  const activeFiscalYearData = useFiscalYearStore((s) => s.activeFiscalYearData);
+  const { data: memberOptions = [] } = useMemberOptionsQuery({
+    registered_for_year: activeFiscalYearData?.year,
+  });
   const [editing, setEditing] = useState(false);
   const [chargeTo, setChargeTo] = useState(flight.charge_to_erp_id ?? "");
   const [chargeComment, setChargeComment] = useState(
     flight.charge_comment ?? "",
   );
+
+  const memberSelectOptions = memberOptions.map((m) => ({
+    value: m.account_id,
+    label: `${m.last_name} ${m.first_name} (${m.account_id})`,
+  }));
 
   async function handleSave() {
     await updateMutation.mutateAsync({
@@ -439,6 +450,7 @@ function EditableChargeFields({ flight }: { flight: BillableFlight }) {
   }
 
   if (!editing) {
+    const displayName = flight.charge_to_name ?? flight.charge_to_erp_id;
     return (
       <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
         <div className="flex items-center justify-between">
@@ -446,7 +458,16 @@ function EditableChargeFields({ flight }: { flight: BillableFlight }) {
             <span className="font-medium">
               {t("table.chargeTo", "Facturation à")} :
             </span>{" "}
-            {flight.charge_to_erp_id ?? (
+            {displayName ? (
+              <>
+                {displayName}
+                {flight.charge_to_erp_id && flight.charge_to_name && (
+                  <span className="ml-1 text-slate-400">
+                    ({flight.charge_to_erp_id})
+                  </span>
+                )}
+              </>
+            ) : (
               <span className="text-slate-300">
                 {t("common.notDefined", "non défini")}
               </span>
@@ -460,7 +481,11 @@ function EditableChargeFields({ flight }: { flight: BillableFlight }) {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setChargeTo(flight.charge_to_erp_id ?? "");
+              setChargeComment(flight.charge_comment ?? "");
+              setEditing(true);
+            }}
           >
             {t("common.edit", "Modifier")}
           </Button>
@@ -476,10 +501,15 @@ function EditableChargeFields({ flight }: { flight: BillableFlight }) {
           <Label className="text-xs text-slate-600">
             {t("table.chargeTo", "Charge à")}
           </Label>
-          <Input
+          <SearchableSelect
+            options={memberSelectOptions}
             value={chargeTo}
-            onChange={(e) => setChargeTo(e.target.value)}
-            placeholder="ERP ID ou account_id"
+            onChange={setChargeTo}
+            clearable
+            clearLabel={t("common.reset", "Réinitialiser")}
+            placeholder={t("flights:billing.selectMember", "Choisir un membre…")}
+            searchPlaceholder={t("common.search", "Rechercher…")}
+            noResultsText={t("common.noResults", "Aucun résultat")}
           />
         </div>
         <div className="space-y-1">
@@ -489,7 +519,7 @@ function EditableChargeFields({ flight }: { flight: BillableFlight }) {
           <Input
             value={chargeComment}
             onChange={(e) => setChargeComment(e.target.value)}
-            placeholder="Raison de la facturation"
+            placeholder={t("flights:billing.chargeCommentPlaceholder", "Raison de la facturation")}
           />
         </div>
         <div className="flex items-end gap-1">
