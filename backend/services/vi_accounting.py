@@ -36,10 +36,12 @@ from models import (
     AccountingJournal,
     AccountingLine,
     Asset,
+    Member,
     PricingItem,
     PricingVersion,
     ValidatedFlight,
     ViEntitlement,
+    ViEntitlementStatus,
     ViFlightLink,
     ViTypeCatalog,
 )
@@ -641,3 +643,177 @@ async def cancel_vi_realization_entry(
         entry_uuid,
         entitlement.code,
     )
+
+
+# ── Step 4: Member conversion ──────────────────────────────────────────────
+
+async def create_vi_conversion_entry(
+    db: AsyncSession,
+    entitlement_uuid: UUID,
+    registered_member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    user_id: int,
+) -> tuple[AccountingEntry, list[UUID]]:
+    """
+    Step 4 – Member conversion (rebill_to_member).
+
+    Creates a Draft OD entry that nullifies the realization revenue recognition
+    and establishes the member receivable:
+      D revenue_account   (flight_portion)    — reverses C 7067 from realization
+      D insurance_account (insurance_amount)  — reverses C 401 from realization [if any]
+      C 411               (amount_ttc)  tiers=registered_member
+
+    Returns (entry, flights_to_rebill) where flights_to_rebill is the list of
+    flight UUIDs from vi_flight_links that are currently in 'applied' state.
+    The caller is responsible for unbilling each, updating charge_to_erp_id,
+    and re-billing them.
+
+    Does NOT commit — caller owns the transaction.
+    """
+    from datetime import date as _date
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(ViEntitlement)
+        .options(
+            joinedload(ViEntitlement.vi_type).options(
+                joinedload(ViTypeCatalog.revenue_account),
+                joinedload(ViTypeCatalog.insurance_account),
+            ),
+            selectinload(ViEntitlement.flight_links).joinedload(ViFlightLink.flight),
+        )
+        .where(ViEntitlement.uuid == entitlement_uuid)
+    )
+    entitlement = result.unique().scalar_one_or_none()
+    if entitlement is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VI entitlement not found")
+
+    if entitlement.conversion_entry_uuid is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Conversion entry already exists: {entitlement.conversion_entry_uuid}",
+        )
+
+    if entitlement.realization_entry_uuid is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Realization entry must exist before creating a conversion entry",
+        )
+
+    if entitlement.amount_ttc is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="amount_ttc must be set on the entitlement",
+        )
+
+    vi_type = entitlement.vi_type
+    if vi_type is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="VI type not found")
+
+    revenue_acc = vi_type.revenue_account
+    if revenue_acc is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="VI type is missing revenue_account_uuid — configure in VI type settings",
+        )
+
+    member_result = await db.execute(select(Member).where(Member.uuid == registered_member_uuid))
+    registered_member = member_result.scalar_one_or_none()
+    if registered_member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registered member not found")
+
+    receivable_result = await db.execute(
+        select(AccountingAccount).where(AccountingAccount.code == "411")
+    )
+    receivable_acc = receivable_result.scalar_one_or_none()
+    if receivable_acc is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Compte 411 introuvable — vérifier le plan comptable",
+        )
+
+    vi_journal = await _get_journal_by_code(db, JOURNAL_VI)
+    if vi_journal is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Journal VI introuvable")
+
+    amount_ttc = Decimal(str(entitlement.amount_ttc))
+    insurance_amount = Decimal(str(vi_type.insurance_amount)) if vi_type.insurance_amount else Decimal("0")
+    flight_portion = amount_ttc - insurance_amount
+
+    entry_uuid = uuid4()
+    entry = AccountingEntry(
+        uuid=entry_uuid,
+        fiscal_year_uuid=fiscal_year_uuid,
+        journal_uuid=vi_journal.uuid,
+        entry_date=_date.today(),
+        reference=f"VI-CONV-{entitlement.code}",
+        description=f"Conversion membre VI {entitlement.code}",
+        state=1,  # Draft
+        created_by=user_id,
+    )
+    db.add(entry)
+    await db.flush()
+
+    # D revenue_account (7067) — nullifies C 7067 credit from realization
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=revenue_acc.uuid,
+        tiers_uuid=None,
+        debit=flight_portion,
+        credit=Decimal("0"),
+        description=f"Annulation produit VI {entitlement.code}",
+    ))
+
+    # D insurance_account (401) — nullifies C 401 credit from realization [if any]
+    if insurance_amount > Decimal("0") and vi_type.insurance_account is not None:
+        db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=entry_uuid,
+            account_uuid=vi_type.insurance_account.uuid,
+            tiers_uuid=vi_type.insurance_tiers_uuid,
+            debit=insurance_amount,
+            credit=Decimal("0"),
+            description=f"Annulation assurance VI {entitlement.code}",
+        ))
+    elif insurance_amount > Decimal("0") and vi_type.insurance_account is None:
+        logger.warning(
+            "VI conversion %s: insurance_amount=%s but no insurance_account configured — "
+            "insurance debit line omitted, entry may be unbalanced",
+            entitlement.code,
+            insurance_amount,
+        )
+
+    # C 411 (amount_ttc, tiers=registered_member)
+    db.add(AccountingLine(
+        uuid=uuid4(),
+        fiscal_year_uuid=fiscal_year_uuid,
+        entry_uuid=entry_uuid,
+        account_uuid=receivable_acc.uuid,
+        tiers_uuid=registered_member_uuid,
+        debit=Decimal("0"),
+        credit=amount_ttc,
+        description=f"Créance membre {registered_member.account_id} VI {entitlement.code}",
+    ))
+
+    await db.flush()
+
+    entitlement.conversion_entry_uuid = entry_uuid
+    entitlement.registered_member_uuid = registered_member_uuid
+    entitlement.status = int(ViEntitlementStatus.CONVERTED)
+    entitlement.updated_by = user_id
+
+    # Return all linked flight UUIDs so the route can unbill (if applied) and update charge_to
+    linked_flight_uuids: list[UUID] = [
+        link.flight_uuid
+        for link in entitlement.flight_links
+        if link.flight_uuid is not None
+    ]
+
+    logger.info(
+        "VI conversion: created OD entry %s for entitlement %s member=%s linked_flights=%d",
+        entry_uuid, entitlement.code, registered_member.account_id, len(linked_flight_uuids),
+    )
+    return entry, linked_flight_uuids

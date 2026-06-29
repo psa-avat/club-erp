@@ -34,13 +34,14 @@ from sqlalchemy.orm import joinedload
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_VI, CAP_PLAN_VI, CAP_POST_ACCOUNTING_ENTRIES
-from models import AccountingEntry, User, ValidatedFlight, ViEntitlement, ViFlightLink, ViTypeCatalog
+from models import AccountingEntry, Member, User, ValidatedFlight, ViEntitlement, ViFlightLink, ViTypeCatalog
 from schemas.vi import (
     HelloAssoViStagingResponse,
     ViBulkScheduleRequest,
     ViAccountingSummaryResponse,
     ViAccountingEntryRef,
     ViCancelRealizationRequest,
+    ViConversionEntryRequest,
     ViEntitlementAmountPatch,
     ViEntitlementPayload,
     ViEntitlementResponse,
@@ -80,6 +81,7 @@ from services.vi import (
 )
 from services.vi_accounting import (
     cancel_vi_realization_entry,
+    create_vi_conversion_entry,
     create_vi_purchase_entry,
     create_vi_realization_entry,
     create_vi_reimbursement_entry,
@@ -338,6 +340,7 @@ async def get_vi_accounting_summary(
                 joinedload(ViTypeCatalog.insurance_account),
             ),
             joinedload(ViEntitlement.buyer_member),
+            joinedload(ViEntitlement.registered_member),
             joinedload(ViEntitlement.flight_links).joinedload(ViFlightLink.flight),
         )
         .where(ViEntitlement.uuid == entitlement_uuid)
@@ -368,9 +371,26 @@ async def get_vi_accounting_summary(
                 entry_date=entry.entry_date,
             )
 
+    conversion_ref = ViAccountingEntryRef()
+    if ent.conversion_entry_uuid:
+        conv_result = await db.execute(
+            select(AccountingEntry).where(AccountingEntry.uuid == ent.conversion_entry_uuid)
+        )
+        conv_entry = conv_result.scalar_one_or_none()
+        if conv_entry:
+            conversion_ref = ViAccountingEntryRef(
+                entry_uuid=conv_entry.uuid,
+                state=conv_entry.state,
+                entry_date=conv_entry.entry_date,
+            )
+
     buyer_name: str | None = None
     if ent.buyer_member:
         buyer_name = f"{ent.buyer_member.first_name} {ent.buyer_member.last_name}".strip()
+
+    registered_name: str | None = None
+    if ent.registered_member:
+        registered_name = f"{ent.registered_member.first_name} {ent.registered_member.last_name}".strip()
 
     sorted_links = sorted(ent.flight_links or [], key=lambda lk: lk.sequence)
     flight_link_responses = [_build_flight_link_response(lk) for lk in sorted_links]
@@ -384,10 +404,13 @@ async def get_vi_accounting_summary(
         flight_portion=flight_portion,
         buyer_member_uuid=ent.buyer_member_uuid,
         buyer_member_name=buyer_name,
+        registered_member_uuid=ent.registered_member_uuid,
+        registered_member_name=registered_name,
         is_generic=ent.is_generic,
         max_flights=vi_type.max_flights if vi_type else 1,
         flight_links=flight_link_responses,
         realization=realization_ref,
+        conversion=conversion_ref,
     )
 
 
@@ -451,6 +474,66 @@ async def cancel_vi_realization_entry_endpoint(
         user_id=current_user.id,
     )
     await db.commit()
+    db.expire_all()
+    return await get_vi_accounting_summary(entitlement_uuid=entitlement_uuid, db=db, _=_)
+
+
+@router.post("/entitlements/{entitlement_uuid}/conversion-entry", response_model=ViAccountingSummaryResponse)
+async def create_vi_conversion_entry_endpoint(
+    entitlement_uuid: UUID,
+    request: ViConversionEntryRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = _accounting_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Step 4 – Convert VI buyer to member.
+
+    Creates an OD entry (D 7067 + D 401 / C 411-member), sets the entitlement status
+    to CONVERTED, then for each linked flight: unbills it (if in Draft/applied state)
+    and sets charge_to_erp_id to the registered member's account_id so it can be
+    re-billed manually from the flights module.
+    """
+    from services.flight_billing_apply import FlightBillingApplyService
+
+    _, linked_flight_uuids = await create_vi_conversion_entry(
+        db=db,
+        entitlement_uuid=entitlement_uuid,
+        registered_member_uuid=request.registered_member_uuid,
+        fiscal_year_uuid=request.fiscal_year_uuid,
+        user_id=current_user.id,
+    )
+    await db.commit()
+
+    if linked_flight_uuids:
+        member_result = await db.execute(
+            select(Member).where(Member.uuid == request.registered_member_uuid)
+        )
+        member = member_result.scalar_one()
+        billing_svc = FlightBillingApplyService(db)
+
+        for flight_uuid in linked_flight_uuids:
+            flight_result = await db.execute(
+                select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid)
+            )
+            flight = flight_result.scalar_one_or_none()
+            if flight is None:
+                continue
+            if flight.billing_quote_state == "applied" and flight.accounting_entry_uuid is not None:
+                try:
+                    await billing_svc.unbill_flight(flight_uuid)  # commits internally
+                except Exception:
+                    logger.warning("VI conversion: could not unbill flight %s — skipping unbill", flight_uuid)
+                    await db.rollback()
+            # Reload flight after potential unbill commit, then update charge_to
+            flight_result2 = await db.execute(
+                select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid)
+            )
+            flight2 = flight_result2.scalar_one_or_none()
+            if flight2 is not None:
+                flight2.charge_to_erp_id = member.account_id
+                await db.commit()
+
     db.expire_all()
     return await get_vi_accounting_summary(entitlement_uuid=entitlement_uuid, db=db, _=_)
 

@@ -2152,7 +2152,7 @@ CREATE TABLE public.vi_entitlements (
     updated_by integer,
     CONSTRAINT chk_vi_entitlements_date_consistency CHECK (((realisation_date IS NULL) OR (scheduled_date IS NULL) OR (realisation_date >= scheduled_date))),
     CONSTRAINT chk_vi_entitlements_origin_type CHECK (((origin_type >= 1) AND (origin_type <= 5))),
-    CONSTRAINT chk_vi_entitlements_status CHECK (((status >= 1) AND (status <= 5)))
+    CONSTRAINT chk_vi_entitlements_status CHECK (((status >= 1) AND (status <= 6)))
 );
 
 

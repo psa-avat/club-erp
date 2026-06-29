@@ -366,10 +366,16 @@ class FlightBillingPreviewService:
                 is_club_billed = True
 
         # ── Detection 2: initiation flight with a resolvable charge account ──
+        # Skipped when charge_to_erp_id names a specific member (not the club):
+        # the flight should then be billed as a standard member flight (D 411).
         charge_account_uuid: UUID | None = None
         charge_account_code: str | None = None
         vi_analytical_credit_account: AccountingAccount | None = None
-        if not is_club_billed and is_initiation:
+        explicit_member_charge = (
+            flight.charge_to_erp_id
+            and (self._club_member is None or flight.charge_to_erp_id != self._club_member.account_id)
+        )
+        if not is_club_billed and is_initiation and not explicit_member_charge:
             ca_uuid, ca_code, vi_credit = await self._resolve_charge_account(flight, is_initiation=True)
             if ca_uuid is not None:
                 is_club_billed = True
@@ -731,7 +737,11 @@ class FlightBillingPreviewService:
             role = "charge_to" if charge_to is not None else "pilot"
             return [_Payer(payer, role, Decimal("1"), "passager")]
         if flight_type == "initiation":
-            # Initiation flight without club billing configuration
+            # charge_to_erp_id set to a real member → bill them as a standard payer (D 411)
+            payer = charge_to or pilot
+            if payer is not None:
+                role = "charge_to" if charge_to is not None else "pilot"
+                return [_Payer(payer, role, Decimal("1"), "initiation_member")]
             errors.append(_error("club_billing_target_missing", "Initiation/VI club billing target is not configured."))
             return []
 

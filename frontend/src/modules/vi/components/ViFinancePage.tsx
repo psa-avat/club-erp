@@ -90,6 +90,7 @@ function StatusBadge({ status }: { status: number }) {
     3: ['badge-success', 'Réalisé'],
     4: ['badge-destructive', 'Expiré'],
     5: ['outline', 'Annulé'],
+    6: ['badge-success', 'Converti'],
   }
   const [cls, label] = map[status] ?? ['outline', '?']
   return <Badge className={cls !== 'outline' ? cls : undefined} variant={cls === 'outline' ? 'outline' : undefined}>{label}</Badge>
@@ -587,7 +588,7 @@ function ViEntitlementSheet({
                     Créer l'écriture VI
                   </Button>
                 )}
-                {hasRealization && !isPosted && (
+                {hasRealization && !isPosted && entitlement.status !== 6 && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -601,8 +602,11 @@ function ViEntitlementSheet({
                     Annuler l'écriture
                   </Button>
                 )}
-                {hasRealization && isPosted && (
+                {hasRealization && isPosted && entitlement.status !== 6 && (
                   <p className="text-xs text-muted-foreground">Écriture validée — annulation via le module comptabilité.</p>
+                )}
+                {entitlement.status === 6 && (
+                  <p className="text-xs text-muted-foreground">Bon converti — écriture de réalisation non annulable.</p>
                 )}
               </div>
 
@@ -634,7 +638,7 @@ function ViEntitlementSheet({
           )}
 
           {/* Section 4 — Archivage */}
-          {hasRealization && entitlement.status !== 3 && (
+          {hasRealization && entitlement.status !== 3 && entitlement.status !== 6 && (
             <fieldset className="space-y-2 rounded-lg border border-outline-variant p-4">
               <legend className="text-sm font-medium px-1">Archivage</legend>
               <p className="text-xs text-muted-foreground">
@@ -671,6 +675,7 @@ const STATUS_LABELS: Record<number, string> = {
   3: 'Réalisé',
   4: 'Expiré',
   5: 'Annulé',
+  6: 'Converti',
 }
 
 export function ViFinancePage() {
@@ -746,11 +751,11 @@ export function ViFinancePage() {
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {rows.map((row) => {
-              const isRealized = row.status === 3
+              const isMuted = row.status === 3 || row.status === 6
               return (
                 <tr
                   key={row.uuid}
-                  className={isRealized ? 'opacity-50' : undefined}
+                  className={isMuted ? 'opacity-50' : undefined}
                 >
                   <td className="px-3 py-2 font-mono">
                     {row.code}

@@ -1460,6 +1460,7 @@ class ViEntitlementStatus(IntEnum):
     REALIZED = 3
     EXPIRED = 4
     CANCELLED = 5
+    CONVERTED = 6
 
 
 class ViTypeCatalog(Base):

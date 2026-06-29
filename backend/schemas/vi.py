@@ -105,8 +105,11 @@ class ViEntitlementResponse(BaseModel):
     status: int
     is_generic: bool = False
     amount_ttc: Decimal | None = None
+    buyer_member_uuid: UUID | None = None
+    registered_member_uuid: UUID | None = None
     purchase_entry_uuid: UUID | None = None
     realization_entry_uuid: UUID | None = None
+    conversion_entry_uuid: UUID | None = None
     flight_link_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -270,6 +273,11 @@ class ViCancelRealizationRequest(BaseModel):
     fiscal_year_uuid: UUID
 
 
+class ViConversionEntryRequest(BaseModel):
+    fiscal_year_uuid: UUID
+    registered_member_uuid: UUID
+
+
 class ViAccountingEntryRef(BaseModel):
     entry_uuid: Optional[UUID] = None
     state: Optional[int] = None      # 1=Draft 2=Posted 3=Cancelled
@@ -286,10 +294,13 @@ class ViAccountingSummaryResponse(BaseModel):
     flight_portion: Optional[Decimal]     # amount_ttc - insurance_amount
     buyer_member_uuid: Optional[UUID]
     buyer_member_name: Optional[str]
+    registered_member_uuid: Optional[UUID] = None
+    registered_member_name: Optional[str] = None
     is_generic: bool = False
     max_flights: int = 1
     flight_links: list[ViFlightLinkResponse] = Field(default_factory=list)
     realization: ViAccountingEntryRef
+    conversion: ViAccountingEntryRef = Field(default_factory=ViAccountingEntryRef)
 
     class Config:
         from_attributes = True

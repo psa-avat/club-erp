@@ -22,8 +22,10 @@ import {
   SheetTitle,
 } from '../../../components/ui/sheet'
 import { useActiveFiscalYearQuery, useAccountsQuery, useFiscalYearsQuery } from '../../banque/api'
+import { useMemberOptionsQuery } from '../../members/api'
 import {
   type ViEntitlement,
+  useCreateViConversionEntryMutation,
   useCreateViEntitlementMutation,
   useCreateViPurchaseEntryMutation,
   useCreateViReimbursementEntryMutation,
@@ -53,7 +55,7 @@ const ORIGIN_LABELS: Record<number, string> = {
 }
 
 const STATUS_LABELS: Record<number, string> = {
-  1: 'Chargé', 2: 'Planifié', 3: 'Réalisé', 4: 'Expiré', 5: 'Annulé',
+  1: 'Chargé', 2: 'Planifié', 3: 'Réalisé', 4: 'Expiré', 5: 'Annulé', 6: 'Converti',
 }
 
 function VoucherSheet({
@@ -72,6 +74,7 @@ function VoucherSheet({
   const patchMutation = usePatchViEntitlementMutation()
   const reimburseMutation = useCreateViReimbursementEntryMutation()
   const purchaseMutation = useCreateViPurchaseEntryMutation()
+  const conversionMutation = useCreateViConversionEntryMutation()
 
   // Queries for accounting forms (reimbursement + purchase entry)
   const fyQuery = useFiscalYearsQuery()
@@ -100,6 +103,11 @@ function VoucherSheet({
   const [reimburseAmount, setReimburseAmount] = useState(
     row?.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '',
   )
+  // conversion form state
+  const [conversionFyUuid, setConversionFyUuid] = useState('')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [selectedMemberUuid, setSelectedMemberUuid] = useState('')
+  const memberOptionsQuery = useMemberOptionsQuery({ search: memberSearch, limit: 20 })
   // purchase entry state (create mode only)
   const [withPurchaseEntry, setWithPurchaseEntry] = useState(false)
   const [purchaseFyUuid, setPurchaseFyUuid] = useState('')
@@ -112,8 +120,8 @@ function VoucherSheet({
   // Filter accounts to class 5 (cash & bank) for the bank account selector
   const bankAccounts = (accountsQuery.data ?? []).filter((a) => a.code.startsWith('5'))
 
-  const isPending = createMutation.isPending || patchMutation.isPending || reimburseMutation.isPending || purchaseMutation.isPending
-  const mutationError = createMutation.error ?? patchMutation.error ?? reimburseMutation.error ?? purchaseMutation.error
+  const isPending = createMutation.isPending || patchMutation.isPending || reimburseMutation.isPending || purchaseMutation.isPending || conversionMutation.isPending
+  const mutationError = createMutation.error ?? patchMutation.error ?? reimburseMutation.error ?? purchaseMutation.error ?? conversionMutation.error
 
   function resetToRow() {
     setCode(row?.code ?? '')
@@ -131,6 +139,9 @@ function VoucherSheet({
     setReimburseFyUuid('')
     setReimburseBankUuid('')
     setReimburseAmount(row?.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '')
+    setConversionFyUuid('')
+    setMemberSearch('')
+    setSelectedMemberUuid('')
     setWithPurchaseEntry(false)
     setPurchaseFyUuid('')
     setPurchaseBankUuid('')
@@ -226,7 +237,21 @@ function VoucherSheet({
     onOpenChange(false)
   }
 
+  async function handleConvert() {
+    if (!row) return
+    const fyUuid = conversionFyUuid || activeFyUuid
+    if (!fyUuid || !selectedMemberUuid) return
+    await conversionMutation.mutateAsync({
+      entitlementUuid: row.uuid,
+      fiscalYearUuid: fyUuid,
+      registeredMemberUuid: selectedMemberUuid,
+    })
+    onOpenChange(false)
+  }
+
   const isCancelled = row?.status === 5
+  const isRealized = row?.status === 3
+  const isLoaded = row?.status === 1
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -454,12 +479,76 @@ function VoucherSheet({
             </Button>
           </div>
 
-          {/* ── Annulation (edit mode only, not already cancelled) ── */}
-          {isEdit && !isCancelled && (
+          {/* ── Conversion membre (realized vouchers only) ── */}
+          {isEdit && isRealized && !isCancelled && (
+            <fieldset className="space-y-3 rounded-lg border border-blue-200 p-4">
+              <legend className="text-sm font-medium px-1 text-blue-700">Conversion en membre</legend>
+              {row?.conversion_entry_uuid ? (
+                <p className="text-xs text-muted-foreground">
+                  Conversion effectuée — écriture OD créée ({row.conversion_entry_uuid.slice(0, 8)}…).
+                  {row.registered_member_uuid && ` Membre : ${row.registered_member_uuid.slice(0, 8)}…`}
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Crée une écriture OD (D 7067 + D 401 / C 411-membre), annule la facturation VI des vols
+                    et les refacture au pilote membre.
+                  </p>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Exercice fiscal</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                      value={conversionFyUuid || activeFyUuid}
+                      onChange={(e) => setConversionFyUuid(e.target.value)}
+                    >
+                      {fiscalYears.map((fy) => (
+                        <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Rechercher un membre <span className="text-destructive">*</span></Label>
+                    <Input
+                      placeholder="Nom, prénom ou code…"
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                    />
+                  </div>
+                  {memberSearch.length >= 2 && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Membre</Label>
+                      <select
+                        className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                        value={selectedMemberUuid}
+                        onChange={(e) => setSelectedMemberUuid(e.target.value)}
+                      >
+                        <option value="">Sélectionner…</option>
+                        {(memberOptionsQuery.data ?? []).map((m) => (
+                          <option key={m.uuid} value={m.uuid}>
+                            {m.account_id} — {m.first_name} {m.last_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    disabled={isPending || !selectedMemberUuid || !(conversionFyUuid || activeFyUuid)}
+                    onClick={() => { void handleConvert() }}
+                  >
+                    Convertir en membre
+                  </Button>
+                </>
+              )}
+            </fieldset>
+          )}
+
+          {/* ── Annulation (loaded vouchers only) ── */}
+          {isEdit && isLoaded && !isCancelled && (
             <fieldset className="space-y-3 rounded-lg border border-destructive/30 p-4">
               <legend className="text-sm font-medium px-1 text-destructive">Annulation du bon</legend>
               <p className="text-xs text-muted-foreground">
-                Cette action passe le bon en statut Annulé. Choisissez si un remboursement a été effectué.
+                Passez le bon en statut Annulé. Choisissez si un remboursement a été effectué.
               </p>
               {cancelMode === null && (
                 <div className="flex gap-2 flex-wrap">
@@ -625,7 +714,7 @@ export function ViEntitlementsPage() {
     let rows = entitlementsQuery.data ?? []
 
     if (!showRealized) {
-      rows = rows.filter((row) => row.status !== 3 && row.status !== 5)
+      rows = rows.filter((row) => row.status !== 3 && row.status !== 5 && row.status !== 6)
     }
 
     const codeLower = filterCode.trim().toLowerCase()
@@ -659,6 +748,7 @@ export function ViEntitlementsPage() {
     status === 3 ? 'badge badge-success' :
     status === 4 ? 'badge badge-destructive' :
     status === 5 ? 'badge badge-destructive' :
+    status === 6 ? 'badge badge-success' :
     'badge'
 
   return (
@@ -716,7 +806,7 @@ export function ViEntitlementsPage() {
               checked={showRealized}
               onChange={(e) => setShowRealized(e.target.checked)}
             />
-            Afficher réalisés &amp; annulés
+            Afficher réalisés, annulés &amp; convertis
           </label>
         </div>
       </div>
@@ -746,7 +836,7 @@ export function ViEntitlementsPage() {
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {filteredAndSortedRows.map((row) => {
-              const isMuted = row.status === 3 || row.status === 5
+              const isMuted = row.status === 3 || row.status === 5 || row.status === 6
               return (
                 <tr key={row.uuid} className={isMuted ? 'opacity-50' : undefined}>
                   <td className="px-3 py-2 font-mono">{row.code}</td>
@@ -778,7 +868,7 @@ export function ViEntitlementsPage() {
             {filteredAndSortedRows.length === 0 && !entitlementsQuery.isLoading && (
               <tr>
                 <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
-                  Aucun droit trouvé{!showRealized ? ' (réalisés et annulés masqués)' : ''}.
+                  Aucun droit trouvé{!showRealized ? ' (réalisés, annulés et convertis masqués)' : ''}.
                 </td>
               </tr>
             )}

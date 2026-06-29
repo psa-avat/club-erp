@@ -95,10 +95,13 @@ export type ViAccountingSummary = {
   flight_portion: string | null
   buyer_member_uuid: string | null
   buyer_member_name: string | null
+  registered_member_uuid: string | null
+  registered_member_name: string | null
   is_generic: boolean
   max_flights: number
   flight_links: ViFlightLinkResponse[]
   realization: ViAccountingEntryRef
+  conversion: ViAccountingEntryRef
 }
 
 export type ViFlightLinkCreate = {
@@ -131,8 +134,11 @@ export type ViEntitlement = {
   status: number
   is_generic: boolean
   amount_ttc: string | null
+  buyer_member_uuid: string | null
+  registered_member_uuid: string | null
   purchase_entry_uuid: string | null
   realization_entry_uuid: string | null
+  conversion_entry_uuid: string | null
   flight_link_count: number
   created_at: string
   updated_at: string
@@ -560,6 +566,32 @@ export function useAddViFlightLinkMutation() {
     },
     onSuccess: async (_data, { entitlementUuid }) => {
       await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+    },
+  })
+}
+
+export function useCreateViConversionEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      entitlementUuid,
+      fiscalYearUuid,
+      registeredMemberUuid,
+    }: {
+      entitlementUuid: string
+      fiscalYearUuid: string
+      registeredMemberUuid: string
+    }) => {
+      const { data } = await apiClient.post<ViAccountingSummary>(
+        `/api/v1/vi/entitlements/${entitlementUuid}/conversion-entry`,
+        { fiscal_year_uuid: fiscalYearUuid, registered_member_uuid: registeredMemberUuid },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, { entitlementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.root })
     },
   })
 }
