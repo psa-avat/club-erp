@@ -959,8 +959,8 @@ export function ViEntitlementsPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                       )}
-                      {/* Cancel — status 1 (Chargé) only */}
-                      {row.status === 1 && (
+                      {/* Cancel — status 1 (Chargé) and 2 (Planifié) */}
+                      {(row.status === 1 || row.status === 2) && (
                         <button
                           onClick={() => setCancelRow(row)}
                           className="rounded p-1.5 text-slate-300 hover:text-destructive transition-colors"

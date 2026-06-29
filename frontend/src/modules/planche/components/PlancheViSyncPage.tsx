@@ -18,14 +18,14 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { useMemo, useState } from 'react'
-import { AlertCircle, ArrowUpFromLine, CheckCircle2, GitMerge, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertCircle, ArrowUpFromLine, CheckCircle2, Loader2 } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { useViEntitlementsQuery } from '../../vi/api'
-import { usePlancheViPushMutation, usePlancheViReconcileMutation } from '../api'
+import { usePlancheViPushMutation } from '../api'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -42,17 +42,33 @@ function fmtAmount(v: string | null | undefined): string {
 }
 
 export function PlancheViSyncPage() {
-  const entitlementsQuery = useViEntitlementsQuery(2)
+  const entitlementsQuery = useViEntitlementsQuery()
   const pushMutation = usePlancheViPushMutation()
-  const reconcileMutation = usePlancheViReconcileMutation()
 
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [replace, setReplace] = useState(false)
 
+  // Generic vouchers + non-generic scheduled (status=2)
   const rows = useMemo(
-    () => (entitlementsQuery.data ?? []).filter((r) => !r.is_generic),
+    () => (entitlementsQuery.data ?? []).filter(
+      (r) => r.is_generic || r.status === 2,
+    ),
     [entitlementsQuery.data],
   )
+
+  // Auto-select all rows when data first loads
+  useEffect(() => {
+    if (rows.length > 0) {
+      setSelected((prev) => {
+        const next: Record<string, boolean> = { ...prev }
+        let changed = false
+        rows.forEach((r) => {
+          if (!next[r.uuid]) { next[r.uuid] = true; changed = true }
+        })
+        return changed ? next : prev
+      })
+    }
+  }, [rows])
 
   const selectedIds = useMemo(
     () => rows.filter((r) => selected[r.uuid]).map((r) => r.uuid),
@@ -81,17 +97,13 @@ export function PlancheViSyncPage() {
     setSelected({})
   }
 
-  async function runReconcile() {
-    await reconcileMutation.mutateAsync({})
-  }
-
   return (
     <section className="space-y-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-base font-semibold">Synchronisation Planche — Bons VI</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Poussez les bons planifiés vers Planche et rapprochez les références de vols.
+            Poussez les bons vers Planche.
           </p>
         </div>
       </div>
@@ -107,18 +119,6 @@ export function PlancheViSyncPage() {
             : <ArrowUpFromLine className="h-4 w-4 mr-1.5" />
           }
           Pousser vers Planche ({selectedIds.length})
-        </Button>
-
-        <Button
-          variant="secondary"
-          disabled={reconcileMutation.isPending}
-          onClick={() => { void runReconcile() }}
-        >
-          {reconcileMutation.isPending
-            ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-            : <GitMerge className="h-4 w-4 mr-1.5" />
-          }
-          Rapprocher depuis vols validés
         </Button>
 
         <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none ml-auto">
@@ -153,28 +153,8 @@ export function PlancheViSyncPage() {
         </div>
       )}
 
-      {/* Reconcile result */}
-      {reconcileMutation.data && (
-        <div className="flex items-start gap-3 rounded-lg border border-outline-variant bg-slate-50 p-3 text-sm">
-          <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <p className="font-medium">Résultat du rapprochement</p>
-            <p className="text-muted-foreground">
-              {reconcileMutation.data.total} vol{reconcileMutation.data.total > 1 ? 's' : ''} analysé{reconcileMutation.data.total > 1 ? 's' : ''}
-              · {reconcileMutation.data.updated} droit{reconcileMutation.data.updated > 1 ? 's' : ''} mis à jour
-              {reconcileMutation.data.unmatched > 0 && (
-                <span className="text-amber-600 ml-2">
-                  · {reconcileMutation.data.unmatched} référence{reconcileMutation.data.unmatched > 1 ? 's' : ''} non trouvée{reconcileMutation.data.unmatched > 1 ? 's' : ''}
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-      )}
-
       {entitlementsQuery.error && <Alert>{toErrorMessage(entitlementsQuery.error)}</Alert>}
       {pushMutation.error && <Alert>{toErrorMessage(pushMutation.error)}</Alert>}
-      {reconcileMutation.error && <Alert>{toErrorMessage(reconcileMutation.error)}</Alert>}
 
       {entitlementsQuery.isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -201,6 +181,7 @@ export function PlancheViSyncPage() {
               <th className="px-3 py-2 text-left">Description</th>
               <th className="px-3 py-2 text-right">Montant TTC</th>
               <th className="px-3 py-2 text-left">Date planifiée</th>
+              <th className="px-3 py-2 text-left">Catégorie</th>
               <th className="px-3 py-2 text-left">Notes</th>
             </tr>
           </thead>
@@ -234,6 +215,12 @@ export function PlancheViSyncPage() {
                 <td className="px-3 py-2 tabular-nums text-muted-foreground">
                   {row.scheduled_date ?? '—'}
                 </td>
+                <td className="px-3 py-2">
+                  {row.is_generic
+                    ? <Badge className="badge-info text-xs">Générique</Badge>
+                    : <Badge className="badge-warning text-xs">Planifié</Badge>
+                  }
+                </td>
                 <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">
                   {row.notes ?? '—'}
                 </td>
@@ -241,8 +228,8 @@ export function PlancheViSyncPage() {
             ))}
             {rows.length === 0 && !entitlementsQuery.isLoading && (
               <tr>
-                <td className="px-3 py-6 text-center text-muted-foreground" colSpan={7}>
-                  Aucun bon planifié à pousser.
+                <td className="px-3 py-6 text-center text-muted-foreground" colSpan={8}>
+                  Aucun bon à synchroniser.
                 </td>
               </tr>
             )}

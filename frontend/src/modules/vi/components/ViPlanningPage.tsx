@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - vi: Planning page — schedule non-generic vouchers, per-row and bulk date editing
+    - vi: Planning page — 4-week calendar with drag-and-drop scheduling
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -19,15 +19,13 @@
 */
 
 import { useMemo, useState } from 'react'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
-import { Label } from '../../../components/ui/label'
 import {
-  useBulkScheduleViMutation,
   usePatchViEntitlementMutation,
   useViEntitlementsQuery,
   type ViEntitlement,
@@ -42,61 +40,174 @@ function toErrorMessage(error: unknown): string {
   return 'Erreur inattendue'
 }
 
-function fmtAmount(v: string | null | undefined): string {
-  if (v == null) return '—'
-  try {
-    const n = parseFloat(v)
-    return n.toFixed(2) + ' €'
-  } catch { return v }
+function dateToIso(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
-// ── Per-row inline date cell ───────────────────────────────────────────────
+// ── Voucher card ──────────────────────────────────────────────────────────────
 
-function InlineDateCell({ row }: { row: ViEntitlement }) {
-  const patchMutation = usePatchViEntitlementMutation()
-  const [value, setValue] = useState(row.scheduled_date ?? '')
-
-  async function handleBlur() {
-    const newDate = value || null
-    if (newDate === (row.scheduled_date ?? null)) return
-    await patchMutation.mutateAsync({
-      entitlementUuid: row.uuid,
-      payload: { scheduled_date: newDate },
-    })
-  }
-
+function VoucherCard({
+  row,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  onUnschedule,
+}: {
+  row: ViEntitlement
+  isDragging: boolean
+  onDragStart: (uuid: string) => void
+  onDragEnd: () => void
+  onUnschedule?: () => void
+}) {
   return (
-    <div className="flex items-center gap-1">
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => { void handleBlur() }}
-        disabled={patchMutation.isPending}
-        className="h-7 w-32 text-xs border rounded px-2 bg-background disabled:opacity-50 tabular-nums"
-      />
-      {patchMutation.isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-      {patchMutation.isSuccess && !patchMutation.isPending && (
-        <CheckCircle2 className="h-3 w-3 text-green-600" />
+    <div
+      draggable
+      onDragStart={() => onDragStart(row.uuid)}
+      onDragEnd={onDragEnd}
+      title={row.description ?? row.code}
+      className={[
+        'group relative flex flex-col gap-0.5 rounded border px-1.5 py-1 cursor-grab text-xs shadow-sm select-none transition-opacity',
+        isDragging ? 'opacity-30' : 'opacity-100',
+        row.status === 1
+          ? 'bg-blue-50 border-blue-200 hover:border-blue-400'
+          : 'bg-amber-50 border-amber-200 hover:border-amber-400',
+      ].join(' ')}
+    >
+      {onUnschedule && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onUnschedule() }}
+          className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center justify-center h-4 w-4 rounded-full bg-slate-500 text-white hover:bg-destructive transition-colors z-10"
+          title="Retirer la date"
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      )}
+      <div className="flex items-center gap-1 flex-wrap min-w-0">
+        <span className="font-mono font-semibold leading-tight truncate">{row.code}</span>
+        {row.vi_type_code && (
+          <Badge variant="outline" className="text-[10px] font-mono px-1 py-0 leading-tight shrink-0">
+            {row.vi_type_code}
+          </Badge>
+        )}
+      </div>
+      {row.amount_ttc && (
+        <span className="text-muted-foreground tabular-nums leading-tight">
+          {parseFloat(row.amount_ttc).toFixed(0)} €
+        </span>
       )}
     </div>
   )
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────
+// ── Day cell ──────────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<number, string> = { 1: 'Chargé', 2: 'Planifié' }
+function DayCell({
+  day,
+  iso,
+  isToday,
+  isWeekend,
+  rows,
+  draggingUuid,
+  onDrop,
+  onDragStart,
+  onDragEnd,
+  onUnschedule,
+}: {
+  day: Date
+  iso: string
+  isToday: boolean
+  isWeekend: boolean
+  rows: ViEntitlement[]
+  draggingUuid: string | null
+  onDrop: (iso: string) => void
+  onDragStart: (uuid: string) => void
+  onDragEnd: () => void
+  onUnschedule: (uuid: string) => void
+}) {
+  const [isOver, setIsOver] = useState(false)
+
+  return (
+    <div
+      className={[
+        'min-h-[90px] p-1 flex flex-col gap-1',
+        isToday ? 'bg-blue-50' : isWeekend ? 'bg-slate-50/60' : 'bg-white',
+        isOver && draggingUuid ? 'ring-2 ring-inset ring-primary' : '',
+      ].join(' ')}
+      onDragOver={(e) => { e.preventDefault(); setIsOver(true) }}
+      onDragLeave={() => setIsOver(false)}
+      onDrop={() => { setIsOver(false); onDrop(iso) }}
+    >
+      <span className={[
+        'text-xs tabular-nums self-end leading-none',
+        isToday ? 'text-primary font-bold' : 'text-muted-foreground',
+      ].join(' ')}>
+        {day.getDate()}
+      </span>
+      {rows.map((row) => (
+        <VoucherCard
+          key={row.uuid}
+          row={row}
+          isDragging={draggingUuid === row.uuid}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onUnschedule={() => onUnschedule(row.uuid)}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
 export function ViPlanningPage() {
   const entitlementsQuery = useViEntitlementsQuery()
-  const bulkScheduleMutation = useBulkScheduleViMutation()
+  const patchMutation = usePatchViEntitlementMutation()
 
-  const [bulkDate, setBulkDate] = useState('')
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [draggingUuid, setDraggingUuid] = useState<string | null>(null)
+  const [unscheduledOver, setUnscheduledOver] = useState(false)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | '1' | '2'>('all')
 
-  // Non-generic, Chargé or Planifié only
+  // Stable today string — computed once on mount, not on every render
+  const today = useMemo(() => dateToIso(new Date()), [])
+
+  // Monday of current week, shifted by weekOffset * 28 days
+  const windowStart = useMemo(() => {
+    const d = new Date()
+    const dow = d.getDay() // 0=Sun … 6=Sat
+    const monday = new Date(d)
+    monday.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1) + weekOffset * 28)
+    monday.setHours(0, 0, 0, 0)
+    return monday
+  }, [weekOffset])
+
+  const days = useMemo(
+    () => Array.from({ length: 28 }, (_, i) => {
+      const d = new Date(windowStart)
+      d.setDate(windowStart.getDate() + i)
+      return d
+    }),
+    [windowStart],
+  )
+
+  const periodLabel = useMemo(() => {
+    const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+    const start = days[0]
+    const end = days[27]
+    if (start.getFullYear() === end.getFullYear()) {
+      return `${fmt(start)} – ${fmt(end)} ${end.getFullYear()}`
+    }
+    return `${fmt(start)} ${start.getFullYear()} – ${fmt(end)} ${end.getFullYear()}`
+  }, [days])
+
+  // Non-generic, active (Chargé=1 or Planifié=2)
   const baseRows = useMemo(
     () => (entitlementsQuery.data ?? []).filter(
       (r) => !r.is_generic && (r.status === 1 || r.status === 2),
@@ -105,119 +216,105 @@ export function ViPlanningPage() {
   )
 
   const filteredRows = useMemo(() => {
-    let rows = baseRows
-    if (statusFilter !== 'all') rows = rows.filter((r) => r.status === Number(statusFilter))
     const q = search.trim().toLowerCase()
-    if (q) rows = rows.filter(
+    if (!q) return baseRows
+    return baseRows.filter(
       (r) => r.code.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q),
     )
-    return rows
-  }, [baseRows, statusFilter, search])
+  }, [baseRows, search])
 
-  const selectedIds = useMemo(
-    () => filteredRows.filter((r) => selected[r.uuid]).map((r) => r.uuid),
-    [filteredRows, selected],
+  const byDate = useMemo(() => {
+    const map: Record<string, ViEntitlement[]> = {}
+    filteredRows.forEach((r) => {
+      if (r.scheduled_date) {
+        if (!map[r.scheduled_date]) map[r.scheduled_date] = []
+        map[r.scheduled_date].push(r)
+      }
+    })
+    return map
+  }, [filteredRows])
+
+  const unscheduled = useMemo(
+    () => filteredRows.filter((r) => !r.scheduled_date),
+    [filteredRows],
   )
 
-  const allChecked = filteredRows.length > 0 && filteredRows.every((r) => selected[r.uuid])
-  const someChecked = filteredRows.some((r) => selected[r.uuid])
-
-  function toggleAll() {
-    if (allChecked) {
-      setSelected({})
-    } else {
-      const next: Record<string, boolean> = {}
-      filteredRows.forEach((r) => { next[r.uuid] = true })
-      setSelected(next)
-    }
-  }
-
-  function toggleRow(uuid: string) {
-    setSelected((prev) => ({ ...prev, [uuid]: !prev[uuid] }))
-  }
-
-  async function applyBulkDate() {
-    await bulkScheduleMutation.mutateAsync({
-      entitlement_uuids: selectedIds,
-      scheduled_date: bulkDate || null,
+  async function handleDropOnDay(iso: string) {
+    if (!draggingUuid) return
+    const uuid = draggingUuid
+    setDraggingUuid(null)
+    await patchMutation.mutateAsync({
+      entitlementUuid: uuid,
+      payload: { scheduled_date: iso },
     })
-    setSelected({})
   }
 
-  const statusBadgeClass = (status: number) =>
-    status === 1 ? 'badge badge-info' : 'badge badge-warning'
+  async function handleUnschedule(uuid: string) {
+    await patchMutation.mutateAsync({
+      entitlementUuid: uuid,
+      payload: { scheduled_date: null },
+    })
+  }
+
+  async function handleDropOnUnscheduled() {
+    if (!draggingUuid) return
+    const uuid = draggingUuid
+    setDraggingUuid(null)
+    setUnscheduledOver(false)
+    await patchMutation.mutateAsync({
+      entitlementUuid: uuid,
+      payload: { scheduled_date: null },
+    })
+  }
+
+  function handleDragEnd() {
+    setDraggingUuid(null)
+    setUnscheduledOver(false)
+  }
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold">Planification des bons VI</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Assignez une date de vol à chaque bon. Les bons génériques sont gérés séparément (Sync Planche).
-        </p>
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Planification des bons VI</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Glissez un bon vers un jour pour le planifier.
+            {unscheduled.length > 0 && (
+              <span className="ml-1">
+                {unscheduled.length} non planifié{unscheduled.length > 1 ? 's' : ''}.
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* Week navigation */}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setWeekOffset((w) => w - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-medium min-w-[220px] text-center">{periodLabel}</span>
+          <Button size="sm" variant="outline" onClick={() => setWeekOffset((w) => w + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {weekOffset !== 0 && (
+            <Button size="sm" variant="ghost" onClick={() => setWeekOffset(0)}>
+              Aujourd'hui
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-4 md:grid-cols-[1fr_auto]">
-        <div className="space-y-1">
-          <Label className="text-xs">Rechercher</Label>
-          <Input
-            placeholder="Code ou description…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Statut</Label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'all' | '1' | '2')}
-            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
-          >
-            <option value="all">Chargé + Planifié</option>
-            <option value="1">Chargé uniquement</option>
-            <option value="2">Planifié uniquement</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Bulk toolbar — only when items selected */}
-      {someChecked && (
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-          <span className="text-sm font-medium text-blue-800 self-center">
-            {selectedIds.length} bon{selectedIds.length > 1 ? 's' : ''} sélectionné{selectedIds.length > 1 ? 's' : ''}
-          </span>
-          <div className="space-y-1">
-            <Label className="text-xs text-blue-700">Date planifiée</Label>
-            <input
-              type="date"
-              value={bulkDate}
-              onChange={(e) => setBulkDate(e.target.value)}
-              className="h-8 text-sm border rounded px-2 bg-white"
-            />
-          </div>
-          <Button
-            size="sm"
-            disabled={bulkScheduleMutation.isPending || selectedIds.length === 0}
-            onClick={() => { void applyBulkDate() }}
-          >
-            {bulkScheduleMutation.isPending
-              ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              : null
-            }
-            Appliquer à {selectedIds.length} bon{selectedIds.length > 1 ? 's' : ''}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setSelected({})}
-          >
-            Réinitialiser
-          </Button>
-        </div>
-      )}
+      {/* Search */}
+      <Input
+        placeholder="Rechercher un bon (code, description…)"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-sm text-sm"
+      />
 
       {entitlementsQuery.error && <Alert>{toErrorMessage(entitlementsQuery.error)}</Alert>}
-      {bulkScheduleMutation.error && <Alert>{toErrorMessage(bulkScheduleMutation.error)}</Alert>}
+      {patchMutation.error && <Alert>{toErrorMessage(patchMutation.error)}</Alert>}
 
       {entitlementsQuery.isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -225,78 +322,70 @@ export function ViPlanningPage() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-3 py-2 w-8">
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked }}
-                  onChange={toggleAll}
-                  className="h-4 w-4 rounded border-slate-300"
+      {/* Calendar grid */}
+      <div className="rounded-xl border border-outline-variant overflow-hidden">
+        {/* Column headers */}
+        <div className="grid grid-cols-7 divide-x border-b bg-slate-50">
+          {DAY_NAMES.map((d) => (
+            <div key={d} className="px-2 py-1.5 text-xs font-semibold text-center text-muted-foreground">
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* 4 week rows */}
+        {Array.from({ length: 4 }, (_, week) => (
+          <div key={week} className={['grid grid-cols-7 divide-x', week > 0 ? 'border-t' : ''].join(' ')}>
+            {Array.from({ length: 7 }, (_, dow) => {
+              const day = days[week * 7 + dow]
+              const iso = dateToIso(day)
+              return (
+                <DayCell
+                  key={iso}
+                  day={day}
+                  iso={iso}
+                  isToday={iso === today}
+                  isWeekend={day.getDay() === 0 || day.getDay() === 6}
+                  rows={byDate[iso] ?? []}
+                  draggingUuid={draggingUuid}
+                  onDrop={(d) => { void handleDropOnDay(d) }}
+                  onDragStart={setDraggingUuid}
+                  onDragEnd={handleDragEnd}
+                  onUnschedule={(uuid) => { void handleUnschedule(uuid) }}
                 />
-              </th>
-              <th className="px-3 py-2 text-left">Type</th>
-              <th className="px-3 py-2 text-left">Code</th>
-              <th className="px-3 py-2 text-left">Description</th>
-              <th className="px-3 py-2 text-right">Montant TTC</th>
-              <th className="px-3 py-2 text-left">Validité</th>
-              <th className="px-3 py-2 text-left">Date planifiée</th>
-              <th className="px-3 py-2 text-left">Statut</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {filteredRows.map((row) => (
-              <tr
-                key={row.uuid}
-                className={selected[row.uuid] ? 'bg-blue-50/60' : 'hover:bg-slate-50/60'}
-              >
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(selected[row.uuid])}
-                    onChange={() => toggleRow(row.uuid)}
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  {row.vi_type_code
-                    ? <Badge variant="outline" className="font-mono text-xs">{row.vi_type_code}</Badge>
-                    : <span className="text-muted-foreground text-xs">—</span>
-                  }
-                </td>
-                <td className="px-3 py-2 font-mono whitespace-nowrap">{row.code}</td>
-                <td className="px-3 py-2 text-muted-foreground max-w-[180px] truncate">
-                  {row.description ?? '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums font-mono">
-                  {fmtAmount(row.amount_ttc)}
-                </td>
-                <td className="px-3 py-2 text-muted-foreground tabular-nums">
-                  {row.validity_date ?? '—'}
-                </td>
-                <td className="px-3 py-2">
-                  <InlineDateCell key={row.uuid} row={row} />
-                </td>
-                <td className="px-3 py-2">
-                  <span className={statusBadgeClass(row.status)}>
-                    {STATUS_LABELS[row.status] ?? String(row.status)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {filteredRows.length === 0 && !entitlementsQuery.isLoading && (
-              <tr>
-                <td className="px-3 py-6 text-center text-muted-foreground" colSpan={8}>
-                  Aucun bon à planifier.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Unscheduled drop zone */}
+      <div
+        className={[
+          'rounded-xl border-2 border-dashed p-3 min-h-[64px] transition-colors',
+          unscheduledOver && draggingUuid ? 'border-primary bg-primary/5' : 'border-slate-300',
+        ].join(' ')}
+        onDragOver={(e) => { e.preventDefault(); setUnscheduledOver(true) }}
+        onDragLeave={() => setUnscheduledOver(false)}
+        onDrop={() => { void handleDropOnUnscheduled() }}
+      >
+        <p className="text-xs font-medium text-muted-foreground mb-2">
+          Non planifiés{unscheduled.length > 0 ? ` (${unscheduled.length})` : ''} — déposez ici pour retirer une date
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {unscheduled.map((row) => (
+            <VoucherCard
+              key={row.uuid}
+              row={row}
+              isDragging={draggingUuid === row.uuid}
+              onDragStart={setDraggingUuid}
+              onDragEnd={handleDragEnd}
+            />
+          ))}
+          {unscheduled.length === 0 && !entitlementsQuery.isLoading && (
+            <p className="text-xs text-muted-foreground italic">Tous les bons sont planifiés.</p>
+          )}
+        </div>
       </div>
     </section>
   )

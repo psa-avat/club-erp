@@ -65,12 +65,6 @@ export function ViWorkspacePage() {
           content: <ViEntitlementsPage />,
         },
         {
-          value: "types",
-          label: t("workspace.tabs.types", "Types VI"),
-          icon: TableProperties,
-          content: <ViTypesPage />,
-        },
-        {
           value: "planning",
           label: t("workspace.tabs.planning", "Planning"),
           icon: Calendar,
@@ -93,6 +87,12 @@ export function ViWorkspacePage() {
           label: t("workspace.tabs.sync", "Sync Planche"),
           icon: ArrowLeftRight,
           content: <PlancheViSyncPage />,
+        },
+        {
+          value: "types",
+          label: t("workspace.tabs.types", "Types VI"),
+          icon: TableProperties,
+          content: <ViTypesPage />,
         },
       ]}
     />

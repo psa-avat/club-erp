@@ -259,8 +259,14 @@ async def update_vi_entitlement(
         row.description = payload.description
     if payload.validity_date is not None:
         row.validity_date = payload.validity_date
-    if payload.scheduled_date is not None:
+    if 'scheduled_date' in payload.model_fields_set:
         row.scheduled_date = payload.scheduled_date
+        if (
+            payload.scheduled_date is None
+            and payload.status is None
+            and row.status == int(ViEntitlementStatus.SCHEDULED)
+        ):
+            row.status = int(ViEntitlementStatus.LOADED)
     if payload.realisation_date is not None:
         row.realisation_date = payload.realisation_date
     if payload.partner_code is not None:
