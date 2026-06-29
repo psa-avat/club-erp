@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import {
-  CheckCircle2, AlertCircle, Loader2, X, Plus, Archive, Euro,
+  AlertCircle, Archive, CheckCircle2, ChevronRight, Euro, Loader2, Plus, X,
 } from 'lucide-react'
 import Decimal from 'decimal.js'
 
@@ -291,7 +291,7 @@ function FlightLinkRow({
 
 // ── Main entitlement sheet ─────────────────────────────────────────────────
 
-function ViEntitlementSheet({
+export function ViEntitlementSheet({
   entitlement,
   open,
   onOpenChange,
@@ -684,7 +684,7 @@ export function ViFinancePage() {
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [search, setSearch] = useState('')
 
-  const allRows = entitlementsQuery.data ?? []
+  const allRows = (entitlementsQuery.data ?? []).filter((r) => !r.is_generic)
 
   const statusRows = (() => {
     if (statusFilter === 'active') return allRows.filter((r) => r.status <= 2)
@@ -784,13 +784,13 @@ export function ViFinancePage() {
                     <StatusBadge status={row.status} />
                   </td>
                   <td className="px-3 py-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
+                    <button
                       onClick={() => setSelectedEntitlement(row)}
+                      className="rounded p-1.5 text-slate-400 hover:text-slate-700 transition-colors"
+                      title="Ouvrir"
                     >
-                      Ouvrir
-                    </Button>
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               )

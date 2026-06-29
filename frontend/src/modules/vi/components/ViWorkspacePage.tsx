@@ -25,15 +25,13 @@ import {
   Calendar,
   Database,
   ArrowLeftRight,
-  BookOpen,
-  GitMerge,
+  Plane,
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
 import { ViEntitlementsPage } from "./ViEntitlementsPage";
 import { ViTypesPage } from "./ViTypesPage";
 import { ViPlanningPage } from "./ViPlanningPage";
-import { ViFinancePage } from "./ViFinancePage";
 import { ViReconciliationPage } from "./ViReconciliationPage";
 import { HelloAssoViImportPage } from "../../helloasso";
 import { PlancheViSyncPage } from "../../planche";
@@ -79,20 +77,14 @@ export function ViWorkspacePage() {
           content: <ViPlanningPage />,
         },
         {
-          value: "finance",
-          label: t("workspace.tabs.finance", "Réalisations"),
-          icon: BookOpen,
-          content: <ViFinancePage />,
-        },
-        {
-          value: "reconciliation",
-          label: "Réconciliation",
-          icon: GitMerge,
+          value: "vols",
+          label: t("workspace.tabs.vols", "Vols"),
+          icon: Plane,
           content: <ViReconciliationPage />,
         },
         {
           value: "import",
-          label: t("workspace.tabs.import", "Import VI"),
+          label: t("workspace.tabs.import", "HelloAsso"),
           icon: Database,
           content: <HelloAssoViImportPage />,
         },

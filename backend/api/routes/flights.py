@@ -193,6 +193,16 @@ async def list_validated_flights(
     rows_result = await db.execute(query)
     rows = rows_result.scalars().all()
 
+    # Batch-fetch which flights already have a VI flight link
+    flight_uuids = [str(r.uuid) for r in rows]
+    linked_uuids: set[str] = set()
+    if flight_uuids:
+        linked_result = await db.execute(
+            select(ViFlightLink.flight_uuid)
+            .where(ViFlightLink.flight_uuid.in_(flight_uuids))
+        )
+        linked_uuids = {str(row[0]) for row in linked_result.all()}
+
     # Batch-fetch member names for pilot/second/charge_to columns
     member_uuids: set[str] = set()
     for r in rows:
@@ -243,6 +253,7 @@ async def list_validated_flights(
             observations=r.observations,
             correction_reason=r.correction_reason,
             vi_erp_id=r.vi_erp_id,
+            vi_linked=str(r.uuid) in linked_uuids,
         ))
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
 

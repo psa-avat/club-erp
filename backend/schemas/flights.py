@@ -76,6 +76,7 @@ class ValidatedFlightItem(BaseModel):
     observations: str | None = None
     correction_reason: str | None = None
     vi_erp_id: str | None = None
+    vi_linked: bool = False
 
     class Config:
         from_attributes = True

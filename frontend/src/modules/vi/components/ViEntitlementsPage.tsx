@@ -3,16 +3,36 @@
     - Logiciel libre de gestion d'un club de vol à voile
     - vi: Entitlements management page
     Copyright (C) 2026  SAFORCADA Patrick
-*/
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 import { useMemo, useState } from 'react'
 import Decimal from 'decimal.js'
 import { useTranslation } from 'react-i18next'
-import { Plus } from 'lucide-react'
+import { BookOpen, Pencil, Plus, UserCheck, XCircle } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import {
@@ -23,6 +43,7 @@ import {
 } from '../../../components/ui/sheet'
 import { useActiveFiscalYearQuery, useAccountsQuery, useFiscalYearsQuery } from '../../banque/api'
 import { useMemberOptionsQuery } from '../../members/api'
+import { ViEntitlementSheet } from './ViFinancePage'
 import {
   type ViEntitlement,
   useCreateViConversionEntryMutation,
@@ -48,8 +69,6 @@ function fmtAmount(v: string | null | undefined): string {
   try { return new Decimal(v).toFixed(2) + ' €' } catch { return v }
 }
 
-// ── Voucher sheet (create + edit) ──────────────────────────────────────────
-
 const ORIGIN_LABELS: Record<number, string> = {
   1: 'HelloAsso', 2: 'Club', 3: 'Offert', 4: 'Manuel', 5: 'Partenaire',
 }
@@ -57,6 +76,318 @@ const ORIGIN_LABELS: Record<number, string> = {
 const STATUS_LABELS: Record<number, string> = {
   1: 'Chargé', 2: 'Planifié', 3: 'Réalisé', 4: 'Expiré', 5: 'Annulé', 6: 'Converti',
 }
+
+// ── Cancel dialog ──────────────────────────────────────────────────────────
+
+function CancelDialog({
+  open,
+  onOpenChange,
+  row,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  row: ViEntitlement
+}) {
+  const patchMutation = usePatchViEntitlementMutation()
+  const reimburseMutation = useCreateViReimbursementEntryMutation()
+  const fyQuery = useFiscalYearsQuery()
+  const activeFyQuery = useActiveFiscalYearQuery()
+  const accountsQuery = useAccountsQuery(true)
+
+  const [step, setStep] = useState<'choice' | 'confirm-plain' | 'reimburse'>('choice')
+  const [reimburseNotes, setReimburseNotes] = useState('')
+  const [reimburseFyUuid, setReimburseFyUuid] = useState('')
+  const [reimburseBankUuid, setReimburseBankUuid] = useState('')
+  const [reimburseAmount, setReimburseAmount] = useState(
+    row.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '',
+  )
+
+  const activeFyUuid = activeFyQuery.data?.uuid ?? ''
+  const fiscalYears = (fyQuery.data ?? []).filter((fy) => fy.state !== 2)
+  const bankAccounts = (accountsQuery.data ?? []).filter((a) => a.code.startsWith('5'))
+
+  const isPending = patchMutation.isPending || reimburseMutation.isPending
+  const mutationError = patchMutation.error ?? reimburseMutation.error
+
+  function handleClose() {
+    setStep('choice')
+    setReimburseNotes('')
+    setReimburseFyUuid('')
+    setReimburseBankUuid('')
+    setReimburseAmount(row.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '')
+    onOpenChange(false)
+  }
+
+  async function handleCancelPlain() {
+    await patchMutation.mutateAsync({ entitlementUuid: row.uuid, payload: { status: 5 } })
+    handleClose()
+  }
+
+  async function handleReimburse() {
+    const fyUuid = reimburseFyUuid || activeFyUuid
+    if (!fyUuid || !reimburseBankUuid) return
+    let amountStr: string | null = null
+    if (reimburseAmount.trim()) {
+      try {
+        const d = new Decimal(reimburseAmount)
+        if (d.gt(0)) amountStr = d.toFixed(4)
+      } catch { /* leave null, backend uses entitlement.amount_ttc */ }
+    }
+    await reimburseMutation.mutateAsync({
+      entitlementUuid: row.uuid,
+      fiscalYearUuid: fyUuid,
+      bankAccountUuid: reimburseBankUuid,
+      amountTtc: amountStr,
+      notes: reimburseNotes.trim() || null,
+    })
+    handleClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Annuler le bon <span className="font-mono">{row.code}</span></DialogTitle>
+        </DialogHeader>
+
+        {mutationError && <Alert className="text-sm">{toErrorMessage(mutationError)}</Alert>}
+
+        {step === 'choice' && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Choisissez le mode d'annulation. Cette action est irréversible.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                className="border-destructive/50 text-destructive hover:bg-destructive/5 justify-start"
+                disabled={isPending}
+                onClick={() => setStep('confirm-plain')}
+              >
+                Annuler sans remboursement
+              </Button>
+              <Button
+                variant="outline"
+                className="border-destructive/50 text-destructive hover:bg-destructive/5 justify-start"
+                disabled={isPending}
+                onClick={() => setStep('reimburse')}
+              >
+                Annuler avec remboursement
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 'confirm-plain' && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              Le bon <span className="font-mono font-medium">{row.code}</span> sera marqué{' '}
+              <strong>Annulé</strong> sans écriture comptable.
+            </p>
+            <DialogFooter className="gap-2">
+              <Button variant="ghost" disabled={isPending} onClick={() => setStep('choice')}>Retour</Button>
+              <Button
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => { void handleCancelPlain() }}
+              >
+                Confirmer l'annulation
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {step === 'reimburse' && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Crée une écriture brouillon VI : D Compte avances (419) / C Banque (512). Le bon sera annulé.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Exercice fiscal</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                  value={reimburseFyUuid || activeFyUuid}
+                  onChange={(e) => setReimburseFyUuid(e.target.value)}
+                >
+                  {fiscalYears.map((fy) => (
+                    <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Montant (€)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={reimburseAmount}
+                  onChange={(e) => setReimburseAmount(e.target.value)}
+                  placeholder="Laisser vide = montant du bon"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Compte bancaire (5xx) <span className="text-destructive">*</span></Label>
+              <select
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                value={reimburseBankUuid}
+                onChange={(e) => setReimburseBankUuid(e.target.value)}
+              >
+                <option value="">Sélectionner…</option>
+                {bankAccounts.map((a) => (
+                  <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Libellé (optionnel)</Label>
+              <Input
+                placeholder={`Remboursement bon VI ${row.code}`}
+                value={reimburseNotes}
+                onChange={(e) => setReimburseNotes(e.target.value)}
+              />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="ghost" disabled={isPending} onClick={() => setStep('choice')}>Retour</Button>
+              <Button
+                variant="destructive"
+                disabled={isPending || !reimburseBankUuid || !(reimburseFyUuid || activeFyUuid)}
+                onClick={() => { void handleReimburse() }}
+              >
+                Créer l'écriture et annuler
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Conversion dialog ──────────────────────────────────────────────────────
+
+function ConversionDialog({
+  open,
+  onOpenChange,
+  row,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  row: ViEntitlement | null
+}) {
+  const conversionMutation = useCreateViConversionEntryMutation()
+  const fyQuery = useFiscalYearsQuery()
+  const activeFyQuery = useActiveFiscalYearQuery()
+
+  const [conversionFyUuid, setConversionFyUuid] = useState('')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [selectedMemberUuid, setSelectedMemberUuid] = useState('')
+  const memberOptionsQuery = useMemberOptionsQuery({ search: memberSearch, limit: 20 })
+
+  const activeFyUuid = activeFyQuery.data?.uuid ?? ''
+  const fiscalYears = (fyQuery.data ?? []).filter((fy) => fy.state !== 2)
+
+  function handleClose() {
+    setConversionFyUuid('')
+    setMemberSearch('')
+    setSelectedMemberUuid('')
+    onOpenChange(false)
+  }
+
+  async function handleConvert() {
+    if (!row) return
+    const fyUuid = conversionFyUuid || activeFyUuid
+    if (!fyUuid || !selectedMemberUuid) return
+    await conversionMutation.mutateAsync({
+      entitlementUuid: row.uuid,
+      fiscalYearUuid: fyUuid,
+      registeredMemberUuid: selectedMemberUuid,
+    })
+    handleClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            Conversion en membre{row ? ` — ${row.code}` : ''}
+          </DialogTitle>
+        </DialogHeader>
+
+        {conversionMutation.error && (
+          <Alert className="text-sm">{toErrorMessage(conversionMutation.error)}</Alert>
+        )}
+
+        {row?.conversion_entry_uuid ? (
+          <p className="text-sm text-muted-foreground py-2">
+            Conversion déjà effectuée — écriture OD créée ({row.conversion_entry_uuid.slice(0, 8)}…).
+            {row.registered_member_uuid && ` Membre : ${row.registered_member_uuid.slice(0, 8)}…`}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Crée une écriture OD (D 7067 + D 401 / C 411-membre), annule la facturation VI des vols
+              et les refacture au pilote membre.
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Exercice fiscal</Label>
+              <select
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                value={conversionFyUuid || activeFyUuid}
+                onChange={(e) => setConversionFyUuid(e.target.value)}
+              >
+                {fiscalYears.map((fy) => (
+                  <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Rechercher un membre <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="Nom, prénom ou code…"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+              />
+            </div>
+            {memberSearch.length >= 2 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Membre</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
+                  value={selectedMemberUuid}
+                  onChange={(e) => setSelectedMemberUuid(e.target.value)}
+                >
+                  <option value="">Sélectionner…</option>
+                  {(memberOptionsQuery.data ?? []).map((m) => (
+                    <option key={m.uuid} value={m.uuid}>
+                      {m.account_id} — {m.first_name} {m.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 pt-2">
+          <Button variant="outline" onClick={handleClose}>Fermer</Button>
+          {!row?.conversion_entry_uuid && (
+            <Button
+              disabled={conversionMutation.isPending || !selectedMemberUuid || !(conversionFyUuid || activeFyUuid)}
+              onClick={() => { void handleConvert() }}
+            >
+              Convertir en membre
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Voucher sheet (create + edit) ──────────────────────────────────────────
 
 function VoucherSheet({
   open,
@@ -72,11 +403,8 @@ function VoucherSheet({
   const isEdit = row !== null
   const createMutation = useCreateViEntitlementMutation()
   const patchMutation = usePatchViEntitlementMutation()
-  const reimburseMutation = useCreateViReimbursementEntryMutation()
   const purchaseMutation = useCreateViPurchaseEntryMutation()
-  const conversionMutation = useCreateViConversionEntryMutation()
 
-  // Queries for accounting forms (reimbursement + purchase entry)
   const fyQuery = useFiscalYearsQuery()
   const activeFyQuery = useActiveFiscalYearQuery()
   const accountsQuery = useAccountsQuery(true)
@@ -94,20 +422,6 @@ function VoucherSheet({
   const [statusVal, setStatusVal] = useState(row?.status ?? 1)
   const [notes, setNotes] = useState(row?.notes ?? '')
 
-  // cancel sub-dialog state
-  const [cancelMode, setCancelMode] = useState<null | 'plain' | 'reimburse'>(null)
-  // reimbursement form state
-  const [reimburseNotes, setReimburseNotes] = useState('')
-  const [reimburseFyUuid, setReimburseFyUuid] = useState('')
-  const [reimburseBankUuid, setReimburseBankUuid] = useState('')
-  const [reimburseAmount, setReimburseAmount] = useState(
-    row?.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '',
-  )
-  // conversion form state
-  const [conversionFyUuid, setConversionFyUuid] = useState('')
-  const [memberSearch, setMemberSearch] = useState('')
-  const [selectedMemberUuid, setSelectedMemberUuid] = useState('')
-  const memberOptionsQuery = useMemberOptionsQuery({ search: memberSearch, limit: 20 })
   // purchase entry state (create mode only)
   const [withPurchaseEntry, setWithPurchaseEntry] = useState(false)
   const [purchaseFyUuid, setPurchaseFyUuid] = useState('')
@@ -117,11 +431,10 @@ function VoucherSheet({
 
   const activeFyUuid = activeFyQuery.data?.uuid ?? ''
   const fiscalYears = (fyQuery.data ?? []).filter((fy) => fy.state !== 2)
-  // Filter accounts to class 5 (cash & bank) for the bank account selector
   const bankAccounts = (accountsQuery.data ?? []).filter((a) => a.code.startsWith('5'))
 
-  const isPending = createMutation.isPending || patchMutation.isPending || reimburseMutation.isPending || purchaseMutation.isPending || conversionMutation.isPending
-  const mutationError = createMutation.error ?? patchMutation.error ?? reimburseMutation.error ?? purchaseMutation.error ?? conversionMutation.error
+  const isPending = createMutation.isPending || patchMutation.isPending || purchaseMutation.isPending
+  const mutationError = createMutation.error ?? patchMutation.error ?? purchaseMutation.error
 
   function resetToRow() {
     setCode(row?.code ?? '')
@@ -134,14 +447,6 @@ function VoucherSheet({
     setIsGeneric(row?.is_generic ?? false)
     setStatusVal(row?.status ?? 1)
     setNotes(row?.notes ?? '')
-    setCancelMode(null)
-    setReimburseNotes('')
-    setReimburseFyUuid('')
-    setReimburseBankUuid('')
-    setReimburseAmount(row?.amount_ttc != null ? new Decimal(row.amount_ttc).toFixed(2) : '')
-    setConversionFyUuid('')
-    setMemberSearch('')
-    setSelectedMemberUuid('')
     setWithPurchaseEntry(false)
     setPurchaseFyUuid('')
     setPurchaseBankUuid('')
@@ -207,51 +512,6 @@ function VoucherSheet({
     }
     onOpenChange(false)
   }
-
-  async function handleCancelPlain() {
-    if (!row) return
-    await patchMutation.mutateAsync({ entitlementUuid: row.uuid, payload: { status: 5 } })
-    setCancelMode(null)
-    onOpenChange(false)
-  }
-
-  async function handleReimburse() {
-    if (!row) return
-    const fyUuid = reimburseFyUuid || activeFyUuid
-    if (!fyUuid || !reimburseBankUuid) return
-    let amountStr: string | null = null
-    if (reimburseAmount.trim()) {
-      try {
-        const d = new Decimal(reimburseAmount)
-        if (d.gt(0)) amountStr = d.toFixed(4)
-      } catch { /* leave null, backend uses entitlement.amount_ttc */ }
-    }
-    await reimburseMutation.mutateAsync({
-      entitlementUuid: row.uuid,
-      fiscalYearUuid: fyUuid,
-      bankAccountUuid: reimburseBankUuid,
-      amountTtc: amountStr,
-      notes: reimburseNotes.trim() || null,
-    })
-    setCancelMode(null)
-    onOpenChange(false)
-  }
-
-  async function handleConvert() {
-    if (!row) return
-    const fyUuid = conversionFyUuid || activeFyUuid
-    if (!fyUuid || !selectedMemberUuid) return
-    await conversionMutation.mutateAsync({
-      entitlementUuid: row.uuid,
-      fiscalYearUuid: fyUuid,
-      registeredMemberUuid: selectedMemberUuid,
-    })
-    onOpenChange(false)
-  }
-
-  const isCancelled = row?.status === 5
-  const isRealized = row?.status === 3
-  const isLoaded = row?.status === 1
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -478,186 +738,6 @@ function VoucherSheet({
               {isEdit ? 'Enregistrer' : 'Créer le bon'}
             </Button>
           </div>
-
-          {/* ── Conversion membre (realized vouchers only) ── */}
-          {isEdit && isRealized && !isCancelled && (
-            <fieldset className="space-y-3 rounded-lg border border-blue-200 p-4">
-              <legend className="text-sm font-medium px-1 text-blue-700">Conversion en membre</legend>
-              {row?.conversion_entry_uuid ? (
-                <p className="text-xs text-muted-foreground">
-                  Conversion effectuée — écriture OD créée ({row.conversion_entry_uuid.slice(0, 8)}…).
-                  {row.registered_member_uuid && ` Membre : ${row.registered_member_uuid.slice(0, 8)}…`}
-                </p>
-              ) : (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Crée une écriture OD (D 7067 + D 401 / C 411-membre), annule la facturation VI des vols
-                    et les refacture au pilote membre.
-                  </p>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Exercice fiscal</Label>
-                    <select
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
-                      value={conversionFyUuid || activeFyUuid}
-                      onChange={(e) => setConversionFyUuid(e.target.value)}
-                    >
-                      {fiscalYears.map((fy) => (
-                        <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Rechercher un membre <span className="text-destructive">*</span></Label>
-                    <Input
-                      placeholder="Nom, prénom ou code…"
-                      value={memberSearch}
-                      onChange={(e) => setMemberSearch(e.target.value)}
-                    />
-                  </div>
-                  {memberSearch.length >= 2 && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">Membre</Label>
-                      <select
-                        className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
-                        value={selectedMemberUuid}
-                        onChange={(e) => setSelectedMemberUuid(e.target.value)}
-                      >
-                        <option value="">Sélectionner…</option>
-                        {(memberOptionsQuery.data ?? []).map((m) => (
-                          <option key={m.uuid} value={m.uuid}>
-                            {m.account_id} — {m.first_name} {m.last_name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <Button
-                    size="sm"
-                    disabled={isPending || !selectedMemberUuid || !(conversionFyUuid || activeFyUuid)}
-                    onClick={() => { void handleConvert() }}
-                  >
-                    Convertir en membre
-                  </Button>
-                </>
-              )}
-            </fieldset>
-          )}
-
-          {/* ── Annulation (loaded vouchers only) ── */}
-          {isEdit && isLoaded && !isCancelled && (
-            <fieldset className="space-y-3 rounded-lg border border-destructive/30 p-4">
-              <legend className="text-sm font-medium px-1 text-destructive">Annulation du bon</legend>
-              <p className="text-xs text-muted-foreground">
-                Passez le bon en statut Annulé. Choisissez si un remboursement a été effectué.
-              </p>
-              {cancelMode === null && (
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-destructive/50 text-destructive hover:bg-destructive/5"
-                    disabled={isPending}
-                    onClick={() => setCancelMode('plain')}
-                  >
-                    Annuler sans remboursement
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-destructive/50 text-destructive hover:bg-destructive/5"
-                    disabled={isPending}
-                    onClick={() => setCancelMode('reimburse')}
-                  >
-                    Annuler avec remboursement
-                  </Button>
-                </div>
-              )}
-
-              {cancelMode === 'plain' && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Confirmer l'annulation sans remboursement ?</p>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="destructive" disabled={isPending} onClick={() => { void handleCancelPlain() }}>
-                      Confirmer l'annulation
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setCancelMode(null)}>Retour</Button>
-                  </div>
-                </div>
-              )}
-
-              {cancelMode === 'reimburse' && (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">Annulation avec remboursement</p>
-                  <p className="text-xs text-muted-foreground">
-                    Crée une écriture brouillon VI : D Compte avances (419) / C Banque (512).
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Exercice fiscal</Label>
-                      <select
-                        className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
-                        value={reimburseFyUuid || activeFyUuid}
-                        onChange={(e) => setReimburseFyUuid(e.target.value)}
-                      >
-                        {fiscalYears.map((fy) => (
-                          <option key={fy.uuid} value={fy.uuid}>{fy.code}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Montant (€)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={reimburseAmount}
-                        onChange={(e) => setReimburseAmount(e.target.value)}
-                        placeholder="Laisser vide = montant du bon"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Compte bancaire (512) <span className="text-destructive">*</span></Label>
-                    <select
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm"
-                      value={reimburseBankUuid}
-                      onChange={(e) => setReimburseBankUuid(e.target.value)}
-                    >
-                      <option value="">Sélectionner…</option>
-                      {bankAccounts.map((a) => (
-                        <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Libellé de l'écriture (optionnel)</Label>
-                    <Input
-                      placeholder={`Remboursement bon VI ${row?.code ?? ''}`}
-                      value={reimburseNotes}
-                      onChange={(e) => setReimburseNotes(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={isPending || !reimburseBankUuid || !(reimburseFyUuid || activeFyUuid)}
-                      onClick={() => { void handleReimburse() }}
-                    >
-                      Créer l'écriture et annuler
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setCancelMode(null)}>Retour</Button>
-                  </div>
-                </div>
-              )}
-            </fieldset>
-          )}
-
-          {isCancelled && (
-            <p className="text-xs text-muted-foreground rounded-lg border border-outline-variant p-3">
-              Ce bon est annulé.
-            </p>
-          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -673,12 +753,15 @@ export function ViEntitlementsPage() {
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editRow, setEditRow] = useState<ViEntitlement | null>(null)
+  const [cancelRow, setCancelRow] = useState<ViEntitlement | null>(null)
+  const [conversionRow, setConversionRow] = useState<ViEntitlement | null>(null)
+  const [accountingRow, setAccountingRow] = useState<ViEntitlement | null>(null)
 
   // Filter state
   const [filterCode, setFilterCode] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterDescription, setFilterDescription] = useState('')
-  const [showRealized, setShowRealized] = useState(false)
+  const [statusFilter, setStatusFilterVal] = useState<string>('active')
 
   // Sort state
   const [sortField, setSortField] = useState<'code' | 'type' | 'validity' | 'status' | null>(null)
@@ -713,8 +796,11 @@ export function ViEntitlementsPage() {
   const filteredAndSortedRows = useMemo(() => {
     let rows = entitlementsQuery.data ?? []
 
-    if (!showRealized) {
-      rows = rows.filter((row) => row.status !== 3 && row.status !== 5 && row.status !== 6)
+    if (statusFilter === 'active') {
+      rows = rows.filter((row) => row.status <= 2)
+    } else if (statusFilter !== 'all') {
+      const n = Number(statusFilter)
+      rows = rows.filter((row) => row.status === n)
     }
 
     const codeLower = filterCode.trim().toLowerCase()
@@ -740,7 +826,7 @@ export function ViEntitlementsPage() {
     }
 
     return rows
-  }, [entitlementsQuery.data, filterCode, filterType, filterDescription, showRealized, sortField, sortDir])
+  }, [entitlementsQuery.data, filterCode, filterType, filterDescription, statusFilter, sortField, sortDir])
 
   const statusBadgeClass = (status: number) =>
     status === 1 ? 'badge badge-info' :
@@ -798,16 +884,20 @@ export function ViEntitlementsPage() {
             onChange={(e) => setFilterDescription(e.target.value)}
           />
         </div>
-        <div className="flex items-end pb-1">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
-              checked={showRealized}
-              onChange={(e) => setShowRealized(e.target.checked)}
-            />
-            Afficher réalisés, annulés &amp; convertis
-          </label>
+        <div className="space-y-1">
+          <Label htmlFor="vi-filter-status" className="text-xs">Statut</Label>
+          <select
+            id="vi-filter-status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilterVal(e.target.value)}
+            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+          >
+            <option value="active">Actifs (Chargé + Planifié)</option>
+            <option value="all">Tous les statuts</option>
+            {Object.entries(STATUS_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -836,7 +926,7 @@ export function ViEntitlementsPage() {
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {filteredAndSortedRows.map((row) => {
-              const isMuted = row.status === 3 || row.status === 5 || row.status === 6
+              const isMuted = row.status === 5 || row.status === 6
               return (
                 <tr key={row.uuid} className={isMuted ? 'opacity-50' : undefined}>
                   <td className="px-3 py-2 font-mono">{row.code}</td>
@@ -858,9 +948,48 @@ export function ViEntitlementsPage() {
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{row.validity_date ?? '—'}</td>
                   <td className="px-3 py-2">
-                    <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
-                      Éditer
-                    </Button>
+                    <div className="flex items-center gap-0.5">
+                      {/* Edit — status 1 (Chargé) and 2 (Planifié) only */}
+                      {(row.status === 1 || row.status === 2) && (
+                        <button
+                          onClick={() => openEdit(row)}
+                          className="rounded p-1.5 text-slate-400 hover:text-slate-700 transition-colors"
+                          title="Éditer"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {/* Cancel — status 1 (Chargé) only */}
+                      {row.status === 1 && (
+                        <button
+                          onClick={() => setCancelRow(row)}
+                          className="rounded p-1.5 text-slate-300 hover:text-destructive transition-colors"
+                          title="Annuler le bon"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </button>
+                      )}
+                      {/* Member conversion — status 3 (Réalisé) only, not yet converted */}
+                      {row.status === 3 && !row.conversion_entry_uuid && (
+                        <button
+                          onClick={() => setConversionRow(row)}
+                          className="rounded p-1.5 text-slate-300 hover:text-blue-600 transition-colors"
+                          title="Conversion en membre"
+                        >
+                          <UserCheck className="h-4 w-4" />
+                        </button>
+                      )}
+                      {/* Accounting sheet — non-generic vouchers only */}
+                      {!row.is_generic && (
+                        <button
+                          onClick={() => setAccountingRow(row)}
+                          className="rounded p-1.5 text-slate-300 hover:text-slate-700 transition-colors"
+                          title="Comptabilité VI"
+                        >
+                          <BookOpen className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )
@@ -868,7 +997,7 @@ export function ViEntitlementsPage() {
             {filteredAndSortedRows.length === 0 && !entitlementsQuery.isLoading && (
               <tr>
                 <td className="px-3 py-6 text-center text-slate-500" colSpan={8}>
-                  Aucun droit trouvé{!showRealized ? ' (réalisés, annulés et convertis masqués)' : ''}.
+                  Aucun droit trouvé{statusFilter === 'active' ? ' (réalisés, annulés et convertis masqués)' : ''}.
                 </td>
               </tr>
             )}
@@ -885,6 +1014,31 @@ export function ViEntitlementsPage() {
         }}
         row={editRow}
         activeTypes={activeTypes}
+      />
+
+      {accountingRow && (
+        <ViEntitlementSheet
+          key={accountingRow.uuid}
+          entitlement={accountingRow}
+          open={true}
+          onOpenChange={(open) => { if (!open) setAccountingRow(null) }}
+        />
+      )}
+
+      {cancelRow && (
+        <CancelDialog
+          key={cancelRow.uuid}
+          open={true}
+          onOpenChange={(open) => { if (!open) setCancelRow(null) }}
+          row={cancelRow}
+        />
+      )}
+
+      <ConversionDialog
+        key={conversionRow?.uuid ?? 'none'}
+        open={conversionRow !== null}
+        onOpenChange={(open) => { if (!open) setConversionRow(null) }}
+        row={conversionRow}
       />
     </section>
   )

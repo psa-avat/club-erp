@@ -309,14 +309,17 @@ export function ViReconciliationPage() {
                   </td>
                   <td className="px-3 py-2 tabular-nums whitespace-nowrap">{duration}</td>
                   <td className="px-3 py-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openDialog(f)}
-                    >
-                      <Link2 className="h-3 w-3 mr-1" />
-                      Associer
-                    </Button>
+                    {showAll && f.vi_linked ? (
+                      <Badge className="badge-success text-xs">Lié</Badge>
+                    ) : (
+                      <button
+                        onClick={() => openDialog(f)}
+                        className="rounded p-1.5 text-slate-400 hover:text-slate-700 transition-colors"
+                        title="Associer un bon VI"
+                      >
+                        <Link2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               )

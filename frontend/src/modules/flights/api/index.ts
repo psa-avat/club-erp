@@ -88,6 +88,7 @@ export type ValidatedFlightItem = {
   observations: string | null
   correction_reason: string | null
   vi_erp_id: string | null
+  vi_linked?: boolean
 }
 
 export type ValidatedFlightListResponse = {

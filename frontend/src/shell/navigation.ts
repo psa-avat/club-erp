@@ -50,6 +50,7 @@ export const shellNavItems: ShellNavItem[] = [
       { to: '/workspace/vi', labelKey: 'nav.viEntitlements' },
       { to: '/workspace/vi?tab=types', labelKey: 'nav.viTypes' },
       { to: '/workspace/vi?tab=planning', labelKey: 'nav.viPlanning' },
+      { to: '/workspace/vi?tab=vols', labelKey: 'nav.viFlights' },
       { to: '/workspace/vi?tab=achats', labelKey: 'nav.helloassoPurchases', requiredCapability: 'HELLOASSO' },
       { to: '/workspace/vi?tab=import', labelKey: 'nav.helloassoViImport', requiredCapability: 'HELLOASSO' },
       { to: '/workspace/vi?tab=sync', labelKey: 'nav.plancheViSync', requiredCapability: 'MANAGE_PLANCHE' },
