@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guide utilisateur — Module VI (Vols d'Initiation)</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-light: #eff6ff;
+      --success: #16a34a;
+      --success-light: #f0fdf4;
+      --warning: #d97706;
+      --warning-light: #fffbeb;
+      --danger: #dc2626;
+      --danger-light: #fef2f2;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --bg: #f9fafb;
+      --card: #ffffff;
+      --text: #111827;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar TOC */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 260px;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+    }
+
+    nav h2 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    nav ol {
+      list-style: none;
+      counter-reset: toc;
+    }
+
+    nav ol li {
+      counter-increment: toc;
+      margin-bottom: 4px;
+    }
+
+    nav ol li a {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      font-size: 13px;
+      color: var(--text);
+      text-decoration: none;
+      padding: 3px 6px;
+      border-radius: 4px;
+      transition: background .15s;
+    }
+
+    nav ol li a::before {
+      content: counter(toc) ".";
+      color: var(--muted);
+      font-size: 11px;
+      min-width: 18px;
+    }
+
+    nav ol li a:hover { background: var(--primary-light); color: var(--primary); }
+
+    nav .sub {
+      margin-left: 20px;
+      margin-top: 2px;
+    }
+
+    nav .sub li a::before { content: ""; min-width: 0; }
+    nav .sub li a { font-size: 12px; color: var(--muted); padding: 2px 6px; }
+    nav .sub li a:hover { color: var(--primary); }
+
+    /* Main content */
+    main {
+      margin-left: 260px;
+      padding: 48px 48px 80px;
+      max-width: 900px;
+    }
+
+    /* Typography */
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 40px;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-top: 52px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border);
+      scroll-margin-top: 24px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 28px;
+      margin-bottom: 10px;
+      scroll-margin-top: 24px;
+    }
+
+    p { margin-bottom: 12px; }
+
+    ul, ol {
+      margin: 0 0 12px 20px;
+    }
+
+    li { margin-bottom: 4px; }
+
+    strong { font-weight: 600; }
+
+    code {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #374151;
+    }
+
+    /* Cards and callouts */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+
+    .callout {
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .callout-icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
+
+    .callout.info  { background: var(--primary-light); border-left: 3px solid var(--primary); }
+    .callout.tip   { background: var(--success-light); border-left: 3px solid var(--success); }
+    .callout.warn  { background: var(--warning-light); border-left: 3px solid var(--warning); }
+    .callout.danger{ background: var(--danger-light);  border-left: 3px solid var(--danger);  }
+
+    /* Status badges */
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .badge-loaded    { background: #dbeafe; color: #1d4ed8; }
+    .badge-scheduled { background: #fef3c7; color: #92400e; }
+    .badge-realized  { background: #d1fae5; color: #065f46; }
+    .badge-expired   { background: #f3f4f6; color: #374151; }
+    .badge-cancelled { background: #fee2e2; color: #991b1b; }
+    .badge-converted { background: #ede9fe; color: #4c1d95; }
+
+    /* Lifecycle diagram */
+    .lifecycle {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 20px 0;
+    }
+
+    .lifecycle-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .lifecycle-dot {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .lifecycle-label { font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+    .lifecycle-arrow {
+      font-size: 18px;
+      color: var(--muted);
+      padding: 0 6px;
+      margin-bottom: 20px;
+    }
+
+    /* Accounting entry tables */
+    .entry-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .entry-table th {
+      background: #f3f4f6;
+      text-align: left;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+    }
+
+    .entry-table td {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .entry-table tr:last-child td { border-bottom: none; }
+
+    .entry-table .debit  { color: var(--danger); font-weight: 600; }
+    .entry-table .credit { color: var(--success); font-weight: 600; }
+    .entry-table .account { font-family: monospace; font-size: 13px; }
+
+    .entry-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+      margin-top: 16px;
+    }
+
+    .entry-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .entry-header {
+      background: #f9fafb;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Steps */
+    .steps { list-style: none; margin: 0 0 16px; }
+    .steps li {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 12px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      background: var(--primary);
+      color: white;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-body { padding-top: 3px; }
+
+    /* Tab reference pills */
+    .tab-ref {
+      display: inline-block;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 9px;
+      border-radius: 4px;
+      letter-spacing: .02em;
+    }
+
+    /* Summary workflow overview */
+    .flow-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .flow-box {
+      flex: 1;
+      min-width: 120px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      text-align: center;
+      position: relative;
+    }
+
+    .flow-box .flow-num {
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 20px;
+      height: 20px;
+      background: var(--primary);
+      color: white;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .flow-box .flow-icon { font-size: 22px; display: block; margin-bottom: 4px; margin-top: 6px; }
+    .flow-box .flow-label { font-size: 12px; font-weight: 600; color: var(--text); }
+    .flow-box .flow-sub { font-size: 11px; color: var(--muted); }
+
+    .flow-arrow { color: var(--muted); font-size: 20px; display: flex; align-items: center; }
+
+    /* Print */
+    @media print {
+      nav { display: none; }
+      main { margin-left: 0; padding: 24px; }
+    }
+
+    @media (max-width: 768px) {
+      nav { display: none; }
+      main { margin-left: 0; padding: 20px; }
+    }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  </style>
+</head>
+<body>
+
+<div class="wrapper">
+
+<!-- ─── Table des matières ─────────────────────────────────────────────────── -->
+<nav>
+  <h2>Table des matières</h2>
+  <ol>
+    <li><a href="#intro">Introduction</a></li>
+    <li><a href="#statuts">Cycle de vie d'un bon</a></li>
+    <li>
+      <a href="#creation">Créer un bon VI</a>
+      <ul class="sub">
+        <li><a href="#creation-manuel">Saisie manuelle</a></li>
+        <li><a href="#creation-helloasso">Import HelloAsso</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#financier-encaissement">Encaissement (Étape 1)</a>
+    </li>
+    <li><a href="#planification">Planifier un bon</a></li>
+    <li><a href="#planche">Sync vers Planche</a></li>
+    <li>
+      <a href="#vols">Associer un vol</a>
+    </li>
+    <li>
+      <a href="#realisation">Réalisation comptable (Étape 2)</a>
+    </li>
+    <li><a href="#analytique">Écriture analytique (Étape 3)</a></li>
+    <li>
+      <a href="#cas-annulation">Annulation d'un bon</a>
+      <ul class="sub">
+        <li><a href="#annul-simple">Sans remboursement</a></li>
+        <li><a href="#annul-rembourse">Avec remboursement</a></li>
+      </ul>
+    </li>
+    <li><a href="#cas-conversion">Conversion en membre</a></li>
+    <li><a href="#flux-complet">Récapitulatif financier</a></li>
+    <li><a href="#faq">Questions fréquentes</a></li>
+  </ol>
+</nav>
+
+<!-- ─── Contenu principal ─────────────────────────────────────────────────── -->
+<main>
+
+  <h1>Module VI — Vols d'Initiation</h1>
+  <p class="subtitle">Guide utilisateur · Club ERP</p>
+
+  <!-- ── 1. Introduction ───────────────────────────────────────────────────── -->
+  <h2 id="intro">1. Introduction</h2>
+
+  <p>Le module <strong>VI (Vols d'Initiation)</strong> gère l'ensemble du cycle de vie des bons de vol d'initiation : de leur création (manuelle ou par import HelloAsso) jusqu'à leur réalisation comptable, en passant par la planification, la synchronisation vers Planche et l'association aux vols.</p>
+
+  <p>Tout le module est accessible depuis le menu <strong>VI &amp; HelloAsso</strong>. Il est organisé en six onglets :</p>
+
+  <div class="card">
+    <table style="width:100%; font-size:13px; border-collapse:collapse;">
+      <tr>
+        <td style="padding:5px 8px;"><span class="tab-ref">Bons VI</span></td>
+        <td style="padding:5px 8px; color:var(--muted);">Liste complète des bons, saisie, édition, annulation, conversion.</td>
+      </tr>
+      <tr>
+        <td style="padding:5px 8px;"><span class="tab-ref">Planning</span></td>
+        <td style="padding:5px 8px; color:var(--muted);">Calendrier 4 semaines — glisser-déposer pour planifier les dates de vol.</td>
+      </tr>
+      <tr>
+        <td style="padding:5px 8px;"><span class="tab-ref">Vols</span></td>
+        <td style="padding:5px 8px; color:var(--muted);">Réconciliation : associe les vols d'initiation validés à leurs bons VI.</td>
+      </tr>
+      <tr>
+        <td style="padding:5px 8px;"><span class="tab-ref">HelloAsso</span></td>
+        <td style="padding:5px 8px; color:var(--muted);">Import des achats de bons depuis la plateforme HelloAsso.</td>
+      </tr>
+      <tr>
+        <td style="padding:5px 8px;"><span class="tab-ref">Sync Planche</span></td>
+        <td style="padding:5px 8px; color:var(--muted);">Pousse les bons planifiés et génériques vers le logiciel Planche.</td>
+      </tr>
+      <tr>
+        <td style="padding:5px 8px;"><span class="tab-ref">Types VI</span></td>
+        <td style="padding:5px 8px; color:var(--muted);">Catalogue des types de bons (configuration, comptes comptables).</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ── 2. Cycle de vie ───────────────────────────────────────────────────── -->
+  <h2 id="statuts">2. Cycle de vie d'un bon</h2>
+
+  <p>Un bon VI passe par plusieurs statuts au fil de son traitement :</p>
+
+  <div class="lifecycle">
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#dbeafe;color:#1d4ed8;">1</div>
+      <div class="lifecycle-label"><span class="badge badge-loaded">Chargé</span></div>
+    </div>
+    <div class="lifecycle-arrow">→</div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#fef3c7;color:#92400e;">2</div>
+      <div class="lifecycle-label"><span class="badge badge-scheduled">Planifié</span></div>
+    </div>
+    <div class="lifecycle-arrow">→</div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#d1fae5;color:#065f46;">3</div>
+      <div class="lifecycle-label"><span class="badge badge-realized">Réalisé</span></div>
+    </div>
+    <div class="lifecycle-arrow">→</div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#ede9fe;color:#4c1d95;">6</div>
+      <div class="lifecycle-label"><span class="badge badge-converted">Converti</span></div>
+    </div>
+  </div>
+
+  <div class="lifecycle" style="margin-top:0;">
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#dbeafe;color:#1d4ed8;">1</div>
+      <div class="lifecycle-label">ou <span class="badge badge-loaded">Chargé</span></div>
+    </div>
+    <div class="lifecycle-arrow">→</div>
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#fee2e2;color:#991b1b;">5</div>
+      <div class="lifecycle-label"><span class="badge badge-cancelled">Annulé</span></div>
+    </div>
+    &nbsp;|&nbsp;
+    <div class="lifecycle-step">
+      <div class="lifecycle-dot" style="background:#f3f4f6;color:#374151;">4</div>
+      <div class="lifecycle-label"><span class="badge badge-expired">Expiré</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="padding:6px 10px;text-align:left;background:#f9fafb;font-size:11px;color:var(--muted);text-transform:uppercase;">Statut</th>
+          <th style="padding:6px 10px;text-align:left;background:#f9fafb;font-size:11px;color:var(--muted);text-transform:uppercase;">Signification</th>
+          <th style="padding:6px 10px;text-align:left;background:#f9fafb;font-size:11px;color:var(--muted);text-transform:uppercase;">Actions disponibles</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="badge badge-loaded">Chargé</span></td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Bon créé, en attente de planification</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Modifier · Planifier · Annuler · Voir écritures</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="badge badge-scheduled">Planifié</span></td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Date de vol assignée, prêt à être poussé vers Planche</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Modifier · Annuler · Voir écritures</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="badge badge-realized">Réalisé</span></td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Vol effectué, écriture de réalisation générée</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Convertir en membre · Voir écritures</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="badge badge-expired">Expiré</span></td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Date de validité dépassée sans réalisation</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Voir écritures uniquement</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="badge badge-cancelled">Annulé</span></td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Bon annulé (avec ou sans remboursement)</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">Voir écritures uniquement</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;"><span class="badge badge-converted">Converti</span></td>
+          <td style="padding:7px 10px;">Acheteur converti en membre du club</td>
+          <td style="padding:7px 10px;">Voir écritures uniquement</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── 3. Création ───────────────────────────────────────────────────────── -->
+  <h2 id="creation">3. Créer un bon VI</h2>
+
+  <h3 id="creation-manuel">3a. Saisie manuelle</h3>
+
+  <p>Utilisez ce mode pour un bon vendu directement au club (chèque, espèces, virement, etc.).</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Ouvrir l'onglet <span class="tab-ref">Bons VI</span> et cliquer sur <strong>+ Nouveau bon</strong>.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">
+        Renseigner les champs obligatoires :
+        <ul style="margin-top:6px;">
+          <li><strong>Code</strong> — identifiant unique du bon (ex. <code>VI-2026-042</code>)</li>
+          <li><strong>Type VI</strong> — nature du bon (détermine les comptes comptables et la tarification)</li>
+          <li><strong>Montant TTC</strong> — montant encaissé</li>
+        </ul>
+        Champs facultatifs : description, date de validité, code partenaire, notes.
+      </div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">
+        <strong>Option « Enregistrer l'encaissement »</strong> : si vous cochez cette case (recommandé), le formulaire affiche des champs supplémentaires pour créer l'écriture bancaire au moment de la sauvegarde (→ voir <a href="#financier-encaissement">Étape 1</a>).
+      </div>
+    </li>
+    <li>
+      <span class="step-num">4</span>
+      <div class="step-body">Cliquer sur <strong>Enregistrer</strong>. Le bon apparaît en statut <span class="badge badge-loaded">Chargé</span>.</div>
+    </li>
+  </ol>
+
+  <h3 id="creation-helloasso">3b. Import depuis HelloAsso</h3>
+
+  <p>Les bons vendus via la plateforme HelloAsso sont importés automatiquement via la file de traitement staging.</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Aller dans l'onglet <span class="tab-ref">HelloAsso</span>.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Cliquer sur <strong>Récupérer les achats HelloAsso</strong>. L'ERP interroge l'API HelloAsso et charge les nouvelles transactions dans la file d'attente (staging).</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">La liste affiche les achats en attente avec leur nom, email, montant et date. Sélectionner les lignes à convertir en bons.</div>
+    </li>
+    <li>
+      <span class="step-num">4</span>
+      <div class="step-body">Choisir le <strong>type VI</strong> à appliquer, puis cliquer sur <strong>Convertir en bons VI</strong>. L'ERP crée automatiquement un bon <span class="badge badge-loaded">Chargé</span> pour chaque ligne sélectionnée. Le code du bon est généré à partir du numéro de commande HelloAsso.</div>
+    </li>
+  </ol>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>Les doublons sont automatiquement ignorés : si une transaction HelloAsso a déjà été importée, elle n'est pas recréée.</div>
+  </div>
+
+  <!-- ── 4. Encaissement ──────────────────────────────────────────────────── -->
+  <h2 id="financier-encaissement">4. Encaissement — Étape 1 comptable</h2>
+
+  <p>L'encaissement correspond à la réception du paiement du bon VI. Il génère une écriture dans le <strong>journal VI</strong> :</p>
+
+  <div class="entry-box">
+    <div class="entry-header">Journal VI · Écriture d'encaissement <code>VI-ENC-{code}</code></div>
+    <table class="entry-table">
+      <thead>
+        <tr>
+          <th>Sens</th><th>Compte</th><th>Libellé</th><th>Montant</th><th>Tiers</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="debit">D</span></td>
+          <td class="account">512xxx / 530xxx</td>
+          <td>Banque ou Caisse</td>
+          <td>Montant TTC</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="credit">C</span></td>
+          <td class="account">419xxx</td>
+          <td>Avances clients VI</td>
+          <td>Montant TTC</td>
+          <td>Acheteur</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Cette écriture peut être créée :</p>
+  <ul>
+    <li><strong>Lors de la création manuelle du bon</strong> — en cochant « Enregistrer l'encaissement » dans le formulaire.</li>
+    <li><strong>Ultérieurement</strong> — en ouvrant le bon (icône <strong>crayon</strong>) puis en utilisant la section <em>Encaissement</em> en bas du formulaire.</li>
+  </ul>
+
+  <div class="callout tip">
+    <span class="callout-icon">✅</span>
+    <div>Pour les bons HelloAsso, l'encaissement a déjà eu lieu sur la plateforme. L'écriture reste à saisir manuellement si vous souhaitez la faire apparaître dans votre comptabilité ERP.</div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>Un seul encaissement peut être enregistré par bon. Si vous avez commis une erreur, il faut annuler l'écriture depuis le module Finance avant d'en créer une nouvelle.</div>
+  </div>
+
+  <!-- ── 5. Planification ─────────────────────────────────────────────────── -->
+  <h2 id="planification">5. Planifier un bon</h2>
+
+  <p>La planification consiste à <strong>assigner une date de vol</strong> au bon. C'est une étape indispensable avant l'envoi vers Planche.</p>
+
+  <p>Aller dans l'onglet <span class="tab-ref">Planning</span>.</p>
+
+  <h3>Glisser-déposer sur le calendrier</h3>
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Les bons non planifiés apparaissent dans la zone <strong>« Non planifiés »</strong> en bas de l'écran.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Faites glisser un bon vers le jour souhaité dans le calendrier. La date de vol est enregistrée immédiatement et le statut passe à <span class="badge badge-scheduled">Planifié</span>.</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">Pour <strong>déplanifier</strong> un bon : glissez-le depuis le calendrier vers la zone « Non planifiés », ou cliquez sur le <strong>×</strong> qui apparaît en survol sur la carte du bon. Le statut repasse à <span class="badge badge-loaded">Chargé</span>.</div>
+    </li>
+    <li>
+      <span class="step-num">4</span>
+      <div class="step-body">Utilisez les boutons <strong>←</strong> / <strong>→</strong> pour naviguer entre les périodes de 4 semaines. Le bouton <strong>Aujourd'hui</strong> revient à la semaine courante.</div>
+    </li>
+  </ol>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>
+      <strong>Couleur des cartes :</strong>
+      <ul style="margin-top:4px;">
+        <li>Carte <span style="background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:3px;font-size:12px;">bleue</span> = bon <span class="badge badge-loaded">Chargé</span></li>
+        <li>Carte <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:3px;font-size:12px;">ambre</span> = bon <span class="badge badge-scheduled">Planifié</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── 6. Sync Planche ──────────────────────────────────────────────────── -->
+  <h2 id="planche">6. Synchronisation vers Planche</h2>
+
+  <p>Une fois les bons planifiés (ou pour les bons génériques), ils peuvent être transmis à <strong>Planche</strong>, le logiciel de gestion des planches de vol du club.</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Aller dans l'onglet <span class="tab-ref">Sync Planche</span>. La liste affiche automatiquement tous les bons éligibles : <strong>bons génériques</strong> (sans acheteur nominatif) et <strong>bons planifiés</strong> (statut = Planifié). Ils sont tous pré-cochés.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Décochez les bons que vous ne souhaitez <em>pas</em> envoyer à cette session.</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">Option <strong>« Écraser les données existantes »</strong> : à cocher uniquement si vous souhaitez mettre à jour des bons déjà présents sur Planche (modification de date, par exemple).</div>
+    </li>
+    <li>
+      <span class="step-num">4</span>
+      <div class="step-body">Cliquer sur <strong>Pousser vers Planche (N)</strong>. Un résumé indique le nombre de bons envoyés et les éventuels échecs.</div>
+    </li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>La synchronisation nécessite que les paramètres de connexion à Planche soient configurés par l'administrateur (module Admin → Intégration Planche).</div>
+  </div>
+
+  <!-- ── 7. Association à un vol ──────────────────────────────────────────── -->
+  <h2 id="vols">7. Associer un bon à un vol</h2>
+
+  <p>Après le vol d'initiation, il faut associer le bon VI au vol validé dans l'ERP. C'est cette association qui déclenche ensuite la réalisation comptable.</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Aller dans l'onglet <span class="tab-ref">Vols</span>. Par défaut, seuls les vols d'initiation <strong>non encore associés</strong> sont affichés.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Repérer le vol concerné (date, pilote, machine). Si la colonne <em>Bon VI (Planche)</em> affiche un code, c'est le code saisi dans Planche au moment du vol : cela peut vous aider à identifier le bon.</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">Cliquer sur l'icône <strong>🔗</strong> (chaîne) sur la ligne du vol. Une fenêtre s'ouvre.</div>
+    </li>
+    <li>
+      <span class="step-num">4</span>
+      <div class="step-body">Dans la fenêtre, recherchez et sélectionnez le bon VI correspondant parmi les bons actifs (Chargé ou Planifié). Si le bon a un code Planche, il sera pré-sélectionné automatiquement.</div>
+    </li>
+    <li>
+      <span class="step-num">5</span>
+      <div class="step-body">Cliquer sur <strong>Associer</strong>. Le vol est lié au bon ; sur la liste des vols, il affiche maintenant un badge <span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;">Lié</span>.</div>
+    </li>
+  </ol>
+
+  <p>Pour afficher <strong>tous</strong> les vols (y compris déjà associés), cochez <em>« Afficher tous les vols d'initiation »</em> en haut à droite.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>Un vol ne peut être associé qu'à <strong>un seul</strong> bon VI. Un bon peut en revanche être associé à plusieurs vols si son type le permet (<em>max_flights</em> configuré dans le type VI).</div>
+  </div>
+
+  <!-- ── 8. Réalisation comptable ─────────────────────────────────────────── -->
+  <h2 id="realisation">8. Réalisation comptable — Étape 2</h2>
+
+  <p>Une fois le vol effectué et le bon associé au vol, on génère l'<strong>écriture de réalisation</strong>. Elle constate le chiffre d'affaires du vol d'initiation et solde le compte d'avances clients.</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Dans l'onglet <span class="tab-ref">Bons VI</span>, ouvrir la fiche du bon en cliquant sur l'icône <strong>📖</strong> (livre ouvert).</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Dans la section <em>Réalisation</em>, renseigner la <strong>date de réalisation</strong> (date du vol) et l'<strong>exercice fiscal</strong>.</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">Cliquer sur <strong>Générer l'écriture de réalisation</strong>. Le statut du bon passe à <span class="badge badge-realized">Réalisé</span>.</div>
+    </li>
+  </ol>
+
+  <div class="entry-box">
+    <div class="entry-header">Journal VI · Écriture de réalisation <code>VI-REAL-{code}</code></div>
+    <table class="entry-table">
+      <thead>
+        <tr><th>Sens</th><th>Compte</th><th>Libellé</th><th>Montant</th><th>Tiers</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="debit">D</span></td>
+          <td class="account">419xxx</td>
+          <td>Avances clients VI</td>
+          <td>Montant TTC</td>
+          <td>Acheteur</td>
+        </tr>
+        <tr>
+          <td><span class="credit">C</span></td>
+          <td class="account">706x</td>
+          <td>Prestations de vol (hors assurance)</td>
+          <td>TTC − assurance</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="credit">C</span></td>
+          <td class="account">401-FFVP</td>
+          <td>Assurance fédérale (si configurée)</td>
+          <td>Quote-part assurance</td>
+          <td>Fédération</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>Si le type VI n'a pas de quote-part d'assurance configurée, la ligne assurance est omise et le crédit va intégralement en <code>706x</code>. L'écriture reste équilibrée.</div>
+  </div>
+
+  <!-- ── 9. Analytique ────────────────────────────────────────────────────── -->
+  <h2 id="analytique">9. Écriture analytique — Étape 3</h2>
+
+  <p>En complément de l'écriture de réalisation, l'ERP peut générer une <strong>écriture analytique</strong> de valorisation du vol (Étape 3). Elle est créée automatiquement lorsque l'association vol ↔ bon est enregistrée si les comptes analytiques sont configurés sur le type VI.</p>
+
+  <div class="entry-box">
+    <div class="entry-header">Journal OD · Écriture analytique</div>
+    <table class="entry-table">
+      <thead>
+        <tr><th>Sens</th><th>Compte</th><th>Libellé</th><th>Montant</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="debit">D</span></td>
+          <td class="account">921xxx</td>
+          <td>Coût analytique du vol</td>
+          <td>Valorisation horaire × durée</td>
+        </tr>
+        <tr>
+          <td><span class="credit">C</span></td>
+          <td class="account">902xxx</td>
+          <td>Reflet analytique</td>
+          <td>Valorisation horaire × durée</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── 10. Annulation ───────────────────────────────────────────────────── -->
+  <h2 id="cas-annulation">10. Annulation d'un bon</h2>
+
+  <p>Un bon en statut <span class="badge badge-loaded">Chargé</span> ou <span class="badge badge-scheduled">Planifié</span> peut être annulé. Cliquer sur l'icône <strong>✕</strong> (cercle) dans la colonne d'actions.</p>
+
+  <h3 id="annul-simple">10a. Annulation sans remboursement</h3>
+
+  <p>L'acheteur ne souhaite pas être remboursé (avoir, don, etc.).</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Dans la boîte de dialogue d'annulation, choisir <strong>« Annuler sans remboursement »</strong>.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Confirmer. Le statut passe à <span class="badge badge-cancelled">Annulé</span>. Aucune écriture comptable n'est créée à cette étape — le solde en <code>419xxx</code> reste ouvert.</div>
+    </li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>Si un encaissement avait été enregistré (Étape 1), le compte <code>419xxx</code> reste créditeur. Un transfert manuel en produit exceptionnel peut être nécessaire selon votre politique comptable.</div>
+  </div>
+
+  <h3 id="annul-rembourse">10b. Annulation avec remboursement</h3>
+
+  <p>L'acheteur est remboursé par virement ou chèque.</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Dans la boîte de dialogue d'annulation, choisir <strong>« Annuler avec remboursement »</strong>.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Renseigner : <strong>exercice fiscal</strong>, <strong>compte bancaire</strong> débité, <strong>montant</strong> (pré-rempli avec le montant TTC du bon), <strong>libellé</strong> (facultatif).</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">Cliquer sur <strong>Rembourser et annuler</strong>. L'écriture est créée en brouillon et le statut passe à <span class="badge badge-cancelled">Annulé</span>.</div>
+    </li>
+  </ol>
+
+  <div class="entry-box">
+    <div class="entry-header">Journal VI · Écriture de remboursement <code>VI-REMB-{code}</code></div>
+    <table class="entry-table">
+      <thead>
+        <tr><th>Sens</th><th>Compte</th><th>Libellé</th><th>Montant</th><th>Tiers</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="debit">D</span></td>
+          <td class="account">419xxx</td>
+          <td>Avances clients VI — solde de l'avance</td>
+          <td>Montant TTC</td>
+          <td>Acheteur</td>
+        </tr>
+        <tr>
+          <td><span class="credit">C</span></td>
+          <td class="account">512xxx</td>
+          <td>Banque — remboursement</td>
+          <td>Montant TTC</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── 11. Conversion ───────────────────────────────────────────────────── -->
+  <h2 id="cas-conversion">11. Conversion en membre</h2>
+
+  <p>Si l'initiant souhaite <strong>adhérer au club</strong>, le bon VI peut être converti en droits de membre. Cette opération est disponible uniquement pour les bons en statut <span class="badge badge-realized">Réalisé</span>.</p>
+
+  <ol class="steps">
+    <li>
+      <span class="step-num">1</span>
+      <div class="step-body">Dans l'onglet <span class="tab-ref">Bons VI</span>, cliquer sur l'icône <strong>👤+</strong> (UserCheck) sur la ligne du bon réalisé.</div>
+    </li>
+    <li>
+      <span class="step-num">2</span>
+      <div class="step-body">Dans la boîte de dialogue, rechercher et sélectionner le <strong>membre</strong> nouvellement inscrit dans l'ERP.</div>
+    </li>
+    <li>
+      <span class="step-num">3</span>
+      <div class="step-body">Sélectionner l'<strong>exercice fiscal</strong>, puis cliquer sur <strong>Convertir</strong>.</div>
+    </li>
+    <li>
+      <span class="step-num">4</span>
+      <div class="step-body">L'ERP crée une écriture OD de reconversion et fait passer le bon en statut <span class="badge badge-converted">Converti</span>. Les vols liés sont re-facturés au membre.</div>
+    </li>
+  </ol>
+
+  <div class="entry-box">
+    <div class="entry-header">Journal OD · Écriture de conversion en membre</div>
+    <table class="entry-table">
+      <thead>
+        <tr><th>Sens</th><th>Compte</th><th>Libellé</th><th>Montant</th><th>Tiers</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="debit">D</span></td>
+          <td class="account">706x</td>
+          <td>Prestations VI — annulation produit</td>
+          <td>TTC − assurance</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="debit">D</span></td>
+          <td class="account">401-FFVP</td>
+          <td>Assurance — annulation (si applicable)</td>
+          <td>Quote-part assurance</td>
+          <td>Fédération</td>
+        </tr>
+        <tr>
+          <td><span class="credit">C</span></td>
+          <td class="account">411xxx</td>
+          <td>Compte client membre — créance</td>
+          <td>Montant TTC</td>
+          <td>Nouveau membre</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>Après la conversion, les vols d'initiation liés au bon sont automatiquement re-facturés au nom du nouveau membre (le compte de charge passe de l'acheteur anonyme au compte membre <code>411xxx</code>).</div>
+  </div>
+
+  <!-- ── 12. Récapitulatif financier ─────────────────────────────────────── -->
+  <h2 id="flux-complet">12. Récapitulatif du flux financier complet</h2>
+
+  <p>Voici l'enchaînement chronologique des quatre étapes comptables pour un bon VI dont le vol est réalisé et l'acheteur adhère au club :</p>
+
+  <div class="flow-row">
+    <div class="flow-box">
+      <div class="flow-num">1</div>
+      <span class="flow-icon">💳</span>
+      <div class="flow-label">Encaissement</div>
+      <div class="flow-sub">D 5xx / C 419</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">
+      <div class="flow-num">2</div>
+      <span class="flow-icon">✈️</span>
+      <div class="flow-label">Réalisation</div>
+      <div class="flow-sub">D 419 / C 706 + 401</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">
+      <div class="flow-num">3</div>
+      <span class="flow-icon">📊</span>
+      <div class="flow-label">Analytique</div>
+      <div class="flow-sub">D 921 / C 902</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">
+      <div class="flow-num">4</div>
+      <span class="flow-icon">🪪</span>
+      <div class="flow-label">Conversion membre</div>
+      <div class="flow-sub">D 706+401 / C 411</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <thead>
+        <tr style="background:#f9fafb;">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;">Étape</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;">Débit</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;">Crédit</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;">Journal</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;">Résultat</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">1 · Encaissement</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">512 / 530</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">419</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">VI</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);">Trésorerie ↑ · Avance client ↑</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">2 · Réalisation</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">419</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">706 + 401</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">VI</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);">CA reconnu · Avance soldée</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">3 · Analytique</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">921</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">902</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">OD</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);">Coût analytique valorisé</td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">4 · Conversion</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">706 + 401</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);font-family:monospace;">411</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);">OD</td>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);">Créance membre établie</td>
+        </tr>
+        <tr style="background:#fffbeb;">
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);" colspan="5"><strong>Cas alternatif — Remboursement</strong></td>
+        </tr>
+        <tr>
+          <td style="padding:7px 10px;">Remboursement</td>
+          <td style="padding:7px 10px;font-family:monospace;">419</td>
+          <td style="padding:7px 10px;font-family:monospace;">512</td>
+          <td style="padding:7px 10px;">VI</td>
+          <td style="padding:7px 10px;color:var(--muted);">Avance soldée · Trésorerie ↓</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">✅</span>
+    <div>Toutes les écritures générées par le module VI sont créées en état <strong>Brouillon</strong>. Elles doivent être validées (lettrées et pointées) dans le module Finance avant clôture de l'exercice.</div>
+  </div>
+
+  <!-- ── 13. FAQ ──────────────────────────────────────────────────────────── -->
+  <h2 id="faq">13. Questions fréquentes</h2>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>Je ne vois pas le bouton « Annuler » sur un bon planifié.</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">Le bouton ✕ est disponible pour les statuts Chargé et Planifié. Si vous ne le voyez pas, vérifiez que le bon n'est pas déjà en statut Réalisé, Annulé ou Converti.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>Puis-je modifier un bon réalisé ?</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">Non. Les bons en statut Réalisé, Annulé ou Converti ne peuvent plus être modifiés via le formulaire d'édition. Seule la conversion en membre reste disponible pour les bons Réalisés.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>La date de vol a changé — comment mettre à jour un bon déjà planifié ?</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">Rendez-vous dans le calendrier <span class="tab-ref">Planning</span> et faites glisser la carte du bon vers le nouveau jour, ou cliquez sur × pour déplanifier puis re-planifiez. Puis relancez une synchronisation Planche avec l'option « Écraser ».</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>Un vol d'initiation n'apparaît pas dans l'onglet Vols.</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">L'onglet Vols affiche uniquement les vols de type « Initiation » (type_of_flight = 2) récupérés depuis Planche. Si le vol ne s'affiche pas, effectuez d'abord une synchronisation Planche dans le module Vols (Récupérer depuis Planche).</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>Le compte d'avances clients (419xxx) n'est pas configuré.</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">Les comptes comptables sont paramétrés par type VI dans l'onglet <span class="tab-ref">Types VI</span>. Un compte 419xxx (client_account), un compte de produits 706x (revenue_account) et un compte bancaire sont obligatoires pour générer les écritures.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>Que faire si l'écriture de réalisation a déjà été validée (lettrée) et que je veux la corriger ?</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">Les écritures comptables validées (pointées) ne peuvent pas être supprimées depuis le module VI. Utilisez le module Finance pour créer une écriture de contre-passation, puis régularisez manuellement.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <strong>Comment savoir quels bons HelloAsso ont déjà été convertis en bons VI ?</strong>
+    <p style="margin-top:6px;margin-bottom:0;color:var(--muted);">Dans l'onglet <span class="tab-ref">HelloAsso</span>, les lignes déjà converties affichent un statut « Promu ». Les lignes encore en attente restent en statut « Staged ».</p>
+  </div>
+
+  <hr>
+  <p style="color:var(--muted);font-size:12px;text-align:center;">
+    Club ERP · Module VI &amp; HelloAsso · Documentation interne — AGPL-3.0
+  </p>
+
+</main>
+</div>
+
+</body>
+</html>
