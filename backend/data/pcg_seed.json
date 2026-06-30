@@ -501,7 +501,7 @@
     "type": 4,
     "is_posting_allowed": true,
     "is_reconcilable": false,
-    "require_id": 2
+    "require_id": 3
   },
   {
     "code": "618",
