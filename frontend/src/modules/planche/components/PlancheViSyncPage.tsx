@@ -19,12 +19,12 @@
 */
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowUpFromLine, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
+import { AlertCircle, ArrowUpFromLine, CheckCircle2, Loader2, RefreshCw, Search, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
-import { useViEntitlementsQuery, type ViEntitlement } from '../../vi/api'
+import { useViEntitlementsQuery } from '../../vi/api'
 import { usePlancheViListQuery, usePlancheViPushMutation } from '../api'
 
 function toErrorMessage(error: unknown): string {
@@ -48,6 +48,8 @@ export function PlancheViSyncPage() {
 
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [replace, setReplace] = useState(false)
+  const [nameFilter, setNameFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'generic' | 'loaded' | 'scheduled' | null>(null)
 
   // All active vouchers: generics + Chargé (1) + Planifié (2)
   const rows = useMemo(
@@ -56,6 +58,23 @@ export function PlancheViSyncPage() {
     ),
     [entitlementsQuery.data],
   )
+
+  // Rows after applying name search and status display filter
+  const visibleRows = useMemo(() => {
+    let result = rows
+    const q = nameFilter.trim().toLowerCase()
+    if (q) {
+      result = result.filter((r) =>
+        r.code.toLowerCase().includes(q) ||
+        r.description?.toLowerCase().includes(q) ||
+        r.notes?.toLowerCase().includes(q),
+      )
+    }
+    if (statusFilter === 'generic') result = result.filter((r) => r.is_generic)
+    else if (statusFilter === 'loaded') result = result.filter((r) => !r.is_generic && r.status === 1)
+    else if (statusFilter === 'scheduled') result = result.filter((r) => !r.is_generic && r.status === 2)
+    return result
+  }, [rows, nameFilter, statusFilter])
 
   // Set of ERP codes currently present on Planche
   const plancheCodes = useMemo(
@@ -82,15 +101,17 @@ export function PlancheViSyncPage() {
     [rows, selected],
   )
 
-  const allChecked = rows.length > 0 && rows.every((r) => selected[r.uuid])
-  const someChecked = rows.some((r) => selected[r.uuid])
+  const allChecked = visibleRows.length > 0 && visibleRows.every((r) => selected[r.uuid])
+  const someChecked = visibleRows.some((r) => selected[r.uuid])
 
   function toggleAll() {
     if (allChecked) {
-      setSelected({})
+      const next = { ...selected }
+      visibleRows.forEach((r) => { next[r.uuid] = false })
+      setSelected(next)
     } else {
-      const next: Record<string, boolean> = {}
-      rows.forEach((r) => { next[r.uuid] = true })
+      const next = { ...selected }
+      visibleRows.forEach((r) => { next[r.uuid] = true })
       setSelected(next)
     }
   }
@@ -99,10 +120,8 @@ export function PlancheViSyncPage() {
     setSelected((prev) => ({ ...prev, [uuid]: !prev[uuid] }))
   }
 
-  function selectByFilter(pred: (r: ViEntitlement) => boolean) {
-    const next: Record<string, boolean> = {}
-    rows.forEach((r) => { if (pred(r)) next[r.uuid] = true })
-    setSelected(next)
+  function toggleStatusFilter(value: 'generic' | 'loaded' | 'scheduled') {
+    setStatusFilter((prev) => (prev === value ? null : value))
   }
 
   async function runPush() {
@@ -111,8 +130,8 @@ export function PlancheViSyncPage() {
     void plancheListQuery.refetch()
   }
 
-  const countGeneric  = rows.filter((r) => r.is_generic).length
-  const countLoaded   = rows.filter((r) => !r.is_generic && r.status === 1).length
+  const countGeneric   = rows.filter((r) => r.is_generic).length
+  const countLoaded    = rows.filter((r) => !r.is_generic && r.status === 1).length
   const countScheduled = rows.filter((r) => !r.is_generic && r.status === 2).length
 
   return (
@@ -165,37 +184,81 @@ export function PlancheViSyncPage() {
         </label>
       </div>
 
-      {/* Quick-select bar */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted-foreground">Sélectionner :</span>
-        <button
-          type="button"
-          className="px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors"
-          onClick={() => selectByFilter((r) => r.is_generic)}
-        >
-          Génériques ({countGeneric})
-        </button>
-        <button
-          type="button"
-          className="px-2 py-0.5 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors"
-          onClick={() => selectByFilter((r) => !r.is_generic && r.status === 1)}
-        >
-          Chargés ({countLoaded})
-        </button>
-        <button
-          type="button"
-          className="px-2 py-0.5 rounded border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors"
-          onClick={() => selectByFilter((r) => !r.is_generic && r.status === 2)}
-        >
-          Planifiés ({countScheduled})
-        </button>
-        <button
-          type="button"
-          className="px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors text-muted-foreground"
-          onClick={() => setSelected({})}
-        >
-          Tout désélectionner
-        </button>
+      {/* Search + display filter bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Name search */}
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={nameFilter}
+            onChange={(e) => setNameFilter(e.target.value)}
+            placeholder="Rechercher par code, description…"
+            className="h-8 w-full rounded-md border border-slate-300 bg-white pl-8 pr-7 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          {nameFilter && (
+            <button
+              type="button"
+              onClick={() => setNameFilter('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Status display filters */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Afficher :</span>
+          <button
+            type="button"
+            className={[
+              'px-2 py-0.5 rounded border transition-colors',
+              statusFilter === 'generic'
+                ? 'border-slate-500 bg-slate-200 text-slate-800 font-medium'
+                : 'border-slate-300 hover:bg-slate-100',
+            ].join(' ')}
+            onClick={() => toggleStatusFilter('generic')}
+          >
+            Génériques ({countGeneric})
+          </button>
+          <button
+            type="button"
+            className={[
+              'px-2 py-0.5 rounded border transition-colors',
+              statusFilter === 'loaded'
+                ? 'border-blue-500 bg-blue-100 text-blue-800 font-medium'
+                : 'border-blue-300 text-blue-700 hover:bg-blue-50',
+            ].join(' ')}
+            onClick={() => toggleStatusFilter('loaded')}
+          >
+            Chargés ({countLoaded})
+          </button>
+          <button
+            type="button"
+            className={[
+              'px-2 py-0.5 rounded border transition-colors',
+              statusFilter === 'scheduled'
+                ? 'border-amber-500 bg-amber-100 text-amber-800 font-medium'
+                : 'border-amber-300 text-amber-700 hover:bg-amber-50',
+            ].join(' ')}
+            onClick={() => toggleStatusFilter('scheduled')}
+          >
+            Planifiés ({countScheduled})
+          </button>
+          {(statusFilter || nameFilter) && (
+            <button
+              type="button"
+              className="px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors text-muted-foreground"
+              onClick={() => { setStatusFilter(null); setNameFilter('') }}
+            >
+              Réinitialiser
+            </button>
+          )}
+          <span className="text-muted-foreground ml-1">
+            ({visibleRows.length}/{rows.length})
+          </span>
+        </div>
       </div>
 
       {/* Push result */}
@@ -258,7 +321,7 @@ export function PlancheViSyncPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
               const onPlanche = plancheCodes.has(row.code)
               return (
                 <tr
@@ -313,10 +376,12 @@ export function PlancheViSyncPage() {
                 </tr>
               )
             })}
-            {rows.length === 0 && !entitlementsQuery.isLoading && (
+            {visibleRows.length === 0 && !entitlementsQuery.isLoading && (
               <tr>
                 <td className="px-3 py-6 text-center text-muted-foreground" colSpan={9}>
-                  Aucun bon à synchroniser.
+                  {rows.length === 0
+                    ? 'Aucun bon à synchroniser.'
+                    : 'Aucun bon ne correspond aux filtres appliqués.'}
                 </td>
               </tr>
             )}
