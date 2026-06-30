@@ -2735,6 +2735,7 @@ export const fr = {
       add: 'Ajouter un profil',
       edit: 'Modifier le profil',
       fields: {
+        member: 'Membre',
         contract_type: 'Type de contrat',
         hire_date: "Date d'embauche",
         termination_date: 'Date de fin',
@@ -2745,6 +2746,9 @@ export const fr = {
         is_active: 'Actif',
         notes: 'Notes',
       },
+      pick_member: 'Sélectionner un membre employé…',
+      search_member: 'Rechercher par nom ou identifiant…',
+      no_member_found: 'Aucun membre trouvé.',
       contract_types: {
         CDI: 'CDI',
         CDD: 'CDD',

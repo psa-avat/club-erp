@@ -21,12 +21,25 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Plus, Pencil } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, Pencil } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -40,9 +53,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import {
-  Switch,
-} from '@/components/ui/switch'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -51,7 +62,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 
+import { useMemberOptionsQuery } from '@/modules/members/api'
 import {
   useHrProfiles,
   useCreateHrProfile,
@@ -109,8 +122,10 @@ export function TeamProfilesPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingUuid, setEditingUuid] = useState<string | null>(null)
   const [form, setForm] = useState<ProfileFormState>(defaultForm)
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false)
 
   const { data: profiles = [], isLoading } = useHrProfiles(activeOnly)
+  const { data: employeeOptions = [] } = useMemberOptionsQuery({ is_employee: true })
   const createMutation = useCreateHrProfile()
   const updateMutation = useUpdateHrProfile()
 
@@ -248,13 +263,56 @@ export function TeamProfilesPage() {
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             {!editingUuid && (
               <div className="space-y-1">
-                <Label>UUID membre</Label>
-                <Input
-                  value={form.member_uuid}
-                  onChange={(e) => handleField('member_uuid', e.target.value)}
-                  placeholder="UUID du membre"
-                  required
-                />
+                <Label>{t('profile.fields.member')}</Label>
+                <Popover open={memberPickerOpen} onOpenChange={setMemberPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={memberPickerOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {form.member_uuid
+                        ? (() => {
+                            const m = employeeOptions.find((o) => o.uuid === form.member_uuid)
+                            return m ? `${m.last_name} ${m.first_name} (${m.account_id})` : form.member_uuid
+                          })()
+                        : t('profile.pick_member', 'Sélectionner un membre employé…')}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[380px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder={t('profile.search_member', 'Rechercher…')} />
+                      <CommandList>
+                        <CommandEmpty>{t('profile.no_member_found', 'Aucun membre trouvé.')}</CommandEmpty>
+                        <CommandGroup>
+                          {employeeOptions.map((m) => (
+                            <CommandItem
+                              key={m.uuid}
+                              value={`${m.last_name} ${m.first_name} ${m.account_id}`}
+                              onSelect={() => {
+                                handleField('member_uuid', m.uuid)
+                                setMemberPickerOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  'mr-2 h-4 w-4',
+                                  form.member_uuid === m.uuid ? 'opacity-100' : 'opacity-0',
+                                )}
+                              />
+                              {m.last_name} {m.first_name}
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {m.account_id}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
 

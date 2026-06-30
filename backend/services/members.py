@@ -728,6 +728,7 @@ async def list_member_options(
     search: Optional[str] = None,
     member_categories: Optional[list[int]] = None,
     registered_for_year: Optional[int] = None,
+    is_employee: Optional[bool] = None,
     limit: int = 1000,
 ) -> list[MemberOptionResponse]:
     """List lightweight member options for selectors."""
@@ -744,6 +745,8 @@ async def list_member_options(
         )
     if member_categories:
         query = query.where(Member.member_category.in_(member_categories))
+    if is_employee is not None:
+        query = query.where(Member.is_employee == is_employee)
     if registered_for_year is not None:
         query = query.where(
             Member.uuid.in_(

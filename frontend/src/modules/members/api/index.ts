@@ -79,7 +79,7 @@ export function useMembersCountQuery(filters: Omit<MemberFilters, 'limit' | 'off
   })
 }
 
-export function useMemberOptionsQuery(params: { search?: string; limit?: number; member_categories?: number[]; registered_for_year?: number } = {}) {
+export function useMemberOptionsQuery(params: { search?: string; limit?: number; member_categories?: number[]; registered_for_year?: number; is_employee?: boolean } = {}) {
   return useQuery({
     queryKey: membersQueryKeys.options(params),
     staleTime: 30 * 60 * 1000,

@@ -2716,6 +2716,7 @@ export const en = {
       add: 'Add profile',
       edit: 'Edit profile',
       fields: {
+        member: 'Member',
         contract_type: 'Contract type',
         hire_date: 'Hire date',
         termination_date: 'End date',
@@ -2726,6 +2727,9 @@ export const en = {
         is_active: 'Active',
         notes: 'Notes',
       },
+      pick_member: 'Select an employee member…',
+      search_member: 'Search by name or ID…',
+      no_member_found: 'No member found.',
       contract_types: {
         CDI: 'Permanent (CDI)',
         CDD: 'Fixed-term (CDD)',
