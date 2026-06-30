@@ -66,6 +66,7 @@ CAP_SYNC_VI_PLANCHE = "SYNC_VI_PLANCHE"
 CAP_MANAGE_PLANCHE = "MANAGE_PLANCHE"
 CAP_HELLOASSO = "HELLOASSO"
 CAP_FEDERAL_SYNC = "FEDERAL_SYNC"
+CAP_MANAGE_HR = "MANAGE_HR"
 
 # Flight type labels (Planche enum)
 TYPE_OF_FLIGHT_LABELS: dict[int, str] = {
@@ -92,4 +93,5 @@ CAPABILITY_SEEDS = (
     (CAP_PLAN_VI, "Planification des Bons VI"),
     (CAP_SYNC_VI_PLANCHE, "Synchronisation VI vers Planche"),
     (CAP_FEDERAL_SYNC, "Synchronisation fédérale (GesAsso/OSRT)"),
+    (CAP_MANAGE_HR, "Gestion RH (profils, congés, présences)"),
 )

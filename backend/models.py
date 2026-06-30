@@ -41,6 +41,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -1853,3 +1854,146 @@ class MemberPackConsumption(Base):
 
     def __repr__(self):
         return f"<MemberPackConsumption member={self.tiers_uuid} flight={self.flight_uuid} type={self.pack_type}>"
+
+
+# ==========================================================================
+# HR Module — employee profiles, seasons, work calendars, calendar assignments
+# ==========================================================================
+
+class HrEmployeeProfile(Base):
+    """Employee HR profile linked to an existing member."""
+
+    __tablename__ = "hr_employee_profiles"
+
+    member_uuid = Column(UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="RESTRICT"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    contract_type = Column(String(16), nullable=False)
+    hire_date = Column(Date, nullable=False)
+    termination_date = Column(Date, nullable=True)
+    weekly_hours = Column(Numeric(5, 2), nullable=False, default=35.00)
+    annual_work_hours = Column(Numeric(6, 2), nullable=False, default=1607.00)
+    current_leave_balance = Column(Numeric(5, 2), nullable=False, default=0)
+    last_leave_balance_update = Column(Date, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    member = relationship("Member", foreign_keys=[member_uuid])
+    user = relationship("User", foreign_keys=[user_id])
+    updated_by_user = relationship("User", foreign_keys=[updated_by])
+
+    def __repr__(self):
+        return f"<HrEmployeeProfile member={self.member_uuid} contract={self.contract_type}>"
+
+
+class HrSeason(Base):
+    """A named work season (period) shared across employees."""
+
+    __tablename__ = "hr_seasons"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    calendar_assignments = relationship("HrCalendarAssignment", back_populates="season", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<HrSeason name={self.name} {self.start_date}–{self.end_date}>"
+
+
+class HrWorkCalendar(Base):
+    """A reusable weekly work pattern (calendar)."""
+
+    __tablename__ = "hr_work_calendars"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    days = relationship(
+        "HrWorkCalendarDay",
+        back_populates="calendar",
+        cascade="all, delete-orphan",
+        order_by="HrWorkCalendarDay.day_of_week, HrWorkCalendarDay.apply_on_week",
+    )
+
+    def __repr__(self):
+        return f"<HrWorkCalendar name={self.name}>"
+
+
+class HrWorkCalendarDay(Base):
+    """One day-of-week entry within a work calendar."""
+
+    __tablename__ = "hr_work_calendar_days"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    calendar_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("hr_work_calendars.uuid", ondelete="CASCADE"), nullable=False
+    )
+    day_of_week = Column(SmallInteger, nullable=False)  # 1=Monday … 7=Sunday
+    is_working = Column(Boolean, nullable=False, default=True)
+    expected_hours = Column(Numeric(5, 2), nullable=False, default=0)
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
+    apply_on_week = Column(SmallInteger, nullable=False, default=0)  # 0=all weeks, 1..5=Nth week of month
+
+    calendar = relationship("HrWorkCalendar", back_populates="days")
+
+    def __repr__(self):
+        return f"<HrWorkCalendarDay calendar={self.calendar_uuid} dow={self.day_of_week} week={self.apply_on_week}>"
+
+
+class HrCalendarAssignment(Base):
+    """Links an employee (member) to a calendar for a given season."""
+
+    __tablename__ = "hr_calendar_assignments"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    member_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False
+    )
+    season_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("hr_seasons.uuid", ondelete="CASCADE"), nullable=False
+    )
+    calendar_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("hr_work_calendars.uuid", ondelete="RESTRICT"), nullable=False
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    member = relationship("Member", foreign_keys=[member_uuid])
+    season = relationship("HrSeason", back_populates="calendar_assignments")
+    calendar = relationship("HrWorkCalendar")
+    created_by_user = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self):
+        return f"<HrCalendarAssignment member={self.member_uuid} season={self.season_uuid}>"
