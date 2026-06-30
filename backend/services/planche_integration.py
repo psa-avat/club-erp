@@ -1104,6 +1104,30 @@ class PlancheIntegrationService:
             "error_details": error_details,
         }
 
+    async def fetch_vi_from_planche(self) -> list[dict]:
+        """Fetch all VI entitlements currently stored on Planche (GET /erp/vi).
+
+        Returns a list of raw item dicts. Each item is expected to contain at
+        least an ``erp_id`` or ``entitlement_code`` field that maps back to the
+        ERP voucher code.
+
+        NOTE: if the Planche API endpoint path differs (e.g. /erp/vi/list),
+        update the ``endpoint`` argument below.
+        """
+        try:
+            response = await self._perform_request(method="GET", endpoint="/erp/vi")
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict):
+                    # Accept {"items": [...]} or {"data": [...]} wrappers
+                    return data.get("items", data.get("data", []))
+            logger.warning("fetch_vi_from_planche: unexpected status %s", response.status_code)
+        except Exception as exc:
+            logger.warning("fetch_vi_from_planche: request failed — %s", exc)
+        return []
+
     async def reconcile_vi_realisation_from_validated_flights(
         self,
         db: AsyncSession,

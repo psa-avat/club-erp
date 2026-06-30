@@ -250,6 +250,22 @@ async def push_vi_entitlements_to_planche(
     )
 
 
+@router.get("/vi/list")
+async def list_vi_on_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = planche_guard,
+):
+    """Fetch VI entitlements currently present on Planche and return their ERP codes."""
+    service = await _get_planche_service(db)
+    items = await service.fetch_vi_from_planche()
+    codes = [
+        str(item.get("erp_id") or item.get("entitlement_code") or "")
+        for item in items
+        if item.get("erp_id") or item.get("entitlement_code")
+    ]
+    return JSONResponse({"codes": [c for c in codes if c], "raw_count": len(items)})
+
+
 @router.post("/vi/reconcile")
 async def reconcile_vi_from_validated_flights(
     request: ViReconcileRequest,

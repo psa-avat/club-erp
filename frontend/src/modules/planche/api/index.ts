@@ -287,6 +287,28 @@ export function plancheSettingsFromResponse(response?: PlancheSettingsResponse |
   return response?.settings ?? EMPTY_SETTINGS
 }
 
+export type PlancheViListResponse = {
+  codes: string[]
+  raw_count: number
+}
+
+export const plancheViListQueryKey = ['planche', 'vi', 'list'] as const
+
+export function usePlancheViListQuery(enabled: boolean = true) {
+  return useQuery({
+    queryKey: plancheViListQueryKey,
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<PlancheViListResponse>(
+        '/api/v1/planche/vi/list',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    staleTime: 60_000, // 1 min — Planche state doesn't change that fast
+  })
+}
+
 export function usePlancheViPushMutation() {
   return useMutation({
     mutationFn: async (payload: { entitlement_uuids: string[]; replace?: boolean }) => {
