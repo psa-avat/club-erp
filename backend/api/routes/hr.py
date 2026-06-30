@@ -1,7 +1,7 @@
 """
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - hr: FastAPI routes for HR employee profiles, seasons, calendars, and assignments
+    - hr: FastAPI routes for HR employee profiles, working time calendars, and assignments
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -31,18 +31,18 @@ from constants import CAP_MANAGE_HR
 from models import User
 from schemas.hr import (
     ExpectedHoursResult,
-    HrCalendarAssignmentCreate,
-    HrCalendarAssignmentResponse,
-    HrCalendarAssignmentUpdate,
+    HrCalendarPhaseCreate,
+    HrCalendarPhaseResponse,
+    HrCalendarPhaseUpdate,
+    HrEmployeeCalendarAssignmentCreate,
+    HrEmployeeCalendarAssignmentResponse,
+    HrEmployeeCalendarAssignmentUpdate,
     HrEmployeeProfileCreate,
     HrEmployeeProfileResponse,
     HrEmployeeProfileUpdate,
-    HrSeasonCreate,
-    HrSeasonResponse,
-    HrSeasonUpdate,
-    HrWorkCalendarCreate,
-    HrWorkCalendarResponse,
-    HrWorkCalendarUpdate,
+    HrWorkingTimeCalendarCreate,
+    HrWorkingTimeCalendarResponse,
+    HrWorkingTimeCalendarUpdate,
     WorkSummaryResponse,
 )
 from services.hr import (
@@ -50,23 +50,22 @@ from services.hr import (
     create_assignment,
     create_calendar,
     create_employee_profile,
-    create_season,
+    create_phase,
     delete_assignment,
     delete_calendar,
-    delete_season,
+    delete_phase,
     get_assignment,
     get_calendar,
     get_employee_profile,
-    get_season,
+    get_phase,
     get_work_summary,
     list_assignments,
     list_calendars,
     list_employee_profiles,
-    list_seasons,
     update_assignment,
     update_calendar,
     update_employee_profile,
-    update_season,
+    update_phase,
 )
 
 router = APIRouter(prefix="/api/v1/hr", tags=["hr"])
@@ -120,64 +119,10 @@ async def update_profile_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# Seasons
+# Working time calendars
 # ---------------------------------------------------------------------------
 
-@router.get("/seasons", response_model=list[HrSeasonResponse])
-async def list_seasons_endpoint(
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    return await list_seasons(db)
-
-
-@router.post("/seasons", response_model=HrSeasonResponse, status_code=status.HTTP_201_CREATED)
-async def create_season_endpoint(
-    data: HrSeasonCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = _manage_guard,
-):
-    result = await create_season(db, data)
-    await db.commit()
-    return result
-
-
-@router.get("/seasons/{season_uuid}", response_model=HrSeasonResponse)
-async def get_season_endpoint(
-    season_uuid: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    return await get_season(db, season_uuid)
-
-
-@router.patch("/seasons/{season_uuid}", response_model=HrSeasonResponse)
-async def update_season_endpoint(
-    season_uuid: UUID,
-    data: HrSeasonUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = _manage_guard,
-):
-    result = await update_season(db, season_uuid, data)
-    await db.commit()
-    return result
-
-
-@router.delete("/seasons/{season_uuid}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_season_endpoint(
-    season_uuid: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = _manage_guard,
-):
-    await delete_season(db, season_uuid)
-    await db.commit()
-
-
-# ---------------------------------------------------------------------------
-# Work calendars
-# ---------------------------------------------------------------------------
-
-@router.get("/calendars", response_model=list[HrWorkCalendarResponse])
+@router.get("/calendars", response_model=list[HrWorkingTimeCalendarResponse])
 async def list_calendars_endpoint(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -185,9 +130,9 @@ async def list_calendars_endpoint(
     return await list_calendars(db)
 
 
-@router.post("/calendars", response_model=HrWorkCalendarResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/calendars", response_model=HrWorkingTimeCalendarResponse, status_code=status.HTTP_201_CREATED)
 async def create_calendar_endpoint(
-    data: HrWorkCalendarCreate,
+    data: HrWorkingTimeCalendarCreate,
     db: AsyncSession = Depends(get_db),
     _: User = _manage_guard,
 ):
@@ -196,7 +141,7 @@ async def create_calendar_endpoint(
     return result
 
 
-@router.get("/calendars/{calendar_uuid}", response_model=HrWorkCalendarResponse)
+@router.get("/calendars/{calendar_uuid}", response_model=HrWorkingTimeCalendarResponse)
 async def get_calendar_endpoint(
     calendar_uuid: UUID,
     db: AsyncSession = Depends(get_db),
@@ -205,10 +150,10 @@ async def get_calendar_endpoint(
     return await get_calendar(db, calendar_uuid)
 
 
-@router.patch("/calendars/{calendar_uuid}", response_model=HrWorkCalendarResponse)
+@router.patch("/calendars/{calendar_uuid}", response_model=HrWorkingTimeCalendarResponse)
 async def update_calendar_endpoint(
     calendar_uuid: UUID,
-    data: HrWorkCalendarUpdate,
+    data: HrWorkingTimeCalendarUpdate,
     db: AsyncSession = Depends(get_db),
     _: User = _manage_guard,
 ):
@@ -228,10 +173,70 @@ async def delete_calendar_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# Calendar assignments
+# Phases (nested under a calendar)
 # ---------------------------------------------------------------------------
 
-@router.get("/calendar-assignments", response_model=list[HrCalendarAssignmentResponse])
+@router.get("/calendars/{calendar_uuid}/phases/{phase_uuid}", response_model=HrCalendarPhaseResponse)
+async def get_phase_endpoint(
+    calendar_uuid: UUID,
+    phase_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    return await get_phase(db, phase_uuid)
+
+
+@router.post(
+    "/calendars/{calendar_uuid}/phases",
+    response_model=HrCalendarPhaseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_phase_endpoint(
+    calendar_uuid: UUID,
+    data: HrCalendarPhaseCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+):
+    result = await create_phase(db, calendar_uuid, data)
+    await db.commit()
+    return result
+
+
+@router.patch(
+    "/calendars/{calendar_uuid}/phases/{phase_uuid}",
+    response_model=HrCalendarPhaseResponse,
+)
+async def update_phase_endpoint(
+    calendar_uuid: UUID,
+    phase_uuid: UUID,
+    data: HrCalendarPhaseUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+):
+    result = await update_phase(db, calendar_uuid, phase_uuid, data)
+    await db.commit()
+    return result
+
+
+@router.delete(
+    "/calendars/{calendar_uuid}/phases/{phase_uuid}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_phase_endpoint(
+    calendar_uuid: UUID,
+    phase_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+):
+    await delete_phase(db, calendar_uuid, phase_uuid)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Employee calendar assignments
+# ---------------------------------------------------------------------------
+
+@router.get("/calendar-assignments", response_model=list[HrEmployeeCalendarAssignmentResponse])
 async def list_assignments_endpoint(
     member_uuid: Optional[UUID] = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -240,21 +245,28 @@ async def list_assignments_endpoint(
     return await list_assignments(db, member_uuid=member_uuid)
 
 
-@router.post("/calendar-assignments", response_model=HrCalendarAssignmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/calendar-assignments",
+    response_model=HrEmployeeCalendarAssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_assignment_endpoint(
-    data: HrCalendarAssignmentCreate,
+    data: HrEmployeeCalendarAssignmentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = _manage_guard,
+    _: User = _manage_guard,
 ):
-    result = await create_assignment(db, data, current_user.id)
+    result = await create_assignment(db, data)
     await db.commit()
     return result
 
 
-@router.patch("/calendar-assignments/{assignment_uuid}", response_model=HrCalendarAssignmentResponse)
+@router.patch(
+    "/calendar-assignments/{assignment_uuid}",
+    response_model=HrEmployeeCalendarAssignmentResponse,
+)
 async def update_assignment_endpoint(
     assignment_uuid: UUID,
-    data: HrCalendarAssignmentUpdate,
+    data: HrEmployeeCalendarAssignmentUpdate,
     db: AsyncSession = Depends(get_db),
     _: User = _manage_guard,
 ):

@@ -1,7 +1,7 @@
 """
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - hr: Business logic for the HR module — employee profiles, seasons, work calendars
+    - hr: Business logic for the HR module — employee profiles, working time calendars
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -24,32 +24,32 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
-    HrCalendarAssignment,
+    HrCalendarPhase,
+    HrEmployeeCalendarAssignment,
     HrEmployeeProfile,
-    HrSeason,
-    HrWorkCalendar,
-    HrWorkCalendarDay,
+    HrPhaseDayRule,
+    HrWorkingTimeCalendar,
     Member,
 )
 from schemas.hr import (
     ExpectedHoursResult,
-    HrCalendarAssignmentCreate,
-    HrCalendarAssignmentResponse,
-    HrCalendarAssignmentUpdate,
+    HrCalendarPhaseCreate,
+    HrCalendarPhaseResponse,
+    HrCalendarPhaseUpdate,
+    HrEmployeeCalendarAssignmentCreate,
+    HrEmployeeCalendarAssignmentResponse,
+    HrEmployeeCalendarAssignmentUpdate,
     HrEmployeeProfileCreate,
     HrEmployeeProfileResponse,
     HrEmployeeProfileUpdate,
-    HrSeasonCreate,
-    HrSeasonResponse,
-    HrSeasonUpdate,
-    HrWorkCalendarCreate,
-    HrWorkCalendarResponse,
-    HrWorkCalendarUpdate,
+    HrWorkingTimeCalendarCreate,
+    HrWorkingTimeCalendarResponse,
+    HrWorkingTimeCalendarUpdate,
     WorkSummaryResponse,
 )
 
@@ -80,17 +80,20 @@ def _build_profile_response(profile: HrEmployeeProfile) -> HrEmployeeProfileResp
     )
 
 
-def _build_assignment_response(assignment: HrCalendarAssignment) -> HrCalendarAssignmentResponse:
-    return HrCalendarAssignmentResponse(
+def _build_assignment_response(
+    assignment: HrEmployeeCalendarAssignment,
+) -> HrEmployeeCalendarAssignmentResponse:
+    return HrEmployeeCalendarAssignmentResponse(
         uuid=assignment.uuid,
         member_uuid=assignment.member_uuid,
-        season_uuid=assignment.season_uuid,
         calendar_uuid=assignment.calendar_uuid,
+        effective_from=assignment.effective_from,
+        effective_to=assignment.effective_to,
         created_at=assignment.created_at,
+        updated_at=assignment.updated_at,
         member_first_name=assignment.member.first_name if assignment.member else None,
         member_last_name=assignment.member.last_name if assignment.member else None,
         member_account_id=assignment.member.account_id if assignment.member else None,
-        season_name=assignment.season.name if assignment.season else None,
         calendar_name=assignment.calendar.name if assignment.calendar else None,
     )
 
@@ -98,13 +101,23 @@ def _build_assignment_response(assignment: HrCalendarAssignment) -> HrCalendarAs
 def _week_of_month(d: date) -> int:
     """Return 1..5 — which occurrence of this weekday in the month (5 = last)."""
     week_num = (d.day - 1) // 7 + 1
-    # Find last day of month
     if d.month == 12:
         last_day = date(d.year + 1, 1, 1) - timedelta(days=1)
     else:
         last_day = date(d.year, d.month + 1, 1) - timedelta(days=1)
     max_weeks = (last_day.day - 1) // 7 + 1
     return 5 if week_num >= max_weeks else week_num
+
+
+def _phase_covers_date(phase: HrCalendarPhase, d: date) -> bool:
+    """Return True if the phase's annual recurring range covers date d (MM-DD comparison)."""
+    current = (d.month, d.day)
+    start = (phase.start_month, phase.start_day)
+    end = (phase.end_month, phase.end_day)
+    if start <= end:
+        return start <= current <= end
+    # Wrap-around phase (e.g. Dec-01 → Jan-31); not common but handled
+    return current >= start or current <= end
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +158,6 @@ async def create_employee_profile(
     data: HrEmployeeProfileCreate,
     created_by_user_id: int,
 ) -> HrEmployeeProfileResponse:
-    # Verify member exists
     member_result = await db.execute(select(Member).where(Member.uuid == data.member_uuid))
     member = member_result.scalars().first()
     if not member:
@@ -156,14 +168,15 @@ async def create_employee_profile(
             detail="Ce membre n'est pas marqué comme employé (is_employee=False).",
         )
 
-    # Check for duplicate
     existing = await db.execute(
         select(HrEmployeeProfile).where(HrEmployeeProfile.member_uuid == data.member_uuid)
     )
     if existing.scalars().first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Un profil employé existe déjà pour ce membre.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Un profil employé existe déjà pour ce membre.",
+        )
 
-    # Validate dates
     if data.termination_date and data.termination_date < data.hire_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -212,10 +225,7 @@ async def update_employee_profile(
     profile.updated_by = updated_by_user_id
     profile.updated_at = datetime.now(timezone.utc)
 
-    # Validate dates after update
-    effective_hire = profile.hire_date
-    effective_term = profile.termination_date
-    if effective_term and effective_term < effective_hire:
+    if profile.termination_date and profile.termination_date < profile.hire_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La date de fin ne peut pas être antérieure à la date d'embauche.",
@@ -226,202 +236,85 @@ async def update_employee_profile(
 
 
 # ---------------------------------------------------------------------------
-# Seasons
+# Working time calendars
 # ---------------------------------------------------------------------------
 
-async def list_seasons(db: AsyncSession) -> list[HrSeasonResponse]:
-    stmt = select(HrSeason).order_by(HrSeason.start_date.desc())
-    result = await db.execute(stmt)
-    seasons = result.scalars().all()
-    return [HrSeasonResponse.model_validate(s) for s in seasons]
+def _calendar_eager_options():
+    return selectinload(HrWorkingTimeCalendar.phases).selectinload(HrCalendarPhase.day_rules)
 
 
-async def get_season(db: AsyncSession, season_uuid: UUID) -> HrSeasonResponse:
-    result = await db.execute(select(HrSeason).where(HrSeason.uuid == season_uuid))
-    season = result.scalars().first()
-    if not season:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saison introuvable.")
-    return HrSeasonResponse.model_validate(season)
-
-
-async def create_season(db: AsyncSession, data: HrSeasonCreate) -> HrSeasonResponse:
-    if data.end_date < data.start_date:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La date de fin doit être postérieure ou égale à la date de début.",
-        )
-    season = HrSeason(
-        name=data.name,
-        start_date=data.start_date,
-        end_date=data.end_date,
-        description=data.description,
-    )
-    db.add(season)
-    await db.flush()
-    await db.refresh(season)
-    return HrSeasonResponse.model_validate(season)
-
-
-async def update_season(
-    db: AsyncSession,
-    season_uuid: UUID,
-    data: HrSeasonUpdate,
-) -> HrSeasonResponse:
-    result = await db.execute(select(HrSeason).where(HrSeason.uuid == season_uuid))
-    season = result.scalars().first()
-    if not season:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saison introuvable.")
-
-    update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(season, field, value)
-    season.updated_at = datetime.now(timezone.utc)
-
-    effective_start = season.start_date
-    effective_end = season.end_date
-    if effective_end < effective_start:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La date de fin doit être postérieure ou égale à la date de début.",
-        )
-
-    await db.flush()
-    await db.refresh(season)
-    return HrSeasonResponse.model_validate(season)
-
-
-async def delete_season(db: AsyncSession, season_uuid: UUID) -> None:
-    result = await db.execute(select(HrSeason).where(HrSeason.uuid == season_uuid))
-    season = result.scalars().first()
-    if not season:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saison introuvable.")
-
-    # Check for assignments
-    count_result = await db.execute(
-        select(func.count()).select_from(HrCalendarAssignment).where(
-            HrCalendarAssignment.season_uuid == season_uuid
-        )
-    )
-    count = count_result.scalar_one()
-    if count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Impossible de supprimer : {count} affectation(s) référencent cette saison.",
-        )
-
-    await db.delete(season)
-    await db.flush()
-
-
-# ---------------------------------------------------------------------------
-# Work calendars
-# ---------------------------------------------------------------------------
-
-async def list_calendars(db: AsyncSession) -> list[HrWorkCalendarResponse]:
+async def list_calendars(db: AsyncSession) -> list[HrWorkingTimeCalendarResponse]:
     stmt = (
-        select(HrWorkCalendar)
-        .options(selectinload(HrWorkCalendar.days))
-        .order_by(HrWorkCalendar.name)
+        select(HrWorkingTimeCalendar)
+        .options(_calendar_eager_options())
+        .order_by(HrWorkingTimeCalendar.name)
     )
     result = await db.execute(stmt)
     calendars = result.scalars().all()
-    return [HrWorkCalendarResponse.model_validate(c) for c in calendars]
+    return [HrWorkingTimeCalendarResponse.model_validate(c) for c in calendars]
 
 
-async def get_calendar(db: AsyncSession, calendar_uuid: UUID) -> HrWorkCalendarResponse:
+async def get_calendar(
+    db: AsyncSession,
+    calendar_uuid: UUID,
+) -> HrWorkingTimeCalendarResponse:
     stmt = (
-        select(HrWorkCalendar)
-        .where(HrWorkCalendar.uuid == calendar_uuid)
-        .options(selectinload(HrWorkCalendar.days))
+        select(HrWorkingTimeCalendar)
+        .where(HrWorkingTimeCalendar.uuid == calendar_uuid)
+        .options(_calendar_eager_options())
     )
     result = await db.execute(stmt)
     calendar = result.scalars().first()
     if not calendar:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
-    return HrWorkCalendarResponse.model_validate(calendar)
+    return HrWorkingTimeCalendarResponse.model_validate(calendar)
 
 
 async def create_calendar(
     db: AsyncSession,
-    data: HrWorkCalendarCreate,
-) -> HrWorkCalendarResponse:
-    calendar = HrWorkCalendar(
-        name=data.name,
-        description=data.description,
-    )
+    data: HrWorkingTimeCalendarCreate,
+) -> HrWorkingTimeCalendarResponse:
+    calendar = HrWorkingTimeCalendar(name=data.name, description=data.description)
     db.add(calendar)
-    await db.flush()  # get calendar.uuid
-
-    for day_data in data.days:
-        day = HrWorkCalendarDay(
-            calendar_uuid=calendar.uuid,
-            day_of_week=day_data.day_of_week,
-            is_working=day_data.is_working,
-            expected_hours=day_data.expected_hours,
-            start_time=day_data.start_time,
-            end_time=day_data.end_time,
-            apply_on_week=day_data.apply_on_week,
-        )
-        db.add(day)
-
     await db.flush()
-    await db.refresh(calendar, ["days"])
-    return HrWorkCalendarResponse.model_validate(calendar)
+    await db.refresh(calendar, ["phases"])
+    return HrWorkingTimeCalendarResponse.model_validate(calendar)
 
 
 async def update_calendar(
     db: AsyncSession,
     calendar_uuid: UUID,
-    data: HrWorkCalendarUpdate,
-) -> HrWorkCalendarResponse:
+    data: HrWorkingTimeCalendarUpdate,
+) -> HrWorkingTimeCalendarResponse:
     stmt = (
-        select(HrWorkCalendar)
-        .where(HrWorkCalendar.uuid == calendar_uuid)
-        .options(selectinload(HrWorkCalendar.days))
+        select(HrWorkingTimeCalendar)
+        .where(HrWorkingTimeCalendar.uuid == calendar_uuid)
+        .options(_calendar_eager_options())
     )
     result = await db.execute(stmt)
     calendar = result.scalars().first()
     if not calendar:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
 
-    if data.name is not None:
-        calendar.name = data.name
-    if data.description is not None:
-        calendar.description = data.description
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(calendar, field, value)
     calendar.updated_at = datetime.now(timezone.utc)
-
-    if data.days is not None:
-        # Delete all existing days and recreate
-        for day in list(calendar.days):
-            await db.delete(day)
-        await db.flush()
-
-        for day_data in data.days:
-            day = HrWorkCalendarDay(
-                calendar_uuid=calendar.uuid,
-                day_of_week=day_data.day_of_week,
-                is_working=day_data.is_working,
-                expected_hours=day_data.expected_hours,
-                start_time=day_data.start_time,
-                end_time=day_data.end_time,
-                apply_on_week=day_data.apply_on_week,
-            )
-            db.add(day)
-
     await db.flush()
-    await db.refresh(calendar, ["days"])
-    return HrWorkCalendarResponse.model_validate(calendar)
+    return HrWorkingTimeCalendarResponse.model_validate(calendar)
 
 
 async def delete_calendar(db: AsyncSession, calendar_uuid: UUID) -> None:
-    result = await db.execute(select(HrWorkCalendar).where(HrWorkCalendar.uuid == calendar_uuid))
+    result = await db.execute(
+        select(HrWorkingTimeCalendar).where(HrWorkingTimeCalendar.uuid == calendar_uuid)
+    )
     calendar = result.scalars().first()
     if not calendar:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
 
     count_result = await db.execute(
-        select(func.count()).select_from(HrCalendarAssignment).where(
-            HrCalendarAssignment.calendar_uuid == calendar_uuid
+        select(func.count()).select_from(HrEmployeeCalendarAssignment).where(
+            HrEmployeeCalendarAssignment.calendar_uuid == calendar_uuid
         )
     )
     count = count_result.scalar_one()
@@ -436,23 +329,152 @@ async def delete_calendar(db: AsyncSession, calendar_uuid: UUID) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Calendar assignments
+# Phases
+# ---------------------------------------------------------------------------
+
+async def get_phase(db: AsyncSession, phase_uuid: UUID) -> HrCalendarPhaseResponse:
+    stmt = (
+        select(HrCalendarPhase)
+        .where(HrCalendarPhase.uuid == phase_uuid)
+        .options(selectinload(HrCalendarPhase.day_rules))
+    )
+    result = await db.execute(stmt)
+    phase = result.scalars().first()
+    if not phase:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Phase introuvable.")
+    return HrCalendarPhaseResponse.model_validate(phase)
+
+
+async def create_phase(
+    db: AsyncSession,
+    calendar_uuid: UUID,
+    data: HrCalendarPhaseCreate,
+) -> HrCalendarPhaseResponse:
+    # Verify calendar exists
+    cal_result = await db.execute(
+        select(HrWorkingTimeCalendar).where(HrWorkingTimeCalendar.uuid == calendar_uuid)
+    )
+    if not cal_result.scalars().first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
+
+    phase = HrCalendarPhase(
+        calendar_uuid=calendar_uuid,
+        name=data.name,
+        start_month=data.start_month,
+        start_day=data.start_day,
+        end_month=data.end_month,
+        end_day=data.end_day,
+    )
+    db.add(phase)
+    await db.flush()
+
+    for rule_data in data.day_rules:
+        rule = HrPhaseDayRule(
+            phase_uuid=phase.uuid,
+            day_of_week=rule_data.day_of_week,
+            is_working=rule_data.is_working,
+            expected_hours=rule_data.expected_hours,
+            start_time=rule_data.start_time,
+            end_time=rule_data.end_time,
+            apply_on_week=rule_data.apply_on_week,
+        )
+        db.add(rule)
+
+    await db.flush()
+    await db.refresh(phase, ["day_rules"])
+    return HrCalendarPhaseResponse.model_validate(phase)
+
+
+async def update_phase(
+    db: AsyncSession,
+    calendar_uuid: UUID,
+    phase_uuid: UUID,
+    data: HrCalendarPhaseUpdate,
+) -> HrCalendarPhaseResponse:
+    stmt = (
+        select(HrCalendarPhase)
+        .where(
+            and_(
+                HrCalendarPhase.uuid == phase_uuid,
+                HrCalendarPhase.calendar_uuid == calendar_uuid,
+            )
+        )
+        .options(selectinload(HrCalendarPhase.day_rules))
+    )
+    result = await db.execute(stmt)
+    phase = result.scalars().first()
+    if not phase:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Phase introuvable.")
+
+    scalar_fields = {"name", "start_month", "start_day", "end_month", "end_day"}
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in scalar_fields:
+            setattr(phase, field, value)
+    phase.updated_at = datetime.now(timezone.utc)
+
+    if data.day_rules is not None:
+        for rule in list(phase.day_rules):
+            await db.delete(rule)
+        await db.flush()
+        for rule_data in data.day_rules:
+            rule = HrPhaseDayRule(
+                phase_uuid=phase.uuid,
+                day_of_week=rule_data.day_of_week,
+                is_working=rule_data.is_working,
+                expected_hours=rule_data.expected_hours,
+                start_time=rule_data.start_time,
+                end_time=rule_data.end_time,
+                apply_on_week=rule_data.apply_on_week,
+            )
+            db.add(rule)
+
+    await db.flush()
+    await db.refresh(phase, ["day_rules"])
+    return HrCalendarPhaseResponse.model_validate(phase)
+
+
+async def delete_phase(
+    db: AsyncSession,
+    calendar_uuid: UUID,
+    phase_uuid: UUID,
+) -> None:
+    result = await db.execute(
+        select(HrCalendarPhase).where(
+            and_(
+                HrCalendarPhase.uuid == phase_uuid,
+                HrCalendarPhase.calendar_uuid == calendar_uuid,
+            )
+        )
+    )
+    phase = result.scalars().first()
+    if not phase:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Phase introuvable.")
+    await db.delete(phase)
+    await db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Employee calendar assignments
 # ---------------------------------------------------------------------------
 
 async def list_assignments(
     db: AsyncSession,
     member_uuid: Optional[UUID] = None,
-) -> list[HrCalendarAssignmentResponse]:
+) -> list[HrEmployeeCalendarAssignmentResponse]:
     stmt = (
-        select(HrCalendarAssignment)
+        select(HrEmployeeCalendarAssignment)
         .options(
-            selectinload(HrCalendarAssignment.member),
-            selectinload(HrCalendarAssignment.season),
-            selectinload(HrCalendarAssignment.calendar),
+            selectinload(HrEmployeeCalendarAssignment.member),
+            selectinload(HrEmployeeCalendarAssignment.calendar),
+        )
+        .order_by(
+            HrEmployeeCalendarAssignment.member_uuid,
+            HrEmployeeCalendarAssignment.effective_from.desc(),
         )
     )
     if member_uuid is not None:
-        stmt = stmt.where(HrCalendarAssignment.member_uuid == member_uuid)
+        stmt = stmt.where(HrEmployeeCalendarAssignment.member_uuid == member_uuid)
     result = await db.execute(stmt)
     assignments = result.scalars().all()
     return [_build_assignment_response(a) for a in assignments]
@@ -461,14 +483,13 @@ async def list_assignments(
 async def get_assignment(
     db: AsyncSession,
     assignment_uuid: UUID,
-) -> HrCalendarAssignmentResponse:
+) -> HrEmployeeCalendarAssignmentResponse:
     stmt = (
-        select(HrCalendarAssignment)
-        .where(HrCalendarAssignment.uuid == assignment_uuid)
+        select(HrEmployeeCalendarAssignment)
+        .where(HrEmployeeCalendarAssignment.uuid == assignment_uuid)
         .options(
-            selectinload(HrCalendarAssignment.member),
-            selectinload(HrCalendarAssignment.season),
-            selectinload(HrCalendarAssignment.calendar),
+            selectinload(HrEmployeeCalendarAssignment.member),
+            selectinload(HrEmployeeCalendarAssignment.calendar),
         )
     )
     result = await db.execute(stmt)
@@ -480,57 +501,43 @@ async def get_assignment(
 
 async def create_assignment(
     db: AsyncSession,
-    data: HrCalendarAssignmentCreate,
-    created_by_user_id: int,
-) -> HrCalendarAssignmentResponse:
-    # Check for duplicate (member + season)
-    existing = await db.execute(
-        select(HrCalendarAssignment).where(
-            and_(
-                HrCalendarAssignment.member_uuid == data.member_uuid,
-                HrCalendarAssignment.season_uuid == data.season_uuid,
-            )
-        )
-    )
-    if existing.scalars().first():
+    data: HrEmployeeCalendarAssignmentCreate,
+) -> HrEmployeeCalendarAssignmentResponse:
+    if data.effective_to and data.effective_to <= data.effective_from:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Une affectation existe déjà pour cet employé et cette saison.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La date de fin doit être postérieure à la date de début.",
         )
 
-    # Verify references exist
-    season_result = await db.execute(select(HrSeason).where(HrSeason.uuid == data.season_uuid))
-    if not season_result.scalars().first():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saison introuvable.")
-
-    cal_result = await db.execute(select(HrWorkCalendar).where(HrWorkCalendar.uuid == data.calendar_uuid))
+    cal_result = await db.execute(
+        select(HrWorkingTimeCalendar).where(HrWorkingTimeCalendar.uuid == data.calendar_uuid)
+    )
     if not cal_result.scalars().first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
 
-    assignment = HrCalendarAssignment(
+    assignment = HrEmployeeCalendarAssignment(
         member_uuid=data.member_uuid,
-        season_uuid=data.season_uuid,
         calendar_uuid=data.calendar_uuid,
-        created_by=created_by_user_id,
+        effective_from=data.effective_from,
+        effective_to=data.effective_to,
     )
     db.add(assignment)
     await db.flush()
-    await db.refresh(assignment, ["member", "season", "calendar"])
+    await db.refresh(assignment, ["member", "calendar"])
     return _build_assignment_response(assignment)
 
 
 async def update_assignment(
     db: AsyncSession,
     assignment_uuid: UUID,
-    data: HrCalendarAssignmentUpdate,
-) -> HrCalendarAssignmentResponse:
+    data: HrEmployeeCalendarAssignmentUpdate,
+) -> HrEmployeeCalendarAssignmentResponse:
     stmt = (
-        select(HrCalendarAssignment)
-        .where(HrCalendarAssignment.uuid == assignment_uuid)
+        select(HrEmployeeCalendarAssignment)
+        .where(HrEmployeeCalendarAssignment.uuid == assignment_uuid)
         .options(
-            selectinload(HrCalendarAssignment.member),
-            selectinload(HrCalendarAssignment.season),
-            selectinload(HrCalendarAssignment.calendar),
+            selectinload(HrEmployeeCalendarAssignment.member),
+            selectinload(HrEmployeeCalendarAssignment.calendar),
         )
     )
     result = await db.execute(stmt)
@@ -538,14 +545,26 @@ async def update_assignment(
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Affectation introuvable.")
 
-    # Verify new calendar exists
-    cal_result = await db.execute(select(HrWorkCalendar).where(HrWorkCalendar.uuid == data.calendar_uuid))
-    if not cal_result.scalars().first():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
+    if data.calendar_uuid is not None:
+        cal_result = await db.execute(
+            select(HrWorkingTimeCalendar).where(HrWorkingTimeCalendar.uuid == data.calendar_uuid)
+        )
+        if not cal_result.scalars().first():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendrier introuvable.")
+        assignment.calendar_uuid = data.calendar_uuid
 
-    assignment.calendar_uuid = data.calendar_uuid
+    if data.effective_from is not None:
+        assignment.effective_from = data.effective_from
+    if data.effective_to is not None:
+        assignment.effective_to = data.effective_to
+
+    if assignment.effective_to and assignment.effective_to <= assignment.effective_from:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La date de fin doit être postérieure à la date de début.",
+        )
+
     assignment.updated_at = datetime.now(timezone.utc)
-
     await db.flush()
     await db.refresh(assignment, ["calendar"])
     return _build_assignment_response(assignment)
@@ -553,7 +572,9 @@ async def update_assignment(
 
 async def delete_assignment(db: AsyncSession, assignment_uuid: UUID) -> None:
     result = await db.execute(
-        select(HrCalendarAssignment).where(HrCalendarAssignment.uuid == assignment_uuid)
+        select(HrEmployeeCalendarAssignment).where(
+            HrEmployeeCalendarAssignment.uuid == assignment_uuid
+        )
     )
     assignment = result.scalars().first()
     if not assignment:
@@ -573,70 +594,79 @@ async def compute_expected_hours(
 ) -> ExpectedHoursResult:
     """
     Calculate expected hours for an employee on a given date.
-    Returns is_working=False, expected_hours=0 if no season/assignment covers the date.
+    Resolves: active assignment → calendar → phase covering date → day rule.
+    Returns is_working=False, expected_hours=0 if no assignment/phase/rule applies.
     """
-    # 1. Find active season for this date
-    season_stmt = select(HrSeason).where(
-        and_(HrSeason.start_date <= target_date, HrSeason.end_date >= target_date)
-    )
-    season_result = await db.execute(season_stmt)
-    season = season_result.scalars().first()
-    if not season:
-        return ExpectedHoursResult(date=target_date, is_working=False, expected_hours=Decimal("0"))
-
-    # 2. Find assignment for member + season
+    # Find the active assignment for this date (most recent effective_from wins if multiple overlap)
     assign_stmt = (
-        select(HrCalendarAssignment)
+        select(HrEmployeeCalendarAssignment)
         .where(
             and_(
-                HrCalendarAssignment.member_uuid == member_uuid,
-                HrCalendarAssignment.season_uuid == season.uuid,
+                HrEmployeeCalendarAssignment.member_uuid == member_uuid,
+                HrEmployeeCalendarAssignment.effective_from <= target_date,
+                or_(
+                    HrEmployeeCalendarAssignment.effective_to.is_(None),
+                    HrEmployeeCalendarAssignment.effective_to >= target_date,
+                ),
             )
         )
-        .options(selectinload(HrCalendarAssignment.calendar).selectinload(HrWorkCalendar.days))
+        .options(
+            selectinload(HrEmployeeCalendarAssignment.calendar)
+            .selectinload(HrWorkingTimeCalendar.phases)
+            .selectinload(HrCalendarPhase.day_rules)
+        )
+        .order_by(HrEmployeeCalendarAssignment.effective_from.desc())
     )
     assign_result = await db.execute(assign_stmt)
     assignment = assign_result.scalars().first()
     if not assignment:
-        return ExpectedHoursResult(
-            date=target_date,
-            is_working=False,
-            expected_hours=Decimal("0"),
-            season_uuid=season.uuid,
-            season_name=season.name,
-        )
+        return ExpectedHoursResult(date=target_date, is_working=False, expected_hours=Decimal("0"))
 
-    # 3. Resolve the calendar day
-    iso_dow = target_date.isoweekday()  # 1=Monday … 7=Sunday
-    week_num = _week_of_month(target_date)
     calendar = assignment.calendar
 
-    # Find matching day entry: prefer apply_on_week=week_num, fallback to apply_on_week=0
-    day_entry = None
-    for d in calendar.days:
-        if d.day_of_week == iso_dow:
-            if d.apply_on_week == week_num:
-                day_entry = d
-                break
-            elif d.apply_on_week == 0:
-                day_entry = d  # keep as fallback, keep scanning for specific match
+    # Find the phase whose annual date range covers the target date
+    matching_phase = None
+    for phase in calendar.phases:
+        if _phase_covers_date(phase, target_date):
+            matching_phase = phase
+            break
 
-    if not day_entry or not day_entry.is_working:
+    if not matching_phase:
         return ExpectedHoursResult(
             date=target_date,
             is_working=False,
             expected_hours=Decimal("0"),
-            season_uuid=season.uuid,
-            season_name=season.name,
+            calendar_name=calendar.name,
+        )
+
+    # Find matching day rule (specific week takes priority over apply_on_week=0)
+    iso_dow = target_date.isoweekday()
+    week_num = _week_of_month(target_date)
+    day_rule = None
+    for r in matching_phase.day_rules:
+        if r.day_of_week == iso_dow:
+            if r.apply_on_week == week_num:
+                day_rule = r
+                break
+            elif r.apply_on_week == 0:
+                day_rule = r  # fallback; keep scanning for specific match
+
+    if not day_rule or not day_rule.is_working:
+        return ExpectedHoursResult(
+            date=target_date,
+            is_working=False,
+            expected_hours=Decimal("0"),
+            phase_uuid=matching_phase.uuid,
+            phase_name=matching_phase.name,
             calendar_name=calendar.name,
         )
 
     return ExpectedHoursResult(
         date=target_date,
         is_working=True,
-        expected_hours=day_entry.expected_hours,
-        season_uuid=season.uuid,
-        season_name=season.name,
+        expected_hours=day_rule.expected_hours,
+        phase_uuid=matching_phase.uuid,
+        phase_name=matching_phase.name,
         calendar_name=calendar.name,
     )
 

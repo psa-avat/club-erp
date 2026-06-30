@@ -21,25 +21,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/api/client'
 import type {
-  HrCalendarAssignment,
+  HrCalendarPhaseInput,
+  HrEmployeeCalendarAssignment,
   HrEmployeeProfile,
-  HrSeason,
-  HrWorkCalendar,
-  HrWorkCalendarInput,
+  HrWorkingTimeCalendar,
   WorkSummaryResponse,
 } from '../types'
 
 export const hrQueryKeys = {
   profiles: ['hr', 'profiles'] as const,
   profile: (memberUuid: string) => ['hr', 'profiles', memberUuid] as const,
-  seasons: ['hr', 'seasons'] as const,
-  season: (uuid: string) => ['hr', 'seasons', uuid] as const,
   calendars: ['hr', 'calendars'] as const,
   calendar: (uuid: string) => ['hr', 'calendars', uuid] as const,
   assignments: (memberUuid?: string) => ['hr', 'assignments', memberUuid] as const,
 }
 
-// --- Profiles ---
+// ---------------------------------------------------------------------------
+// Employee profiles
+// ---------------------------------------------------------------------------
+
 export function useHrProfiles(activeOnly = true) {
   return useQuery({
     queryKey: hrQueryKeys.profiles,
@@ -94,53 +94,15 @@ export function useUpdateHrProfile() {
   })
 }
 
-// --- Seasons ---
-export function useHrSeasons() {
-  return useQuery({
-    queryKey: hrQueryKeys.seasons,
-    queryFn: async () => {
-      const r = await apiClient.get<HrSeason[]>('/api/v1/hr/seasons')
-      return r.data
-    },
-  })
-}
+// ---------------------------------------------------------------------------
+// Working time calendars
+// ---------------------------------------------------------------------------
 
-export function useCreateHrSeason() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (data: Omit<HrSeason, 'uuid' | 'created_at' | 'updated_at'>) => {
-      const r = await apiClient.post<HrSeason>('/api/v1/hr/seasons', data)
-      return r.data
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.seasons }),
-  })
-}
-
-export function useUpdateHrSeason() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ uuid, data }: { uuid: string; data: Partial<HrSeason> }) => {
-      const r = await apiClient.patch<HrSeason>(`/api/v1/hr/seasons/${uuid}`, data)
-      return r.data
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.seasons }),
-  })
-}
-
-export function useDeleteHrSeason() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (uuid: string) => apiClient.delete(`/api/v1/hr/seasons/${uuid}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.seasons }),
-  })
-}
-
-// --- Calendars ---
 export function useHrCalendars() {
   return useQuery({
     queryKey: hrQueryKeys.calendars,
     queryFn: async () => {
-      const r = await apiClient.get<HrWorkCalendar[]>('/api/v1/hr/calendars')
+      const r = await apiClient.get<HrWorkingTimeCalendar[]>('/api/v1/hr/calendars')
       return r.data
     },
   })
@@ -149,8 +111,8 @@ export function useHrCalendars() {
 export function useCreateHrCalendar() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: HrWorkCalendarInput) => {
-      const r = await apiClient.post<HrWorkCalendar>('/api/v1/hr/calendars', data)
+    mutationFn: async (data: { name: string; description?: string | null }) => {
+      const r = await apiClient.post<HrWorkingTimeCalendar>('/api/v1/hr/calendars', data)
       return r.data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.calendars }),
@@ -160,8 +122,14 @@ export function useCreateHrCalendar() {
 export function useUpdateHrCalendar() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ uuid, data }: { uuid: string; data: HrWorkCalendarInput }) => {
-      const r = await apiClient.patch<HrWorkCalendar>(`/api/v1/hr/calendars/${uuid}`, data)
+    mutationFn: async ({
+      uuid,
+      data,
+    }: {
+      uuid: string
+      data: { name?: string; description?: string | null }
+    }) => {
+      const r = await apiClient.patch<HrWorkingTimeCalendar>(`/api/v1/hr/calendars/${uuid}`, data)
       return r.data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.calendars }),
@@ -176,14 +144,78 @@ export function useDeleteHrCalendar() {
   })
 }
 
-// --- Assignments ---
+// ---------------------------------------------------------------------------
+// Phases (nested under a calendar)
+// ---------------------------------------------------------------------------
+
+export function useCreateHrPhase() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      calendarUuid,
+      data,
+    }: {
+      calendarUuid: string
+      data: HrCalendarPhaseInput
+    }) => {
+      const r = await apiClient.post(
+        `/api/v1/hr/calendars/${calendarUuid}/phases`,
+        data,
+      )
+      return r.data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.calendars }),
+  })
+}
+
+export function useUpdateHrPhase() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      calendarUuid,
+      phaseUuid,
+      data,
+    }: {
+      calendarUuid: string
+      phaseUuid: string
+      data: Partial<HrCalendarPhaseInput>
+    }) => {
+      const r = await apiClient.patch(
+        `/api/v1/hr/calendars/${calendarUuid}/phases/${phaseUuid}`,
+        data,
+      )
+      return r.data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.calendars }),
+  })
+}
+
+export function useDeleteHrPhase() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      calendarUuid,
+      phaseUuid,
+    }: {
+      calendarUuid: string
+      phaseUuid: string
+    }) => apiClient.delete(`/api/v1/hr/calendars/${calendarUuid}/phases/${phaseUuid}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: hrQueryKeys.calendars }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Employee calendar assignments
+// ---------------------------------------------------------------------------
+
 export function useHrAssignments(memberUuid?: string) {
   return useQuery({
     queryKey: hrQueryKeys.assignments(memberUuid),
     queryFn: async () => {
-      const r = await apiClient.get<HrCalendarAssignment[]>('/api/v1/hr/calendar-assignments', {
-        params: memberUuid ? { member_uuid: memberUuid } : undefined,
-      })
+      const r = await apiClient.get<HrEmployeeCalendarAssignment[]>(
+        '/api/v1/hr/calendar-assignments',
+        { params: memberUuid ? { member_uuid: memberUuid } : undefined },
+      )
       return r.data
     },
   })
@@ -194,10 +226,14 @@ export function useCreateHrAssignment() {
   return useMutation({
     mutationFn: async (data: {
       member_uuid: string
-      season_uuid: string
       calendar_uuid: string
+      effective_from: string
+      effective_to?: string | null
     }) => {
-      const r = await apiClient.post<HrCalendarAssignment>('/api/v1/hr/calendar-assignments', data)
+      const r = await apiClient.post<HrEmployeeCalendarAssignment>(
+        '/api/v1/hr/calendar-assignments',
+        data,
+      )
       return r.data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['hr', 'assignments'] }),
@@ -207,10 +243,20 @@ export function useCreateHrAssignment() {
 export function useUpdateHrAssignment() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ uuid, calendar_uuid }: { uuid: string; calendar_uuid: string }) => {
-      const r = await apiClient.patch<HrCalendarAssignment>(
+    mutationFn: async ({
+      uuid,
+      data,
+    }: {
+      uuid: string
+      data: {
+        calendar_uuid?: string
+        effective_from?: string
+        effective_to?: string | null
+      }
+    }) => {
+      const r = await apiClient.patch<HrEmployeeCalendarAssignment>(
         `/api/v1/hr/calendar-assignments/${uuid}`,
-        { calendar_uuid },
+        data,
       )
       return r.data
     },
@@ -227,7 +273,10 @@ export function useDeleteHrAssignment() {
   })
 }
 
-// --- Work summary ---
+// ---------------------------------------------------------------------------
+// Work summary
+// ---------------------------------------------------------------------------
+
 export function useWorkSummary(
   memberUuid: string,
   startDate: string,

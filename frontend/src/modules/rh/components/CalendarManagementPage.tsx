@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - rh: CalendarManagementPage — seasons, calendars, and assignments management
+    - rh: CalendarManagementPage — working time calendars and employee assignments
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -18,10 +18,10 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -65,17 +65,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
 import {
-  useHrSeasons,
-  useCreateHrSeason,
-  useUpdateHrSeason,
-  useDeleteHrSeason,
   useHrCalendars,
   useCreateHrCalendar,
   useUpdateHrCalendar,
   useDeleteHrCalendar,
+  useCreateHrPhase,
+  useUpdateHrPhase,
+  useDeleteHrPhase,
   useHrAssignments,
   useCreateHrAssignment,
   useUpdateHrAssignment,
@@ -83,219 +83,320 @@ import {
   useHrProfiles,
 } from '../api'
 import type {
-  HrCalendarAssignment,
+  HrCalendarPhase,
+  HrCalendarPhaseInput,
+  HrEmployeeCalendarAssignment,
   HrEmployeeProfile,
-  HrSeason,
-  HrWorkCalendar,
-  HrWorkCalendarDay,
+  HrPhaseDayRuleInput,
+  HrWorkingTimeCalendar,
 } from '../types'
 
 // ---------------------------------------------------------------------------
-// Seasons tab
+// Constants
 // ---------------------------------------------------------------------------
 
-interface SeasonFormState {
+const DAYS_OF_WEEK = [1, 2, 3, 4, 5, 6, 7]
+const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+function fmtMD(month: number, day: number): string {
+  return `${pad2(month)}/${pad2(day)}`
+}
+
+// ---------------------------------------------------------------------------
+// Phase editor — schedule grid (7 rows × columns)
+// ---------------------------------------------------------------------------
+
+interface PhaseFormState {
   name: string
-  start_date: string
-  end_date: string
-  description: string
+  start_month: string
+  start_day: string
+  end_month: string
+  end_day: string
+  day_rules: HrPhaseDayRuleInput[]
 }
 
-const defaultSeasonForm: SeasonFormState = {
-  name: '',
-  start_date: '',
-  end_date: '',
-  description: '',
+function defaultDayRules(): HrPhaseDayRuleInput[] {
+  return DAYS_OF_WEEK.map((dow) => ({
+    day_of_week: dow,
+    is_working: dow <= 5,
+    expected_hours: dow <= 5 ? '7.00' : '0',
+    start_time: null,
+    end_time: null,
+    apply_on_week: 0,
+  }))
 }
 
-function SeasonsTab() {
-  const { t } = useTranslation('rh')
-  const { data: seasons = [], isLoading } = useHrSeasons()
-  const createMutation = useCreateHrSeason()
-  const updateMutation = useUpdateHrSeason()
-  const deleteMutation = useDeleteHrSeason()
-
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingUuid, setEditingUuid] = useState<string | null>(null)
-  const [form, setForm] = useState<SeasonFormState>(defaultSeasonForm)
-  const [deleteTarget, setDeleteTarget] = useState<HrSeason | null>(null)
-
-  function openCreate() {
-    setEditingUuid(null)
-    setForm(defaultSeasonForm)
-    setDialogOpen(true)
+function phaseToForm(phase: HrCalendarPhase): PhaseFormState {
+  const rulesMap = new Map<number, HrPhaseDayRuleInput>()
+  for (const r of phase.day_rules) {
+    if (r.apply_on_week === 0) rulesMap.set(r.day_of_week, r)
   }
+  return {
+    name: phase.name,
+    start_month: String(phase.start_month),
+    start_day: String(phase.start_day),
+    end_month: String(phase.end_month),
+    end_day: String(phase.end_day),
+    day_rules: DAYS_OF_WEEK.map((dow) =>
+      rulesMap.get(dow) ?? {
+        day_of_week: dow,
+        is_working: false,
+        expected_hours: '0',
+        start_time: null,
+        end_time: null,
+        apply_on_week: 0,
+      }
+    ),
+  }
+}
 
-  function openEdit(s: HrSeason) {
-    setEditingUuid(s.uuid)
-    setForm({
-      name: s.name,
-      start_date: s.start_date,
-      end_date: s.end_date,
-      description: s.description ?? '',
-    })
-    setDialogOpen(true)
+function formToPhaseInput(form: PhaseFormState): HrCalendarPhaseInput {
+  return {
+    name: form.name,
+    start_month: parseInt(form.start_month),
+    start_day: parseInt(form.start_day),
+    end_month: parseInt(form.end_month),
+    end_day: parseInt(form.end_day),
+    day_rules: form.day_rules,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase editor sheet
+// ---------------------------------------------------------------------------
+
+interface PhaseSheetProps {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  calendarUuid: string
+  phase: HrCalendarPhase | null
+  onSaved: () => void
+}
+
+function PhaseSheet({ open, onOpenChange, calendarUuid, phase, onSaved }: PhaseSheetProps) {
+  const { t } = useTranslation('rh')
+  const createPhase = useCreateHrPhase()
+  const updatePhase = useUpdateHrPhase()
+
+  const [form, setForm] = useState<PhaseFormState>({
+    name: '',
+    start_month: '1',
+    start_day: '1',
+    end_month: '12',
+    end_day: '31',
+    day_rules: defaultDayRules(),
+  })
+
+  useEffect(() => {
+    if (open) {
+      setForm(
+        phase
+          ? phaseToForm(phase)
+          : {
+              name: '',
+              start_month: '1',
+              start_day: '1',
+              end_month: '12',
+              end_day: '31',
+              day_rules: defaultDayRules(),
+            }
+      )
+    }
+  }, [open, phase?.uuid])
+
+  function setRule(dow: number, field: keyof HrPhaseDayRuleInput, value: unknown) {
+    setForm((prev) => ({
+      ...prev,
+      day_rules: prev.day_rules.map((r) =>
+        r.day_of_week === dow ? { ...r, [field]: value } : r
+      ),
+    }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const payload = {
-      name: form.name,
-      start_date: form.start_date,
-      end_date: form.end_date,
-      description: form.description || null,
-    }
+    const payload = formToPhaseInput(form)
     try {
-      if (editingUuid) {
-        await updateMutation.mutateAsync({ uuid: editingUuid, data: payload })
+      if (phase) {
+        await updatePhase.mutateAsync({ calendarUuid, phaseUuid: phase.uuid, data: payload })
+        toast.success(t('phase.edit') + ' — OK')
       } else {
-        await createMutation.mutateAsync(payload as Omit<HrSeason, 'uuid' | 'created_at' | 'updated_at'>)
+        await createPhase.mutateAsync({ calendarUuid, data: payload })
+        toast.success(t('phase.add') + ' — OK')
       }
-      setDialogOpen(false)
-      toast.success('OK')
+      onSaved()
+      onOpenChange(false)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(msg ?? 'Erreur')
     }
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return
-    try {
-      await deleteMutation.mutateAsync(deleteTarget.uuid)
-      toast.success('Saison supprimée')
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(msg ?? 'Erreur')
-    } finally {
-      setDeleteTarget(null)
-    }
-  }
-
-  const isPending = createMutation.isPending || updateMutation.isPending
+  const isPending = createPhase.isPending || updatePhase.isPending
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="mr-1 h-4 w-4" />
-          {t('season.add')}
-        </Button>
-      </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{phase ? t('phase.edit') : t('phase.add')}</SheetTitle>
+        </SheetHeader>
+        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          <div className="space-y-1">
+            <Label>{t('phase.fields.name')}</Label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+              required
+            />
+          </div>
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t('common:loading', 'Chargement...')}</p>
-      ) : seasons.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">{t('season.no_results')}</p>
-      ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('season.fields.name')}</TableHead>
-                <TableHead>{t('season.fields.start_date')}</TableHead>
-                <TableHead>{t('season.fields.end_date')}</TableHead>
-                <TableHead>{t('season.fields.description')}</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {seasons.map((s: HrSeason) => (
-                <TableRow key={s.uuid}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell>{s.start_date}</TableCell>
-                  <TableCell>{s.end_date}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{s.description ?? '—'}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1 justify-end">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(s)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingUuid ? t('season.edit') : t('season.add')}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label>{t('season.fields.name')}</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>{t('season.fields.start_date')}</Label>
+              <Label>{t('phase.fields.start')}</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={form.start_month}
+                  onValueChange={(v) => setForm((p) => ({ ...p, start_month: v }))}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTHS.map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        {pad2(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="self-center text-muted-foreground">/</span>
                 <Input
-                  type="date"
-                  value={form.start_date}
-                  onChange={(e) => setForm((p) => ({ ...p, start_date: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>{t('season.fields.end_date')}</Label>
-                <Input
-                  type="date"
-                  value={form.end_date}
-                  onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))}
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.start_day}
+                  onChange={(e) => setForm((p) => ({ ...p, start_day: e.target.value }))}
+                  className="w-16"
                   required
                 />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>{t('season.fields.description')}</Label>
-              <Input
-                value={form.description}
-                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-              />
+              <Label>{t('phase.fields.end')}</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={form.end_month}
+                  onValueChange={(v) => setForm((p) => ({ ...p, end_month: v }))}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MONTHS.map((m) => (
+                      <SelectItem key={m} value={String(m)}>
+                        {pad2(m)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="self-center text-muted-foreground">/</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.end_day}
+                  onChange={(e) => setForm((p) => ({ ...p, end_day: e.target.value }))}
+                  className="w-16"
+                  required
+                />
+              </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Annuler
-              </Button>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? 'Enregistrement...' : 'Enregistrer'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </div>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('season.delete_confirm')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('season.delete_confirm_desc')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+          {/* Weekly schedule grid */}
+          <div className="space-y-2">
+            <Label>{t('phase.fields.schedule')}</Label>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-28">{t('calendar.fields.day_of_week')}</TableHead>
+                    <TableHead className="w-20 text-center">{t('calendar.fields.is_working')}</TableHead>
+                    <TableHead className="w-24">{t('calendar.fields.expected_hours')}</TableHead>
+                    <TableHead className="w-28">{t('calendar.fields.start_time')}</TableHead>
+                    <TableHead className="w-28">{t('calendar.fields.end_time')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {form.day_rules.map((rule) => (
+                    <TableRow key={rule.day_of_week}>
+                      <TableCell className="font-medium text-sm">
+                        {t(`calendar.days.${rule.day_of_week}`)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={rule.is_working}
+                          onCheckedChange={(v) => setRule(rule.day_of_week, 'is_working', !!v)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.25"
+                          min="0"
+                          max="24"
+                          value={rule.expected_hours}
+                          onChange={(e) =>
+                            setRule(rule.day_of_week, 'expected_hours', e.target.value)
+                          }
+                          disabled={!rule.is_working}
+                          className="w-20"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="time"
+                          value={rule.start_time ?? ''}
+                          onChange={(e) =>
+                            setRule(rule.day_of_week, 'start_time', e.target.value || null)
+                          }
+                          disabled={!rule.is_working}
+                          className="w-28"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="time"
+                          value={rule.end_time ?? ''}
+                          onChange={(e) =>
+                            setRule(rule.day_of_week, 'end_time', e.target.value || null)
+                          }
+                          disabled={!rule.is_working}
+                          className="w-28"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {t('common:cancel', 'Annuler')}
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? t('common:saving', 'Enregistrement...') : t('common:save', 'Enregistrer')}
+            </Button>
+          </div>
+        </form>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -303,209 +404,227 @@ function SeasonsTab() {
 // Calendars tab
 // ---------------------------------------------------------------------------
 
-const DAY_KEYS = ['1', '2', '3', '4', '5', '6', '7'] as const
-const APPLY_WEEK_KEYS = ['0', '1', '2', '3', '4', '5'] as const
-
-interface DayFormRow {
-  day_of_week: number
-  is_working: boolean
-  expected_hours: string
-  start_time: string
-  end_time: string
-  apply_on_week: number
-}
-
-function buildDefaultDays(): DayFormRow[] {
-  return DAY_KEYS.map((d) => ({
-    day_of_week: parseInt(d),
-    is_working: parseInt(d) <= 5, // Mon–Fri working by default
-    expected_hours: parseInt(d) <= 5 ? '7.00' : '0',
-    start_time: '',
-    end_time: '',
-    apply_on_week: 0,
-  }))
-}
-
-function calendarDaysToForm(days: HrWorkCalendarDay[]): DayFormRow[] {
-  // Group by day_of_week, take apply_on_week=0 entry per day for simple form
-  const result = buildDefaultDays()
-  for (const d of days) {
-    if (d.apply_on_week === 0) {
-      const idx = result.findIndex((r) => r.day_of_week === d.day_of_week)
-      if (idx >= 0) {
-        result[idx] = {
-          day_of_week: d.day_of_week,
-          is_working: d.is_working,
-          expected_hours: d.expected_hours,
-          start_time: d.start_time ?? '',
-          end_time: d.end_time ?? '',
-          apply_on_week: 0,
-        }
-      }
-    }
-  }
-  return result
-}
-
 function CalendarsTab() {
   const { t } = useTranslation('rh')
   const { data: calendars = [], isLoading } = useHrCalendars()
-  const createMutation = useCreateHrCalendar()
-  const updateMutation = useUpdateHrCalendar()
-  const deleteMutation = useDeleteHrCalendar()
+  const createCalendar = useCreateHrCalendar()
+  const updateCalendar = useUpdateHrCalendar()
+  const deleteCalendar = useDeleteHrCalendar()
+  const deletePhase = useDeleteHrPhase()
 
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [editingUuid, setEditingUuid] = useState<string | null>(null)
-  const [calName, setCalName] = useState('')
-  const [calDesc, setCalDesc] = useState('')
-  const [dayRows, setDayRows] = useState<DayFormRow[]>(buildDefaultDays())
-  const [expandedUuid, setExpandedUuid] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<HrWorkCalendar | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [calDialog, setCalDialog] = useState<{
+    open: boolean
+    editing: HrWorkingTimeCalendar | null
+  }>({ open: false, editing: null })
+  const [calForm, setCalForm] = useState({ name: '', description: '' })
+  const [deleteCalTarget, setDeleteCalTarget] = useState<HrWorkingTimeCalendar | null>(null)
 
-  function openCreate() {
-    setEditingUuid(null)
-    setCalName('')
-    setCalDesc('')
-    setDayRows(buildDefaultDays())
-    setSheetOpen(true)
-  }
+  const [phaseSheet, setPhaseSheet] = useState<{
+    open: boolean
+    calendarUuid: string
+    phase: HrCalendarPhase | null
+  }>({ open: false, calendarUuid: '', phase: null })
+  const [deletePhaseTarget, setDeletePhaseTarget] = useState<{
+    calendarUuid: string
+    phase: HrCalendarPhase
+  } | null>(null)
 
-  function openEdit(c: HrWorkCalendar) {
-    setEditingUuid(c.uuid)
-    setCalName(c.name)
-    setCalDesc(c.description ?? '')
-    setDayRows(calendarDaysToForm(c.days))
-    setSheetOpen(true)
-  }
-
-  function updateDayRow(idx: number, field: keyof DayFormRow, value: string | boolean | number) {
-    setDayRows((prev) => {
-      const next = [...prev]
-      next[idx] = { ...next[idx], [field]: value }
+  function toggleExpand(uuid: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(uuid) ? next.delete(uuid) : next.add(uuid)
       return next
     })
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function openCreateCal() {
+    setCalForm({ name: '', description: '' })
+    setCalDialog({ open: true, editing: null })
+  }
+
+  function openEditCal(cal: HrWorkingTimeCalendar) {
+    setCalForm({ name: cal.name, description: cal.description ?? '' })
+    setCalDialog({ open: true, editing: cal })
+  }
+
+  async function handleCalSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const days = dayRows.map((r) => ({
-      day_of_week: r.day_of_week,
-      is_working: r.is_working,
-      expected_hours: r.expected_hours,
-      start_time: r.start_time || null,
-      end_time: r.end_time || null,
-      apply_on_week: r.apply_on_week,
-    }))
+    const payload = { name: calForm.name, description: calForm.description || null }
     try {
-      if (editingUuid) {
-        await updateMutation.mutateAsync({ uuid: editingUuid, data: { name: calName, description: calDesc || null, days } })
+      if (calDialog.editing) {
+        await updateCalendar.mutateAsync({ uuid: calDialog.editing.uuid, data: payload })
+        toast.success(t('calendar.edit') + ' — OK')
       } else {
-        await createMutation.mutateAsync({ name: calName, description: calDesc || undefined, days })
+        const created = await createCalendar.mutateAsync(payload)
+        toast.success(t('calendar.add') + ' — OK')
+        setExpanded((prev) => new Set([...prev, created.uuid]))
       }
-      setSheetOpen(false)
-      toast.success('OK')
+      setCalDialog({ open: false, editing: null })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(msg ?? 'Erreur')
     }
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return
+  async function handleDeleteCal() {
+    if (!deleteCalTarget) return
     try {
-      await deleteMutation.mutateAsync(deleteTarget.uuid)
-      toast.success('Calendrier supprimé')
+      await deleteCalendar.mutateAsync(deleteCalTarget.uuid)
+      toast.success(t('calendar.delete_confirm') + ' — OK')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(msg ?? 'Erreur')
     } finally {
-      setDeleteTarget(null)
+      setDeleteCalTarget(null)
     }
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending
+  async function handleDeletePhase() {
+    if (!deletePhaseTarget) return
+    try {
+      await deletePhase.mutateAsync({
+        calendarUuid: deletePhaseTarget.calendarUuid,
+        phaseUuid: deletePhaseTarget.phase.uuid,
+      })
+      toast.success(t('phase.delete_confirm') + ' — OK')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(msg ?? 'Erreur')
+    } finally {
+      setDeletePhaseTarget(null)
+    }
+  }
+
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground py-4">{t('common:loading', 'Chargement...')}</p>
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button size="sm" onClick={openCreate}>
+        <Button size="sm" onClick={openCreateCal}>
           <Plus className="mr-1 h-4 w-4" />
           {t('calendar.add')}
         </Button>
       </div>
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t('common:loading', 'Chargement...')}</p>
-      ) : calendars.length === 0 ? (
+      {calendars.length === 0 ? (
         <p className="text-sm text-muted-foreground py-4">{t('calendar.no_results')}</p>
       ) : (
-        <div className="space-y-2">
-          {calendars.map((c: HrWorkCalendar) => {
-            const isExpanded = expandedUuid === c.uuid
+        <div className="space-y-3">
+          {calendars.map((cal: HrWorkingTimeCalendar) => {
+            const isOpen = expanded.has(cal.uuid)
             return (
-              <div key={c.uuid} className="rounded-md border bg-card">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="font-medium text-sm hover:underline text-left"
-                      onClick={() => setExpandedUuid(isExpanded ? null : c.uuid)}
-                    >
-                      {c.name}
-                    </button>
-                    {c.description && (
-                      <span className="text-xs text-muted-foreground">{c.description}</span>
+              <div key={cal.uuid} className="rounded-md border bg-card">
+                {/* Calendar header */}
+                <div className="flex items-center gap-2 px-4 py-3">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 flex-1 text-left"
+                    onClick={() => toggleExpand(cal.uuid)}
+                  >
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
-                    <Badge variant="outline" className="text-xs">
-                      {t('calendar.day_count', { count: c.days.length })}
+                    <span className="font-semibold">{cal.name}</span>
+                    <Badge variant="outline" className="ml-1 text-xs">
+                      {t('calendar.phase_count', {
+                        count: cal.phases.length,
+                        defaultValue: `${cal.phases.length} phase(s)`,
+                      })}
                     </Badge>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(c)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget(c)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                    {cal.description && (
+                      <span className="text-sm text-muted-foreground ml-2">{cal.description}</span>
+                    )}
+                  </button>
+                  <Button variant="ghost" size="icon" onClick={() => openEditCal(cal)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive"
+                    onClick={() => setDeleteCalTarget(cal)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                {isExpanded && c.days.length > 0 && (
-                  <div className="border-t px-4 py-3 overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>{t('calendar.fields.day_of_week')}</TableHead>
-                          <TableHead>{t('calendar.fields.is_working')}</TableHead>
-                          <TableHead>{t('calendar.fields.expected_hours')}</TableHead>
-                          <TableHead>{t('calendar.fields.start_time')}</TableHead>
-                          <TableHead>{t('calendar.fields.end_time')}</TableHead>
-                          <TableHead>{t('calendar.fields.apply_on_week')}</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {c.days.map((d: HrWorkCalendarDay) => (
-                          <TableRow key={d.uuid}>
-                            <TableCell>{t(`calendar.days.${d.day_of_week}`, String(d.day_of_week))}</TableCell>
-                            <TableCell>
-                              <Badge className={d.is_working ? 'badge-success' : ''} variant={d.is_working ? 'default' : 'secondary'}>
-                                {d.is_working ? 'Oui' : 'Non'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{d.expected_hours}h</TableCell>
-                            <TableCell>{d.start_time ?? '—'}</TableCell>
-                            <TableCell>{d.end_time ?? '—'}</TableCell>
-                            <TableCell>
-                              {t(`calendar.apply_on_week_options.${d.apply_on_week}`, String(d.apply_on_week))}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+
+                {/* Phases list */}
+                {isOpen && (
+                  <div className="border-t px-4 py-3 space-y-3">
+                    {cal.phases.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{t('phase.no_results')}</p>
+                    ) : (
+                      <div className="rounded-md border overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{t('phase.fields.name')}</TableHead>
+                              <TableHead>{t('phase.fields.start')}</TableHead>
+                              <TableHead>{t('phase.fields.end')}</TableHead>
+                              <TableHead>{t('phase.fields.days_configured')}</TableHead>
+                              <TableHead />
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {cal.phases.map((phase: HrCalendarPhase) => (
+                              <TableRow key={phase.uuid}>
+                                <TableCell className="font-medium">{phase.name}</TableCell>
+                                <TableCell className="font-mono text-sm">
+                                  {fmtMD(phase.start_month, phase.start_day)}
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">
+                                  {fmtMD(phase.end_month, phase.end_day)}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {phase.day_rules.filter((r) => r.is_working).length}
+                                  {' '}{t('phase.working_days')}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      setPhaseSheet({
+                                        open: true,
+                                        calendarUuid: cal.uuid,
+                                        phase,
+                                      })
+                                    }
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-destructive"
+                                    onClick={() =>
+                                      setDeletePhaseTarget({ calendarUuid: cal.uuid, phase })
+                                    }
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setPhaseSheet({ open: true, calendarUuid: cal.uuid, phase: null })
+                      }
+                    >
+                      <Plus className="mr-1 h-4 w-4" />
+                      {t('phase.add')}
+                    </Button>
                   </div>
                 )}
               </div>
@@ -514,127 +633,89 @@ function CalendarsTab() {
         </div>
       )}
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{editingUuid ? t('calendar.edit') : t('calendar.add')}</SheetTitle>
-          </SheetHeader>
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      {/* Create/edit calendar dialog */}
+      <Dialog open={calDialog.open} onOpenChange={(v) => setCalDialog((p) => ({ ...p, open: v }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {calDialog.editing ? t('calendar.edit') : t('calendar.add')}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCalSubmit} className="space-y-4 mt-2">
             <div className="space-y-1">
               <Label>{t('calendar.fields.name')}</Label>
               <Input
-                value={calName}
-                onChange={(e) => setCalName(e.target.value)}
+                value={calForm.name}
+                onChange={(e) => setCalForm((p) => ({ ...p, name: e.target.value }))}
                 required
               />
             </div>
             <div className="space-y-1">
               <Label>{t('calendar.fields.description')}</Label>
-              <Input
-                value={calDesc}
-                onChange={(e) => setCalDesc(e.target.value)}
+              <Textarea
+                value={calForm.description}
+                onChange={(e) => setCalForm((p) => ({ ...p, description: e.target.value }))}
+                rows={2}
               />
             </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t('calendar.title')} — jours</p>
-              <div className="overflow-x-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('calendar.fields.day_of_week')}</TableHead>
-                      <TableHead>{t('calendar.fields.is_working')}</TableHead>
-                      <TableHead>{t('calendar.fields.expected_hours')}</TableHead>
-                      <TableHead>{t('calendar.fields.start_time')}</TableHead>
-                      <TableHead>{t('calendar.fields.end_time')}</TableHead>
-                      <TableHead>{t('calendar.fields.apply_on_week')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dayRows.map((row, idx) => (
-                      <TableRow key={row.day_of_week}>
-                        <TableCell className="font-medium text-sm">
-                          {t(`calendar.days.${row.day_of_week}`, String(row.day_of_week))}
-                        </TableCell>
-                        <TableCell>
-                          <Checkbox
-                            checked={row.is_working}
-                            onCheckedChange={(v) => updateDayRow(idx, 'is_working', !!v)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            max="24"
-                            className="w-20"
-                            value={row.expected_hours}
-                            onChange={(e) => updateDayRow(idx, 'expected_hours', e.target.value)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="time"
-                            className="w-28"
-                            value={row.start_time}
-                            onChange={(e) => updateDayRow(idx, 'start_time', e.target.value)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="time"
-                            className="w-28"
-                            value={row.end_time}
-                            onChange={(e) => updateDayRow(idx, 'end_time', e.target.value)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={String(row.apply_on_week)}
-                            onValueChange={(v) => updateDayRow(idx, 'apply_on_week', parseInt(v))}
-                          >
-                            <SelectTrigger className="w-36">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {APPLY_WEEK_KEYS.map((wk) => (
-                                <SelectItem key={wk} value={wk}>
-                                  {t(`calendar.apply_on_week_options.${wk}`, wk)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setSheetOpen(false)}>
-                Annuler
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCalDialog({ open: false, editing: null })}
+              >
+                {t('common:cancel', 'Annuler')}
               </Button>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? 'Enregistrement...' : 'Enregistrer'}
+              <Button type="submit" disabled={createCalendar.isPending || updateCalendar.isPending}>
+                {t('common:save', 'Enregistrer')}
               </Button>
             </div>
           </form>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      {/* Delete calendar confirmation */}
+      <AlertDialog
+        open={!!deleteCalTarget}
+        onOpenChange={(v) => { if (!v) setDeleteCalTarget(null) }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('calendar.delete_confirm')}</AlertDialogTitle>
             <AlertDialogDescription>{t('calendar.delete_confirm_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Supprimer
+            <AlertDialogCancel>{t('common:cancel', 'Annuler')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteCal} className="bg-destructive text-destructive-foreground">
+              {t('common:delete', 'Supprimer')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Phase editor sheet */}
+      <PhaseSheet
+        open={phaseSheet.open}
+        onOpenChange={(v) => setPhaseSheet((p) => ({ ...p, open: v }))}
+        calendarUuid={phaseSheet.calendarUuid}
+        phase={phaseSheet.phase}
+        onSaved={() => {}}
+      />
+
+      {/* Delete phase confirmation */}
+      <AlertDialog
+        open={!!deletePhaseTarget}
+        onOpenChange={(v) => { if (!v) setDeletePhaseTarget(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('phase.delete_confirm')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('phase.delete_confirm_desc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel', 'Annuler')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeletePhase} className="bg-destructive text-destructive-foreground">
+              {t('common:delete', 'Supprimer')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -647,51 +728,66 @@ function CalendarsTab() {
 // Assignments tab
 // ---------------------------------------------------------------------------
 
+interface AssignmentFormState {
+  member_uuid: string
+  calendar_uuid: string
+  effective_from: string
+  effective_to: string
+}
+
 function AssignmentsTab() {
   const { t } = useTranslation('rh')
   const { data: assignments = [], isLoading } = useHrAssignments()
-  const { data: profiles = [] } = useHrProfiles(false)
-  const { data: seasons = [] } = useHrSeasons()
   const { data: calendars = [] } = useHrCalendars()
-  const createMutation = useCreateHrAssignment()
-  const updateMutation = useUpdateHrAssignment()
-  const deleteMutation = useDeleteHrAssignment()
+  const { data: profiles = [] } = useHrProfiles(false)
+  const createAssignment = useCreateHrAssignment()
+  const updateAssignment = useUpdateHrAssignment()
+  const deleteAssignment = useDeleteHrAssignment()
 
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingUuid, setEditingUuid] = useState<string | null>(null)
-  const [formMember, setFormMember] = useState('')
-  const [formSeason, setFormSeason] = useState('')
-  const [formCalendar, setFormCalendar] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState<HrCalendarAssignment | null>(null)
+  const [dialog, setDialog] = useState<{
+    open: boolean
+    editing: HrEmployeeCalendarAssignment | null
+  }>({ open: false, editing: null })
+  const [form, setForm] = useState<AssignmentFormState>({
+    member_uuid: '',
+    calendar_uuid: '',
+    effective_from: '',
+    effective_to: '',
+  })
+  const [deleteTarget, setDeleteTarget] = useState<HrEmployeeCalendarAssignment | null>(null)
 
   function openCreate() {
-    setEditingUuid(null)
-    setFormMember('')
-    setFormSeason('')
-    setFormCalendar('')
-    setDialogOpen(true)
+    setForm({ member_uuid: '', calendar_uuid: '', effective_from: '', effective_to: '' })
+    setDialog({ open: true, editing: null })
   }
 
-  function openEdit(a: HrCalendarAssignment) {
-    setEditingUuid(a.uuid)
-    setFormCalendar(a.calendar_uuid)
-    setDialogOpen(true)
+  function openEdit(a: HrEmployeeCalendarAssignment) {
+    setForm({
+      member_uuid: a.member_uuid,
+      calendar_uuid: a.calendar_uuid,
+      effective_from: a.effective_from,
+      effective_to: a.effective_to ?? '',
+    })
+    setDialog({ open: true, editing: a })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const payload = {
+      member_uuid: form.member_uuid,
+      calendar_uuid: form.calendar_uuid,
+      effective_from: form.effective_from,
+      effective_to: form.effective_to || null,
+    }
     try {
-      if (editingUuid) {
-        await updateMutation.mutateAsync({ uuid: editingUuid, calendar_uuid: formCalendar })
+      if (dialog.editing) {
+        await updateAssignment.mutateAsync({ uuid: dialog.editing.uuid, data: payload })
+        toast.success(t('assignment.edit') + ' — OK')
       } else {
-        await createMutation.mutateAsync({
-          member_uuid: formMember,
-          season_uuid: formSeason,
-          calendar_uuid: formCalendar,
-        })
+        await createAssignment.mutateAsync(payload)
+        toast.success(t('assignment.add') + ' — OK')
       }
-      setDialogOpen(false)
-      toast.success('OK')
+      setDialog({ open: false, editing: null })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(msg ?? 'Erreur')
@@ -701,8 +797,8 @@ function AssignmentsTab() {
   async function handleDelete() {
     if (!deleteTarget) return
     try {
-      await deleteMutation.mutateAsync(deleteTarget.uuid)
-      toast.success('Affectation supprimée')
+      await deleteAssignment.mutateAsync(deleteTarget.uuid)
+      toast.success(t('assignment.delete_confirm') + ' — OK')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(msg ?? 'Erreur')
@@ -711,7 +807,9 @@ function AssignmentsTab() {
     }
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground py-4">{t('common:loading', 'Chargement...')}</p>
+  }
 
   return (
     <div className="space-y-4">
@@ -722,48 +820,52 @@ function AssignmentsTab() {
         </Button>
       </div>
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t('common:loading', 'Chargement...')}</p>
-      ) : assignments.length === 0 ? (
+      {assignments.length === 0 ? (
         <p className="text-sm text-muted-foreground py-4">{t('assignment.no_results')}</p>
       ) : (
-        <div className="rounded-md border overflow-x-auto">
+        <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t('assignment.fields.employee')}</TableHead>
-                <TableHead>{t('assignment.fields.season')}</TableHead>
                 <TableHead>{t('assignment.fields.calendar')}</TableHead>
+                <TableHead>{t('assignment.fields.effective_from')}</TableHead>
+                <TableHead>{t('assignment.fields.effective_to')}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {assignments.map((a: HrCalendarAssignment) => (
+              {assignments.map((a: HrEmployeeCalendarAssignment) => (
                 <TableRow key={a.uuid}>
-                  <TableCell className="font-medium">
-                    {a.member_last_name} {a.member_first_name}
+                  <TableCell>
+                    <span className="font-medium">
+                      {a.member_last_name} {a.member_first_name}
+                    </span>
                     {a.member_account_id && (
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        ({a.member_account_id})
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {a.member_account_id}
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>{a.season_name ?? '—'}</TableCell>
                   <TableCell>{a.calendar_name ?? '—'}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1 justify-end">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(a)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <TableCell className="font-mono text-sm">{a.effective_from}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {a.effective_to ?? (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(a)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive"
+                      onClick={() => setDeleteTarget(a)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -772,55 +874,54 @@ function AssignmentsTab() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Create/edit dialog */}
+      <Dialog open={dialog.open} onOpenChange={(v) => setDialog((p) => ({ ...p, open: v }))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingUuid ? t('assignment.edit') : t('assignment.add')}</DialogTitle>
+            <DialogTitle>
+              {dialog.editing ? t('assignment.edit') : t('assignment.add')}
+            </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!editingUuid && (
-              <>
-                <div className="space-y-1">
-                  <Label>{t('assignment.fields.employee')}</Label>
-                  <Select value={formMember} onValueChange={setFormMember} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner un employé..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {profiles.map((p: HrEmployeeProfile) => (
-                        <SelectItem key={p.member_uuid} value={p.member_uuid}>
-                          {p.member_last_name} {p.member_first_name}
-                          {p.member_trigram ? ` (${p.member_trigram})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>{t('assignment.fields.season')}</Label>
-                  <Select value={formSeason} onValueChange={setFormSeason} required>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner une saison..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {seasons.map((s: HrSeason) => (
-                        <SelectItem key={s.uuid} value={s.uuid}>
-                          {s.name} ({s.start_date} – {s.end_date})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
+          <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+            {!dialog.editing && (
+              <div className="space-y-1">
+                <Label>{t('assignment.fields.employee')}</Label>
+                <Select
+                  value={form.member_uuid}
+                  onValueChange={(v) => setForm((p) => ({ ...p, member_uuid: v }))}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('assignment.pick_employee', 'Sélectionner un employé…')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {profiles.map((p: HrEmployeeProfile) => (
+                      <SelectItem key={p.member_uuid} value={p.member_uuid}>
+                        {p.member_last_name} {p.member_first_name}
+                        {p.member_account_id && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {p.member_account_id}
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
+
             <div className="space-y-1">
               <Label>{t('assignment.fields.calendar')}</Label>
-              <Select value={formCalendar} onValueChange={setFormCalendar} required>
+              <Select
+                value={form.calendar_uuid}
+                onValueChange={(v) => setForm((p) => ({ ...p, calendar_uuid: v }))}
+                required
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un calendrier..." />
+                  <SelectValue placeholder={t('assignment.pick_calendar', 'Sélectionner un calendrier…')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {calendars.map((c: HrWorkCalendar) => (
+                  {calendars.map((c: HrWorkingTimeCalendar) => (
                     <SelectItem key={c.uuid} value={c.uuid}>
                       {c.name}
                     </SelectItem>
@@ -828,27 +929,60 @@ function AssignmentsTab() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>{t('assignment.fields.effective_from')}</Label>
+                <Input
+                  type="date"
+                  value={form.effective_from}
+                  onChange={(e) => setForm((p) => ({ ...p, effective_from: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('assignment.fields.effective_to')}</Label>
+                <Input
+                  type="date"
+                  value={form.effective_to}
+                  onChange={(e) => setForm((p) => ({ ...p, effective_to: e.target.value }))}
+                />
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Annuler
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialog({ open: false, editing: null })}
+              >
+                {t('common:cancel', 'Annuler')}
               </Button>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? 'Enregistrement...' : 'Enregistrer'}
+              <Button
+                type="submit"
+                disabled={createAssignment.isPending || updateAssignment.isPending}
+              >
+                {t('common:save', 'Enregistrer')}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      {/* Delete confirmation */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('assignment.delete_confirm')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('assignment.delete_confirm_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:cancel', 'Annuler')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Supprimer
+              {t('common:delete', 'Supprimer')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -865,26 +999,19 @@ export function CalendarManagementPage() {
   const { t } = useTranslation('rh')
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        {t('calendar.description')}
-      </p>
-      <Tabs defaultValue="seasons">
-        <TabsList>
-          <TabsTrigger value="seasons">{t('season.title')}</TabsTrigger>
-          <TabsTrigger value="calendars">{t('calendar.title')}</TabsTrigger>
-          <TabsTrigger value="assignments">{t('assignment.title')}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="seasons" className="mt-4">
-          <SeasonsTab />
-        </TabsContent>
-        <TabsContent value="calendars" className="mt-4">
-          <CalendarsTab />
-        </TabsContent>
-        <TabsContent value="assignments" className="mt-4">
-          <AssignmentsTab />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <Tabs defaultValue="calendars">
+      <TabsList className="mb-4">
+        <TabsTrigger value="calendars">{t('calendar.title')}</TabsTrigger>
+        <TabsTrigger value="assignments">{t('assignment.title')}</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="calendars">
+        <CalendarsTab />
+      </TabsContent>
+
+      <TabsContent value="assignments">
+        <AssignmentsTab />
+      </TabsContent>
+    </Tabs>
   )
 }

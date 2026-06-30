@@ -1893,34 +1893,10 @@ class HrEmployeeProfile(Base):
         return f"<HrEmployeeProfile member={self.member_uuid} contract={self.contract_type}>"
 
 
-class HrSeason(Base):
-    """A named work season (period) shared across employees."""
+class HrWorkingTimeCalendar(Base):
+    """A working time calendar composed of annual phases, assigned to employees."""
 
-    __tablename__ = "hr_seasons"
-
-    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    name = Column(String(100), nullable=False)
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
-    description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    calendar_assignments = relationship("HrCalendarAssignment", back_populates="season", cascade="all, delete-orphan")
-
-    def __repr__(self):
-        return f"<HrSeason name={self.name} {self.start_date}–{self.end_date}>"
-
-
-class HrWorkCalendar(Base):
-    """A reusable weekly work pattern (calendar)."""
-
-    __tablename__ = "hr_work_calendars"
+    __tablename__ = "hr_working_time_calendars"
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String(100), nullable=False)
@@ -1933,54 +1909,95 @@ class HrWorkCalendar(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    days = relationship(
-        "HrWorkCalendarDay",
+    phases = relationship(
+        "HrCalendarPhase",
         back_populates="calendar",
         cascade="all, delete-orphan",
-        order_by="HrWorkCalendarDay.day_of_week, HrWorkCalendarDay.apply_on_week",
+        order_by="HrCalendarPhase.start_month, HrCalendarPhase.start_day",
+    )
+    employee_assignments = relationship(
+        "HrEmployeeCalendarAssignment",
+        back_populates="calendar",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):
-        return f"<HrWorkCalendar name={self.name}>"
+        return f"<HrWorkingTimeCalendar name={self.name}>"
 
 
-class HrWorkCalendarDay(Base):
-    """One day-of-week entry within a work calendar."""
+class HrCalendarPhase(Base):
+    """Annual recurring date range (MM-DD) within a working time calendar."""
 
-    __tablename__ = "hr_work_calendar_days"
+    __tablename__ = "hr_calendar_phases"
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     calendar_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("hr_work_calendars.uuid", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("hr_working_time_calendars.uuid", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String(100), nullable=False)
+    start_month = Column(SmallInteger, nullable=False)
+    start_day = Column(SmallInteger, nullable=False)
+    end_month = Column(SmallInteger, nullable=False)
+    end_day = Column(SmallInteger, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    calendar = relationship("HrWorkingTimeCalendar", back_populates="phases")
+    day_rules = relationship(
+        "HrPhaseDayRule",
+        back_populates="phase",
+        cascade="all, delete-orphan",
+        order_by="HrPhaseDayRule.day_of_week, HrPhaseDayRule.apply_on_week",
+    )
+
+    def __repr__(self):
+        return (
+            f"<HrCalendarPhase name={self.name} "
+            f"{self.start_month:02d}/{self.start_day:02d}–{self.end_month:02d}/{self.end_day:02d}>"
+        )
+
+
+class HrPhaseDayRule(Base):
+    """Weekly schedule rule for one day-of-week within a calendar phase."""
+
+    __tablename__ = "hr_phase_day_rules"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    phase_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("hr_calendar_phases.uuid", ondelete="CASCADE"), nullable=False
     )
     day_of_week = Column(SmallInteger, nullable=False)  # 1=Monday … 7=Sunday
     is_working = Column(Boolean, nullable=False, default=True)
-    expected_hours = Column(Numeric(5, 2), nullable=False, default=0)
+    expected_hours = Column(Numeric(4, 2), nullable=False, default=0)
     start_time = Column(Time, nullable=True)
     end_time = Column(Time, nullable=True)
     apply_on_week = Column(SmallInteger, nullable=False, default=0)  # 0=all weeks, 1..5=Nth week of month
 
-    calendar = relationship("HrWorkCalendar", back_populates="days")
+    phase = relationship("HrCalendarPhase", back_populates="day_rules")
 
     def __repr__(self):
-        return f"<HrWorkCalendarDay calendar={self.calendar_uuid} dow={self.day_of_week} week={self.apply_on_week}>"
+        return f"<HrPhaseDayRule phase={self.phase_uuid} dow={self.day_of_week} week={self.apply_on_week}>"
 
 
-class HrCalendarAssignment(Base):
-    """Links an employee (member) to a calendar for a given season."""
+class HrEmployeeCalendarAssignment(Base):
+    """Links an employee to a working time calendar with optional effective date range."""
 
-    __tablename__ = "hr_calendar_assignments"
+    __tablename__ = "hr_employee_calendar_assignments"
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     member_uuid = Column(
         UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="CASCADE"), nullable=False
     )
-    season_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("hr_seasons.uuid", ondelete="CASCADE"), nullable=False
-    )
     calendar_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("hr_work_calendars.uuid", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True), ForeignKey("hr_working_time_calendars.uuid", ondelete="RESTRICT"), nullable=False
     )
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),
@@ -1988,12 +2005,9 @@ class HrCalendarAssignment(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     member = relationship("Member", foreign_keys=[member_uuid])
-    season = relationship("HrSeason", back_populates="calendar_assignments")
-    calendar = relationship("HrWorkCalendar")
-    created_by_user = relationship("User", foreign_keys=[created_by])
+    calendar = relationship("HrWorkingTimeCalendar", back_populates="employee_assignments")
 
     def __repr__(self):
-        return f"<HrCalendarAssignment member={self.member_uuid} season={self.season_uuid}>"
+        return f"<HrEmployeeCalendarAssignment member={self.member_uuid} calendar={self.calendar_uuid}>"

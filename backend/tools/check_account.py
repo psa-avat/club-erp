@@ -29,14 +29,22 @@ Sign convention for comparison:
 
 Usage:
   python check_account.py [--threshold AMOUNT] [--account CODE] [--dry-run]
+                          [--export-accounts] [--account-file PATH]
 
   --threshold AMOUNT   flag accounts where |diff| > AMOUNT (default 0.10)
   --account CODE       show full ERP entry breakdown for ERP account CODE
                        (CODE is the ERP account code, e.g. "215" or "6026")
   --dry-run            print report without writing output files
+  --export-accounts    write output/account_matching.json with all auto-detected
+                       Vulcain->ERP mappings, then exit. Edit the file to correct
+                       wrong mappings or set "erp_code": null to exclude an account.
+  --account-file PATH  load account mapping from PATH (JSON produced by
+                       --export-accounts). File entries override auto-matching;
+                       Vulcain codes absent from the file still use auto-matching.
 """
 
 import csv
+import json
 import os
 import sys
 from datetime import datetime
@@ -370,6 +378,91 @@ def find_best_erp_match(vulcain_code: str, erp_codes_sorted: list[str]) -> str |
 
 
 # ---------------------------------------------------------------------------
+# Account matching file — export and load
+# ---------------------------------------------------------------------------
+
+ACCOUNT_MATCHING_FILE = OUTPUT_DIR / "account_matching.json"
+
+
+def export_account_matching(vulcain_accounts: list[dict], erp_data: dict, path: Path) -> int:
+    """
+    Build the auto-detected Vulcain→ERP mapping and write it to a JSON file.
+    Returns the number of entries written.
+
+    The file format is:
+      {
+        "_note": "...",
+        "mappings": [
+          {"vulcain_code": "215500000", "vulcain_label": "...", "vulcain_side": "actif",
+           "erp_code": "2155", "erp_name": "..."},
+          ...
+        ]
+      }
+    Set "erp_code" to null to mark a Vulcain account as intentionally unmatched.
+    """
+    erp_accounts = erp_data["erp_accounts"]
+    erp_codes_sorted = _build_erp_code_list(erp_accounts)
+
+    # Deduplicate Vulcain accounts (same code may appear on left and right columns)
+    seen: set[str] = set()
+    entries: list[dict] = []
+    for acc in vulcain_accounts:
+        if acc["vulcain_code"] in seen:
+            continue
+        seen.add(acc["vulcain_code"])
+        best = find_best_erp_match(acc["vulcain_code"], erp_codes_sorted)
+        entries.append({
+            "vulcain_code": acc["vulcain_code"],
+            "vulcain_label": acc["label"],
+            "vulcain_side": acc["side"],
+            "erp_code": best,
+            "erp_name": erp_accounts[best]["name"] if best else None,
+        })
+
+    entries.sort(key=lambda e: e["vulcain_code"])
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "_note": (
+            "Auto-generated account mapping. Edit 'erp_code' to correct wrong matches. "
+            "Set 'erp_code' to null to explicitly exclude a Vulcain account from comparison. "
+            "Vulcain codes absent from this file fall back to auto prefix-matching."
+        ),
+        "mappings": entries,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    return len(entries)
+
+
+def load_account_matching(path: Path) -> dict[str, str | None]:
+    """
+    Load an account matching file produced by --export-accounts.
+    Returns a dict: vulcain_code -> erp_code (or None if explicitly unmatched).
+    Vulcain codes absent from the file are NOT in the returned dict; the caller
+    should fall back to auto-matching for those.
+    """
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Accept both a bare list and the {"_note": ..., "mappings": [...]} wrapper
+    if isinstance(data, list):
+        mappings = data
+    elif isinstance(data, dict) and "mappings" in data:
+        mappings = data["mappings"]
+    else:
+        raise ValueError(f"Unrecognised format in {path}: expected a list or {{\"mappings\": [...]}}")
+
+    result: dict[str, str | None] = {}
+    for entry in mappings:
+        code = entry.get("vulcain_code")
+        if not code:
+            continue
+        result[code] = entry.get("erp_code")  # may be None (explicit exclusion)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Comparison logic
 # ---------------------------------------------------------------------------
 
@@ -377,6 +470,7 @@ def compare(
     vulcain_accounts: list[dict],
     erp_data: dict,
     threshold: Decimal,
+    account_matching: dict[str, str | None] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Map Vulcain accounts to ERP codes, aggregate, and compare.
@@ -396,7 +490,13 @@ def compare(
     unmatched: list[dict] = []
 
     for acc in vulcain_accounts:
-        best = find_best_erp_match(acc["vulcain_code"], erp_codes_sorted)
+        vcode = acc["vulcain_code"]
+        if account_matching is not None and vcode in account_matching:
+            # File has an explicit entry for this code (may be None = excluded)
+            best = account_matching[vcode]
+        else:
+            # Fall back to auto prefix-matching
+            best = find_best_erp_match(vcode, erp_codes_sorted)
         if best is None:
             unmatched.append(acc)
             continue
@@ -704,8 +804,10 @@ def print_account_drilldown(conn, fy_uuid: str, erp_code: str) -> None:
 def main() -> None:
     args = sys.argv[1:]
     dry_run = "--dry-run" in args
+    export_accounts = "--export-accounts" in args
     threshold = Decimal("0.10")
     account_filter: str | None = None
+    account_file: Path | None = None
 
     i = 0
     while i < len(args):
@@ -715,6 +817,9 @@ def main() -> None:
         elif args[i] == "--account" and i + 1 < len(args):
             account_filter = args[i + 1]
             i += 2
+        elif args[i] == "--account-file" and i + 1 < len(args):
+            account_file = Path(args[i + 1])
+            i += 2
         else:
             i += 1
 
@@ -722,6 +827,8 @@ def main() -> None:
     print(f"  CB file: {CB_FILE.name}")
     print(f"  CR file: {CR_FILE.name}")
     print(f"  Threshold: {threshold}")
+    if account_file:
+        print(f"  Account mapping file: {account_file}")
     if dry_run:
         print("  [DRY RUN — no output files written]")
     print()
@@ -765,6 +872,16 @@ def main() -> None:
         f"| {len(erp_data['erp_balances'])} with entries"
     )
 
+    # --export-accounts: write matching file and exit
+    if export_accounts:
+        out_path = ACCOUNT_MATCHING_FILE
+        n = export_account_matching(all_vulcain, erp_data, out_path)
+        conn.close()
+        print(f"\nExported {n} account mappings → {out_path}")
+        print("Edit 'erp_code' values to correct wrong matches, then re-run with:")
+        print(f"  --account-file {out_path}")
+        return
+
     # --account drilldown mode
     if account_filter:
         print(f"\nDrilling down into ERP account '{account_filter}'…")
@@ -772,9 +889,18 @@ def main() -> None:
         conn.close()
         return
 
+    # Load account matching file if provided
+    account_matching: dict[str, str | None] | None = None
+    if account_file:
+        print(f"\nLoading account mapping from {account_file}…")
+        account_matching = load_account_matching(account_file)
+        overrides = sum(1 for v in account_matching.values() if v is not None)
+        exclusions = sum(1 for v in account_matching.values() if v is None)
+        print(f"  {len(account_matching)} entries loaded ({overrides} mapped, {exclusions} excluded)")
+
     # Compare
     print("\nComparing…")
-    comparison_rows, unmatched = compare(all_vulcain, erp_data, threshold)
+    comparison_rows, unmatched = compare(all_vulcain, erp_data, threshold, account_matching)
     flagged = [r for r in comparison_rows if r["flagged"]]
     print(
         f"  {len(comparison_rows)} account groups  "

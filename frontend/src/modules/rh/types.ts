@@ -20,6 +20,10 @@
 
 export type ContractType = 'CDI' | 'CDD' | 'SAISONNIER' | 'VACATAIRE' | 'BENEVOLE'
 
+// ---------------------------------------------------------------------------
+// Employee profiles
+// ---------------------------------------------------------------------------
+
 export interface HrEmployeeProfile {
   member_uuid: string
   user_id: number | null
@@ -40,70 +44,82 @@ export interface HrEmployeeProfile {
   member_trigram: string | null
 }
 
-export interface HrSeason {
+// ---------------------------------------------------------------------------
+// Working time calendars
+// ---------------------------------------------------------------------------
+
+export interface HrPhaseDayRuleInput {
+  day_of_week: number        // 1=Mon … 7=Sun
+  is_working: boolean
+  expected_hours: string     // decimal string e.g. "7.00"
+  start_time: string | null  // "HH:MM"
+  end_time: string | null
+  apply_on_week: number      // 0=every week, 1-5=Nth occurrence
+}
+
+export interface HrPhaseDayRule extends HrPhaseDayRuleInput {
   uuid: string
+}
+
+export interface HrCalendarPhaseInput {
   name: string
-  start_date: string
-  end_date: string
-  description: string | null
+  start_month: number   // 1-12
+  start_day: number     // 1-31
+  end_month: number
+  end_day: number
+  day_rules: HrPhaseDayRuleInput[]
+}
+
+export interface HrCalendarPhase {
+  uuid: string
+  calendar_uuid: string
+  name: string
+  start_month: number
+  start_day: number
+  end_month: number
+  end_day: number
+  day_rules: HrPhaseDayRule[]
   created_at: string
   updated_at: string
 }
 
-export interface HrWorkCalendarDay {
-  uuid: string
-  day_of_week: number
-  is_working: boolean
-  expected_hours: string
-  start_time: string | null
-  end_time: string | null
-  apply_on_week: number
-}
-
-/** Payload type for creating/updating calendar days (no uuid required) */
-export interface HrWorkCalendarDayInput {
-  day_of_week: number
-  is_working: boolean
-  expected_hours: string
-  start_time: string | null
-  end_time: string | null
-  apply_on_week: number
-}
-
-export interface HrWorkCalendarInput {
-  name: string
-  description?: string | null
-  days: HrWorkCalendarDayInput[]
-}
-
-export interface HrWorkCalendar {
+export interface HrWorkingTimeCalendar {
   uuid: string
   name: string
   description: string | null
-  days: HrWorkCalendarDay[]
+  phases: HrCalendarPhase[]
   created_at: string
   updated_at: string
 }
 
-export interface HrCalendarAssignment {
+// ---------------------------------------------------------------------------
+// Employee calendar assignments
+// ---------------------------------------------------------------------------
+
+export interface HrEmployeeCalendarAssignment {
   uuid: string
   member_uuid: string
-  season_uuid: string
   calendar_uuid: string
+  effective_from: string   // ISO date
+  effective_to: string | null
   created_at: string
+  updated_at: string
   member_first_name: string | null
   member_last_name: string | null
   member_account_id: string | null
-  season_name: string | null
   calendar_name: string | null
 }
+
+// ---------------------------------------------------------------------------
+// Calendar resolution
+// ---------------------------------------------------------------------------
 
 export interface ExpectedHoursResult {
   date: string
   is_working: boolean
   expected_hours: string
-  season_uuid: string | null
-  season_name: string | null
+  phase_uuid: string | null
+  phase_name: string | null
   calendar_name: string | null
 }
 

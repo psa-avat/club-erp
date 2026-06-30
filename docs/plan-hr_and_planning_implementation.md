@@ -33,10 +33,10 @@ Do not create duplicate `org_committees` tables. Extend the existing committee m
 - Leave requests with approval workflow.
 - Attendance/work sessions for employees and volunteers.
 - **Declared activity** : employees declare their real activity (hours worked) ; a manager validates it.
-- Planning activities linked to existing committees.
+- Planning activities linked to existing committees — committees create and manage club events/activities (stages, cours théorie, permanences, maintenance…), not individual people schedules.
 - Conflict checks between approved leave and confirmed activities.
 - RH workspace UI for leave, attendance, and team profiles.
-- Planning workspace UI for calendar/list of club activities.
+- Planning workspace UI for the club activity/event calendar managed by committees.
 
 ### V2
 
@@ -47,9 +47,9 @@ Do not create duplicate `org_committees` tables. Extend the existing committee m
 
 ## Migration
 
-Use the next migration number after the current planning docs. If `052_bank_reconciliation.sql` is implemented first, use:
+Migration 053–059 are already used. Use:
 
-`docs/migrations/053_hr_planning.sql`
+`docs/migrations/060_hr_planning.sql`
 
 Use `gen_random_uuid()` consistently with existing migrations.
 
@@ -276,12 +276,20 @@ CREATE INDEX idx_hr_calendar_assignments_season ON hr_calendar_assignments(seaso
 
 ## Fonctionnement
 
-### Deux modèles de temps de travail
+### Saisons et affectations
 
-| Modèle | Description | Exemple |
-|--------|-------------|---------|
-| **Constant** | Même pattern toute l'année — une seule saison couvre toute l'année avec un seul calendrier | Employé à 4j/semaine + 1 samedi/mois → un calendrier avec `apply_on_week=0` pour lun→jeu et `apply_on_week=1` pour le samedi |
-| **Saisonnier** | Temps de travail variable selon la saison — plusieurs saison avec des calendriers différents | "Basse saison" : lun→jeu 7h ; "Haute saison" : lun→ven 7h + samedi 5h |
+Les saisons (`hr_seasons`) sont des ressources **globales du club** (ex : "Basse saison 2026", "Haute saison 2026"). Elles ne sont pas liées à un employé en particulier.
+
+L'administrateur choisit ensuite **pour chaque employé** quelles saisons couvrent son planning de travail, et quel calendrier hebdomadaire s'applique pour chaque saison. Cette affectation (`hr_calendar_assignments`) est la pièce centrale : un employé doit avoir au moins une affectation pour que son planning soit défini.
+
+Exemples de configurations possibles (non exhaustifs) :
+
+- Un employé dont le temps de travail ne change pas dans l'année → affecté à **1 saison annuelle** (ex : `01/01 – 31/12`) avec 1 calendrier.
+- Un employé dont le rythme change selon la saison → affecté à **plusieurs saisons** (ex : Basse / Intersaison / Haute), chacune avec son propre calendrier.
+
+La même saison peut être partagée entre plusieurs employés. Chaque employé peut cependant utiliser un calendrier différent pour la même saison (un plein temps et un mi-temps peuvent être sur la même "Haute saison" avec des calendriers distincts).
+
+La configuration concrète (noms des saisons, dates, heures, affectations) est entièrement gérée via l'interface `CalendarManagementPage`. Aucune valeur n'est codée en dur.
 
 ### Congés
 
@@ -477,8 +485,9 @@ async def compute_expected_hours(
     Calcule les heures attendues pour un employé un jour donné.
     
     Algorithme :
-    1. Trouver la saison active pour cette date
-    2. Trouver l'affectation calendrier pour cet employé + saison
+    1. Trouver la saison active pour cette date (hr_seasons couvrant la date)
+    2. Trouver l'affectation calendrier pour cet employé + cette saison (hr_calendar_assignments)
+       → Si aucune affectation n'existe pour cet employé sur cette saison, retourner is_working=False, expected_hours=0
     3. Résoudre le jour dans le calendrier (day_of_week + apply_on_week)
     4. Vérifier si un congé approuvé neutralise ce jour
     """
@@ -676,11 +685,12 @@ Le composant `CalendarManagementPage` offre trois sous-vues accessibles par tabs
 - Dialog ou Sheet pour l'édition (un calendrier = 7 lignes max).
 
 **3. Affectations (`hr_calendar_assignments`)**
-- Tableau : employé (Member) | saison | calendrier | actions.
-- Sélecteur d'employé (recherche par nom/trigramme).
-- Sélecteur de saison (liste des saisons).
-- Sélecteur de calendrier (liste des calendriers).
-- Détection des chevauchements (un employé ne peut pas avoir deux affectations pour la même saison gérée par la contrainte UNIQUE).
+- Tableau groupé par employé : chaque ligne affiche une affectation employé | saison | calendrier | actions.
+- **Ajout d'une affectation** : l'admin sélectionne un employé (recherche par nom/trigramme), puis choisit parmi les saisons disponibles celle(s) à lui affecter, et associe un calendrier à chacune.
+- Un employé peut être affecté à plusieurs saisons (au moins une est requise pour que son planning soit calculable).
+- La même saison peut être utilisée par plusieurs employés avec des calendriers différents.
+- Détection des doublons : un employé ne peut pas avoir deux affectations pour la même saison (contrainte UNIQUE `(member_uuid, season_uuid)`).
+- Avertissement visuel si les affectations d'un employé ne couvrent pas la totalité de l'année en cours (jours sans saison = planning indéfini).
 
 **Vue synthèse : heures attendues**
 - Un sélecteur : employé + période (date range).
@@ -690,11 +700,13 @@ Le composant `CalendarManagementPage` offre trois sous-vues accessibles par tabs
 
 ### Planning Workspace
 
+The planning module is **committee-driven activity/event management** — not individual work schedules (those are handled in the RH module via seasons and calendars). Committees create events such as stages, cours théorie, permanences, maintenance sessions, and other club events. Members (participants, instructors, organisateurs) are then assigned to those events.
+
 Replace the placeholder in `PlanningPage` with tabs such as:
 
-- `calendar`: activity calendar/list.
-- `activities`: table of planned activities.
-- `conflicts`: leave/activity conflict review.
+- `calendar`: visual calendar of club activities/events, filterable by committee or activity type.
+- `activities`: table of planned activities with status, committee, dates, and participant count.
+- `conflicts`: list of conflicts between confirmed activities and approved member leave.
 
 Add:
 
