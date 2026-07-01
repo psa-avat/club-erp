@@ -35,12 +35,14 @@ Usage:
   --account CODE       show full ERP entry breakdown for ERP account CODE
                        (CODE is the ERP account code, e.g. "215" or "6026")
   --dry-run            print report without writing output files
-  --export-accounts    write output/account_matching.json with all auto-detected
-                       Vulcain->ERP mappings, then exit. Edit the file to correct
-                       wrong mappings or set "erp_code": null to exclude an account.
-  --account-file PATH  load account mapping from PATH (JSON produced by
-                       --export-accounts). File entries override auto-matching;
-                       Vulcain codes absent from the file still use auto-matching.
+  --export-accounts    merge auto-detected Vulcain→ERP mappings into
+                       output/account_mapping.json (shared with import_legacy.py),
+                       then exit. Edit the file to correct wrong mappings or set
+                       "erp_code": null to exclude an account.
+  --account-file PATH  load account mapping from PATH (default:
+                       output/account_mapping.json). File entries override
+                       auto-matching; Vulcain codes absent from the file still
+                       use auto prefix-matching.
 """
 
 import csv
@@ -381,80 +383,98 @@ def find_best_erp_match(vulcain_code: str, erp_codes_sorted: list[str]) -> str |
 # Account matching file — export and load
 # ---------------------------------------------------------------------------
 
-ACCOUNT_MATCHING_FILE = OUTPUT_DIR / "account_matching.json"
+# Shared with import_legacy.py
+ACCOUNT_MAPPING_FILE = OUTPUT_DIR / "account_mapping.json"
+
+_MAPPING_NOTE = (
+    "Shared account mapping file — used by import_legacy.py (--import-mapping) "
+    "and check_account.py (--account-file). "
+    "Each entry maps a Vulcain code to an ERP account. "
+    "Fields: vulcain_code (required), erp_code (override auto-matching; null = exclude), "
+    "asset_code (import_legacy only: ERP asset code to attach as tiers_uuid), "
+    "vulcain_label / vulcain_side / erp_name (informational, set by check_account export), "
+    "count (set by import_legacy export), note (free text)."
+)
+
+
+def _load_existing_mapping(path: Path) -> dict[str, dict]:
+    """Read the shared mapping file and return a dict keyed by vulcain_code."""
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    entries = data.get("mappings", data) if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        return {}
+    return {e["vulcain_code"]: e for e in entries if e.get("vulcain_code")}
 
 
 def export_account_matching(vulcain_accounts: list[dict], erp_data: dict, path: Path) -> int:
     """
-    Build the auto-detected Vulcain→ERP mapping and write it to a JSON file.
-    Returns the number of entries written.
-
-    The file format is:
-      {
-        "_note": "...",
-        "mappings": [
-          {"vulcain_code": "215500000", "vulcain_label": "...", "vulcain_side": "actif",
-           "erp_code": "2155", "erp_name": "..."},
-          ...
-        ]
-      }
-    Set "erp_code" to null to mark a Vulcain account as intentionally unmatched.
+    Merge auto-detected Vulcain→ERP mappings into the shared account_mapping.json.
+    Existing entries from import_legacy.py and user edits (erp_code, asset_code,
+    note) are preserved. Informational fields (vulcain_label, vulcain_side,
+    erp_name) are updated. Returns the number of entries in the merged file.
     """
     erp_accounts = erp_data["erp_accounts"]
     erp_codes_sorted = _build_erp_code_list(erp_accounts)
 
+    existing = _load_existing_mapping(path)
+    new_codes = 0
+
     # Deduplicate Vulcain accounts (same code may appear on left and right columns)
     seen: set[str] = set()
-    entries: list[dict] = []
     for acc in vulcain_accounts:
-        if acc["vulcain_code"] in seen:
+        vcode = acc["vulcain_code"]
+        if vcode in seen:
             continue
-        seen.add(acc["vulcain_code"])
-        best = find_best_erp_match(acc["vulcain_code"], erp_codes_sorted)
-        entries.append({
-            "vulcain_code": acc["vulcain_code"],
-            "vulcain_label": acc["label"],
-            "vulcain_side": acc["side"],
-            "erp_code": best,
-            "erp_name": erp_accounts[best]["name"] if best else None,
-        })
+        seen.add(vcode)
+        best = find_best_erp_match(vcode, erp_codes_sorted)
+        erp_name = erp_accounts[best]["name"] if best else None
 
-    entries.sort(key=lambda e: e["vulcain_code"])
+        if vcode in existing:
+            # Update informational fields; preserve user-editable ones
+            existing[vcode]["vulcain_label"] = acc["label"]
+            existing[vcode]["vulcain_side"] = acc["side"]
+            existing[vcode]["erp_name"] = erp_name or existing[vcode].get("erp_name", "")
+            # Only update erp_code if it was never set (first export for this code)
+            if "erp_code" not in existing[vcode]:
+                existing[vcode]["erp_code"] = best
+        else:
+            existing[vcode] = {
+                "vulcain_code": vcode,
+                "erp_code": best,
+                "asset_code": None,
+                "vulcain_label": acc["label"],
+                "vulcain_side": acc["side"],
+                "erp_name": erp_name or "",
+                "count": None,
+                "note": "",
+            }
+            new_codes += 1
 
+    entries = sorted(existing.values(), key=lambda e: e["vulcain_code"])
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "_note": (
-            "Auto-generated account mapping. Edit 'erp_code' to correct wrong matches. "
-            "Set 'erp_code' to null to explicitly exclude a Vulcain account from comparison. "
-            "Vulcain codes absent from this file fall back to auto prefix-matching."
-        ),
-        "mappings": entries,
-    }
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+        json.dump({"_note": _MAPPING_NOTE, "mappings": entries}, f, ensure_ascii=False, indent=2)
     return len(entries)
 
 
 def load_account_matching(path: Path) -> dict[str, str | None]:
     """
-    Load an account matching file produced by --export-accounts.
-    Returns a dict: vulcain_code -> erp_code (or None if explicitly unmatched).
-    Vulcain codes absent from the file are NOT in the returned dict; the caller
-    should fall back to auto-matching for those.
+    Load the shared mapping file produced by --export-accounts or --export-mapping.
+    Returns a dict: vulcain_code -> erp_code (or None if explicitly excluded).
+    Vulcain codes absent from the file fall back to auto prefix-matching.
     """
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
-    # Accept both a bare list and the {"_note": ..., "mappings": [...]} wrapper
-    if isinstance(data, list):
-        mappings = data
-    elif isinstance(data, dict) and "mappings" in data:
-        mappings = data["mappings"]
-    else:
-        raise ValueError(f"Unrecognised format in {path}: expected a list or {{\"mappings\": [...]}}")
+    entries = data.get("mappings", data) if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        raise ValueError(f"Unrecognised format in {path}: expected {{\"mappings\": [...]}}")
 
     result: dict[str, str | None] = {}
-    for entry in mappings:
+    for entry in entries:
         code = entry.get("vulcain_code")
         if not code:
             continue
@@ -829,6 +849,8 @@ def main() -> None:
     print(f"  Threshold: {threshold}")
     if account_file:
         print(f"  Account mapping file: {account_file}")
+    elif ACCOUNT_MAPPING_FILE.exists():
+        print(f"  (tip: shared mapping file found at {ACCOUNT_MAPPING_FILE.name} — use --account-file to load it)")
     if dry_run:
         print("  [DRY RUN — no output files written]")
     print()
@@ -872,12 +894,12 @@ def main() -> None:
         f"| {len(erp_data['erp_balances'])} with entries"
     )
 
-    # --export-accounts: write matching file and exit
+    # --export-accounts: merge into shared mapping file and exit
     if export_accounts:
-        out_path = ACCOUNT_MATCHING_FILE
+        out_path = ACCOUNT_MAPPING_FILE
         n = export_account_matching(all_vulcain, erp_data, out_path)
         conn.close()
-        print(f"\nExported {n} account mappings → {out_path}")
+        print(f"\nMerged/written {n} account mappings → {out_path}")
         print("Edit 'erp_code' values to correct wrong matches, then re-run with:")
         print(f"  --account-file {out_path}")
         return

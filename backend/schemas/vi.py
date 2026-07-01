@@ -173,6 +173,7 @@ class ViEntitlementUpdateRequest(BaseModel):
     notes: str | None = None
     status: int | None = Field(default=None, ge=1, le=5)
     is_generic: bool | None = None
+    insurance_amount_override: Decimal | None = Field(default=None, ge=0, decimal_places=4)
 
 
 class ViPurchaseEntryRequest(BaseModel):
@@ -281,11 +282,23 @@ class ViConversionEntryRequest(BaseModel):
     registered_member_uuid: UUID
 
 
+class ViEntryLineDisplay(BaseModel):
+    """Minimal accounting line for display in the VI finance dialog."""
+    account_code: str
+    account_name: Optional[str] = None
+    debit: Decimal
+    credit: Decimal
+    description: Optional[str] = None
+    tiers_display_name: Optional[str] = None
+
+
 class ViAccountingEntryRef(BaseModel):
     entry_uuid: Optional[UUID] = None
+    fiscal_year_uuid: Optional[UUID] = None
     state: Optional[int] = None      # 1=Draft 2=Posted 3=Cancelled
     amount: Optional[Decimal] = None
     entry_date: Optional[date] = None
+    lines: list[ViEntryLineDisplay] = Field(default_factory=list)
 
 
 class ViAccountingSummaryResponse(BaseModel):
@@ -293,8 +306,9 @@ class ViAccountingSummaryResponse(BaseModel):
     entitlement_code: str
     vi_type_code: Optional[str]
     amount_ttc: Optional[Decimal]
-    insurance_amount: Optional[Decimal]   # from vi_type
-    flight_portion: Optional[Decimal]     # amount_ttc - insurance_amount
+    insurance_amount: Optional[Decimal]          # effective: override ?? vi_type amount
+    insurance_amount_override: Optional[Decimal] = None  # per-entitlement override
+    flight_portion: Optional[Decimal]            # amount_ttc - effective insurance_amount
     buyer_member_uuid: Optional[UUID]
     buyer_member_name: Optional[str]
     registered_member_uuid: Optional[UUID] = None

@@ -63,6 +63,19 @@ JOURNAL_MAP: dict[str, str | None] = {
 # Account prefixes considered flight-related (used as extra guard)
 FLIGHT_ACCOUNT_PREFIXES = ("7061", "7062", "7063", "7064")
 
+# Shared account mapping file (also used by check_account.py)
+MAPPING_FILE = OUTPUT_DIR / "account_mapping.json"
+
+_MAPPING_NOTE = (
+    "Shared account mapping file — used by import_legacy.py (--import-mapping) "
+    "and check_account.py (--account-file). "
+    "Each entry maps a Vulcain code to an ERP account. "
+    "Fields: vulcain_code (required), erp_code (override auto-matching; null = exclude), "
+    "asset_code (import_legacy only: ERP asset code to attach as tiers_uuid), "
+    "vulcain_label / vulcain_side / erp_name (informational, set by check_account export), "
+    "count (set by import_legacy export), note (free text)."
+)
+
 
 # ---------------------------------------------------------------------------
 # DB connection
@@ -336,6 +349,10 @@ def load_erp_lookups(conn) -> dict:
         for r in cur.fetchall()
     }
 
+    # Assets: code → uuid (for account mapping asset_code resolution)
+    cur.execute("SELECT code, uuid::text FROM assets")
+    assets_by_code: dict[str, str] = {r[0]: r[1] for r in cur.fetchall()}
+
     cur.close()
 
     return {
@@ -356,6 +373,7 @@ def load_erp_lookups(conn) -> dict:
         "fl_by_account": fl_by_account,
         "member_ext_0000": member_ext_0000,
         "member_ext_0002": member_ext_0002,
+        "assets_by_code": assets_by_code,
     }
 
 
@@ -434,6 +452,7 @@ def build_accounting_entries(
     member_map: dict,
     lookups: dict,
     warnings: list[str],
+    account_mapping: dict | None = None,
 ) -> dict[str, list[dict]]:
     """
     Group accounting rows by num_écriture, skip VVO entries, map to ERP format.
@@ -540,14 +559,41 @@ def build_accounting_entries(
             raw_compte = (line.get(col_compte) or "").strip()
             prefix = raw_compte[:3]
 
-            account_uuid = accounts.get(prefix)
-            if not account_uuid:
-                warnings.append(
-                    f"Account prefix {prefix!r} (full: {raw_compte!r}) not found in ERP "
-                    f"for num_écriture={num_ecriture}, line skipped"
+            # Account mapping: full legacy code → specific ERP account + optional asset
+            mapped_asset_uuid = None
+            if account_mapping and raw_compte in account_mapping:
+                map_entry = account_mapping[raw_compte]
+                erp_code = (map_entry.get("erp_code") or "").strip() or prefix
+                # Try full code first (e.g. "2185"), then 3-char prefix fallback
+                account_uuid = (
+                    lookups["accounts_by_full_code"].get(erp_code)
+                    or lookups["accounts_by_prefix"].get(erp_code[:3])
                 )
-                stats["warnings"] += 1
-                continue
+                if not account_uuid:
+                    warnings.append(
+                        f"Mapping erp_code {erp_code!r} (legacy: {raw_compte!r}) not found in ERP "
+                        f"for num_écriture={num_ecriture}, line skipped"
+                    )
+                    stats["warnings"] += 1
+                    continue
+                asset_code_val = (map_entry.get("asset_code") or "").strip() or None
+                if asset_code_val:
+                    mapped_asset_uuid = lookups["assets_by_code"].get(asset_code_val)
+                    if not mapped_asset_uuid:
+                        warnings.append(
+                            f"Mapping asset_code {asset_code_val!r} (legacy: {raw_compte!r}) "
+                            f"not found in ERP assets for num_écriture={num_ecriture}"
+                        )
+                        stats["warnings"] += 1
+            else:
+                account_uuid = accounts.get(prefix)
+                if not account_uuid:
+                    warnings.append(
+                        f"Account prefix {prefix!r} (full: {raw_compte!r}) not found in ERP "
+                        f"for num_écriture={num_ecriture}, line skipped"
+                    )
+                    stats["warnings"] += 1
+                    continue
 
             debit = _clean_amount(line.get(col_debit) or "")
             credit = _clean_amount(line.get(col_credit) or "")
@@ -598,9 +644,14 @@ def build_accounting_entries(
                 # Underscore-prefixed: used for CSV output, stripped before JSON
                 "_account_code": prefix,
                 "_member_account_id": member_account_id,
+                "_legacy_account_code": raw_compte,
             }
+            # Member tiers wins; fall back to asset_uuid from mapping if no member tiers
             if tiers_uuid:
                 line_dict["tiers_uuid"] = tiers_uuid
+            elif mapped_asset_uuid:
+                line_dict["tiers_uuid"] = mapped_asset_uuid
+                line_dict["_asset_uuid"] = mapped_asset_uuid
 
             entry_lines.append(line_dict)
 
@@ -1002,6 +1053,102 @@ def build_gap_report(
 
 
 # ---------------------------------------------------------------------------
+# Account mapping (export template / import)
+# ---------------------------------------------------------------------------
+
+def _load_existing_mapping(path: Path) -> dict[str, dict]:
+    """Read the shared mapping file and return a dict keyed by vulcain_code."""
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    entries = data.get("mappings", data) if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        return {}
+    return {e["vulcain_code"]: e for e in entries if e.get("vulcain_code")}
+
+
+def export_account_mapping(accounting_rows: list[dict]) -> None:
+    """
+    Scan all account codes present in the legacy accounting CSV and merge them
+    into output/account_mapping.json (shared with check_account.py).
+
+    Existing entries from check_account.py and user edits (erp_code, asset_code,
+    note) are preserved. Only the 'count' field is updated on re-export.
+
+    Workflow:
+      1. Run --export-mapping to generate / update the template.
+      2. For every 2185xxx-style sub-account: set erp_code to "2185" and fill
+         asset_code with the ERP asset code (e.g. "F-CGXY", not the UUID).
+      3. Re-run with --import-mapping to apply the mapping during entry export.
+    """
+    if not accounting_rows:
+        print("  No accounting rows — nothing to export.")
+        return
+
+    sample = accounting_rows[0]
+    col_compte = _find_col(sample, ["compte"])
+
+    counts: dict[str, int] = {}
+    for row in accounting_rows:
+        code = (row.get(col_compte) or "").strip()
+        if code:
+            counts[code] = counts.get(code, 0) + 1
+
+    existing = _load_existing_mapping(MAPPING_FILE)
+    new_codes = 0
+
+    merged: dict[str, dict] = dict(existing)  # start with everything already in the file
+    for code in counts:
+        if code in merged:
+            merged[code]["count"] = counts[code]   # update occurrence count only
+        else:
+            merged[code] = {
+                "vulcain_code": code,
+                "erp_code": code[:3],   # default = current prefix behaviour; edit as needed
+                "asset_code": None,
+                "vulcain_label": "",
+                "vulcain_side": "",
+                "erp_name": "",
+                "count": counts[code],
+                "note": "",
+            }
+            new_codes += 1
+
+    entries = sorted(merged.values(), key=lambda e: e["vulcain_code"])
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(MAPPING_FILE, "w", encoding="utf-8") as f:
+        json.dump({"_note": _MAPPING_NOTE, "mappings": entries}, f, ensure_ascii=False, indent=2)
+
+    print(f"  Written {len(entries)} entries ({new_codes} new) → {MAPPING_FILE.name}")
+    print()
+    print("  Next steps:")
+    print("    1. Open output/account_mapping.json")
+    print("    2. For each 2185xxx sub-account: set erp_code to \"2185\" and fill")
+    print("       asset_code with the ERP asset code (e.g. \"F-CGXY\", not the UUID)")
+    print("    3. Re-run with --import-mapping to apply the mapping during entry export")
+
+
+def load_account_mapping(path: str) -> dict[str, dict]:
+    """
+    Load the shared mapping file and return a dict keyed by vulcain_code.
+    Accepts the unified list format produced by both tools.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise RuntimeError(
+            f"Account mapping file not found: {p}\n"
+            f"Run --export-mapping first to generate the template."
+        )
+    result = _load_existing_mapping(p)
+    if not result:
+        raise RuntimeError(
+            f"Account mapping file is empty or has an unrecognised format: {p}"
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
 
@@ -1050,8 +1197,9 @@ def write_outputs(
         gap_stats = gap_report.pop()["__stats__"]
 
     # 1a. Accounting entry CSV files per journal (backend CSV import format)
-    CSV_COLS = ["num_ecriture", "date", "journal", "label", "account_code",
-                "member_account_id", "debit", "credit"]
+    CSV_COLS = ["num_ecriture", "date", "journal", "label",
+                "legacy_account_code", "account_code",
+                "member_account_id", "tiers_uuid", "debit", "credit"]
     for journal_code, entries in entries_by_journal.items():
         csv_path = OUTPUT_DIR / f"import_entries_{journal_code}.csv"
         with open(csv_path, "w", encoding="utf-8", newline="") as f:
@@ -1064,8 +1212,10 @@ def write_outputs(
                         "date": _to_dmy(entry.get("entry_date", "")),
                         "journal": journal_code,
                         "label": line.get("description", ""),
+                        "legacy_account_code": line.get("_legacy_account_code", ""),
                         "account_code": line.get("_account_code", ""),
                         "member_account_id": line.get("_member_account_id", ""),
+                        "tiers_uuid": line.get("tiers_uuid", ""),
                         "debit": line.get("debit", "0.0000"),
                         "credit": line.get("credit", "0.0000"),
                     })
@@ -1304,15 +1454,108 @@ def write_outputs(
 # Main
 # ---------------------------------------------------------------------------
 
+def _print_help() -> None:
+    print("""Usage: python import_legacy.py [OPTIONS]
+
+Read Vulcain legacy CSV data and produce import-ready files for the ERP.
+All DB access is read-only. Output files are written to backend/tools/output/.
+
+OPTIONS
+  (none)                   Full run: export accounting entries, pack consumptions,
+                           flight gap report, member mapping, and summary.
+
+  --dry-run                Parse and validate everything but write no output files.
+
+  --export-mapping         Scan the accounting CSV and merge account codes into
+                           output/account_mapping.json (shared with check_account.py).
+                           Existing entries and user edits are preserved; only the
+                           'count' field is updated on re-export. No DB needed.
+                           Edit the file, then use --import-mapping on the next run.
+
+  --import-mapping [FILE]  Apply an account mapping file during the accounting entry
+                           export. If FILE is omitted, defaults to:
+                             output/account_mapping.json
+
+                           The file is shared with check_account.py. Relevant fields:
+                             erp_code   — ERP account code to resolve against instead
+                                          of the default 3-char prefix (full code tried
+                                          first, then first 3 chars as fallback)
+                             asset_code — ERP asset code (assets.code, e.g. "F-CGXY")
+                                          to attach as tiers_uuid on the line;
+                                          resolved to UUID from the DB at run time
+                             count      — occurrence count from export (informational)
+                             note       — free-text annotation
+
+                           Typical workflow for 2185xxx sub-accounts:
+                             1. python import_legacy.py --export-mapping
+                             2. Edit output/account_mapping.json:
+                                  set erp_code  → "2185"
+                                  set asset_code → "F-CGXY"  (one entry per sub-account)
+                             3. python import_legacy.py --import-mapping
+
+  --help, -h               Show this help message and exit.
+
+OUTPUT FILES (normal run)
+  import_entries_<JOURNAL>.csv   Accounting entries per journal (review format)
+  import_entries_<JOURNAL>.json  Accounting entries per journal (API import format)
+  pack_consumptions.json         MemberPackConsumption records
+  pack_unmatched.csv             Pack flights with no matching ERP flight
+  gap_report_flights.csv         Flight presence + gross price comparison
+  missing_flights.csv            Legacy flights absent from ERP
+  price_mismatches.csv           Matched flights with a price discrepancy
+  member_mapping.csv             Pilot n → ERP member mapping
+  unresolved_pilots.csv          Pilots that could not be matched to an ERP member
+  import_summary.txt             Run statistics
+  import_warnings.txt            Warnings generated during the run (if any)
+""")
+
+
+def _parse_import_mapping_arg() -> str | None:
+    """Return path string for --import-mapping, or None if not specified."""
+    if "--import-mapping" not in sys.argv:
+        return None
+    idx = sys.argv.index("--import-mapping")
+    if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("--"):
+        return sys.argv[idx + 1]
+    return str(MAPPING_FILE)
+
+
 def main() -> None:
+    if "--help" in sys.argv or "-h" in sys.argv:
+        _print_help()
+        return
+
     dry_run = "--dry-run" in sys.argv
+    export_mapping = "--export-mapping" in sys.argv
+    import_mapping_path = _parse_import_mapping_arg()
 
     print("=== Vulcain Legacy Import Tool ===")
     print(f"  Legacy data: {LEGACY_DIR}")
     print(f"  Output:      {OUTPUT_DIR}")
     if dry_run:
         print("  [DRY RUN — no files written]")
+    if export_mapping:
+        print("  [MODE: export-mapping]")
+    if import_mapping_path:
+        print(f"  [MODE: import-mapping from {import_mapping_path}]")
     print()
+
+    # --export-mapping: scan CSV and write template; no DB needed
+    if export_mapping:
+        print("Loading legacy accounting CSV…")
+        accounting_rows = _read_csv(LEGACY_DIR / "V_comptabilité_validée_2026.csv")
+        print(f"  {len(accounting_rows)} accounting lines")
+        print("Exporting account mapping template…")
+        export_account_mapping(accounting_rows)
+        return
+
+    # Load account mapping if requested
+    account_mapping: dict | None = None
+    if import_mapping_path:
+        print(f"Loading account mapping from {import_mapping_path}…")
+        account_mapping = load_account_mapping(import_mapping_path)
+        print(f"  {len(account_mapping)} codes loaded, "
+              f"{sum(1 for v in account_mapping.values() if v.get('asset_code'))} with asset_code")
 
     # Connect
     print("Connecting to ERP database…")
@@ -1382,7 +1625,9 @@ def main() -> None:
 
     # Step 1: Accounting entries
     print("\nStep 1 — Accounting entries (non-flight)…")
-    entries_by_journal = build_accounting_entries(accounting_rows, member_map, lookups, warnings)
+    entries_by_journal = build_accounting_entries(
+        accounting_rows, member_map, lookups, warnings, account_mapping=account_mapping
+    )
 
     # Step 2: Pack25 consumptions
     print("Step 2 — Pack25 consumptions…")

@@ -299,6 +299,7 @@ async def seed_association_pcg_accounts(db: AsyncSession) -> dict:
                 is_posting_allowed=item.get("is_posting_allowed", True),
                 normal_balance=_normal_balance_for_account_type(item["type"]),
                 is_reconcilable=item.get("is_reconcilable", False),
+                require_id=item.get("require_id", 0),
                 is_active=True,
             )
             db.add(account)
@@ -312,6 +313,7 @@ async def seed_association_pcg_accounts(db: AsyncSession) -> dict:
             account.is_posting_allowed = item.get("is_posting_allowed", True)
             account.normal_balance = _normal_balance_for_account_type(item["type"])
             account.is_reconcilable = item.get("is_reconcilable", False)
+            account.require_id = item.get("require_id", 0)
             updated += 1
 
     await db.commit()

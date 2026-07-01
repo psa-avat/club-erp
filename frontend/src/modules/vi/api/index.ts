@@ -82,11 +82,21 @@ export type ViFlightLinkResponse = {
   duration_minutes: number | null
 }
 
+export type ViEntryLineDisplay = {
+  account_code: string
+  account_name: string | null
+  debit: string
+  credit: string
+  description: string | null
+}
+
 export type ViAccountingEntryRef = {
   entry_uuid: string | null
+  fiscal_year_uuid: string | null
   state: number | null   // 1=Draft 2=Posted 3=Cancelled
   amount: string | null
   entry_date: string | null
+  lines: ViEntryLineDisplay[]
 }
 
 export type ViAccountingSummary = {
@@ -94,7 +104,8 @@ export type ViAccountingSummary = {
   entitlement_code: string
   vi_type_code: string | null
   amount_ttc: string | null
-  insurance_amount: string | null
+  insurance_amount: string | null          // effective: override ?? vi_type amount
+  insurance_amount_override: string | null // per-entitlement override if set
   flight_portion: string | null
   buyer_member_uuid: string | null
   buyer_member_name: string | null
@@ -466,6 +477,23 @@ export function useCancelViRealizationEntryMutation() {
     onSuccess: async (_data, entitlementUuid) => {
       await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
       await queryClient.invalidateQueries({ queryKey: viQueryKeys.entitlements() })
+    },
+  })
+}
+
+export function usePatchViInsuranceOverrideMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ entitlementUuid, insuranceAmountOverride }: { entitlementUuid: string; insuranceAmountOverride: string | null }) => {
+      const { data } = await apiClient.patch<ViEntitlement>(
+        `/api/v1/vi/entitlements/${entitlementUuid}`,
+        { insurance_amount_override: insuranceAmountOverride },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, { entitlementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
     },
   })
 }

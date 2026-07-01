@@ -42,6 +42,7 @@ import {
   useCreateViRealizationEntryMutation,
   useCancelViRealizationEntryMutation,
   usePatchViAccountingMetaMutation,
+  usePatchViInsuranceOverrideMutation,
   useAddViFlightLinkMutation,
   useRemoveViFlightLinkMutation,
   useArchiveViEntitlementMutation,
@@ -308,12 +309,15 @@ export function ViEntitlementSheet({
   const createRealizationMutation = useCreateViRealizationEntryMutation()
   const cancelRealizationMutation = useCancelViRealizationEntryMutation()
   const patchMetaMutation = usePatchViAccountingMetaMutation()
+  const insuranceOverrideMutation = usePatchViInsuranceOverrideMutation()
   const addFlightLinkMutation = useAddViFlightLinkMutation()
   const archiveMutation = useArchiveViEntitlementMutation()
 
   const [selectedFyUuid, setSelectedFyUuid] = useState('')
   const [showFlightPicker, setShowFlightPicker] = useState(false)
   const [amountInput, setAmountInput] = useState('')
+  const [insuranceOverrideInput, setInsuranceOverrideInput] = useState('')
+  const [editingInsurance, setEditingInsurance] = useState(false)
 
   const summary: ViAccountingSummary | undefined = summaryQuery.data
   const viType = viTypesQuery.data?.find((t) => t.code === entitlement.vi_type_code)
@@ -324,6 +328,18 @@ export function ViEntitlementSheet({
       setAmountInput(new Decimal(summary.amount_ttc).toFixed(2))
     }
   }, [summary?.amount_ttc])
+
+  // Sync insuranceOverrideInput when summary loads (don't overwrite while editing)
+  useEffect(() => {
+    if (!editingInsurance) {
+      setInsuranceOverrideInput(
+        summary?.insurance_amount_override != null
+          ? new Decimal(summary.insurance_amount_override).toFixed(2)
+          : ''
+      )
+    }
+  }, [summary?.insurance_amount_override, editingInsurance])
+
   const activeFyUuid = activeFyQuery.data?.uuid ?? ''
   const effectiveFyUuid = selectedFyUuid || activeFyUuid
   const fiscalYears = (fyQuery.data ?? []).filter((fy) => fy.state !== 2)
@@ -338,6 +354,7 @@ export function ViEntitlementSheet({
 
   const isPending = createRealizationMutation.isPending || cancelRealizationMutation.isPending
     || patchMetaMutation.isPending || addFlightLinkMutation.isPending || archiveMutation.isPending
+    || insuranceOverrideMutation.isPending
 
   async function handleSaveAmount() {
     let parsed: Decimal
@@ -347,6 +364,19 @@ export function ViEntitlementSheet({
       entitlementUuid: entitlement.uuid,
       payload: { amount_ttc: parsed.toFixed(4) },
     })
+  }
+
+  async function handleSaveInsuranceOverride() {
+    setEditingInsurance(false)
+    const trimmed = insuranceOverrideInput.trim()
+    if (trimmed === '') {
+      await insuranceOverrideMutation.mutateAsync({ entitlementUuid: entitlement.uuid, insuranceAmountOverride: null })
+      return
+    }
+    let parsed: Decimal
+    try { parsed = new Decimal(trimmed) } catch { return }
+    if (parsed.lt(0)) return
+    await insuranceOverrideMutation.mutateAsync({ entitlementUuid: entitlement.uuid, insuranceAmountOverride: parsed.toFixed(4) })
   }
 
   async function handleAddFlight(flightUuid: string) {
@@ -529,35 +559,75 @@ export function ViEntitlementSheet({
                 <p className="text-xs text-destructive">⚠ Compte produit (706x) non configuré sur le type VI.</p>
               )}
 
-              {/* Entry preview */}
-              <div className="font-mono text-xs space-y-1 bg-muted/40 rounded p-3">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">D {viType?.client_account_code ?? '419xxx'}</span>
-                  <span className="font-semibold">
-                    {fmtAmount(
-                      viType?.insurance_expense_account_uuid && Number(summary?.insurance_amount ?? 0) > 0
-                        ? summary?.flight_portion ?? summary?.amount_ttc
-                        : summary?.amount_ttc
-                    )}
-                  </span>
+              {/* Insurance override — only editable before the entry is created */}
+              {!hasRealization && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs whitespace-nowrap">Assurance (override €)</Label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="h-7 w-24 rounded border border-input bg-background px-2 text-xs"
+                    placeholder={summary?.insurance_amount != null ? new Decimal(summary.insurance_amount).toFixed(2) : '0.00'}
+                    value={insuranceOverrideInput}
+                    onChange={(e) => { setEditingInsurance(true); setInsuranceOverrideInput(e.target.value) }}
+                    onBlur={handleSaveInsuranceOverride}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+                    disabled={isPending}
+                  />
+                  {summary?.insurance_amount_override != null && (
+                    <span className="text-xs text-amber-600">override actif</span>
+                  )}
                 </div>
-                {viType?.insurance_expense_account_uuid && Number(summary?.insurance_amount ?? 0) > 0 && (
+              )}
+
+              {/* Entry display: actual lines when entry exists, theoretical preview otherwise */}
+              {hasRealization && realization?.lines && realization.lines.length > 0 ? (
+                <div className="font-mono text-xs space-y-1 bg-muted/40 rounded p-3">
+                  <p className="text-muted-foreground mb-1 font-sans not-italic">
+                    Écriture réelle · {realization.entry_date ?? ''} · {realization.state === 1 ? 'Brouillon' : realization.state === 2 ? 'Validée' : 'Annulée'}
+                  </p>
+                  {realization.lines.map((ln, i) => {
+                    const isDebit = new Decimal(ln.debit).gt(0)
+                    return (
+                      <div key={i} className="flex justify-between">
+                        {isDebit ? (
+                          <span className="text-muted-foreground">D {ln.account_code}{ln.account_name ? ` — ${ln.account_name}` : ''}</span>
+                        ) : (
+                          <span className="text-muted-foreground pl-4">C {ln.account_code}{ln.account_name ? ` — ${ln.account_name}` : ''}</span>
+                        )}
+                        <span className={isDebit ? 'font-semibold' : ''}>
+                          {isDebit ? fmtAmount(ln.debit) : fmtAmount(ln.credit)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="font-mono text-xs space-y-1 bg-muted/40 rounded p-3">
+                  <p className="text-muted-foreground mb-1 font-sans not-italic text-[10px]">Aperçu théorique</p>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">D {viType.insurance_expense_account_code ?? '6xx'} (charge assurance)</span>
-                    <span>{fmtAmount(summary?.insurance_amount)}</span>
+                    <span className="text-muted-foreground">D {viType?.client_account_code ?? '419xxx'}</span>
+                    <span className="font-semibold">{fmtAmount(summary?.amount_ttc)}</span>
                   </div>
-                )}
-                <div className="flex justify-between pl-4">
-                  <span className="text-muted-foreground">C {viType?.revenue_account_code ?? '706x'}</span>
-                  <span>{fmtAmount(summary?.flight_portion ?? summary?.amount_ttc)}</span>
-                </div>
-                {viType?.insurance_amount != null && viType.insurance_amount > 0 && (
+                  {viType?.insurance_expense_account_uuid && Number(summary?.insurance_amount ?? 0) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">D {viType.insurance_expense_account_code ?? '6xx'} (charge assurance)</span>
+                      <span>{fmtAmount(summary?.insurance_amount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between pl-4">
-                    <span className="text-muted-foreground">C {viType.insurance_account_code ?? '401'} (assurance)</span>
-                    <span>{fmtAmount(summary?.insurance_amount)}</span>
+                    <span className="text-muted-foreground">C {viType?.revenue_account_code ?? '706x'}</span>
+                    <span>{fmtAmount(summary?.amount_ttc)}</span>
                   </div>
-                )}
-              </div>
+                  {Number(summary?.insurance_amount ?? 0) > 0 && viType?.insurance_account_code && (
+                    <div className="flex justify-between pl-4">
+                      <span className="text-muted-foreground">C {viType.insurance_account_code} (assurance)</span>
+                      <span>{fmtAmount(summary?.insurance_amount)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Fiscal year + state */}
               {!hasRealization && (
