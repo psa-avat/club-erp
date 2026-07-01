@@ -109,6 +109,18 @@ export function useUpdateAssetCategoryMutation() {
   })
 }
 
+export function useDeleteAssetCategoryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (uuid: string) => {
+      await apiClient.delete(`/api/v1/assets/categories/${uuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.categories() })
+    },
+  })
+}
+
 // ── Asset Families ───────────────────────────────────────────────────────────────
 
 export function useAssetFamiliesQuery(enabled = true) {

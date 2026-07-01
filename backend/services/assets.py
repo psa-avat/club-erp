@@ -285,6 +285,22 @@ async def update_asset_category(
     return await get_asset_category(db, category_uuid)
 
 
+async def delete_asset_category(db: AsyncSession, category_uuid: UUID) -> None:
+    obj = await get_asset_category(db, category_uuid)
+
+    in_use = await db.execute(
+        select(AssetFamily.uuid).where(AssetFamily.category_uuid == category_uuid).limit(1)
+    )
+    if in_use.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a category that is still assigned to an asset family.",
+        )
+
+    await db.delete(obj)
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Asset Families
 # ---------------------------------------------------------------------------
@@ -416,6 +432,7 @@ async def list_assets(
     db: AsyncSession,
     *,
     asset_family_uuid: UUID | None = None,
+    category_uuid: UUID | None = None,
     status: int | None = None,
     ownership: int | None = None,
     active_only: bool = False,
@@ -423,6 +440,10 @@ async def list_assets(
     stmt = _asset_query().order_by(Asset.code)
     if asset_family_uuid is not None:
         stmt = stmt.where(Asset.asset_family_uuid == asset_family_uuid)
+    if category_uuid is not None:
+        stmt = stmt.join(AssetFamily, Asset.asset_family_uuid == AssetFamily.uuid).where(
+            AssetFamily.category_uuid == category_uuid
+        )
     if status is not None:
         stmt = stmt.where(Asset.status == status)
     if ownership is not None:

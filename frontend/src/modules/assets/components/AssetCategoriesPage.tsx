@@ -20,12 +20,22 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { Check, Pencil, Plus, Settings2, X } from 'lucide-react'
+import { Check, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../components/ui/alert-dialog'
 import {
   Dialog,
   DialogContent,
@@ -37,6 +47,7 @@ import { useAccountsQuery } from '../../banque/api'
 import {
   useAssetCategoriesQuery,
   useCreateAssetCategoryMutation,
+  useDeleteAssetCategoryMutation,
   useUpdateAssetCategoryMutation,
 } from '../api'
 import type { AssetCategory, AssetCategoryAccountingPatch, CreateAssetCategoryPayload } from '../types'
@@ -325,12 +336,14 @@ function CategoryRow({
   canManage,
   onEdit,
   onConfigureAccounts,
+  onDelete,
   t,
 }: {
   category: AssetCategory
   canManage: boolean
   onEdit: (cat: AssetCategory) => void
   onConfigureAccounts: (cat: AssetCategory) => void
+  onDelete: (cat: AssetCategory) => void
   t: (k: string) => string
 }) {
   return (
@@ -365,6 +378,14 @@ function CategoryRow({
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
+            <button
+              type="button"
+              className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-destructive"
+              onClick={(e) => { e.stopPropagation(); onDelete(category) }}
+              aria-label={t('assetCategories.delete')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
           </div>
         )}
       </div>
@@ -385,12 +406,15 @@ export function AssetCategoriesPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingCategory, setEditingCategory] = useState<AssetCategory | null>(null)
   const [accountsDialogCategory, setAccountsDialogCategory] = useState<AssetCategory | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AssetCategory | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [activeOnly, setActiveOnly] = useState(false)
   const allCategories = categoriesQuery.data ?? []
   const categories = activeOnly ? allCategories.filter((c) => c.is_active) : allCategories
 
   const updateMutation = useUpdateAssetCategoryMutation()
+  const deleteMutation = useDeleteAssetCategoryMutation()
 
   async function handleCreate(form: CategoryFormState) {
     const payload: CreateAssetCategoryPayload = {
@@ -421,6 +445,21 @@ export function AssetCategoriesPage() {
       setFormError(null)
     } catch (e) {
       setFormError(extractError(e, t('assetCategories.error.saveFailed')))
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    try {
+      await deleteMutation.mutateAsync(deleteTarget.uuid)
+      setDeleteTarget(null)
+      setDeleteError(null)
+    } catch (e) {
+      const message =
+        e instanceof AxiosError && e.response?.status === 409
+          ? t('assetCategories.error.deleteInUse')
+          : extractError(e, t('assetCategories.error.deleteFailed'))
+      setDeleteError(message)
     }
   }
 
@@ -498,6 +537,7 @@ export function AssetCategoriesPage() {
                   canManage={canManage}
                   onEdit={(cat) => { setEditingCategory(cat); setFormError(null); setShowForm(false) }}
                   onConfigureAccounts={(cat) => setAccountsDialogCategory(cat)}
+                  onDelete={(cat) => { setDeleteTarget(cat); setDeleteError(null) }}
                   t={t}
                 />
               ),
@@ -514,6 +554,31 @@ export function AssetCategoriesPage() {
           t={t}
         />
       )}
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(null) } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('assetCategories.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.name} ({deleteTarget?.code}) — {t('assetCategories.deleteConfirmDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('assetCategories.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); void handleDelete() }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? t('assetCategories.saving') : t('assetCategories.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

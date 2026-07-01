@@ -189,6 +189,7 @@ export type UpdateAssetFamilyPayload = {
 
 export type AssetFilters = {
   asset_family_uuid?: string
+  category_uuid?: string
   status?: number
   ownership?: number
   is_active?: boolean

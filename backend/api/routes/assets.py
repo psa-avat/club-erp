@@ -55,6 +55,7 @@ from services.assets import (
     create_asset_family,
     create_flight_type,
     create_pricing_item,
+    delete_asset_category,
     delete_pricing_item,
     get_asset,
     get_asset_category,
@@ -129,6 +130,16 @@ async def update_asset_category_endpoint(
 ):
     """Update an asset category."""
     return await update_asset_category(db, category_uuid, request, user_id=current_user.id)
+
+
+@router.delete("/categories/{category_uuid}", status_code=204)
+async def delete_asset_category_endpoint(
+    category_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+):
+    """Delete an asset category. Rejected if any asset family still uses it."""
+    await delete_asset_category(db, category_uuid)
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +229,7 @@ async def update_flight_type_endpoint(
 @router.get("", response_model=list[AssetResponse])
 async def list_assets_endpoint(
     asset_family_uuid: Optional[UUID] = Query(default=None),
+    category_uuid: Optional[UUID] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=5),
     ownership: Optional[int] = Query(default=None, ge=1, le=2),
     active_only: bool = Query(default=False),
@@ -228,6 +240,7 @@ async def list_assets_endpoint(
     return await list_assets(
         db,
         asset_family_uuid=asset_family_uuid,
+        category_uuid=category_uuid,
         status=status,
         ownership=ownership,
         active_only=active_only,

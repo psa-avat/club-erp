@@ -32,6 +32,7 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetsQuery,
+  useAssetCategoriesQuery,
   useAssetFamiliesQuery,
   useImportAssetsMutation,
   useTransitionAssetStatusMutation,
@@ -186,11 +187,13 @@ export function AssetsListPage() {
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   const familiesQuery = useAssetFamiliesQuery(canView)
+  const categoriesQuery = useAssetCategoriesQuery(canView)
   const assetsQuery = useAssetsQuery(filters, canView)
   const importAssetsMutation = useImportAssetsMutation()
 
   const assets = assetsQuery.data ?? []
-  const types = familiesQuery.data ?? []
+  const families = familiesQuery.data ?? []
+  const categories = categoriesQuery.data ?? []
 
   // Client-side name search (backend doesn't support text search for assets)
   const filtered = search.trim()
@@ -269,18 +272,35 @@ export function AssetsListPage() {
             />
           </div>
 
-          {/* Type filter */}
+          {/* Family filter */}
           <div className="space-y-1">
-            <Label className="text-xs">{t('filters.type')}</Label>
+            <Label className="text-xs">{t('filters.family')}</Label>
             <select
               value={filters.asset_family_uuid ?? ''}
               onChange={(e) => setFilter('asset_family_uuid', e.target.value || undefined)}
               className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
             >
-              <option value="">{t('filters.allTypes')}</option>
-              {types.map((ty) => (
-                <option key={ty.uuid} value={ty.uuid}>
-                  {ty.name}
+              <option value="">{t('filters.allFamilies')}</option>
+              {families.map((family) => (
+                <option key={family.uuid} value={family.uuid}>
+                  {family.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Category filter */}
+          <div className="space-y-1">
+            <Label className="text-xs">{t('filters.category')}</Label>
+            <select
+              value={filters.category_uuid ?? ''}
+              onChange={(e) => setFilter('category_uuid', e.target.value || undefined)}
+              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
+            >
+              <option value="">{t('filters.allCategories')}</option>
+              {categories.map((category) => (
+                <option key={category.uuid} value={category.uuid}>
+                  {category.name}
                 </option>
               ))}
             </select>
