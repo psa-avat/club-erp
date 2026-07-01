@@ -34,7 +34,7 @@ from sqlalchemy.orm import joinedload
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_VI, CAP_PLAN_VI, CAP_POST_ACCOUNTING_ENTRIES
-from models import AccountingEntry, Member, User, ValidatedFlight, ViEntitlement, ViFlightLink, ViTypeCatalog
+from models import AccountingEntry, AccountingLine, AccountingAccount, Member, User, ValidatedFlight, ViEntitlement, ViFlightLink, ViTypeCatalog
 from schemas.vi import (
     HelloAssoViStagingResponse,
     ViBulkScheduleRequest,
@@ -47,6 +47,7 @@ from schemas.vi import (
     ViEntitlementResponse,
     ViEntitlementUpdateRequest,
     ViFlightLinkCreate,
+    ViEntryLineDisplay,
     ViFlightLinkResponse,
     ViNotesPatchRequest,
     ViPlanningDatePatchRequest,
@@ -351,38 +352,46 @@ async def get_vi_accounting_summary(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="VI entitlement not found")
 
     vi_type = ent.vi_type
-    insurance_amount = Decimal(str(vi_type.insurance_amount)) if (vi_type and vi_type.insurance_amount) else None
+    # Effective insurance: per-entitlement override takes priority over vi_type amount
+    insurance_amount_override = Decimal(str(ent.insurance_amount_override)) if ent.insurance_amount_override is not None else None
+    insurance_amount = insurance_amount_override if insurance_amount_override is not None else (
+        Decimal(str(vi_type.insurance_amount)) if (vi_type and vi_type.insurance_amount) else None
+    )
     flight_portion = (
         Decimal(str(ent.amount_ttc)) - insurance_amount
         if ent.amount_ttc is not None and insurance_amount is not None
         else (Decimal(str(ent.amount_ttc)) if ent.amount_ttc is not None else None)
     )
 
-    realization_ref = ViAccountingEntryRef()
-    if ent.realization_entry_uuid:
+    async def _load_entry_ref(entry_uuid) -> ViAccountingEntryRef:
         entry_result = await db.execute(
-            select(AccountingEntry).where(AccountingEntry.uuid == ent.realization_entry_uuid)
+            select(AccountingEntry)
+            .options(joinedload(AccountingEntry.lines).joinedload(AccountingLine.account))
+            .where(AccountingEntry.uuid == entry_uuid)
         )
-        entry = entry_result.scalar_one_or_none()
-        if entry:
-            realization_ref = ViAccountingEntryRef(
-                entry_uuid=entry.uuid,
-                state=entry.state,
-                entry_date=entry.entry_date,
+        entry = entry_result.unique().scalar_one_or_none()
+        if entry is None:
+            return ViAccountingEntryRef()
+        lines = [
+            ViEntryLineDisplay(
+                account_code=ln.account.code if ln.account else "?",
+                account_name=ln.account.name if ln.account else None,
+                debit=Decimal(str(ln.debit)),
+                credit=Decimal(str(ln.credit)),
+                description=ln.description,
             )
+            for ln in entry.lines
+        ]
+        return ViAccountingEntryRef(
+            entry_uuid=entry.uuid,
+            fiscal_year_uuid=entry.fiscal_year_uuid,
+            state=entry.state,
+            entry_date=entry.entry_date,
+            lines=lines,
+        )
 
-    conversion_ref = ViAccountingEntryRef()
-    if ent.conversion_entry_uuid:
-        conv_result = await db.execute(
-            select(AccountingEntry).where(AccountingEntry.uuid == ent.conversion_entry_uuid)
-        )
-        conv_entry = conv_result.scalar_one_or_none()
-        if conv_entry:
-            conversion_ref = ViAccountingEntryRef(
-                entry_uuid=conv_entry.uuid,
-                state=conv_entry.state,
-                entry_date=conv_entry.entry_date,
-            )
+    realization_ref = await _load_entry_ref(ent.realization_entry_uuid) if ent.realization_entry_uuid else ViAccountingEntryRef()
+    conversion_ref = await _load_entry_ref(ent.conversion_entry_uuid) if ent.conversion_entry_uuid else ViAccountingEntryRef()
 
     buyer_name: str | None = None
     if ent.buyer_member:
@@ -401,6 +410,7 @@ async def get_vi_accounting_summary(
         vi_type_code=vi_type.code if vi_type else None,
         amount_ttc=Decimal(str(ent.amount_ttc)) if ent.amount_ttc is not None else None,
         insurance_amount=insurance_amount,
+        insurance_amount_override=insurance_amount_override,
         flight_portion=flight_portion,
         buyer_member_uuid=ent.buyer_member_uuid,
         buyer_member_name=buyer_name,

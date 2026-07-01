@@ -1613,6 +1613,10 @@ class ViEntitlement(Base):
         Numeric(10, 4), nullable=True,
         comment="Total voucher amount paid by buyer TTC (flight + insurance). From HelloAsso or manual.",
     )
+    insurance_amount_override = Column(
+        Numeric(10, 4), nullable=True,
+        comment="Per-entitlement insurance override. When set, supersedes vi_type.insurance_amount for realization.",
+    )
     buyer_member_uuid = Column(
         UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True, index=True,
         comment="Member who purchased the VI (may be EXT-NNNN before membership).",

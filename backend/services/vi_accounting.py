@@ -259,8 +259,9 @@ async def create_vi_realization_entry(
     """
     Create the VT realization entry for Steps 2a + 2b.
 
-    D client_advance (amount_ttc)  tiers=buyer_member
-      C revenue         (amount_ttc - insurance_amount)
+    D client_advance (amount_ttc)       tiers=buyer_member
+    D insurance_expense (insurance_amount)                  [if insurance_expense_account configured]
+      C revenue         (amount_ttc)
       C insurance       (insurance_amount)  tiers=insurance_tiers  [if insurance configured]
 
     Sets entitlement.realization_entry_uuid on success.
@@ -293,7 +294,13 @@ async def create_vi_realization_entry(
         )
 
     amount_ttc = Decimal(str(entitlement.amount_ttc))
-    insurance_amount = Decimal(str(vi_type.insurance_amount)) if vi_type.insurance_amount else Decimal("0")
+    # Per-entitlement override takes priority over vi_type insurance_amount
+    if entitlement.insurance_amount_override is not None:
+        insurance_amount = Decimal(str(entitlement.insurance_amount_override))
+    elif vi_type.insurance_amount:
+        insurance_amount = Decimal(str(vi_type.insurance_amount))
+    else:
+        insurance_amount = Decimal("0")
     flight_portion = amount_ttc - insurance_amount
 
     if flight_portion < Decimal("0"):
@@ -325,10 +332,10 @@ async def create_vi_realization_entry(
     db.add(entry)
     await db.flush()
 
-    # D client_advance — full amount_ttc, or flight_portion only when expense account is set
+    # D client_advance — always full amount_ttc
     expense_acc = vi_type.insurance_expense_account
     use_expense_line = expense_acc is not None and insurance_amount > Decimal("0")
-    advance_debit = flight_portion if use_expense_line else amount_ttc
+    advance_debit = amount_ttc
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
@@ -353,7 +360,7 @@ async def create_vi_realization_entry(
             description=f"Charge assurance VI {entitlement.code}",
         ))
 
-    # C revenue (flight_portion)
+    # C revenue (amount_ttc) — full price; insurance is offset by the D expense line
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
@@ -361,7 +368,7 @@ async def create_vi_realization_entry(
         account_uuid=revenue_acc.uuid,
         tiers_uuid=None,
         debit=Decimal("0"),
-        credit=flight_portion,
+        credit=amount_ttc,
         description=f"Prestations VI {entitlement.code}",
     ))
 
@@ -676,8 +683,9 @@ async def create_vi_conversion_entry(
 
     Creates a Draft OD entry that nullifies the realization revenue recognition
     and establishes the member receivable:
-      D revenue_account   (flight_portion)    — reverses C 7067 from realization
+      D revenue_account   (amount_ttc)        — reverses C 7067 from realization
       D insurance_account (insurance_amount)  — reverses C 401 from realization [if any]
+      C insurance_expense (insurance_amount)  — reverses D 616 from realization [if any]
       C 411               (amount_ttc)  tiers=registered_member
 
     Returns (entry, flights_to_rebill) where flights_to_rebill is the list of
@@ -773,14 +781,14 @@ async def create_vi_conversion_entry(
     db.add(entry)
     await db.flush()
 
-    # D revenue_account (7067) — nullifies C 7067 credit from realization
+    # D revenue_account (7067) — nullifies C 7067 credit from realization (full amount_ttc)
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
         entry_uuid=entry_uuid,
         account_uuid=revenue_acc.uuid,
         tiers_uuid=None,
-        debit=flight_portion,
+        debit=amount_ttc,
         credit=Decimal("0"),
         description=f"Annulation produit VI {entitlement.code}",
     ))
@@ -805,11 +813,8 @@ async def create_vi_conversion_entry(
             insurance_amount,
         )
 
-    # When insurance_expense_account (616) is configured, the realization only debited 419xxx for
-    # flight_portion. The conversion must: C 616 (nullify the expense) and D 419xxx (clear the
-    # remaining insurance advance), so 419xxx nets to zero and 411 covers the full amount_ttc.
+    # C insurance_expense_account (616) — reverses D 616 from realization [if configured]
     expense_acc = vi_type.insurance_expense_account
-    client_acc_conv = vi_type.client_account
     if insurance_amount > Decimal("0") and expense_acc is not None:
         db.add(AccountingLine(
             uuid=uuid4(),
@@ -821,17 +826,6 @@ async def create_vi_conversion_entry(
             credit=insurance_amount,
             description=f"Annulation charge assurance VI {entitlement.code}",
         ))
-        if client_acc_conv is not None:
-            db.add(AccountingLine(
-                uuid=uuid4(),
-                fiscal_year_uuid=fiscal_year_uuid,
-                entry_uuid=entry_uuid,
-                account_uuid=client_acc_conv.uuid,
-                tiers_uuid=entitlement.buyer_member_uuid,
-                debit=insurance_amount,
-                credit=Decimal("0"),
-                description=f"Apurement avance assurance VI {entitlement.code}",
-            ))
 
     # C 411 (amount_ttc, tiers=registered_member)
     db.add(AccountingLine(

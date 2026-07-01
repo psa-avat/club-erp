@@ -282,6 +282,8 @@ async def update_vi_entitlement(
         row.is_generic = payload.is_generic
     if payload.amount_ttc is not None:
         row.amount_ttc = payload.amount_ttc
+    if 'insurance_amount_override' in payload.model_fields_set:
+        row.insurance_amount_override = payload.insurance_amount_override
 
     _assert_date_consistency(row.scheduled_date, row.realisation_date)
 
