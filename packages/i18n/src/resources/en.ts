@@ -2547,6 +2547,9 @@ export const en = {
       save: 'Save',
       saving: 'Saving...',
       cancel: 'Cancel',
+      delete: 'Delete',
+      deleteConfirmTitle: 'Delete this family?',
+      deleteConfirmDescription: 'This action cannot be undone. Deletion is refused if any asset, pricing version, or cost provision rule still references this family.',
       strategy1: 'Flight hours',
       strategy2: 'Engine time',
       strategy3: 'Per flight',
@@ -2563,6 +2566,8 @@ export const en = {
       },
       error: {
         saveFailed: 'Failed to save asset family.',
+        deleteFailed: 'Failed to delete asset family.',
+        deleteInUse: 'Cannot delete: this family is still used by an asset, pricing version, or cost rule.',
       },
     },
     assetCategories: {

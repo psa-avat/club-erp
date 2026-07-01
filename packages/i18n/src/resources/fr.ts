@@ -2565,6 +2565,9 @@ export const fr = {
       save: 'Enregistrer',
       saving: 'Enregistrement...',
       cancel: 'Annuler',
+      delete: 'Supprimer',
+      deleteConfirmTitle: 'Supprimer cette famille ?',
+      deleteConfirmDescription: 'Cette action est irréversible. La suppression est refusée si des équipements, tarifs ou règles de provision utilisent encore cette famille.',
       strategy1: 'Heures de vol',
       strategy2: 'Heures moteur',
       strategy3: 'Par vol',
@@ -2581,6 +2584,8 @@ export const fr = {
       },
       error: {
         saveFailed: 'Échec de l\'enregistrement de la famille.',
+        deleteFailed: 'Échec de la suppression de la famille.',
+        deleteInUse: 'Impossible de supprimer : cette famille est encore utilisée par un équipement, un tarif ou une règle de provision.',
       },
     },
     assetCategories: {

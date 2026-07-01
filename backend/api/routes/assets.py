@@ -56,6 +56,7 @@ from services.assets import (
     create_flight_type,
     create_pricing_item,
     delete_asset_category,
+    delete_asset_family,
     delete_pricing_item,
     get_asset,
     get_asset_category,
@@ -185,6 +186,16 @@ async def update_asset_family_endpoint(
 ):
     """Update an asset family."""
     return await update_asset_family(db, family_uuid, request)
+
+
+@router.delete("/families/{family_uuid}", status_code=204)
+async def delete_asset_family_endpoint(
+    family_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+):
+    """Delete an asset family. Rejected if any asset, pricing version, or cost rule still references it."""
+    await delete_asset_family(db, family_uuid)
 
 
 # ---------------------------------------------------------------------------

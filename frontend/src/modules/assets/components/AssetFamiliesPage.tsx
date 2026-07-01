@@ -21,17 +21,28 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AxiosError } from 'axios'
-import { ArrowLeft, Check, Pencil, Plus, X } from 'lucide-react'
+import { ArrowLeft, Check, Pencil, Plus, Trash2, X } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../components/ui/alert-dialog'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetCategoriesQuery,
   useAssetFamiliesQuery,
   useCreateAssetFamilyMutation,
+  useDeleteAssetFamilyMutation,
   useUpdateAssetFamilyMutation,
 } from '../api'
 import type { AssetCategory, AssetFamily, CreateAssetFamilyPayload } from '../types'
@@ -167,11 +178,13 @@ function FamilyRow({
   assetFamily,
   canManage,
   onEdit,
+  onDelete,
   t,
 }: {
   assetFamily: AssetFamily
   canManage: boolean
   onEdit: (af: AssetFamily) => void
+  onDelete: (af: AssetFamily) => void
   t: (k: string) => string
 }) {
   return (
@@ -192,13 +205,23 @@ function FamilyRow({
           <p className="mt-0.5 text-xs text-slate-500">{assetFamily.category?.name ?? '—'}</p>
         </div>
         {canManage && (
-          <button
-            type="button"
-            className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            onClick={(e) => { e.stopPropagation(); onEdit(assetFamily) }}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              onClick={(e) => { e.stopPropagation(); onEdit(assetFamily) }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-destructive"
+              onClick={(e) => { e.stopPropagation(); onDelete(assetFamily) }}
+              aria-label={t('assetFamilies.delete')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -221,11 +244,24 @@ export function AssetFamiliesPage() {
   const [editingFamily, setEditingFamily] = useState<AssetFamily | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [activeOnly, setActiveOnly] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<AssetFamily | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const allFamilies = familiesQuery.data ?? []
-  const families = activeOnly ? allFamilies.filter((af) => af.is_active) : allFamilies
+  const families = allFamilies
+    .filter((af) => (activeOnly ? af.is_active : true))
+    .filter((af) => (categoryFilter ? af.category_uuid === categoryFilter : true))
   const categories = categoriesQuery.data ?? []
 
+  const groupedFamilies = categories
+    .map((cat) => ({
+      category: cat,
+      items: families.filter((af) => af.category_uuid === cat.uuid),
+    }))
+    .filter((group) => group.items.length > 0)
+
   const updateMutation = useUpdateAssetFamilyMutation(editingFamily?.uuid ?? '')
+  const deleteMutation = useDeleteAssetFamilyMutation()
 
   async function handleCreate(form: FamilyFormState) {
     const payload: CreateAssetFamilyPayload = {
@@ -255,6 +291,21 @@ export function AssetFamiliesPage() {
       setFormError(null)
     } catch (e) {
       setFormError(extractError(e, t('assetFamilies.error.saveFailed')))
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    try {
+      await deleteMutation.mutateAsync(deleteTarget.uuid)
+      setDeleteTarget(null)
+      setDeleteError(null)
+    } catch (e) {
+      const message =
+        e instanceof AxiosError && e.response?.status === 409
+          ? t('assetFamilies.error.deleteInUse')
+          : extractError(e, t('assetFamilies.error.deleteFailed'))
+      setDeleteError(message)
     }
   }
 
@@ -306,7 +357,7 @@ export function AssetFamiliesPage() {
       {/* List */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         {/* Filter bar */}
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
             <input
               type="checkbox"
@@ -316,6 +367,21 @@ export function AssetFamiliesPage() {
             />
             {t('assetFamilies.activeOnly')}
           </label>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-slate-600">{t('filters.category')}</Label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs"
+            >
+              <option value="">{t('filters.allCategories')}</option>
+              {categories.map((cat) => (
+                <option key={cat.uuid} value={cat.uuid}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {familiesQuery.isLoading ? (
@@ -325,35 +391,67 @@ export function AssetFamiliesPage() {
             {t('assetFamilies.noFamilies')}
           </p>
         ) : (
-          <div className="space-y-2">
-            {families.map((af) =>
-              editingFamily?.uuid === af.uuid ? (
-                <div key={af.uuid} className="rounded-lg border border-slate-200 bg-white p-4">
-                  <FamilyForm
-                    initial={familyToForm(af)}
-                    isEdit
-                    categories={categories}
-                    saving={updateMutation.isPending}
-                    error={formError}
-                    onSave={handleUpdate}
-                    onCancel={() => { setEditingFamily(null); setFormError(null) }}
-                    t={t}
-                  />
-                </div>
-              ) : (
-                <FamilyRow
-                  key={af.uuid}
-                  assetFamily={af}
-                  canManage={canManage}
-                  onEdit={(af) => { setEditingFamily(af); setFormError(null); setShowForm(false) }}
-                  t={t}
-                />
-              ),
-            )}
+          <div className="space-y-4">
+            {groupedFamilies.map(({ category, items }) => (
+              <div key={category.uuid} className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {category.name}
+                </h3>
+                {items.map((af) =>
+                  editingFamily?.uuid === af.uuid ? (
+                    <div key={af.uuid} className="rounded-lg border border-slate-200 bg-white p-4">
+                      <FamilyForm
+                        initial={familyToForm(af)}
+                        isEdit
+                        categories={categories}
+                        saving={updateMutation.isPending}
+                        error={formError}
+                        onSave={handleUpdate}
+                        onCancel={() => { setEditingFamily(null); setFormError(null) }}
+                        t={t}
+                      />
+                    </div>
+                  ) : (
+                    <FamilyRow
+                      key={af.uuid}
+                      assetFamily={af}
+                      canManage={canManage}
+                      onEdit={(af) => { setEditingFamily(af); setFormError(null); setShowForm(false) }}
+                      onDelete={(af) => { setDeleteTarget(af); setDeleteError(null) }}
+                      t={t}
+                    />
+                  ),
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
 
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(null) } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('assetFamilies.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.name} ({deleteTarget?.code}) — {t('assetFamilies.deleteConfirmDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('assetFamilies.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); void handleDelete() }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? t('assetFamilies.saving') : t('assetFamilies.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

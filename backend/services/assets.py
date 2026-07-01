@@ -28,7 +28,7 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetFamily, AssetCategory, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
+from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetFamily, AssetCategory, CostProvisionRule, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
 from schemas.assets import (
     AssetCategoryCreateRequest,
     AssetCategoryResponse,
@@ -351,6 +351,40 @@ async def update_asset_family(db: AsyncSession, asset_family_uuid: UUID, request
     await db.commit()
     await db.refresh(obj)
     return await get_asset_family(db, asset_family_uuid)
+
+
+async def delete_asset_family(db: AsyncSession, asset_family_uuid: UUID) -> None:
+    obj = await get_asset_family(db, asset_family_uuid)
+
+    asset_in_use = await db.execute(
+        select(Asset.uuid).where(Asset.asset_family_uuid == asset_family_uuid).limit(1)
+    )
+    if asset_in_use.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a family that is still assigned to an asset.",
+        )
+
+    pricing_in_use = await db.execute(
+        select(PricingVersion.uuid).where(PricingVersion.asset_family_uuid == asset_family_uuid).limit(1)
+    )
+    if pricing_in_use.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a family that still has pricing versions configured.",
+        )
+
+    cost_rule_in_use = await db.execute(
+        select(CostProvisionRule.uuid).where(CostProvisionRule.asset_family_uuid == asset_family_uuid).limit(1)
+    )
+    if cost_rule_in_use.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a family that still has cost provisioning rules configured.",
+        )
+
+    await db.delete(obj)
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------

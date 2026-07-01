@@ -164,6 +164,18 @@ export function useUpdateAssetFamilyMutation(uuid: string) {
   })
 }
 
+export function useDeleteAssetFamilyMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (uuid: string) => {
+      await apiClient.delete(`/api/v1/assets/families/${uuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.families() })
+    },
+  })
+}
+
 export function useFlightTypesQuery() {
   return useQuery({
     queryKey: assetsQueryKeys.flightTypes(),
