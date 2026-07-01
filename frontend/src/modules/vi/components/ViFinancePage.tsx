@@ -533,8 +533,20 @@ export function ViEntitlementSheet({
               <div className="font-mono text-xs space-y-1 bg-muted/40 rounded p-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">D {viType?.client_account_code ?? '419xxx'}</span>
-                  <span className="font-semibold">{fmtAmount(summary?.amount_ttc)}</span>
+                  <span className="font-semibold">
+                    {fmtAmount(
+                      viType?.insurance_expense_account_uuid && Number(summary?.insurance_amount ?? 0) > 0
+                        ? summary?.flight_portion ?? summary?.amount_ttc
+                        : summary?.amount_ttc
+                    )}
+                  </span>
                 </div>
+                {viType?.insurance_expense_account_uuid && Number(summary?.insurance_amount ?? 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">D {viType.insurance_expense_account_code ?? '6xx'} (charge assurance)</span>
+                    <span>{fmtAmount(summary?.insurance_amount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between pl-4">
                   <span className="text-muted-foreground">C {viType?.revenue_account_code ?? '706x'}</span>
                   <span>{fmtAmount(summary?.flight_portion ?? summary?.amount_ttc)}</span>

@@ -63,6 +63,7 @@ type AccountingState = {
   insurance_account_uuid: string | null
   insurance_tiers_uuid: string | null
   insurance_amount: string
+  insurance_expense_account_uuid: string | null
   max_flights: string
 }
 
@@ -75,6 +76,7 @@ function fromViType(vt: ViType): AccountingState {
     insurance_account_uuid: vt.insurance_account_uuid,
     insurance_tiers_uuid: vt.insurance_tiers_uuid,
     insurance_amount: vt.insurance_amount != null ? String(vt.insurance_amount) : '',
+    insurance_expense_account_uuid: vt.insurance_expense_account_uuid,
     max_flights: String(vt.max_flights ?? 1),
   }
 }
@@ -106,6 +108,7 @@ function ViTypeAccountingDialog({
   const analyticalOpts = accountOptions(accountsQuery.data, '9')
   const tiersOpts = accountOptions(accountsQuery.data, '4')
   const revenueOpts = accountOptions(accountsQuery.data, '7')
+  const expenseOpts = accountOptions(accountsQuery.data, '6')
 
   const supplierOpts = (suppliersQuery.data ?? []).map((m) => ({
     value: m.uuid,
@@ -126,6 +129,7 @@ function ViTypeAccountingDialog({
       insurance_account_uuid: state.insurance_account_uuid,
       insurance_tiers_uuid: state.insurance_tiers_uuid,
       insurance_amount: state.insurance_amount !== '' ? Number(state.insurance_amount) : null,
+      insurance_expense_account_uuid: state.insurance_expense_account_uuid,
       max_flights: state.max_flights !== '' ? Number(state.max_flights) : 1,
     }
     await updateMutation.mutateAsync({ typeUuid: viType.uuid, payload: patch })
@@ -251,6 +255,23 @@ function ViTypeAccountingDialog({
                   onChange={(e) => set('insurance_amount', e.target.value)}
                   placeholder="0.00"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Compte charge assurance (débit step 2b)
+                  {viType.insurance_expense_account_code && (
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">{viType.insurance_expense_account_code}</span>
+                  )}
+                </Label>
+                <SearchableSelect
+                  options={expenseOpts}
+                  value={state.insurance_expense_account_uuid ?? undefined}
+                  onChange={(val) => set('insurance_expense_account_uuid', val ?? null)}
+                  placeholder="Ex: 616 — Primes d'assurances"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si renseigné, le débit 419xxx est limité à la part vol — la charge assurance est débitée sur ce compte (D 616 / C 401).
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Nombre de vols max / bon</Label>

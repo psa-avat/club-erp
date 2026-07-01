@@ -48,6 +48,8 @@ export type ViType = {
   insurance_account_code: string | null
   insurance_tiers_uuid: string | null
   insurance_amount: number | null
+  insurance_expense_account_uuid: string | null
+  insurance_expense_account_code: string | null
   max_flights: number
   analytical_cost_account_uuid: string | null
   analytical_cost_account_code: string | null
@@ -61,6 +63,7 @@ export type ViTypeAccountingPatch = {
   insurance_account_uuid?: string | null
   insurance_tiers_uuid?: string | null
   insurance_amount?: number | null
+  insurance_expense_account_uuid?: string | null
   max_flights?: number
   analytical_cost_account_uuid?: string | null
   analytical_reflection_account_uuid?: string | null

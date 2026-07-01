@@ -238,6 +238,7 @@ async def _load_entitlement_for_accounting(db: AsyncSession, entitlement_uuid: U
                 joinedload(ViTypeCatalog.client_account),
                 joinedload(ViTypeCatalog.revenue_account),
                 joinedload(ViTypeCatalog.insurance_account),
+                joinedload(ViTypeCatalog.insurance_expense_account),
             )
         )
         .where(ViEntitlement.uuid == entitlement_uuid)
@@ -324,17 +325,33 @@ async def create_vi_realization_entry(
     db.add(entry)
     await db.flush()
 
-    # D client_advance (amount_ttc)
+    # D client_advance — full amount_ttc, or flight_portion only when expense account is set
+    expense_acc = vi_type.insurance_expense_account
+    use_expense_line = expense_acc is not None and insurance_amount > Decimal("0")
+    advance_debit = flight_portion if use_expense_line else amount_ttc
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
         entry_uuid=entry_uuid,
         account_uuid=client_acc.uuid,
         tiers_uuid=entitlement.buyer_member_uuid,
-        debit=amount_ttc,
+        debit=advance_debit,
         credit=Decimal("0"),
         description=f"Avances VI {entitlement.code}",
     ))
+
+    # D insurance_expense_account (insurance_amount) — only when configured
+    if use_expense_line:
+        db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=entry_uuid,
+            account_uuid=expense_acc.uuid,
+            tiers_uuid=vi_type.insurance_tiers_uuid,
+            debit=insurance_amount,
+            credit=Decimal("0"),
+            description=f"Charge assurance VI {entitlement.code}",
+        ))
 
     # C revenue (flight_portion)
     db.add(AccountingLine(
@@ -677,8 +694,10 @@ async def create_vi_conversion_entry(
         select(ViEntitlement)
         .options(
             joinedload(ViEntitlement.vi_type).options(
+                joinedload(ViTypeCatalog.client_account),
                 joinedload(ViTypeCatalog.revenue_account),
                 joinedload(ViTypeCatalog.insurance_account),
+                joinedload(ViTypeCatalog.insurance_expense_account),
             ),
             selectinload(ViEntitlement.flight_links).joinedload(ViFlightLink.flight),
         )
@@ -785,6 +804,34 @@ async def create_vi_conversion_entry(
             entitlement.code,
             insurance_amount,
         )
+
+    # When insurance_expense_account (616) is configured, the realization only debited 419xxx for
+    # flight_portion. The conversion must: C 616 (nullify the expense) and D 419xxx (clear the
+    # remaining insurance advance), so 419xxx nets to zero and 411 covers the full amount_ttc.
+    expense_acc = vi_type.insurance_expense_account
+    client_acc_conv = vi_type.client_account
+    if insurance_amount > Decimal("0") and expense_acc is not None:
+        db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=entry_uuid,
+            account_uuid=expense_acc.uuid,
+            tiers_uuid=vi_type.insurance_tiers_uuid,
+            debit=Decimal("0"),
+            credit=insurance_amount,
+            description=f"Annulation charge assurance VI {entitlement.code}",
+        ))
+        if client_acc_conv is not None:
+            db.add(AccountingLine(
+                uuid=uuid4(),
+                fiscal_year_uuid=fiscal_year_uuid,
+                entry_uuid=entry_uuid,
+                account_uuid=client_acc_conv.uuid,
+                tiers_uuid=entitlement.buyer_member_uuid,
+                debit=insurance_amount,
+                credit=Decimal("0"),
+                description=f"Apurement avance assurance VI {entitlement.code}",
+            ))
 
     # C 411 (amount_ttc, tiers=registered_member)
     db.add(AccountingLine(

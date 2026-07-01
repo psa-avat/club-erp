@@ -1502,6 +1502,10 @@ class ViTypeCatalog(Base):
         Numeric(10, 4), nullable=True,
         comment="Fixed insurance fee per VI voucher. Deducted from amount_ttc to compute flight portion.",
     )
+    insurance_expense_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Expense account for insurance cost (e.g. 616). D in Step 2b alongside C insurance_account. When set, D 419xxx is reduced to flight_portion only.",
+    )
     max_flights = Column(
         SmallInteger, nullable=False, default=1,
         comment="Maximum number of flights allowed under one entitlement (VI=2, JD=2, future types=N).",
@@ -1533,6 +1537,7 @@ class ViTypeCatalog(Base):
     client_account = relationship("AccountingAccount", foreign_keys=[client_account_uuid])
     revenue_account = relationship("AccountingAccount", foreign_keys=[revenue_account_uuid])
     insurance_account = relationship("AccountingAccount", foreign_keys=[insurance_account_uuid])
+    insurance_expense_account = relationship("AccountingAccount", foreign_keys=[insurance_expense_account_uuid])
     analytical_cost_account = relationship("AccountingAccount", foreign_keys=[analytical_cost_account_uuid])
     analytical_reflection_account = relationship("AccountingAccount", foreign_keys=[analytical_reflection_account_uuid])
 
@@ -1551,6 +1556,10 @@ class ViTypeCatalog(Base):
     @property
     def insurance_account_code(self) -> str | None:
         return self.insurance_account.code if self.insurance_account else None
+
+    @property
+    def insurance_expense_account_code(self) -> str | None:
+        return self.insurance_expense_account.code if self.insurance_expense_account else None
 
     @property
     def analytical_cost_account_code(self) -> str | None:

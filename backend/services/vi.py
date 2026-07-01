@@ -53,6 +53,7 @@ _VI_TYPE_LOADS = [
     joinedload(ViTypeCatalog.client_account),
     joinedload(ViTypeCatalog.revenue_account),
     joinedload(ViTypeCatalog.insurance_account),
+    joinedload(ViTypeCatalog.insurance_expense_account),
     joinedload(ViTypeCatalog.analytical_cost_account),
     joinedload(ViTypeCatalog.analytical_reflection_account),
 ]
@@ -149,6 +150,8 @@ async def update_vi_type(
         row.analytical_cost_account_uuid = payload.analytical_cost_account_uuid
     if "analytical_reflection_account_uuid" in _set:
         row.analytical_reflection_account_uuid = payload.analytical_reflection_account_uuid
+    if "insurance_expense_account_uuid" in _set:
+        row.insurance_expense_account_uuid = payload.insurance_expense_account_uuid
 
     row.updated_by = user_id
     await db.commit()
