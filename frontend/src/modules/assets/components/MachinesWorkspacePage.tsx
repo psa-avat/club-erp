@@ -1,14 +1,15 @@
 /*
     ERP-CLUB - ERP pour Club de vol a voile
-    - MachinesWorkspacePage: workspace Machines (équipements + types)
+    - MachinesWorkspacePage: workspace Machines (équipements + familles)
  */
 
 import { useTranslation } from 'react-i18next'
-import { TableProperties, Wrench } from 'lucide-react'
+import { Tag, TableProperties, Wrench } from 'lucide-react'
 
 import { WorkspaceShell } from '@/components/ui/workspace-shell'
 import { AssetsListPage } from './AssetsListPage'
-import { AssetTypesPage } from './AssetTypesPage'
+import { AssetFamiliesPage } from './AssetFamiliesPage'
+import { AssetCategoriesPage } from './AssetCategoriesPage'
 
 export function MachinesWorkspacePage() {
   const { t } = useTranslation('assets')
@@ -16,7 +17,7 @@ export function MachinesWorkspacePage() {
   return (
     <WorkspaceShell
       title={t('workspace.machines.title', 'Machines')}
-      description={t('workspace.machines.description', 'Equipements et types de machines.')}
+      description={t('workspace.machines.description', 'Equipements et familles de machines.')}
       tabs={[
         {
           value: 'equipements',
@@ -25,10 +26,16 @@ export function MachinesWorkspacePage() {
           content: <AssetsListPage />,
         },
         {
-          value: 'types',
-          label: t('workspace.machines.tabs.types', 'Types'),
+          value: 'families',
+          label: t('workspace.machines.tabs.families', 'Familles'),
           icon: TableProperties,
-          content: <AssetTypesPage />,
+          content: <AssetFamiliesPage />,
+        },
+        {
+          value: 'categories',
+          label: t('workspace.machines.tabs.categories', 'Catégories'),
+          icon: Tag,
+          content: <AssetCategoriesPage />,
         },
       ]}
     />

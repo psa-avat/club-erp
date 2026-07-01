@@ -12,7 +12,7 @@ It covers the complete lifecycle from importing validated flights from Planche t
 
 1. **Billing is preview-first**: every flight billing starts as a side-effect-free preview. Apply is an explicit user action.
 2. **Double-entry is mandatory**: each billing creates one balanced accounting entry in the flights journal.
-3. **Pricing is asset-bound**: pricing versions are resolved per machine (glider and optionally launch) by matching `asset_type_uuid`. No global fallback.
+3. **Pricing is asset-bound**: pricing versions are resolved per machine (glider and optionally launch) by matching `asset_family_uuid`. No global fallback.
 4. **Two separate processes**: flight billing (gross) and discount application are **decoupled**. Flights are billed at gross/standard price. Discounts are computed in a dedicated operational table and applied via periodic adjustment entries.
 5. **Fiscal year scoping**: packs and accounting entries belong to exactly one fiscal year. Pack validity expires at year-end.
 6. **Deterministic billing hash**: every preview produces a SHA-256 hash covering selected pricing lines **and** discount consumption rows. Hash changes detect billing-impacting modifications.
@@ -71,12 +71,12 @@ Each flight involves up to two billable machines:
 
 For each machine:
 
-1. Look up the resolved `Asset` → read `asset_type_uuid`
+1. Look up the resolved `Asset` → read `asset_family_uuid`
 2. Find one active `PricingVersion` where:
    - `status = Active` (2)
    - `from_date <= flight.jour`
    - `to_date IS NULL OR to_date >= flight.jour`
-   - `asset_type_uuid = machine.asset_type_uuid`
+   - `asset_family_uuid = machine.asset_family_uuid`
 3. If no version found → blocking error (unless private aircraft with `ownership=2`, which produces a non-blocking warning)
 4. If more than one version found → overlap blocking error
 5. Select pricing items from the version where:
@@ -210,8 +210,8 @@ Pack discounts are **decoupled from flight billing**. Flights are always billed 
 | `pack_type` | Scope | Quantity unit | Typical example |
 |---|---|---|---|
 | `flight_hours` | Flight-time pricing items (glider/TMG) | `hours` | 25h pack |
-| `winch_launches` | Launch items where asset type = winch | `launches` | 20 launch pack |
-| `tow_launches` | Launch items where asset type = tow plane | `launches` | 10 tow pack |
+| `winch_launches` | Launch items where asset family = winch | `launches` | 20 launch pack |
+| `tow_launches` | Launch items where asset family = tow plane | `launches` | 10 tow pack |
 | `engine_time` | Engine time (centihours) | `centihours` | 10h engine pack |
 
 A member can hold multiple purchases of the same pack type simultaneously.
@@ -488,7 +488,7 @@ Each `member_pack_consumptions` row has a `valid_from` timestamp that determines
 | `pack_type` | varchar(32) | `flight_hours` / `winch_launches` / `tow_launches` / `engine_time` |
 | `quantity_allowance` | Numeric(10,2) | Base quantity included in one pack purchase |
 | `quantity_unit` | varchar(32) | `hours` / `launches` |
-| `eligible_asset_type_uuid` | UUID? | FK → asset_types (restricts eligible asset types) |
+| `eligible_asset_family_uuid` | UUID? | FK → asset_families (restricts eligible asset families) |
 | `pack_sales_account_uuid` | UUID? | FK → accounting_accounts (overrides FY default, class 7) |
 | `pack_discount_expense_account_uuid` | UUID? | FK → accounting_accounts (debit side for REM, normally class 6) |
 | `flights_journal_uuid` | UUID? | FK → accounting_journals (overrides FY default, unused) |

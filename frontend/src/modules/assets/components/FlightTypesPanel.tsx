@@ -84,7 +84,7 @@ function FlightTypeForm({
     <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.flightTypes.code')} *</Label>
+          <Label className="text-xs">{t('assetFamilies.flightTypes.code')} *</Label>
           <Input
             value={form.code}
             onChange={(e) => set('code', e.target.value.toUpperCase())}
@@ -94,15 +94,15 @@ function FlightTypeForm({
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.flightTypes.name')} *</Label>
+          <Label className="text-xs">{t('assetFamilies.flightTypes.name')} *</Label>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.flightTypes.description')}</Label>
+          <Label className="text-xs">{t('assetFamilies.flightTypes.description')}</Label>
           <Input value={form.description} onChange={(e) => set('description', e.target.value)} className="h-8 text-sm" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.flightTypes.launchType', 'Launch type')}</Label>
+          <Label className="text-xs">{t('assetFamilies.flightTypes.launchType', 'Launch type')}</Label>
           <Input
             value={form.launch_type}
             onChange={(e) => setForm((prev) => ({ ...prev, launch_type: e.target.value }))}
@@ -118,16 +118,16 @@ function FlightTypeForm({
           onChange={(e) => set('is_active', e.target.checked)}
           className="h-4 w-4 rounded border-slate-300"
         />
-        {t('assetTypes.active')}
+        {t('assetFamilies.active')}
       </label>
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('assetTypes.saving') : t('assetTypes.save')}
+          {saving ? t('assetFamilies.saving') : t('assetFamilies.save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('assetTypes.cancel')}
+          {t('assetFamilies.cancel')}
         </Button>
       </div>
     </div>
@@ -160,7 +160,7 @@ export function FlightTypesPanel() {
       setShowForm(false)
       setFtError(null)
     } catch (e) {
-      setFtError(extractError(e, t('assetTypes.error.saveFailed')))
+      setFtError(extractError(e, t('assetFamilies.error.saveFailed')))
     }
   }
 
@@ -177,14 +177,14 @@ export function FlightTypesPanel() {
       setEditingFt(null)
       setFtError(null)
     } catch (e) {
-      setFtError(extractError(e, t('assetTypes.error.saveFailed')))
+      setFtError(extractError(e, t('assetFamilies.error.saveFailed')))
     }
   }
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-slate-600">{t('assetTypes.flightTypes.title')}</p>
+        <p className="text-xs font-semibold text-slate-600">{t('assetFamilies.flightTypes.title')}</p>
         {canManage && !showForm && !editingFt && (
           <button
             type="button"
@@ -192,7 +192,7 @@ export function FlightTypesPanel() {
             onClick={() => { setShowForm(true); setFtError(null) }}
           >
             <Plus className="h-3 w-3" />
-            {t('assetTypes.flightTypes.add')}
+            {t('assetFamilies.flightTypes.add')}
           </button>
         )}
       </div>
@@ -217,7 +217,7 @@ export function FlightTypesPanel() {
           <p className="text-xs text-slate-400">{t('states.loading')}</p>
         ) : flightTypes.length === 0 && !showForm ? (
           <p className="rounded border border-dashed border-slate-200 py-2 text-center text-xs text-slate-400">
-            {t('assetTypes.flightTypes.none')}
+            {t('assetFamilies.flightTypes.none')}
           </p>
         ) : (
           flightTypes.map((ft) =>
@@ -239,7 +239,7 @@ export function FlightTypesPanel() {
                     <span className="text-sm font-medium text-slate-800">{ft.name}</span>
                     {!ft.is_active && (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                        {t('assetTypes.inactive')}
+                        {t('assetFamilies.inactive')}
                       </span>
                     )}
                   </div>

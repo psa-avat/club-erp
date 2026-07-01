@@ -68,14 +68,14 @@ Journal type enum values:
 - `name`, `from_date`, `to_date` (date, nullable)
 - `status` (1=Draft, 2=Active, 3=Archived)
 - `is_locked` (boolean)
-- `asset_type_uuid` (FK → AssetType, nullable): if NULL → global/membership pricing; if set → asset-specific pricing
+- `asset_family_uuid` (FK → AssetFamily, nullable): if NULL → global/membership pricing; if set → asset-specific pricing
 - Timestamps & `created_by`
 
 Scope selection rule:
 - Pricing scope is currently selected by navigation context, not by a dedicated version-type field.
-- Generic/global pricing versions are created from the accounting pricing workflow and do not prompt the operator for an asset type.
+- Generic/global pricing versions are created from the accounting pricing workflow and do not prompt the operator for an asset family.
 - Asset-specific pricing versions are created from the asset pricing workflow and inherit their scope from the current asset or asset-type context.
-- `asset_type_uuid` remains the single source of truth for version scope.
+- `asset_family_uuid` remains the single source of truth for version scope.
 - A dedicated `pricing_version.type` field is intentionally deferred until the product needs more than the current binary split between generic/global pricing and asset/activity pricing.
 
 Pricing lifecycle governance:
@@ -336,7 +336,7 @@ Cost provision rules allow automatic accrual of maintenance, reserve, or operati
 
 **CostProvisionRule**
 - `uuid` (PK)
-- `asset_type_uuid` (FK → AssetType): which asset type this rule applies to
+- `asset_family_uuid` (FK → AssetFamily): which asset family this rule applies to
 - `fiscal_year_uuid` (FK → AccountingFiscalYear): validity scope
 - `metric_name` (string, e.g., "engine_hours", "winch_launches", "flight_hours", "landings")
 - `cost_per_unit` (NUMERIC(10,4)): cost accrued per metric unit
@@ -349,7 +349,7 @@ Cost provision rules allow automatic accrual of maintenance, reserve, or operati
 - `is_active` (boolean): pause/resume without deleting
 - `created_at`, `updated_at`, `created_by` (FK → User)
 
-**Constraint**: For a given `(asset_type_uuid, metric_name, fiscal_year_uuid)` pair, only one active rule may exist.
+**Constraint**: For a given `(asset_family_uuid, metric_name, fiscal_year_uuid)` pair, only one active rule may exist.
 
 ### 11.2 Integration with Flight Recording
 
@@ -388,7 +388,7 @@ Batch job:
 
 ### 11.4 GL Account Mapping Examples
 
-| Asset Type | Metric | Cost/Unit | Debit GL | Credit GL | Rationale |
+| Asset Family | Metric | Cost/Unit | Debit GL | Credit GL | Rationale |
 |---|---|---|---|---|---|
 | Glider ASK21 | engine_hours | €10 | 681 (Maintenance costs) | 281 (Maintenance reserve) | Accrual for scheduled maintenance |
 | Tow Plane | flight_hours | €25 | 605 (Fuel costs) | 406 (Accrued fuel costs) | Variable fuel cost based on hours |
@@ -471,7 +471,7 @@ Implemented UI surface:
 ### 14.2 Next Accounting-Adjacent Endpoints
 
 - Module settings endpoints (per module, capability-scoped).
-- Pricing lifecycle endpoints (year + date-range versioning).- Cost provision rule CRUD/list endpoints (asset type + fiscal year scoped).
+- Pricing lifecycle endpoints (year + date-range versioning).- Cost provision rule CRUD/list endpoints (asset family + fiscal year scoped).
 - Cost accrual staging and batch job monitoring endpoints.- Budget lifecycle/reporting endpoints.
 - Project/subvention reporting endpoints.
 - Flight sync monitoring and error reporting endpoints.
@@ -608,15 +608,15 @@ Backend and database:
 - [ ] Create CostProvisionRule and CostAccrualStaging tables.
 - [ ] Implement cost accrual service (real-time and batch methods).
 - [ ] Add daily and monthly batch job schedulers for batch-accrued costs.
-- [ ] Implement GL account mapping per asset type.
+- [ ] Implement GL account mapping per asset family.
 
 API and contracts:
-- [ ] Add cost provision rule CRUD/list endpoints (scoped to asset type + fiscal year).
+- [ ] Add cost provision rule CRUD/list endpoints (scoped to asset family + fiscal year).
 - [ ] Add batch job trigger and status endpoints.
 - [ ] Add cost accrual staging query/reconciliation endpoints.
 
 Frontend:
-- [ ] Build cost provision rule management UI (per asset type).
+- [ ] Build cost provision rule management UI (per asset family).
 - [ ] Build batch job monitoring dashboard (pending vs. posted accruals).
 - [ ] Show cost accrual history on asset detail views.
 

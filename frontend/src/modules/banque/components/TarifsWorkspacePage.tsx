@@ -22,8 +22,8 @@ import { useTranslation } from 'react-i18next'
 import { LayoutGrid, Tags, Plane, Wind } from 'lucide-react'
 
 import { WorkspaceShell } from '@/components/ui/workspace-shell'
-import { useAssetTypesQuery } from '../../assets/api'
-import { AssetTypePricingPanel } from '../../assets/components/AssetTypePricingPanel'
+import { useAssetFamiliesQuery } from '../../assets/api'
+import { AssetFamilyPricingPanel } from '../../assets/components/AssetFamilyPricingPanel'
 import { FlightTypesPanel } from '../../assets/components/FlightTypesPanel'
 import { GenericPricingPage } from './GenericPricingPage'
 import { PackDefinitionsPage } from './PackDefinitionsPage'
@@ -32,20 +32,20 @@ import { PackDefinitionsPage } from './PackDefinitionsPage'
 
 function MachinesPricingTab() {
   const { t } = useTranslation('banque')
-  const typesQuery = useAssetTypesQuery()
-  const types = (typesQuery.data ?? []).filter((at) => at.is_active)
+  const familiesQuery = useAssetFamiliesQuery()
+  const families = (familiesQuery.data ?? []).filter((af) => af.is_active)
 
-  const [selectedTypeUuid, setSelectedTypeUuid] = useState<string | null>(null)
-  const activeType = types.find((at) => at.uuid === selectedTypeUuid) ?? types[0] ?? null
+  const [selectedFamilyUuid, setSelectedFamilyUuid] = useState<string | null>(null)
+  const activeFamily = families.find((af) => af.uuid === selectedFamilyUuid) ?? families[0] ?? null
 
-  if (typesQuery.isLoading) {
+  if (familiesQuery.isLoading) {
     return <p className="text-sm text-on-surface-variant">{t('states.loading')}</p>
   }
 
-  if (types.length === 0) {
+  if (families.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
-        {t('workspace.tarifs.machines.noTypes')}
+        {t('workspace.tarifs.machines.noFamilies')}
       </p>
     )
   }
@@ -54,25 +54,25 @@ function MachinesPricingTab() {
     <div className="space-y-4">
       {/* Sub-tabs selector */}
       <div className="flex flex-wrap gap-2 rounded-xl border border-outline-variant bg-surface px-4 py-3 shadow-sm">
-        {types.map((at) => (
+        {families.map((af) => (
           <button
-            key={at.uuid}
+            key={af.uuid}
             type="button"
-            onClick={() => setSelectedTypeUuid(at.uuid)}
+            onClick={() => setSelectedFamilyUuid(af.uuid)}
             className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-              (selectedTypeUuid ?? types[0]?.uuid) === at.uuid
+              (selectedFamilyUuid ?? families[0]?.uuid) === af.uuid
                 ? 'bg-primary-container text-on-primary-container font-semibold'
                 : 'bg-surface-container text-on-surface hover:bg-surface-container-highest'
             }`}
           >
-            {at.name}
+            {af.name}
           </button>
         ))}
       </div>
 
-      {/* Panel for selected type */}
-      {activeType && (
-        <AssetTypePricingPanel assetTypeUuid={activeType.uuid} />
+      {/* Panel for selected family */}
+      {activeFamily && (
+        <AssetFamilyPricingPanel assetFamilyUuid={activeFamily.uuid} />
       )}
     </div>
   )

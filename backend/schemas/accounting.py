@@ -422,8 +422,8 @@ class SystemSettingResponse(BaseModel):
 class PricingVersionCreateRequest(BaseModel):
     """Create request for pricing version governance."""
     fiscal_year_uuid: Optional[UUID] = None
-    # NULL = global pricing; set to scope this version to a specific asset type
-    asset_type_uuid: Optional[UUID] = None
+    # NULL = global pricing; set to scope this version to a specific asset family
+    asset_family_uuid: Optional[UUID] = None
     name: str = Field(min_length=1, max_length=100)
     from_date: date
     to_date: Optional[date] = None
@@ -441,7 +441,7 @@ class PricingVersionResponse(BaseModel):
     status: int
     is_locked: bool
     use_pack: bool
-    asset_type_uuid: Optional[UUID] = None
+    asset_family_uuid: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int] = None
@@ -452,7 +452,7 @@ class PricingVersionResponse(BaseModel):
 
 class PricingVersionUpdateRequest(BaseModel):
     """Update request for pricing version governance."""
-    asset_type_uuid: Optional[UUID] = None
+    asset_family_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     from_date: Optional[date] = None
     to_date: Optional[date] = None
@@ -486,7 +486,7 @@ class CostProvisionRuleResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     uuid: UUID
-    asset_type_uuid: UUID
+    asset_family_uuid: UUID
     fiscal_year_uuid: UUID
     metric_name: str
     cost_per_unit: Decimal

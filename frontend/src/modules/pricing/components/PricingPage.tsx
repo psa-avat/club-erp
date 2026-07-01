@@ -39,7 +39,7 @@ import {
 } from '../../banque/api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import {
-  useAssetTypesQuery,
+  useAssetFamiliesQuery,
   usePricingItemsQuery,
   useCreatePricingItemMutation,
   useUpdatePricingItemMutation,
@@ -47,7 +47,7 @@ import {
   useFlightTypesQuery,
 } from '../../assets/api'
 import type {
-  AssetType,
+  AssetFamily,
   AssetPricingVersion,
   PricingItem,
   TierPayload,
@@ -137,7 +137,7 @@ function useCreatePricingVersionMutation(fiscalYearUuid: string) {
       from_date: string
       to_date?: string | null
       status: number
-      asset_type_uuid?: string | null
+      asset_family_uuid?: string | null
       use_pack?: boolean
     }) => {
       const { data } = await apiClient.post<AssetPricingVersion>(
@@ -176,20 +176,20 @@ type VersionFormState = {
   from_date: string
   to_date: string
   status: number
-  asset_type_uuid: string
+  asset_family_uuid: string
   use_pack: boolean
 }
 
 function VersionForm({
   initial,
-  assetTypes,
+  assetFamilies,
   onSave,
   onCancel,
   saving,
   t,
 }: {
   initial: VersionFormState
-  assetTypes: AssetType[]
+  assetFamilies: AssetFamily[]
   onSave: (v: VersionFormState) => void
   onCancel: () => void
   saving: boolean
@@ -207,14 +207,14 @@ function VersionForm({
         <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
       </div>
       <div className="space-y-1 sm:col-span-2">
-        <Label className="text-xs">{t('version.assetType')}</Label>
+        <Label className="text-xs">{t('version.assetFamily')}</Label>
         <select
-          value={form.asset_type_uuid}
-          onChange={(e) => set('asset_type_uuid', e.target.value)}
+          value={form.asset_family_uuid}
+          onChange={(e) => set('asset_family_uuid', e.target.value)}
           className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
         >
           <option value="">{t('version.globalVersion')}</option>
-          {assetTypes.map((at) => (
+          {assetFamilies.map((at) => (
             <option key={at.uuid} value={at.uuid}>{at.name}</option>
           ))}
         </select>
@@ -652,7 +652,7 @@ function PricingItemsPanel({
 
 function VersionCard({
   version,
-  assetTypes,
+  assetFamilies,
   fyUuid,
   canEdit,
   expanded,
@@ -660,7 +660,7 @@ function VersionCard({
   t,
 }: {
   version: AssetPricingVersion
-  assetTypes: AssetType[]
+  assetFamilies: AssetFamily[]
   fyUuid: string
   canEdit: boolean
   expanded: boolean
@@ -712,7 +712,7 @@ function VersionCard({
     from_date: version.from_date,
     to_date: version.to_date ?? '',
     status: version.status,
-    asset_type_uuid: version.asset_type_uuid ?? '',
+    asset_family_uuid: version.asset_family_uuid ?? '',
     use_pack: version.use_pack,
   }
 
@@ -720,7 +720,7 @@ function VersionCard({
     return (
       <VersionForm
         initial={editInitial}
-        assetTypes={assetTypes}
+        assetFamilies={assetFamilies}
         onSave={handleUpdate}
         onCancel={() => setEditing(false)}
         saving={updateMutation.isPending}
@@ -784,7 +784,7 @@ function VersionCard({
 function VersionsSection({
   title,
   versions,
-  assetTypes,
+  assetFamilies,
   fyUuid,
   canEdit,
   expandedUuid,
@@ -793,7 +793,7 @@ function VersionsSection({
 }: {
   title: string
   versions: AssetPricingVersion[]
-  assetTypes: AssetType[]
+  assetFamilies: AssetFamily[]
   fyUuid: string
   canEdit: boolean
   expandedUuid: string | null
@@ -808,7 +808,7 @@ function VersionsSection({
         <VersionCard
           key={v.uuid}
           version={v}
-          assetTypes={assetTypes}
+          assetFamilies={assetFamilies}
           fyUuid={fyUuid}
           canEdit={canEdit}
           expanded={expandedUuid === v.uuid}
@@ -849,21 +849,21 @@ export function PricingPage() {
   const versionsQuery = useAllPricingVersionsQuery(selectedFy?.uuid ?? null, canView)
   const versions = versionsQuery.data ?? []
 
-  const assetTypesQuery = useAssetTypesQuery(canView)
-  const assetTypes = assetTypesQuery.data ?? []
+  const assetFamiliesQuery = useAssetFamiliesQuery(canView)
+  const assetFamilies = assetFamiliesQuery.data ?? []
 
-  // Group versions: null = global, others by asset_type_uuid
+  // Group versions: null = global, others by asset_family_uuid
   const globalVersions = useMemo(
-    () => versions.filter((v) => v.asset_type_uuid === null),
+    () => versions.filter((v) => v.asset_family_uuid === null),
     [versions],
   )
   const versionsByType = useMemo(() => {
     const map = new Map<string, AssetPricingVersion[]>()
     for (const v of versions) {
-      if (v.asset_type_uuid === null) continue
-      const arr = map.get(v.asset_type_uuid) ?? []
+      if (v.asset_family_uuid === null) continue
+      const arr = map.get(v.asset_family_uuid) ?? []
       arr.push(v)
-      map.set(v.asset_type_uuid, arr)
+      map.set(v.asset_family_uuid, arr)
     }
     return map
   }, [versions])
@@ -881,7 +881,7 @@ export function PricingPage() {
         from_date: form.from_date,
         to_date: form.to_date || null,
         status: form.status,
-        asset_type_uuid: form.asset_type_uuid || null,
+        asset_family_uuid: form.asset_family_uuid || null,
         use_pack: form.use_pack,
       })
       setShowNewVersionForm(false)
@@ -909,7 +909,7 @@ export function PricingPage() {
     from_date: selectedFy?.start_date ?? '',
     to_date: '',
     status: 1,
-    asset_type_uuid: '',
+    asset_family_uuid: '',
     use_pack: true,
   }
 
@@ -957,7 +957,7 @@ export function PricingPage() {
       {showNewVersionForm && (
         <VersionForm
           initial={newVersionInitial}
-          assetTypes={assetTypes}
+          assetFamilies={assetFamilies}
           onSave={handleCreate}
           onCancel={() => setShowNewVersionForm(false)}
           saving={createMutation.isPending}
@@ -987,7 +987,7 @@ export function PricingPage() {
           <VersionsSection
             title={t('version.globalVersions')}
             versions={globalVersions}
-            assetTypes={assetTypes}
+            assetFamilies={assetFamilies}
             fyUuid={selectedFy?.uuid ?? ''}
             canEdit={canEdit}
             expandedUuid={expandedVersionUuid}
@@ -996,14 +996,14 @@ export function PricingPage() {
           />
 
           {/* Per asset-type versions */}
-          {assetTypes
+          {assetFamilies
             .filter((at) => versionsByType.has(at.uuid))
             .map((at) => (
               <VersionsSection
                 key={at.uuid}
                 title={at.name}
                 versions={versionsByType.get(at.uuid) ?? []}
-                assetTypes={assetTypes}
+                assetFamilies={assetFamilies}
                 fyUuid={selectedFy?.uuid ?? ''}
                 canEdit={canEdit}
                 expandedUuid={expandedVersionUuid}

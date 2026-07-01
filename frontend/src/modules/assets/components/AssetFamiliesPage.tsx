@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - Asset types management: list, create and edit asset types with flight types
+    - Asset families management: list, create and edit asset families with flight types
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -26,17 +26,15 @@ import { ArrowLeft, Check, Pencil, Plus, X } from 'lucide-react'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { SearchableSelect } from '../../../components/ui/searchable-select'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
-  useAssetTypesQuery,
-  useCreateAssetTypeMutation,
-  useUpdateAssetTypeMutation,
+  useAssetCategoriesQuery,
+  useAssetFamiliesQuery,
+  useCreateAssetFamilyMutation,
+  useUpdateAssetFamilyMutation,
 } from '../api'
-import type { AssetType, CreateAssetTypePayload } from '../types'
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const CATEGORIES = [1, 2, 3, 4, 5] as const
+import type { AssetCategory, AssetFamily, CreateAssetFamilyPayload } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,62 +45,64 @@ function extractError(e: unknown, fallback: string): string {
   return fallback
 }
 
-// ── Asset Type Form ───────────────────────────────────────────────────────────
+// ── Asset Family Form ─────────────────────────────────────────────────────────
 
-type TypeFormState = {
+type FamilyFormState = {
   code: string
   name: string
-  category: number
+  category_uuid: string
   is_active: boolean
 }
 
-const EMPTY_FORM: TypeFormState = {
+const EMPTY_FORM: FamilyFormState = {
   code: '',
   name: '',
-  category: 1,
+  category_uuid: '',
   is_active: true,
 }
 
-function typeToForm(at: AssetType): TypeFormState {
+function familyToForm(af: AssetFamily): FamilyFormState {
   return {
-    code: at.code,
-    name: at.name,
-    category: at.category,
-    is_active: at.is_active,
+    code: af.code,
+    name: af.name,
+    category_uuid: af.category_uuid,
+    is_active: af.is_active,
   }
 }
 
-function TypeForm({
+function FamilyForm({
   initial,
   isEdit,
+  categories,
   saving,
   error,
   onSave,
   onCancel,
   t,
 }: {
-  initial: TypeFormState
+  initial: FamilyFormState
   isEdit: boolean
+  categories: AssetCategory[]
   saving: boolean
   error: string | null
-  onSave: (f: TypeFormState) => void
+  onSave: (f: FamilyFormState) => void
   onCancel: () => void
   t: (k: string) => string
 }) {
-  const [form, setForm] = useState<TypeFormState>(initial)
+  const [form, setForm] = useState<FamilyFormState>(initial)
 
-  function set<K extends keyof TypeFormState>(key: K, value: TypeFormState[K]) {
+  function set<K extends keyof FamilyFormState>(key: K, value: FamilyFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const valid = form.code.trim() !== '' && form.name.trim() !== ''
+  const valid = form.code.trim() !== '' && form.name.trim() !== '' && form.category_uuid !== ''
 
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         {/* Code — readonly when editing */}
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.code')} *</Label>
+          <Label className="text-xs">{t('assetFamilies.code')} *</Label>
           <Input
             value={form.code}
             onChange={(e) => set('code', e.target.value.toUpperCase())}
@@ -114,7 +114,7 @@ function TypeForm({
 
         {/* Name */}
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.name')} *</Label>
+          <Label className="text-xs">{t('assetFamilies.name')} *</Label>
           <Input
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
@@ -124,18 +124,13 @@ function TypeForm({
 
         {/* Category */}
         <div className="space-y-1">
-          <Label className="text-xs">{t('assetTypes.category')}</Label>
-          <select
-            value={form.category}
-            onChange={(e) => set('category', Number(e.target.value))}
-            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {t(`assetTypes.category${c}`)}
-              </option>
-            ))}
-          </select>
+          <Label className="text-xs">{t('assetFamilies.category')} *</Label>
+          <SearchableSelect
+            options={categories.map((c) => ({ value: c.uuid, label: c.name }))}
+            value={form.category_uuid || undefined}
+            onChange={(val) => set('category_uuid', val ?? '')}
+            placeholder={t('assetFamilies.categoryPlaceholder')}
+          />
         </div>
       </div>
 
@@ -147,7 +142,7 @@ function TypeForm({
           onChange={(e) => set('is_active', e.target.checked)}
           className="h-4 w-4 rounded border-slate-300"
         />
-        {t('assetTypes.active')}
+        {t('assetFamilies.active')}
       </label>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
@@ -155,28 +150,28 @@ function TypeForm({
       <div className="flex gap-2">
         <Button size="sm" onClick={() => onSave(form)} disabled={saving || !valid}>
           <Check className="mr-1 h-3 w-3" />
-          {saving ? t('assetTypes.saving') : t('assetTypes.save')}
+          {saving ? t('assetFamilies.saving') : t('assetFamilies.save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
-          {t('assetTypes.cancel')}
+          {t('assetFamilies.cancel')}
         </Button>
       </div>
     </div>
   )
 }
 
-// ── Asset Type Row ────────────────────────────────────────────────────────────
+// ── Asset Family Row ──────────────────────────────────────────────────────────
 
-function TypeRow({
-  assetType,
+function FamilyRow({
+  assetFamily,
   canManage,
   onEdit,
   t,
 }: {
-  assetType: AssetType
+  assetFamily: AssetFamily
   canManage: boolean
-  onEdit: (at: AssetType) => void
+  onEdit: (af: AssetFamily) => void
   t: (k: string) => string
 }) {
   return (
@@ -185,22 +180,22 @@ function TypeRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">
-              {assetType.code}
+              {assetFamily.code}
             </span>
-            <span className="truncate text-sm font-medium text-slate-900">{assetType.name}</span>
-            {!assetType.is_active && (
+            <span className="truncate text-sm font-medium text-slate-900">{assetFamily.name}</span>
+            {!assetFamily.is_active && (
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                {t('assetTypes.inactive')}
+                {t('assetFamilies.inactive')}
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">{t(`assetTypes.category${assetType.category}`)}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{assetFamily.category?.name ?? '—'}</p>
         </div>
         {canManage && (
           <button
             type="button"
             className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            onClick={(e) => { e.stopPropagation(); onEdit(assetType) }}
+            onClick={(e) => { e.stopPropagation(); onEdit(assetFamily) }}
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -212,29 +207,31 @@ function TypeRow({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function AssetTypesPage() {
+export function AssetFamiliesPage() {
   const { t } = useTranslation('assets')
   const navigate = useNavigate()
   const canManage = useCapability('MANAGE_ASSETS')
   const canView = useCapability('MANAGE_ASSETS') || useCapability('VIEW_FINANCIALS')
 
-  const typesQuery = useAssetTypesQuery(canView)
-  const createMutation = useCreateAssetTypeMutation()
+  const familiesQuery = useAssetFamiliesQuery(canView)
+  const categoriesQuery = useAssetCategoriesQuery(canView)
+  const createMutation = useCreateAssetFamilyMutation()
 
   const [showForm, setShowForm] = useState(false)
-  const [editingType, setEditingType] = useState<AssetType | null>(null)
+  const [editingFamily, setEditingFamily] = useState<AssetFamily | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [activeOnly, setActiveOnly] = useState(false)
-  const allTypes = typesQuery.data ?? []
-  const types = activeOnly ? allTypes.filter((ty) => ty.is_active) : allTypes
+  const allFamilies = familiesQuery.data ?? []
+  const families = activeOnly ? allFamilies.filter((af) => af.is_active) : allFamilies
+  const categories = categoriesQuery.data ?? []
 
-  const updateMutation = useUpdateAssetTypeMutation(editingType?.uuid ?? '')
+  const updateMutation = useUpdateAssetFamilyMutation(editingFamily?.uuid ?? '')
 
-  async function handleCreate(form: TypeFormState) {
-    const payload: CreateAssetTypePayload = {
+  async function handleCreate(form: FamilyFormState) {
+    const payload: CreateAssetFamilyPayload = {
       code: form.code.trim(),
       name: form.name.trim(),
-      category: form.category,
+      category_uuid: form.category_uuid,
       is_active: form.is_active,
     }
     try {
@@ -242,22 +239,22 @@ export function AssetTypesPage() {
       setShowForm(false)
       setFormError(null)
     } catch (e) {
-      setFormError(extractError(e, t('assetTypes.error.saveFailed')))
+      setFormError(extractError(e, t('assetFamilies.error.saveFailed')))
     }
   }
 
-  async function handleUpdate(form: TypeFormState) {
-    if (!editingType) return
+  async function handleUpdate(form: FamilyFormState) {
+    if (!editingFamily) return
     try {
       await updateMutation.mutateAsync({
         name: form.name.trim(),
-        category: form.category,
+        category_uuid: form.category_uuid,
         is_active: form.is_active,
       })
-      setEditingType(null)
+      setEditingFamily(null)
       setFormError(null)
     } catch (e) {
-      setFormError(extractError(e, t('assetTypes.error.saveFailed')))
+      setFormError(extractError(e, t('assetFamilies.error.saveFailed')))
     }
   }
 
@@ -280,12 +277,12 @@ export function AssetTypesPage() {
           className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
         >
           <ArrowLeft className="h-3 w-3" />
-          {t('assetTypes.backToAssets')}
+          {t('assetFamilies.backToAssets')}
         </button>
-        {canManage && !showForm && !editingType && (
+        {canManage && !showForm && !editingFamily && (
           <Button size="sm" onClick={() => { setShowForm(true); setFormError(null) }}>
             <Plus className="mr-1 h-4 w-4" />
-            {t('assetTypes.addType')}
+            {t('assetFamilies.addFamily')}
           </Button>
         )}
       </div>
@@ -293,9 +290,10 @@ export function AssetTypesPage() {
       {/* Create form */}
       {showForm && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <TypeForm
+          <FamilyForm
             initial={EMPTY_FORM}
             isEdit={false}
+            categories={categories}
             saving={createMutation.isPending}
             error={formError}
             onSave={handleCreate}
@@ -316,37 +314,38 @@ export function AssetTypesPage() {
               onChange={(e) => setActiveOnly(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300"
             />
-            {t('assetTypes.activeOnly')}
+            {t('assetFamilies.activeOnly')}
           </label>
         </div>
 
-        {typesQuery.isLoading ? (
+        {familiesQuery.isLoading ? (
           <p className="py-4 text-center text-sm text-slate-500">{t('states.loading')}</p>
-        ) : types.length === 0 ? (
+        ) : families.length === 0 ? (
           <p className="rounded border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
-            {t('assetTypes.noTypes')}
+            {t('assetFamilies.noFamilies')}
           </p>
         ) : (
           <div className="space-y-2">
-            {types.map((ty) =>
-              editingType?.uuid === ty.uuid ? (
-                <div key={ty.uuid} className="rounded-lg border border-slate-200 bg-white p-4">
-                  <TypeForm
-                    initial={typeToForm(ty)}
+            {families.map((af) =>
+              editingFamily?.uuid === af.uuid ? (
+                <div key={af.uuid} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <FamilyForm
+                    initial={familyToForm(af)}
                     isEdit
+                    categories={categories}
                     saving={updateMutation.isPending}
                     error={formError}
                     onSave={handleUpdate}
-                    onCancel={() => { setEditingType(null); setFormError(null) }}
+                    onCancel={() => { setEditingFamily(null); setFormError(null) }}
                     t={t}
                   />
                 </div>
               ) : (
-                <TypeRow
-                  key={ty.uuid}
-                  assetType={ty}
+                <FamilyRow
+                  key={af.uuid}
+                  assetFamily={af}
                   canManage={canManage}
-                  onEdit={(at) => { setEditingType(at); setFormError(null); setShowForm(false) }}
+                  onEdit={(af) => { setEditingFamily(af); setFormError(null); setShowForm(false) }}
                   t={t}
                 />
               ),
@@ -358,4 +357,3 @@ export function AssetTypesPage() {
     </section>
   )
 }
-

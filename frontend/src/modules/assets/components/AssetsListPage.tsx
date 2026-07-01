@@ -32,7 +32,7 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetsQuery,
-  useAssetTypesQuery,
+  useAssetFamiliesQuery,
   useImportAssetsMutation,
   useTransitionAssetStatusMutation,
 } from '../api'
@@ -77,8 +77,8 @@ function ownershipLabel(ownership: number, t: (k: string) => string): string {
     : t('ownership.private')
 }
 
-function assetTypeLabel(asset: AssetSummary): string {
-  return asset.asset_type?.name ?? asset.asset_type_name ?? asset.asset_type_uuid
+function assetFamilyLabel(asset: AssetSummary): string {
+  return asset.asset_family?.name ?? asset.asset_family_name ?? asset.asset_family_uuid
 }
 
 function pricingVersionLabel(asset: AssetSummary): string | null {
@@ -185,12 +185,12 @@ export function AssetsListPage() {
   const [transitionError, setTransitionError] = useState<string | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
 
-  const typesQuery = useAssetTypesQuery(canView)
+  const familiesQuery = useAssetFamiliesQuery(canView)
   const assetsQuery = useAssetsQuery(filters, canView)
   const importAssetsMutation = useImportAssetsMutation()
 
   const assets = assetsQuery.data ?? []
-  const types = typesQuery.data ?? []
+  const types = familiesQuery.data ?? []
 
   // Client-side name search (backend doesn't support text search for assets)
   const filtered = search.trim()
@@ -243,7 +243,7 @@ export function AssetsListPage() {
       {canManage && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => navigate('/assets/types')}>
-            {t('assetTypes.title')}
+            {t('assetFamilies.title')}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => setShowImportDialog(true)}>
             {tCommon('import.button')}
@@ -273,8 +273,8 @@ export function AssetsListPage() {
           <div className="space-y-1">
             <Label className="text-xs">{t('filters.type')}</Label>
             <select
-              value={filters.asset_type_uuid ?? ''}
-              onChange={(e) => setFilter('asset_type_uuid', e.target.value || undefined)}
+              value={filters.asset_family_uuid ?? ''}
+              onChange={(e) => setFilter('asset_family_uuid', e.target.value || undefined)}
               className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allTypes')}</option>
@@ -381,7 +381,7 @@ export function AssetsListPage() {
                     {asset.name}
                   </button>
                   <p className="truncate text-xs text-on-surface-variant">
-                    {asset.code} · {assetTypeLabel(asset)} ·{' '}
+                    {asset.code} · {assetFamilyLabel(asset)} ·{' '}
                     {ownershipLabel(asset.ownership, t)}
                     {asset.ownership === ASSET_OWNERSHIP_PRIVATE && (asset.owner_members?.length ?? 0) > 0
                       ? ` · ${ownerNames(asset)}`

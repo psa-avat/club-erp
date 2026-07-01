@@ -808,7 +808,7 @@ class FlightBillingPreviewService:
                 PricingVersion.status == PRICING_STATUS_ACTIVE,
                 PricingVersion.from_date <= flight.jour,
                 or_(PricingVersion.to_date.is_(None), PricingVersion.to_date >= flight.jour),
-                PricingVersion.asset_type_uuid == asset.asset_type_uuid,
+                PricingVersion.asset_family_uuid == asset.asset_family_uuid,
             )
             .options(selectinload(PricingVersion.items).selectinload(PricingItem.tiers), selectinload(PricingVersion.items).selectinload(PricingItem.gl_account_credit))
         )

@@ -18,14 +18,64 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// ── Asset Types ───────────────────────────────────────────────────────────────
+// ── Asset Categories ─────────────────────────────────────────────────────────────
 
-export type AssetType = {
+export type AssetCategory = {
   uuid: string
   code: string
   name: string
-  /** 1=Glider, 2=Tow, 3=Simulator, 4=Winch, 5=Other */
-  category: number
+  description: string | null
+  is_active: boolean
+  acquisition_account_uuid: string | null
+  acquisition_account_code: string | null
+  depreciation_account_uuid: string | null
+  depreciation_account_code: string | null
+  charge_account_uuid: string | null
+  charge_account_code: string | null
+  revenue_account_uuid: string | null
+  revenue_account_code: string | null
+  created_at: string
+  updated_at: string
+  updated_by: number | null
+}
+
+export type CreateAssetCategoryPayload = {
+  code: string
+  name: string
+  description?: string | null
+  is_active?: boolean
+  acquisition_account_uuid?: string | null
+  depreciation_account_uuid?: string | null
+  charge_account_uuid?: string | null
+  revenue_account_uuid?: string | null
+}
+
+export type UpdateAssetCategoryPayload = {
+  name?: string
+  description?: string | null
+  is_active?: boolean
+  acquisition_account_uuid?: string | null
+  depreciation_account_uuid?: string | null
+  charge_account_uuid?: string | null
+  revenue_account_uuid?: string | null
+}
+
+/** Narrow patch type for the account-configuration dialog. */
+export type AssetCategoryAccountingPatch = {
+  acquisition_account_uuid?: string | null
+  depreciation_account_uuid?: string | null
+  charge_account_uuid?: string | null
+  revenue_account_uuid?: string | null
+}
+
+// ── Asset Families ──────────────────────────────────────────────────────────────
+
+export type AssetFamily = {
+  uuid: string
+  code: string
+  name: string
+  category_uuid: string
+  category?: AssetCategory | null
   /** 1=PerHour, 2=PerLaunch, 3=PerFlight, 4=Pack, 5=Subscription, 6=Fixed */
   pricing_strategy: number
   is_active: boolean
@@ -64,9 +114,9 @@ export type AssetSummary = {
   uuid: string
   code: string
   name: string
-  asset_type_uuid: string
-  asset_type?: AssetType | null
-  asset_type_name?: string
+  asset_family_uuid: string
+  asset_family?: AssetFamily | null
+  asset_family_name?: string
   current_price_version?: string | null
   current_price_version_name?: string | null
   pricing_version?: string | null
@@ -99,7 +149,7 @@ export type AssetDetail = {
   uuid: string
   code: string
   name: string
-  asset_type_uuid: string
+  asset_family_uuid: string
   registration: string | null
   serial_number: string | null
   manufacturer: string | null
@@ -124,22 +174,21 @@ export type AssetDetail = {
   updated_at: string
 }
 
-export type CreateAssetTypePayload = {
+export type CreateAssetFamilyPayload = {
   code: string
   name: string
-  /** 1=Aircraft 2=LaunchEquipment 3=Support 4=Consumable 5=Service */
-  category: number
+  category_uuid: string
   is_active?: boolean
 }
 
-export type UpdateAssetTypePayload = {
+export type UpdateAssetFamilyPayload = {
   name?: string
-  category?: number
+  category_uuid?: string
   is_active?: boolean
 }
 
 export type AssetFilters = {
-  asset_type_uuid?: string
+  asset_family_uuid?: string
   status?: number
   ownership?: number
   is_active?: boolean
@@ -148,7 +197,7 @@ export type AssetFilters = {
 export type CreateAssetPayload = {
   code: string
   name: string
-  asset_type_uuid: string
+  asset_family_uuid: string
   registration?: string | null
   serial_number?: string | null
   manufacturer?: string | null
@@ -230,7 +279,7 @@ export type ReplaceTiersPayload = TierPayload[]
 export type AssetPricingVersion = {
   uuid: string
   fiscal_year_uuid: string
-  asset_type_uuid: string | null
+  asset_family_uuid: string | null
   name: string
   from_date: string
   to_date: string | null

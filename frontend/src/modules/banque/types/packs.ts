@@ -37,7 +37,7 @@ export type PackDefinitionCreate = {
 export type PackDefinitionUpdate = {
   name?: string
   quantity_allowance?: string
-  eligible_asset_type_uuid?: string | null
+  eligible_asset_family_uuid?: string | null
   pack_sales_account_uuid?: string | null
   rem_discount_account_uuid?: string | null
   priority?: number

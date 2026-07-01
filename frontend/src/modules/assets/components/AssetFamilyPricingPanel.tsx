@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - AssetTypePricingPanel: pricing version CRUD for one asset type (no FY dependency)
+    - AssetFamilyPricingPanel: pricing version CRUD for one asset family (no FY dependency)
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -330,10 +330,10 @@ function PricingItemsPanel({
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-export function AssetTypePricingPanel({
-  assetTypeUuid,
+export function AssetFamilyPricingPanel({
+  assetFamilyUuid,
 }: {
-  assetTypeUuid: string
+  assetFamilyUuid: string
 }) {
   const { t } = useTranslation('pricing')
 
@@ -342,15 +342,15 @@ export function AssetTypePricingPanel({
   const canViewFinancials = useCapability('VIEW_FINANCIALS')
   const canView = canManageAssets || canViewFinancials
 
-  const versionsQuery = useAssetPricingVersionsQuery(assetTypeUuid, canView)
+  const versionsQuery = useAssetPricingVersionsQuery(assetFamilyUuid, canView)
   const versions = (versionsQuery.data ?? []).slice().sort(
     (a, b) => b.from_date.localeCompare(a.from_date),
   )
 
-  const createVersionMutation = useCreateAssetPricingVersionMutation(assetTypeUuid)
-  const updateVersionMutation = useUpdateAssetPricingVersionMutation(assetTypeUuid)
-  const deleteVersionMutation = useDeleteAssetPricingVersionMutation(assetTypeUuid)
-  const cloneVersionMutation = useCloneAssetPricingVersionMutation(assetTypeUuid)
+  const createVersionMutation = useCreateAssetPricingVersionMutation(assetFamilyUuid)
+  const updateVersionMutation = useUpdateAssetPricingVersionMutation(assetFamilyUuid)
+  const deleteVersionMutation = useDeleteAssetPricingVersionMutation(assetFamilyUuid)
+  const cloneVersionMutation = useCloneAssetPricingVersionMutation(assetFamilyUuid)
 
   const [showNewVersionForm, setShowNewVersionForm] = useState(false)
   const [editingVersion, setEditingVersion] = useState<AssetPricingVersion | null>(null)
