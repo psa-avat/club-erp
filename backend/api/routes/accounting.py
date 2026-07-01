@@ -642,7 +642,7 @@ async def create_pricing_version_endpoint(
     """Create a pricing version for a fiscal year with non-overlapping dates.
     Optionally, link to an asset type for asset-specific pricing.
     """
-    version = await create_pricing_version(db, request, current_user.id, request.asset_type_uuid)
+    version = await create_pricing_version(db, request, current_user.id, request.asset_family_uuid)
     _log_accounting_audit(
         action="create_pricing_version",
         user_id=current_user.id,
@@ -680,13 +680,13 @@ async def clone_pricing_version_endpoint(
 @router.get("/pricing/versions", response_model=list[PricingVersionResponse])
 async def list_pricing_versions_endpoint(
     fiscal_year_uuid: UUID | None = None,
-    asset_type_uuid: UUID | None = None,
+    asset_family_uuid: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = prices_guard, # This guard should be for MANAGE_PRICES
     current_user: User = Depends(get_current_user),
 ):
     """List pricing versions, optionally filtered by asset type."""
-    return await list_pricing_versions(db, asset_type_uuid=asset_type_uuid)
+    return await list_pricing_versions(db, asset_family_uuid=asset_family_uuid)
 
 
 @router.get("/pricing/versions/{version_uuid}", response_model=PricingVersionResponse)
@@ -715,7 +715,7 @@ async def update_pricing_version_endpoint(
     """Update one pricing version and enforce date overlap constraints.
     Can also update the associated asset type.
     """
-    version = await update_pricing_version(db, version_uuid, request, request.asset_type_uuid)
+    version = await update_pricing_version(db, version_uuid, request, request.asset_family_uuid)
     _log_accounting_audit(
         action="update_pricing_version",
         user_id=current_user.id,

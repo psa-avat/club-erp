@@ -59,7 +59,7 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         )
         asset = Asset(
             uuid=uuid4(),
-            asset_type_uuid=uuid4(),
+            asset_family_uuid=uuid4(),
             code="F-CABC",
             registration="F-CABC",
             name="Club glider",

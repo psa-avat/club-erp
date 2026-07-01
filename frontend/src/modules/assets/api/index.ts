@@ -21,15 +21,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import type {
+  AssetCategory,
   AssetDetail,
   AssetFilters,
   AssetPricingVersion,
   AssetStatusHistoryEntry,
   AssetStatusTransitionPayload,
   AssetSummary,
-  AssetType,
+  AssetFamily,
   CreateAssetPayload,
-  CreateAssetTypePayload,
+  CreateAssetCategoryPayload,
+  CreateAssetFamilyPayload,
   CreateFlightTypePayload,
   CreatePricingItemPayload,
   FlightType,
@@ -37,7 +39,8 @@ import type {
   PricingItem,
   ReplaceTiersPayload,
   UpdateAssetPayload,
-  UpdateAssetTypePayload,
+  UpdateAssetCategoryPayload,
+  UpdateAssetFamilyPayload,
   UpdateFlightTypePayload,
   UpdatePricingItemPayload,
 } from '../types'
@@ -46,13 +49,14 @@ import type {
 
 export const assetsQueryKeys = {
   root: ['assets'] as const,
-  types: () => ['assets', 'types'] as const,
+  categories: () => ['assets', 'categories'] as const,
+  families: () => ['assets', 'families'] as const,
   flightTypes: () => ['assets', 'flight-types'] as const,
   list: (filters: AssetFilters) => ['assets', 'list', filters] as const,
   detail: (uuid: string) => ['assets', 'detail', uuid] as const,
   statusHistory: (uuid: string) => ['assets', 'status-history', uuid] as const,
-  pricingVersions: (assetTypeUuid: string) =>
-    ['assets', 'pricing-versions', assetTypeUuid] as const,
+  pricingVersions: (assetFamilyUuid: string) =>
+    ['assets', 'pricing-versions', assetFamilyUuid] as const,
   pricingItems: (versionUuid: string) => ['assets', 'pricing-items', versionUuid] as const,
 }
 
@@ -62,45 +66,88 @@ function compactParams(obj: Record<string, unknown>) {
   )
 }
 
-// ── Asset Types ───────────────────────────────────────────────────────────────
+// ── Asset Categories ─────────────────────────────────────────────────────────────
 
-export function useAssetTypesQuery(enabled = true) {
+export function useAssetCategoriesQuery(enabled = true) {
   return useQuery({
-    queryKey: assetsQueryKeys.types(),
+    queryKey: assetsQueryKeys.categories(),
     enabled,
     queryFn: async () => {
-      const { data } = await apiClient.get<AssetType[]>('/api/v1/assets/types', getAuthRequestConfig())
+      const { data } = await apiClient.get<AssetCategory[]>('/api/v1/assets/categories', getAuthRequestConfig())
       return data
     },
   })
 }
 
-export function useCreateAssetTypeMutation() {
+export function useCreateAssetCategoryMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: CreateAssetTypePayload) => {
-      const { data } = await apiClient.post<AssetType>('/api/v1/assets/types', payload, getAuthRequestConfig())
+    mutationFn: async (payload: CreateAssetCategoryPayload) => {
+      const { data } = await apiClient.post<AssetCategory>('/api/v1/assets/categories', payload, getAuthRequestConfig())
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.types() })
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.categories() })
     },
   })
 }
 
-export function useUpdateAssetTypeMutation(uuid: string) {
+export function useUpdateAssetCategoryMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: UpdateAssetTypePayload) => {
-      const { data } = await apiClient.patch<AssetType>(
-        `/api/v1/assets/types/${uuid}`,
+    mutationFn: async ({ uuid, ...payload }: UpdateAssetCategoryPayload & { uuid: string }) => {
+      const { data } = await apiClient.patch<AssetCategory>(
+        `/api/v1/assets/categories/${uuid}`,
         payload,
         getAuthRequestConfig(),
       )
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.types() })
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.categories() })
+    },
+  })
+}
+
+// ── Asset Families ───────────────────────────────────────────────────────────────
+
+export function useAssetFamiliesQuery(enabled = true) {
+  return useQuery({
+    queryKey: assetsQueryKeys.families(),
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<AssetFamily[]>('/api/v1/assets/families', getAuthRequestConfig())
+      return data
+    },
+  })
+}
+
+export function useCreateAssetFamilyMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: CreateAssetFamilyPayload) => {
+      const { data } = await apiClient.post<AssetFamily>('/api/v1/assets/families', payload, getAuthRequestConfig())
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.families() })
+    },
+  })
+}
+
+export function useUpdateAssetFamilyMutation(uuid: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: UpdateAssetFamilyPayload) => {
+      const { data } = await apiClient.patch<AssetFamily>(
+        `/api/v1/assets/families/${uuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.families() })
     },
   })
 }
@@ -248,21 +295,21 @@ export function useTransitionAssetStatusMutation(uuid: string) {
 }
 
 // ── Asset-scoped Pricing Versions ─────────────────────────────────────────────
-// Reuses the accounting pricing/versions endpoint, scoped by asset_type_uuid
+// Reuses the accounting pricing/versions endpoint, scoped by asset_family_uuid
 
 export function useAssetPricingVersionsQuery(
-  assetTypeUuid: string | null,
+  assetFamilyUuid: string | null,
   enabled = true,
 ) {
   return useQuery({
-    queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid ?? ''),
-    enabled: enabled && Boolean(assetTypeUuid),
+    queryKey: assetsQueryKeys.pricingVersions(assetFamilyUuid ?? ''),
+    enabled: enabled && Boolean(assetFamilyUuid),
     queryFn: async () => {
       const { data } = await apiClient.get<AssetPricingVersion[]>(
         '/api/v1/accounting/pricing/versions',
         {
           ...getAuthRequestConfig(),
-          params: { asset_type_uuid: assetTypeUuid },
+          params: { asset_family_uuid: assetFamilyUuid },
         },
       )
       return data
@@ -270,7 +317,7 @@ export function useAssetPricingVersionsQuery(
   })
 }
 
-export function useCreateAssetPricingVersionMutation(assetTypeUuid: string) {
+export function useCreateAssetPricingVersionMutation(assetFamilyUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: {
@@ -282,20 +329,20 @@ export function useCreateAssetPricingVersionMutation(assetTypeUuid: string) {
     }) => {
       const { data } = await apiClient.post<AssetPricingVersion>(
         '/api/v1/accounting/pricing/versions',
-        { ...payload, asset_type_uuid: assetTypeUuid },
+        { ...payload, asset_family_uuid: assetFamilyUuid },
         getAuthRequestConfig(),
       )
       return data
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetFamilyUuid),
       })
     },
   })
 }
 
-export function useUpdateAssetPricingVersionMutation(assetTypeUuid: string) {
+export function useUpdateAssetPricingVersionMutation(assetFamilyUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: {
@@ -316,13 +363,13 @@ export function useUpdateAssetPricingVersionMutation(assetTypeUuid: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetFamilyUuid),
       })
     },
   })
 }
 
-export function useDeleteAssetPricingVersionMutation(assetTypeUuid: string) {
+export function useDeleteAssetPricingVersionMutation(assetFamilyUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (versionUuid: string) => {
@@ -333,13 +380,13 @@ export function useDeleteAssetPricingVersionMutation(assetTypeUuid: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetFamilyUuid),
       })
     },
   })
 }
 
-export function useCloneAssetPricingVersionMutation(assetTypeUuid: string) {
+export function useCloneAssetPricingVersionMutation(assetFamilyUuid: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (payload: {
@@ -359,7 +406,7 @@ export function useCloneAssetPricingVersionMutation(assetTypeUuid: string) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: assetsQueryKeys.pricingVersions(assetTypeUuid),
+        queryKey: assetsQueryKeys.pricingVersions(assetFamilyUuid),
       })
     },
   })

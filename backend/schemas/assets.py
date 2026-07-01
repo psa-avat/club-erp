@@ -1,7 +1,7 @@
 """
     ERP-CLUB - ERP pour Club de vol à voile 
     - Logiciel libre de gestion d'un club de vol à voile
-    - assets: Pydantic schemas for asset types, flight types, assets and status transitions
+    - assets: Pydantic schemas for asset families, flight types, assets and status transitions
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -26,31 +26,78 @@ from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
-# Asset Type
+# Asset Category
 # ---------------------------------------------------------------------------
 
-class AssetTypeCreateRequest(BaseModel):
+class AssetCategoryCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=100)
-    # 1=Aircraft 2=LaunchEquipment 3=Support 4=Consumable 5=Service
-    category: int = Field(ge=1, le=5, default=1)
+    description: Optional[str] = Field(default=None, max_length=255)
+    is_active: bool = True
+    acquisition_account_uuid: Optional[UUID] = None
+    depreciation_account_uuid: Optional[UUID] = None
+    charge_account_uuid: Optional[UUID] = None
+    revenue_account_uuid: Optional[UUID] = None
+
+
+class AssetCategoryUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=255)
+    is_active: Optional[bool] = None
+    acquisition_account_uuid: Optional[UUID] = None
+    depreciation_account_uuid: Optional[UUID] = None
+    charge_account_uuid: Optional[UUID] = None
+    revenue_account_uuid: Optional[UUID] = None
+
+
+class AssetCategoryResponse(BaseModel):
+    uuid: UUID
+    code: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    acquisition_account_uuid: Optional[UUID] = None
+    acquisition_account_code: Optional[str] = None
+    depreciation_account_uuid: Optional[UUID] = None
+    depreciation_account_code: Optional[str] = None
+    charge_account_uuid: Optional[UUID] = None
+    charge_account_code: Optional[str] = None
+    revenue_account_uuid: Optional[UUID] = None
+    revenue_account_code: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    updated_by: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Asset Family
+# ---------------------------------------------------------------------------
+
+class AssetFamilyCreateRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=100)
+    category_uuid: UUID
     # 1=FlightHours 2=EngineTime 3=PerFlight 4=PerDuration 5=PerUnit 6=FlatRate
     pricing_strategy: int = Field(ge=1, le=6, default=1)
     is_active: bool = True
 
 
-class AssetTypeUpdateRequest(BaseModel):
+class AssetFamilyUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    category: Optional[int] = Field(default=None, ge=1, le=5)
+    category_uuid: Optional[UUID] = None
     pricing_strategy: Optional[int] = Field(default=None, ge=1, le=6)
     is_active: Optional[bool] = None
 
 
-class AssetTypeResponse(BaseModel):
+class AssetFamilyResponse(BaseModel):
     uuid: UUID
     code: str
     name: str
-    category: int
+    category_uuid: UUID
+    category: Optional[AssetCategoryResponse] = None
     pricing_strategy: int
     is_active: bool
     updated_at: datetime
@@ -96,7 +143,7 @@ class FlightTypeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class AssetCreateRequest(BaseModel):
-    asset_type_uuid: UUID
+    asset_family_uuid: UUID
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=150)
     registration: Optional[str] = Field(default=None, max_length=32)
@@ -125,7 +172,7 @@ class AssetCreateRequest(BaseModel):
 
 
 class AssetUpdateRequest(BaseModel):
-    asset_type_uuid: Optional[UUID] = None
+    asset_family_uuid: Optional[UUID] = None
     name: Optional[str] = Field(default=None, min_length=1, max_length=150)
     registration: Optional[str] = Field(default=None, max_length=32)
     serial_number: Optional[str] = Field(default=None, max_length=100)
@@ -175,7 +222,7 @@ class AssetOwnerResponse(BaseModel):
 
 class AssetResponse(BaseModel):
     uuid: UUID
-    asset_type_uuid: UUID
+    asset_family_uuid: UUID
     code: str
     name: str
     registration: Optional[str]
@@ -200,7 +247,7 @@ class AssetResponse(BaseModel):
     osrt_sync_enabled: bool
     created_at: datetime
     updated_at: datetime
-    asset_type: Optional[AssetTypeResponse] = None
+    asset_family: Optional[AssetFamilyResponse] = None
     current_price_version: Optional[UUID] = None
     current_price_version_name: Optional[str] = None
 

@@ -70,32 +70,32 @@ def _flight_duration_hours(flight: ValidatedFlight) -> Decimal | None:
         return None
 
 
-async def _resolve_asset_type_uuid(db: AsyncSession, glider_erp_id: str) -> UUID | None:
-    """Return the asset_type_uuid for the given asset UUID string, or None."""
+async def _resolve_asset_family_uuid(db: AsyncSession, glider_erp_id: str) -> UUID | None:
+    """Return the asset_family_uuid for the given asset UUID string, or None."""
     try:
         asset_uuid = UUID(glider_erp_id)
     except (ValueError, AttributeError):
         return None
-    result = await db.execute(select(Asset.asset_type_uuid).where(Asset.uuid == asset_uuid))
+    result = await db.execute(select(Asset.asset_family_uuid).where(Asset.uuid == asset_uuid))
     return result.scalar_one_or_none()
 
 
 async def _resolve_hourly_rate(
     db: AsyncSession,
-    asset_type_uuid: UUID,
+    asset_family_uuid: UUID,
     fiscal_year_uuid: UUID,
     flight_date,
 ) -> Decimal | None:
     """
     Return base_price for unit=1 (FlightTime hours) from the active PricingVersion
-    covering flight_date for the given asset_type.
+    covering flight_date for the given asset_family.
     """
     stmt = (
         select(PricingItem.base_price)
         .join(PricingVersion, PricingItem.pricing_version_uuid == PricingVersion.uuid)
         .where(
             PricingVersion.fiscal_year_uuid == fiscal_year_uuid,
-            PricingVersion.asset_type_uuid == asset_type_uuid,
+            PricingVersion.asset_family_uuid == asset_family_uuid,
             PricingVersion.status == 2,  # Active
             PricingVersion.from_date <= flight_date,
             or_(PricingVersion.to_date.is_(None), PricingVersion.to_date >= flight_date),
@@ -157,19 +157,19 @@ async def create_vi_analytical_entry(
         logger.warning("VI analytical: flight %s has no glider_erp_id — skipping", flight.uuid)
         return None
 
-    asset_type_uuid = await _resolve_asset_type_uuid(db, flight.glider_erp_id)
-    if asset_type_uuid is None:
+    asset_family_uuid = await _resolve_asset_family_uuid(db, flight.glider_erp_id)
+    if asset_family_uuid is None:
         logger.warning(
             "VI analytical: asset not found for glider_erp_id=%s — skipping",
             flight.glider_erp_id,
         )
         return None
 
-    rate = await _resolve_hourly_rate(db, asset_type_uuid, fiscal_year_uuid, flight.jour)
+    rate = await _resolve_hourly_rate(db, asset_family_uuid, fiscal_year_uuid, flight.jour)
     if rate is None:
         logger.warning(
-            "VI analytical: no active FlightTime(h) pricing for asset_type=%s on %s — skipping",
-            asset_type_uuid,
+            "VI analytical: no active FlightTime(h) pricing for asset_family=%s on %s — skipping",
+            asset_family_uuid,
             flight.jour,
         )
         return None

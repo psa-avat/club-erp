@@ -82,7 +82,7 @@ class _FakeVersion:
     def __init__(self, *, fiscal_year_uuid, status=PRICING_STATUS_ACTIVE, to_date=None):
         self.uuid = uuid4()
         self.fiscal_year_uuid = fiscal_year_uuid
-        self.asset_type_uuid = None
+        self.asset_family_uuid = None
         self.name = "Active pricing"
         self.from_date = date(2026, 1, 1)
         self.to_date = to_date
@@ -170,7 +170,7 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
             with self.assertRaises(HTTPException) as cm:
-                await create_pricing_version(db, request, user_id=7, asset_type_uuid=None)
+                await create_pricing_version(db, request, user_id=7, asset_family_uuid=None)
 
         self.assertEqual(cm.exception.status_code, 400)
 
@@ -198,7 +198,7 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
             with self.assertRaises(HTTPException) as cm:
-                await create_pricing_version(db, request, user_id=7, asset_type_uuid=None)
+                await create_pricing_version(db, request, user_id=7, asset_family_uuid=None)
 
         self.assertEqual(cm.exception.status_code, 409)
 
@@ -220,7 +220,7 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
         )
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
-            version = await create_pricing_version(db, request, user_id=7, asset_type_uuid=None)
+            version = await create_pricing_version(db, request, user_id=7, asset_family_uuid=None)
 
         self.assertEqual(version.name, "Pricing 2026")
         self.assertEqual(version.status, 2)

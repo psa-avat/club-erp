@@ -33,7 +33,7 @@ import { useMemberOptionsQuery } from '../../members/api'
 import type { MemberOption } from '../../members/types'
 import {
   useAssetQuery,
-  useAssetTypesQuery,
+  useAssetFamiliesQuery,
   useCreateAssetMutation,
   useUpdateAssetMutation,
 } from '../api'
@@ -68,7 +68,7 @@ function extractError(e: unknown, fallback: string): string {
 type FormState = {
   code: string
   name: string
-  asset_type_uuid: string
+  asset_family_uuid: string
   registration: string
   serial_number: string
   manufacturer: string
@@ -88,7 +88,7 @@ type FormState = {
 const EMPTY_FORM: FormState = {
   code: '',
   name: '',
-  asset_type_uuid: '',
+  asset_family_uuid: '',
   registration: '',
   serial_number: '',
   manufacturer: '',
@@ -153,7 +153,7 @@ export function AssetFormPage() {
 
   const canManage = useCapability('MANAGE_ASSETS')
 
-  const typesQuery = useAssetTypesQuery(canManage)
+  const familiesQuery = useAssetFamiliesQuery(canManage)
   const assetQuery = useAssetQuery(isEdit ? (uuid ?? null) : null)
   const accountsQuery = useAccountsQuery(canManage)
   const [ownerSearch, setOwnerSearch] = useState('')
@@ -173,7 +173,7 @@ export function AssetFormPage() {
     setForm({
       code: asset.code,
       name: asset.name,
-      asset_type_uuid: asset.asset_type_uuid,
+      asset_family_uuid: asset.asset_family_uuid,
       registration: asset.registration ?? '',
       serial_number: asset.serial_number ?? '',
       manufacturer: asset.manufacturer ?? '',
@@ -201,7 +201,7 @@ export function AssetFormPage() {
     return {
       code: form.code.trim(),
       name: form.name.trim(),
-      asset_type_uuid: form.asset_type_uuid,
+      asset_family_uuid: form.asset_family_uuid,
       registration: form.registration.trim() || null,
       serial_number: form.serial_number.trim() || null,
       manufacturer: form.manufacturer.trim() || null,
@@ -343,13 +343,13 @@ export function AssetFormPage() {
               </Label>
               <select
                 id="type"
-                value={form.asset_type_uuid}
-                onChange={(e) => set('asset_type_uuid', e.target.value)}
+                value={form.asset_family_uuid}
+                onChange={(e) => set('asset_family_uuid', e.target.value)}
                 required
                 className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <option value="">{t('form.selectType')}</option>
-                {(typesQuery.data ?? []).map((ty) => (
+                {(familiesQuery.data ?? []).map((ty) => (
                   <option key={ty.uuid} value={ty.uuid}>
                     {ty.name}
                   </option>

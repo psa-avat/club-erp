@@ -1,7 +1,7 @@
 """
-    ERP-CLUB - ERP pour Club de vol à voile 
+    ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - assets: FastAPI routes for asset types, flight types, assets and status transitions
+    - assets: FastAPI routes for asset families, flight types, assets and status transitions
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -29,13 +29,16 @@ from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_ASSETS, CAP_VIEW_FINANCIALS
 from models import User
 from schemas.assets import (
+    AssetCategoryCreateRequest,
+    AssetCategoryResponse,
+    AssetCategoryUpdateRequest,
     AssetCreateRequest,
+    AssetFamilyCreateRequest,
+    AssetFamilyResponse,
+    AssetFamilyUpdateRequest,
     AssetResponse,
     AssetStatusHistoryResponse,
     AssetStatusTransitionRequest,
-    AssetTypeCreateRequest,
-    AssetTypeResponse,
-    AssetTypeUpdateRequest,
     AssetUpdateRequest,
     FlightTypeCreateRequest,
     FlightTypeResponse,
@@ -48,23 +51,27 @@ from schemas.assets import (
 )
 from services.assets import (
     create_asset,
-    create_asset_type,
+    create_asset_category,
+    create_asset_family,
     create_flight_type,
     create_pricing_item,
     delete_pricing_item,
     get_asset,
-    get_asset_type,
+    get_asset_category,
+    get_asset_family,
     get_pricing_item,
     import_assets_from_csv,
+    list_asset_categories,
+    list_asset_families,
     list_asset_status_history,
-    list_asset_types,
     list_assets,
     list_flight_types,
     list_pricing_items,
     lookup_pricing,
     transition_asset_status,
     update_asset,
-    update_asset_type,
+    update_asset_category,
+    update_asset_family,
     update_flight_type,
     update_pricing_item,
 )
@@ -78,48 +85,95 @@ _view_guard = Depends(require_capability(CAP_VIEW_FINANCIALS))
 
 
 # ---------------------------------------------------------------------------
-# Asset Types
+# Asset Categories
 # ---------------------------------------------------------------------------
 
-@router.get("/types", response_model=list[AssetTypeResponse])
-async def list_asset_types_endpoint(
+@router.get("/categories", response_model=list[AssetCategoryResponse])
+async def list_asset_categories_endpoint(
     active_only: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     _: User = _view_guard,
 ):
-    """List all asset types."""
-    return await list_asset_types(db, active_only=active_only)
+    """List all asset categories."""
+    return await list_asset_categories(db, active_only=active_only)
 
 
-@router.post("/types", response_model=AssetTypeResponse, status_code=201)
-async def create_asset_type_endpoint(
-    request: AssetTypeCreateRequest,
+@router.post("/categories", response_model=AssetCategoryResponse, status_code=201)
+async def create_asset_category_endpoint(
+    request: AssetCategoryCreateRequest,
     db: AsyncSession = Depends(get_db),
     _: User = _manage_guard,
+    current_user: User = Depends(get_current_user),
 ):
-    """Create a new asset type."""
-    return await create_asset_type(db, request)
+    """Create a new asset category."""
+    return await create_asset_category(db, request, user_id=current_user.id)
 
 
-@router.get("/types/{type_uuid}", response_model=AssetTypeResponse)
-async def get_asset_type_endpoint(
-    type_uuid: UUID,
+@router.get("/categories/{category_uuid}", response_model=AssetCategoryResponse)
+async def get_asset_category_endpoint(
+    category_uuid: UUID,
     db: AsyncSession = Depends(get_db),
     _: User = _view_guard,
 ):
-    """Get a single asset type."""
-    return await get_asset_type(db, type_uuid)
+    """Get a single asset category."""
+    return await get_asset_category(db, category_uuid)
 
 
-@router.patch("/types/{type_uuid}", response_model=AssetTypeResponse)
-async def update_asset_type_endpoint(
-    type_uuid: UUID,
-    request: AssetTypeUpdateRequest,
+@router.patch("/categories/{category_uuid}", response_model=AssetCategoryResponse)
+async def update_asset_category_endpoint(
+    category_uuid: UUID,
+    request: AssetCategoryUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Update an asset category."""
+    return await update_asset_category(db, category_uuid, request, user_id=current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# Asset Families
+# ---------------------------------------------------------------------------
+
+@router.get("/families", response_model=list[AssetFamilyResponse])
+async def list_asset_families_endpoint(
+    active_only: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+    _: User = _view_guard,
+):
+    """List all asset families."""
+    return await list_asset_families(db, active_only=active_only)
+
+
+@router.post("/families", response_model=AssetFamilyResponse, status_code=201)
+async def create_asset_family_endpoint(
+    request: AssetFamilyCreateRequest,
     db: AsyncSession = Depends(get_db),
     _: User = _manage_guard,
 ):
-    """Update an asset type."""
-    return await update_asset_type(db, type_uuid, request)
+    """Create a new asset family."""
+    return await create_asset_family(db, request)
+
+
+@router.get("/families/{family_uuid}", response_model=AssetFamilyResponse)
+async def get_asset_family_endpoint(
+    family_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = _view_guard,
+):
+    """Get a single asset family."""
+    return await get_asset_family(db, family_uuid)
+
+
+@router.patch("/families/{family_uuid}", response_model=AssetFamilyResponse)
+async def update_asset_family_endpoint(
+    family_uuid: UUID,
+    request: AssetFamilyUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = _manage_guard,
+):
+    """Update an asset family."""
+    return await update_asset_family(db, family_uuid, request)
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +217,7 @@ async def update_flight_type_endpoint(
 
 @router.get("", response_model=list[AssetResponse])
 async def list_assets_endpoint(
-    asset_type_uuid: Optional[UUID] = Query(default=None),
+    asset_family_uuid: Optional[UUID] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=5),
     ownership: Optional[int] = Query(default=None, ge=1, le=2),
     active_only: bool = Query(default=False),
@@ -173,7 +227,7 @@ async def list_assets_endpoint(
     """List assets with optional filters."""
     return await list_assets(
         db,
-        asset_type_uuid=asset_type_uuid,
+        asset_family_uuid=asset_family_uuid,
         status=status,
         ownership=ownership,
         active_only=active_only,
@@ -331,7 +385,7 @@ async def import_assets_endpoint(
 ):
     """Bulk-import assets from a CSV file.
 
-    Asset types are resolved by their `asset_type_code` column value.
+    Asset families are resolved by their `asset_family_code` column value.
     Rows that pass validation are created immediately.
     Rows with errors are skipped and reported in the response.
     """
@@ -340,8 +394,12 @@ async def import_assets_endpoint(
 
 
 # ---------------------------------------------------------------------------
-# Assets with Asset Type and Current Pricing Version
+# Assets with Asset Family and Current Pricing Version
 # ---------------------------------------------------------------------------
+# NOTE: pre-existing dead code — `date`, `Asset`, `AssetFamily`, `PricingVersion` are not
+# imported in this module and `db` is an AsyncSession here, so `db.query(...)` raises at
+# call time. Unreachable in practice; left as-is (renamed only for textual consistency),
+# fixing it is out of scope for this change.
 
 @router.get("/assets", response_model=list[AssetResponse])
 def get_assets(db: AsyncSession = Depends(get_db)):
@@ -350,11 +408,11 @@ def get_assets(db: AsyncSession = Depends(get_db)):
     asset_responses = []
 
     for asset in assets:
-        asset_type = db.query(AssetType).filter(AssetType.uuid == asset.asset_type_uuid).first()
+        asset_family = db.query(AssetFamily).filter(AssetFamily.uuid == asset.asset_family_uuid).first()
         pricing_version = (
             db.query(PricingVersion)
             .filter(
-                PricingVersion.asset_type_uuid == asset.asset_type_uuid,
+                PricingVersion.asset_family_uuid == asset.asset_family_uuid,
                 PricingVersion.from_date <= today,
                 (PricingVersion.to_date == None) | (PricingVersion.to_date >= today),
                 PricingVersion.status == 2  # Active
@@ -368,7 +426,7 @@ def get_assets(db: AsyncSession = Depends(get_db)):
                 code=asset.code,
                 name=asset.name,
                 status=asset.status,
-                asset_type=asset_type.name if asset_type else None,
+                asset_family=asset_family.name if asset_family else None,
                 pricing_version=pricing_version.name if pricing_version else None
             )
         )

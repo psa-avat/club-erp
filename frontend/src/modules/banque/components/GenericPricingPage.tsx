@@ -234,9 +234,9 @@ export function GenericPricingPage() {
   const canView = useCapability('VIEW_FINANCIALS')
 
   const versionsQuery = usePricingVersionsQuery(canView)
-  // Only generic versions (asset_type_uuid === null) belong on this tab
+  // Only generic versions (asset_family_uuid === null) belong on this tab
   const versions = (versionsQuery.data ?? [])
-    .filter((v) => v.asset_type_uuid === null)
+    .filter((v) => v.asset_family_uuid === null)
     .slice()
     .sort((a, b) => b.from_date.localeCompare(a.from_date))
 

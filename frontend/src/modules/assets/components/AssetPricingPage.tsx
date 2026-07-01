@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - Asset pricing page: thin wrapper over AssetTypePricingPanel
+    - Asset pricing page: thin wrapper over AssetFamilyPricingPanel
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ import { ArrowLeft } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
 import { useAssetQuery } from '../api'
-import { AssetTypePricingPanel } from './AssetTypePricingPanel'
+import { AssetFamilyPricingPanel } from './AssetFamilyPricingPanel'
 
 export function AssetPricingPage() {
   const { t } = useTranslation('pricing')
@@ -50,10 +50,10 @@ export function AssetPricingPage() {
 
       {assetQuery.isLoading ? (
         <p className="text-sm text-on-surface-variant">{t('states.loading')}</p>
-      ) : !asset?.asset_type_uuid ? (
-        <p className="text-sm text-on-surface-variant">{t('noAssetType')}</p>
+      ) : !asset?.asset_family_uuid ? (
+        <p className="text-sm text-on-surface-variant">{t('noAssetFamily')}</p>
       ) : (
-        <AssetTypePricingPanel assetTypeUuid={asset.asset_type_uuid} />
+        <AssetFamilyPricingPanel assetFamilyUuid={asset.asset_family_uuid} />
       )}
     </div>
   )

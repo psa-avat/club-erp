@@ -746,7 +746,7 @@ export function useDeleteAccountingEntryMutation() {
 export type PricingVersion = {
   uuid: string
   fiscal_year_uuid: string | null
-  asset_type_uuid: string | null
+  asset_family_uuid: string | null
   name: string
   from_date: string
   to_date: string | null

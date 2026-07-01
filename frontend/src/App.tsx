@@ -86,7 +86,7 @@ function App() {
           {/* ── 4. Assets & VI ── */}
           <Route path="/assets" element={<Navigate replace to="/workspace/machines" />} />
           <Route path="/workspace/machines" element={<MachinesWorkspacePage />} />
-          <Route path="/assets/types" element={<Navigate replace to="/workspace/machines?tab=types" />} />
+          <Route path="/assets/types" element={<Navigate replace to="/workspace/machines?tab=families" />} />
           <Route path="/assets/new" element={<AssetFormPage />} />
           <Route path="/assets/:uuid" element={<AssetDetailPage />} />
           <Route path="/assets/:uuid/edit" element={<AssetFormPage />} />

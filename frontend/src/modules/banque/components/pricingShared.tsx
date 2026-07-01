@@ -70,7 +70,7 @@ export function versionStatusLabel(status: number, t: (k: string) => string): { 
 }
 
 export function versionScopeLabel(version: PricingVersion, t: (k: string) => string): { label: string; className: string } {
-  if (version.asset_type_uuid !== null) {
+  if (version.asset_family_uuid !== null) {
     return { label: t('version.assetScope'), className: 'bg-primary-container text-on-primary-container' }
   }
   return { label: t('version.genericScope'), className: 'bg-surface-container-high text-on-surface-variant' }
@@ -569,7 +569,7 @@ export function PricingItemsPanel({
   const [showForm, setShowForm] = useState(false)
   const [editingItem, setEditingItem] = useState<PricingItem | null>(null)
   const [itemError, setItemError] = useState<string | null>(null)
-  const isAssetScoped = version.asset_type_uuid !== null
+  const isAssetScoped = version.asset_family_uuid !== null
 
   function extractItemError(e: unknown): string {
     if (e instanceof AxiosError && e.response?.data?.detail) return String(e.response.data.detail)

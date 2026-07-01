@@ -33,7 +33,7 @@ import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetQuery,
   useAssetStatusHistoryQuery,
-  useAssetTypesQuery,
+  useAssetFamiliesQuery,
   useTransitionAssetStatusMutation,
 } from '../api'
 import type { AssetStatusHistoryEntry } from '../types'
@@ -259,7 +259,7 @@ export function AssetDetailPage() {
 
   const assetQuery = useAssetQuery(uuid ?? null)
   const asset = assetQuery.data ?? null
-  const assetTypesQuery = useAssetTypesQuery(true)
+  const assetFamiliesQuery = useAssetFamiliesQuery(true)
   const historyQuery = useAssetStatusHistoryQuery(uuid ?? null)
   const statusHistory = historyQuery.data ?? []
 
@@ -293,9 +293,9 @@ export function AssetDetailPage() {
 
   const currentStatusColor = STATUS_COLORS[asset.status] ?? 'bg-slate-100 text-slate-500'
   const currentStatusKey = STATUS_LABELS[asset.status] ?? 'unknown'
-  const assetTypeName =
-    (assetTypesQuery.data ?? []).find((type) => type.uuid === asset.asset_type_uuid)?.name ??
-    asset.asset_type_uuid
+  const assetFamilyName =
+    (assetFamiliesQuery.data ?? []).find((type) => type.uuid === asset.asset_family_uuid)?.name ??
+    asset.asset_family_uuid
   const ownerNames = asset.owner_members.length > 0
     ? asset.owner_members.map((owner) => `${owner.first_name} ${owner.last_name} (${owner.account_id})`).join(', ')
     : '—'
@@ -349,7 +349,7 @@ export function AssetDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-0.5">
-              <InfoRow label={t('form.type')} value={assetTypeName} />
+              <InfoRow label={t('form.type')} value={assetFamilyName} />
               <InfoRow label={t('form.registrationNumber')} value={asset.registration} />
               <InfoRow label={t('form.serialNumber')} value={asset.serial_number} />
               <InfoRow label={t('form.manufacturer')} value={asset.manufacturer} />

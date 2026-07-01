@@ -1,7 +1,7 @@
 """
     ERP-CLUB - ERP pour Club de vol à voile 
     - Logiciel libre de gestion d'un club de vol à voile
-    - assets: business logic for asset types, flight types, assets and status transitions
+    - assets: business logic for asset families, flight types, assets and status transitions
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -28,16 +28,19 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetType, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
+from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetFamily, AssetCategory, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
 from schemas.assets import (
+    AssetCategoryCreateRequest,
+    AssetCategoryResponse,
+    AssetCategoryUpdateRequest,
     AssetCreateRequest,
     AssetOwnerResponse,
     AssetResponse,
     AssetStatusTransitionRequest,
     AssetUpdateRequest,
-    AssetTypeResponse,
-    AssetTypeCreateRequest,
-    AssetTypeUpdateRequest,
+    AssetFamilyResponse,
+    AssetFamilyCreateRequest,
+    AssetFamilyUpdateRequest,
     FlightTypeCreateRequest,
     FlightTypeUpdateRequest,
     ImportResultResponse,
@@ -49,10 +52,23 @@ from schemas.assets import (
 logger = logging.getLogger(__name__)
 
 
+def _category_account_options():
+    return (
+        selectinload(AssetCategory.acquisition_account),
+        selectinload(AssetCategory.depreciation_account),
+        selectinload(AssetCategory.charge_account),
+        selectinload(AssetCategory.revenue_account),
+    )
+
+
 def _asset_query():
     return select(Asset).options(
         selectinload(Asset.private_owner_links).selectinload(AssetPrivateOwner.member),
-        selectinload(Asset.asset_type).selectinload(AssetType.pricing_versions),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.pricing_versions),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.acquisition_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.depreciation_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.charge_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.revenue_account),
     )
 
 
@@ -110,23 +126,29 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
     ]
     owner_member_uuids = [owner.uuid for owner in owner_members]
 
-    asset_type = AssetTypeResponse(
-        uuid=asset.asset_type.uuid,
-        code=asset.asset_type.code,
-        name=asset.asset_type.name,
-        category=asset.asset_type.category,
-        pricing_strategy=asset.asset_type.pricing_strategy,
-        is_active=asset.asset_type.is_active,
-        updated_at=asset.asset_type.updated_at,
+    category_response = (
+        AssetCategoryResponse.model_validate(asset.asset_family.category)
+        if asset.asset_family.category is not None
+        else None
+    )
+    asset_family = AssetFamilyResponse(
+        uuid=asset.asset_family.uuid,
+        code=asset.asset_family.code,
+        name=asset.asset_family.name,
+        category_uuid=asset.asset_family.category_uuid,
+        category=category_response,
+        pricing_strategy=asset.asset_family.pricing_strategy,
+        is_active=asset.asset_family.is_active,
+        updated_at=asset.asset_family.updated_at,
     )
 
     current_price_version = None
     current_price_version_name = None
-    if asset.asset_type.pricing_versions:
+    if asset.asset_family.pricing_versions:
         today = date.today()
         active_price_versions = [
             price_version
-            for price_version in asset.asset_type.pricing_versions
+            for price_version in asset.asset_family.pricing_versions
             if price_version.status == 2
             and price_version.from_date <= today
             and (price_version.to_date is None or price_version.to_date >= today)
@@ -134,14 +156,14 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         selected_price_version = (
             max(active_price_versions, key=lambda pv: pv.from_date)
             if active_price_versions
-            else max(asset.asset_type.pricing_versions, key=lambda pv: pv.created_at)
+            else max(asset.asset_family.pricing_versions, key=lambda pv: pv.created_at)
         )
         current_price_version = selected_price_version.uuid
         current_price_version_name = selected_price_version.name
 
     return AssetResponse(
         uuid=asset.uuid,
-        asset_type_uuid=asset.asset_type_uuid,
+        asset_family_uuid=asset.asset_family_uuid,
         code=asset.code,
         name=asset.name,
         registration=asset.registration,
@@ -166,7 +188,7 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         osrt_sync_enabled=asset.osrt_sync_enabled,
         created_at=asset.created_at,
         updated_at=asset.updated_at,
-        asset_type=asset_type,
+        asset_family=asset_family,
         current_price_version=current_price_version,
         current_price_version_name=current_price_version_name,
     )
@@ -217,45 +239,102 @@ ASSET_STATUS_LABELS = {
 
 
 # ---------------------------------------------------------------------------
-# Asset Types
+# Asset Categories
 # ---------------------------------------------------------------------------
 
-async def list_asset_types(db: AsyncSession, *, active_only: bool = False) -> list[AssetType]:
-    stmt = select(AssetType).order_by(AssetType.code)
+async def list_asset_categories(db: AsyncSession, *, active_only: bool = False) -> list[AssetCategory]:
+    stmt = select(AssetCategory).options(*_category_account_options()).order_by(AssetCategory.code)
     if active_only:
-        stmt = stmt.where(AssetType.is_active.is_(True))
+        stmt = stmt.where(AssetCategory.is_active.is_(True))
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
-async def get_asset_type(db: AsyncSession, asset_type_uuid: UUID) -> AssetType:
-    result = await db.execute(select(AssetType).where(AssetType.uuid == asset_type_uuid))
+async def get_asset_category(db: AsyncSession, category_uuid: UUID) -> AssetCategory:
+    result = await db.execute(
+        select(AssetCategory).options(*_category_account_options()).where(AssetCategory.uuid == category_uuid)
+    )
     obj = result.scalar_one_or_none()
     if obj is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset type not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset category not found.")
     return obj
 
 
-async def create_asset_type(db: AsyncSession, request: AssetTypeCreateRequest) -> AssetType:
-    existing = await db.execute(select(AssetType).where(AssetType.code == request.code))
+async def create_asset_category(db: AsyncSession, request: AssetCategoryCreateRequest, user_id: int) -> AssetCategory:
+    existing = await db.execute(select(AssetCategory).where(AssetCategory.code == request.code))
     if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Asset type code {request.code!r} already exists.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Asset category code {request.code!r} already exists.")
 
-    obj = AssetType(**request.model_dump())
+    obj = AssetCategory(**request.model_dump(), updated_by=user_id)
     db.add(obj)
     await db.commit()
     await db.refresh(obj)
-    logger.info("Created asset type code=%s uuid=%s", obj.code, obj.uuid)
+    logger.info("Created asset category code=%s uuid=%s", obj.code, obj.uuid)
+    return await get_asset_category(db, obj.uuid)
+
+
+async def update_asset_category(
+    db: AsyncSession, category_uuid: UUID, request: AssetCategoryUpdateRequest, user_id: int,
+) -> AssetCategory:
+    obj = await get_asset_category(db, category_uuid)
+    for field, value in request.model_dump(exclude_none=True).items():
+        setattr(obj, field, value)
+    obj.updated_by = user_id
+    await db.commit()
+    await db.refresh(obj)
+    return await get_asset_category(db, category_uuid)
+
+
+# ---------------------------------------------------------------------------
+# Asset Families
+# ---------------------------------------------------------------------------
+
+async def list_asset_families(db: AsyncSession, *, active_only: bool = False) -> list[AssetFamily]:
+    stmt = select(AssetFamily).options(
+        selectinload(AssetFamily.category).options(*_category_account_options()),
+    ).order_by(AssetFamily.code)
+    if active_only:
+        stmt = stmt.where(AssetFamily.is_active.is_(True))
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_asset_family(db: AsyncSession, asset_family_uuid: UUID) -> AssetFamily:
+    result = await db.execute(
+        select(AssetFamily)
+        .options(selectinload(AssetFamily.category).options(*_category_account_options()))
+        .where(AssetFamily.uuid == asset_family_uuid)
+    )
+    obj = result.scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset family not found.")
     return obj
 
 
-async def update_asset_type(db: AsyncSession, asset_type_uuid: UUID, request: AssetTypeUpdateRequest) -> AssetType:
-    obj = await get_asset_type(db, asset_type_uuid)
-    for field, value in request.model_dump(exclude_none=True).items():
+async def create_asset_family(db: AsyncSession, request: AssetFamilyCreateRequest) -> AssetFamily:
+    existing = await db.execute(select(AssetFamily).where(AssetFamily.code == request.code))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Asset family code {request.code!r} already exists.")
+    await get_asset_category(db, request.category_uuid)
+
+    obj = AssetFamily(**request.model_dump())
+    db.add(obj)
+    await db.commit()
+    await db.refresh(obj)
+    logger.info("Created asset family code=%s uuid=%s", obj.code, obj.uuid)
+    return await get_asset_family(db, obj.uuid)
+
+
+async def update_asset_family(db: AsyncSession, asset_family_uuid: UUID, request: AssetFamilyUpdateRequest) -> AssetFamily:
+    obj = await get_asset_family(db, asset_family_uuid)
+    data = request.model_dump(exclude_none=True)
+    if "category_uuid" in data:
+        await get_asset_category(db, data["category_uuid"])
+    for field, value in data.items():
         setattr(obj, field, value)
     await db.commit()
     await db.refresh(obj)
-    return obj
+    return await get_asset_family(db, asset_family_uuid)
 
 
 # ---------------------------------------------------------------------------
@@ -336,14 +415,14 @@ async def _assert_owner_member_exists(db: AsyncSession, member_uuid: UUID) -> No
 async def list_assets(
     db: AsyncSession,
     *,
-    asset_type_uuid: UUID | None = None,
+    asset_family_uuid: UUID | None = None,
     status: int | None = None,
     ownership: int | None = None,
     active_only: bool = False,
 ) -> list[AssetResponse]:
     stmt = _asset_query().order_by(Asset.code)
-    if asset_type_uuid is not None:
-        stmt = stmt.where(Asset.asset_type_uuid == asset_type_uuid)
+    if asset_family_uuid is not None:
+        stmt = stmt.where(Asset.asset_family_uuid == asset_family_uuid)
     if status is not None:
         stmt = stmt.where(Asset.status == status)
     if ownership is not None:
@@ -368,8 +447,8 @@ async def get_asset(db: AsyncSession, asset_uuid: UUID) -> AssetResponse:
 
 
 async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: int) -> AssetResponse:
-    # Validate asset type exists
-    await get_asset_type(db, request.asset_type_uuid)
+    # Validate asset family exists
+    await get_asset_family(db, request.asset_family_uuid)
 
     # Unique code check
     dup = await db.execute(select(Asset.uuid).where(Asset.code == request.code))
@@ -427,9 +506,9 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
 
     data = request.model_dump(exclude_none=True)
 
-    # Validate asset type when changed
-    if "asset_type_uuid" in data and data["asset_type_uuid"] != obj.asset_type_uuid:
-        await get_asset_type(db, data["asset_type_uuid"])
+    # Validate asset family when changed
+    if "asset_family_uuid" in data and data["asset_family_uuid"] != obj.asset_family_uuid:
+        await get_asset_family(db, data["asset_family_uuid"])
 
     # Validate owner member if ownership being set to private
     new_ownership = data.get("ownership", obj.ownership)
@@ -524,20 +603,20 @@ async def list_asset_status_history(db: AsyncSession, asset_uuid: UUID) -> list[
 # Pricing Items
 # ---------------------------------------------------------------------------
 
-async def _get_pricing_version_for_asset_type(
+async def _get_pricing_version_for_asset_family(
     db: AsyncSession,
     version_uuid: UUID,
-    asset_type_uuid: UUID,
+    asset_family_uuid: UUID,
 ) -> PricingVersion:
-    """Return version and validate it belongs to the given asset type."""
+    """Return version and validate it belongs to the given asset family."""
     result = await db.execute(select(PricingVersion).where(PricingVersion.uuid == version_uuid))
     version = result.scalar_one_or_none()
     if version is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pricing version not found.")
-    if version.asset_type_uuid != asset_type_uuid:
+    if version.asset_family_uuid != asset_family_uuid:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Pricing version does not belong to the specified asset type.",
+            detail="Pricing version does not belong to the specified asset family.",
         )
     return version
 
@@ -675,11 +754,11 @@ async def lookup_pricing(
 ) -> tuple[PricingVersion, PricingItem]:
     asset = await get_asset(db, asset_uuid)
 
-    # Active versions for this asset type on the given date
+    # Active versions for this asset family on the given date
     stmt = (
         select(PricingVersion)
         .where(
-            PricingVersion.asset_type_uuid == asset.asset_type_uuid,
+            PricingVersion.asset_family_uuid == asset.asset_family_uuid,
             PricingVersion.status == 2,  # Active
             PricingVersion.from_date <= lookup_date,
             or_(PricingVersion.to_date.is_(None), PricingVersion.to_date >= lookup_date),
@@ -749,7 +828,7 @@ async def import_assets_from_csv(
 ) -> ImportResultResponse:
     """Parse a CSV file and bulk-create assets, collecting per-row errors.
 
-    Asset types are resolved by their `code` column (case-insensitive).
+    Asset families are resolved by their `code` column (case-insensitive).
     Rows with errors are skipped; valid rows are committed individually.
     """
     errors: list[ImportRowError] = []
@@ -763,7 +842,7 @@ async def import_assets_from_csv(
 
     reader = csv.DictReader(io.StringIO(text))
 
-    required_columns = {"code", "name", "asset_type_code"}
+    required_columns = {"code", "name", "asset_family_code"}
     if reader.fieldnames:
         missing = required_columns - {c.strip().lower() for c in reader.fieldnames}
         if missing:
@@ -773,16 +852,16 @@ async def import_assets_from_csv(
                 errors=[ImportRowError(row=0, field=None, message=f"Missing required columns: {', '.join(sorted(missing))}")],
             )
 
-    # Pre-fetch asset type map (code → uuid) once for the whole import
-    at_rows = (await db.execute(select(AssetType.code, AssetType.uuid))).all()
-    asset_type_map: dict[str, str] = {r[0].lower(): str(r[1]) for r in at_rows}
+    # Pre-fetch asset family map (code → uuid) once for the whole import
+    af_rows = (await db.execute(select(AssetFamily.code, AssetFamily.uuid))).all()
+    asset_family_map: dict[str, str] = {r[0].lower(): str(r[1]) for r in af_rows}
 
     for row_index, raw in enumerate(reader, start=2):
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
 
         code = row.get("code", "")
         name = row.get("name", "")
-        raw_at_code = row.get("asset_type_code", "").lower()
+        raw_af_code = row.get("asset_family_code", "").lower()
 
         if not code:
             errors.append(ImportRowError(row=row_index, field="code", message="Required"))
@@ -792,13 +871,13 @@ async def import_assets_from_csv(
             errors.append(ImportRowError(row=row_index, field="name", message="Required"))
             skipped += 1
             continue
-        if raw_at_code not in asset_type_map:
-            errors.append(ImportRowError(row=row_index, field="asset_type_code", message=f"Unknown asset type code {raw_at_code!r}"))
+        if raw_af_code not in asset_family_map:
+            errors.append(ImportRowError(row=row_index, field="asset_family_code", message=f"Unknown asset family code {raw_af_code!r}"))
             skipped += 1
             continue
 
         from uuid import UUID as _UUID
-        asset_type_uuid = _UUID(asset_type_map[raw_at_code])
+        asset_family_uuid = _UUID(asset_family_map[raw_af_code])
 
         raw_ownership = row.get("ownership", "club").lower()
         ownership = _ASSET_OWNERSHIP_MAP.get(raw_ownership, 1)
@@ -922,7 +1001,7 @@ async def import_assets_from_csv(
             continue
 
         request = AssetCreateRequest(
-            asset_type_uuid=asset_type_uuid,
+            asset_family_uuid=asset_family_uuid,
             code=code,
             name=name,
             registration=row.get("registration", "") or None,

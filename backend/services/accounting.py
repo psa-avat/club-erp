@@ -446,7 +446,7 @@ async def create_pricing_version(
     db: AsyncSession,
     request: PricingVersionCreateRequest,
     user_id: int,
-    asset_type_uuid: "UUID | None" = None,
+    asset_family_uuid: "UUID | None" = None,
     exclude_uuid: "UUID | None" = None,
 ) -> PricingVersion:
     """Create pricing version with date overlap constraints."""
@@ -464,7 +464,7 @@ async def create_pricing_version(
 
     existing_result = await db.execute(
         select(PricingVersion).where(
-            PricingVersion.asset_type_uuid == asset_type_uuid,
+            PricingVersion.asset_family_uuid == asset_family_uuid,
         )
     )
     existing_versions = existing_result.scalars().all()
@@ -490,7 +490,7 @@ async def create_pricing_version(
         from_date=request.from_date,
         to_date=request.to_date,
         status=request.status,
-        asset_type_uuid=asset_type_uuid,
+        asset_family_uuid=asset_family_uuid,
         use_pack=request.use_pack,
         created_by=user_id,
     )
@@ -583,7 +583,7 @@ async def update_pricing_version(
     db: AsyncSession,
     version_uuid: UUID,
     request: PricingVersionUpdateRequest,
-    asset_type_uuid: UUID | None = None,
+    asset_family_uuid: UUID | None = None,
 ) -> PricingVersion:
     """Update pricing version and enforce date overlap constraints."""
     version = await get_pricing_version(db, version_uuid)
@@ -601,7 +601,7 @@ async def update_pricing_version(
             ("name", request.name),
             ("from_date", request.from_date),
             ("to_date", request.to_date),
-            ("asset_type_uuid", request.asset_type_uuid),
+            ("asset_family_uuid", request.asset_family_uuid),
             ("use_pack", request.use_pack),
         )
         if field_value is not None
@@ -637,7 +637,7 @@ async def update_pricing_version(
 
     existing_result = await db.execute(
         select(PricingVersion).where(
-            PricingVersion.asset_type_uuid == version.asset_type_uuid,
+            PricingVersion.asset_family_uuid == version.asset_family_uuid,
         )
     )
     existing_versions = existing_result.scalars().all()
@@ -666,8 +666,8 @@ async def update_pricing_version(
         version.to_date = request.to_date
     if request.status is not None:
         version.status = request.status
-    if request.asset_type_uuid is not None:
-        version.asset_type_uuid = request.asset_type_uuid
+    if request.asset_family_uuid is not None:
+        version.asset_family_uuid = request.asset_family_uuid
     if request.use_pack is not None:
         version.use_pack = request.use_pack
 
@@ -688,7 +688,7 @@ async def clone_pricing_version(
     """Clone one pricing version into a new Draft version with copied items and tiers."""
     source_version = await get_pricing_version(db, source_version_uuid)
     clone_request = PricingVersionCreateRequest(
-        asset_type_uuid=source_version.asset_type_uuid,
+        asset_family_uuid=source_version.asset_family_uuid,
         name=request.name,
         from_date=request.from_date,
         to_date=request.to_date,
@@ -700,7 +700,7 @@ async def clone_pricing_version(
         db,
         clone_request,
         user_id=user_id,
-        asset_type_uuid=source_version.asset_type_uuid,
+        asset_family_uuid=source_version.asset_family_uuid,
         exclude_uuid=source_version_uuid,
     )
 
@@ -747,14 +747,14 @@ async def delete_pricing_version(db: AsyncSession, version_uuid: UUID) -> None:
 async def list_pricing_versions(
     db: AsyncSession,
     fiscal_year_uuid: UUID | None = None,
-    asset_type_uuid: UUID | None = None,
+    asset_family_uuid: UUID | None = None,
 ) -> list[PricingVersion]:
     """List pricing versions, optionally filtered by fiscal year."""
     stmt = select(PricingVersion)
     if fiscal_year_uuid is not None:
         stmt = stmt.where(PricingVersion.fiscal_year_uuid == fiscal_year_uuid)
-    if asset_type_uuid is not None:
-        stmt = stmt.where(PricingVersion.asset_type_uuid == asset_type_uuid)
+    if asset_family_uuid is not None:
+        stmt = stmt.where(PricingVersion.asset_family_uuid == asset_family_uuid)
     stmt = stmt.order_by(PricingVersion.from_date.asc())
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -1048,7 +1048,7 @@ async def copy_pricing_versions_from_year(
 
         new_version = PricingVersion(
             fiscal_year_uuid=target_fy_uuid,
-            asset_type_uuid=sv.asset_type_uuid,
+            asset_family_uuid=sv.asset_family_uuid,
             name=sv.name,
             from_date=new_from,
             to_date=new_to,
@@ -1100,7 +1100,7 @@ async def copy_cost_provision_rules_from_year(
     """Copy cost provision rules from source fiscal year to target fiscal year.
 
     Rules are copied with is_active=False (inactive/draft) so they can be reviewed
-    before activation. Rules that already exist in the target FY (same asset_type +
+    before activation. Rules that already exist in the target FY (same asset_family +
     metric_name combination) are skipped to avoid duplicates.
     """
     if source_fy_uuid == target_fy_uuid:
@@ -1116,13 +1116,13 @@ async def copy_cost_provision_rules_from_year(
     source_rules_result = await db.execute(
         select(CostProvisionRule)
         .where(CostProvisionRule.fiscal_year_uuid == source_fy_uuid)
-        .order_by(CostProvisionRule.asset_type_uuid, CostProvisionRule.metric_name)
+        .order_by(CostProvisionRule.asset_family_uuid, CostProvisionRule.metric_name)
     )
     source_rules = source_rules_result.scalars().all()
 
-    # Build a set of (asset_type_uuid, metric_name) already in the target FY
+    # Build a set of (asset_family_uuid, metric_name) already in the target FY
     existing_result = await db.execute(
-        select(CostProvisionRule.asset_type_uuid, CostProvisionRule.metric_name)
+        select(CostProvisionRule.asset_family_uuid, CostProvisionRule.metric_name)
         .where(CostProvisionRule.fiscal_year_uuid == target_fy_uuid)
     )
     existing_keys = {(row[0], row[1]) for row in existing_result.all()}
@@ -1131,13 +1131,13 @@ async def copy_cost_provision_rules_from_year(
     skipped = 0
 
     for sr in source_rules:
-        key = (sr.asset_type_uuid, sr.metric_name)
+        key = (sr.asset_family_uuid, sr.metric_name)
         if key in existing_keys:
             skipped += 1
             continue
 
         new_rule = CostProvisionRule(
-            asset_type_uuid=sr.asset_type_uuid,
+            asset_family_uuid=sr.asset_family_uuid,
             fiscal_year_uuid=target_fy_uuid,
             metric_name=sr.metric_name,
             cost_per_unit=sr.cost_per_unit,

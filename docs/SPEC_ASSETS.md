@@ -2,12 +2,12 @@
 
 ## 1. Purpose
 
-This document defines the target specification for the Assets module of the ERP for a French gliding club association. It consolidates asset lifecycle management (acquisition, maintenance, depreciation, disposal), pricing strategies per asset type with versioning and flight-type variants, stock tracking for consumables, and accounting integration.
+This document defines the target specification for the Assets module of the ERP for a French gliding club association. It consolidates asset lifecycle management (acquisition, maintenance, depreciation, disposal), pricing strategies per asset family with versioning and flight-type variants, stock tracking for consumables, and accounting integration.
 
 ## 2. Core Principles
 
 1. **Asset ownership is explicit**: club-owned vs. privately owned (with owner identity).
-2. **Pricing is versioned and strategy-based**: differs by asset type, flight type, and time period.
+2. **Pricing is versioned and strategy-based**: differs by asset family, flight type, and time period.
 3. **Cost provisioning is automatic**: maintenance/reserve costs accrue based on usage metrics (engine hours, launches, flights, landings).
 4. **Monetary precision**: NUMERIC(10,4) in SQL, Decimal/decimal.js in application.
 5. **Accounting ledger integration**: all asset transactions generate or reference accounting entries.
@@ -17,22 +17,36 @@ This document defines the target specification for the Assets module of the ERP 
 
 ## 3. Domain Model
 
-### 3.1 Asset Type
+### 3.1 Asset Family
 - `uuid`, `code` (unique), `name`
-- `category` (Aircraft, Launch Equipment, Support, Consumable, Service)
-- `is_trackable_in_ledger` (boolean): for depreciation
-- `standard_depreciation_years` (int, nullable)
+- `category_uuid` (FK → AssetCategory, required) — configurable catalog, not a fixed enum
+- `pricing_strategy` (1=FlightHours, 2=EngineTime, 3=PerFlight, 4=PerDuration, 5=PerUnit, 6=FlatRate)
+- `is_active`
 - Timestamps
+
+### 3.1bis Asset Category
+- `uuid`, `code` (unique), `name`, `description` (nullable)
+- `is_active`
+- 4 optional accounting-account references (configuration only — not yet consumed by any posting logic):
+  - `acquisition_account_uuid` (FK → AccountingAccount, class 2, e.g. 218xx)
+  - `depreciation_account_uuid` (FK → AccountingAccount, class 28 — accumulated depreciation, contra-asset;
+    NOT the 68x expense account)
+  - `charge_account_uuid` (FK → AccountingAccount, class 6 — general expense, e.g. dotation aux amortissements
+    681 or maintenance costs; category's choice)
+  - `revenue_account_uuid` (FK → AccountingAccount, class 7)
+- Seeded on migration with 5 default categories matching the legacy enum: Aéronef, Équipement de lancement,
+  Support, Consommable, Service — but open-ended: admins may add/rename/deactivate categories freely.
+- Timestamps & `updated_by`
 
 ### 3.2 Flight Type
 - `uuid`
 - `code` (unique), `name`, `description`
 - `is_active`
-- Global catalog (not tied to an asset type)
+- Global catalog (not tied to an asset family)
 - Examples: TOW, FERRY, TRAINING, NORMAL, CABLE_BREAK, EXERCISE
 
 ### 3.3 Asset (Master)
-- `uuid`, `asset_type_uuid` (FK)
+- `uuid`, `asset_family_uuid` (FK)
 - `code` (unique, e.g., F-CGVX), `name`, `serial_number`
 - `ownership` (1=Club, 2=Private)
 - current owners for private assets stored in `AssetPrivateOwner(asset_uuid, member_uuid)`; supports one or many co-owners
@@ -57,7 +71,7 @@ This document defines the target specification for the Assets module of the ERP 
 - `name`, `from_date`, `to_date` (date, nullable)
 - `status` (1=Draft, 2=Active, 3=Archived)
 - `is_locked` (boolean)
-- **`asset_type_uuid` (FK → AssetType, nullable)** ← if NULL → global/membership pricing; if set → asset-specific pricing
+- **`asset_family_uuid` (FK → AssetFamily, nullable)** ← if NULL → global/membership pricing; if set → asset-specific pricing
 - `created_at`, `updated_at`, `created_by` (FK → User)
 
 Lifecycle and mutability rules:
@@ -66,12 +80,12 @@ Lifecycle and mutability rules:
 - Any post-activation change must be implemented by creating a new draft version (copy/edit/activate), not by editing an active or archived version.
 - A version already used by billing/accounting flows is permanently frozen against `Active -> Draft` rollback.
 
-**Constraint**: For a given `(asset_type_uuid, fiscal_year_uuid)` pair, pricing versions must not overlap in date ranges.
+**Constraint**: For a given `(asset_family_uuid, fiscal_year_uuid)` pair, pricing versions must not overlap in date ranges.
 
 **Examples**:
-- `asset_type_uuid=NULL, from_date=2026-01-01, to_date=2026-12-31`: Membership pricing for 2026
-- `asset_type_uuid=<glider-uuid>, from_date=2026-01-01, to_date=2026-06-30`: Glider pricing (first half 2026)
-- `asset_type_uuid=<tow-plane-uuid>, from_date=2026-07-01, to_date=NULL`: Tow plane pricing (from July onward)
+- `asset_family_uuid=NULL, from_date=2026-01-01, to_date=2026-12-31`: Membership pricing for 2026
+- `asset_family_uuid=<glider-uuid>, from_date=2026-01-01, to_date=2026-06-30`: Glider pricing (first half 2026)
+- `asset_family_uuid=<tow-plane-uuid>, from_date=2026-07-01, to_date=NULL`: Tow plane pricing (from July onward)
 
 ### 3.6 Pricing Item
 
@@ -106,12 +120,12 @@ Precision rules:
 - `uuid`, `code` (unique), `name`
 - `category` (Consumable, Service, Fee)
 - `unit_type`, `unit_price` (NUMERIC(10,4))
-- `asset_type_uuid` (FK, nullable)
+- `asset_family_uuid` (FK, nullable)
 - `is_active`
 - Timestamps
 
 ### 3.8 Stock Item
-- `uuid`, `product_uuid` (FK), `asset_type_uuid` (FK, nullable)
+- `uuid`, `product_uuid` (FK), `asset_family_uuid` (FK, nullable)
 - `quantity_on_hand` (NUMERIC(10,4)), `unit` (liter, unit, etc.)
 - `cost_method` (1=FIFO, 2=Weighted Average, 3=Standard Cost)
 - `standard_cost_per_unit`, `reorder_point`, `storage_location`
@@ -147,9 +161,9 @@ The Assets module integrates with the Accounting module's **unified pricing and 
 
 ### 5.1 Revenue Pricing (Member Charges)
 
-Reuses `PricingVersion` (with optional `asset_type_uuid`) and `PricingItem`:
-- **asset_type_uuid = NULL**: Global/membership pricing
-- **asset_type_uuid = <asset-uuid>**: Asset-specific pricing (what to charge for flights using this asset)
+Reuses `PricingVersion` (with optional `asset_family_uuid`) and `PricingItem`:
+- **asset_family_uuid = NULL**: Global/membership pricing
+- **asset_family_uuid = <asset-uuid>**: Asset-specific pricing (what to charge for flights using this asset)
 
 Example pricing items:
 - Glider ASK21, unit=FlightTime, base_price=€45.00, include_insurance=true, include_fuel=false
@@ -196,20 +210,20 @@ Integration: When a flight is recorded with asset metrics (engine hours, launche
 
 ## 8. API Scope
 
-**Assets**: POST/GET/PATCH /api/v1/assets, /api/v1/assets/types, /api/v1/assets/flight-types  
+**Assets**: POST/GET/PATCH /api/v1/assets, /api/v1/assets/families, /api/v1/assets/categories, /api/v1/assets/flight-types  
 **Pricing**: POST/GET/PATCH /api/v1/accounting/pricing/versions, /api/v1/accounting/pricing/versions/{version_uuid}/items  
 **Cost Provision Rules**: POST/GET/PATCH /api/v1/accounting/cost-provision-rules  
 **Cost Accrual Staging**: GET /api/v1/accounting/cost-accrual-staging, POST /api/v1/accounting/cost-accrual-staging/batch-process  
 **Stock**: GET /api/v1/assets/stock, POST /api/v1/assets/stock/{item_uuid}/issue|receive, GET /api/v1/assets/stock/ledger  
 **Depreciation**: GET /api/v1/assets/{asset_uuid}/depreciation, POST /api/v1/assets/{asset_uuid}/depreciation/approve  
 **Products**: CRUD /api/v1/assets/products  
-**Pricing Lookup**: GET /api/v1/accounting/pricing/lookup?asset_type_uuid=...&date=...&flight_type_uuid=...
+**Pricing Lookup**: GET /api/v1/accounting/pricing/lookup?asset_family_uuid=...&date=...&flight_type_uuid=...
 
 ## 9. Cost Provisioning and Maintenance Accounting
 
 ### 9.1 Cost Accrual for Flight Operations
 
-Each asset type can have multiple cost provision rules tied to operational metrics:
+Each asset family can have multiple cost provision rules tied to operational metrics:
 
 | Metric | Meaning | Trigger | Example Rule |
 |---|---|---|---|
@@ -218,9 +232,9 @@ Each asset type can have multiple cost provision rules tied to operational metri
 | flight_hours | Total flight time | On flight record | Tow Plane: €25/hr → 605/406 |
 | landings | Number of landings | On flight record with landing recorded | Any aircraft: €50/landing → 682/288 |
 
-### 9.2 GL Account Assignment by Asset Type
+### 9.2 GL Account Assignment by Asset Family
 
-Per asset type, define which GL accounts are used for cost accrual:
+Per asset family, define which GL accounts are used for cost accrual:
 
 **Gliders:**
 - Engine maintenance: Debit 681, Credit 281 (€10/engine_hour)
@@ -331,7 +345,7 @@ Real-time accruals are linked via flight_uuid in accounting entry.
 
 See `docs/assets-sample.csv` for a reference file.
 
-**Required columns:** `code`, `name`, `asset_type_code`
+**Required columns:** `code`, `name`, `asset_family_code`
 
 **Optional columns:** `ownership`, `status`, `year_of_manufacture`, `purchase_price`, `residual_value`, `purchase_date` (YYYY-MM-DD), `depreciation_years`, `useful_life_years`, `depreciation_start_date` (YYYY-MM-DD), `registration`, `serial_number`, `notes`
 
@@ -341,11 +355,11 @@ See `docs/assets-sample.csv` for a reference file.
 |---|---|
 | `ownership` | `1`/`club`, `2`/`private`/`privé` |
 | `status` | `1`/`operational`/`opérationnel`, `2`/`maintenance`, `3`/`out_of_service`/`hors_service`, `4`/`disposed`/`cédé` |
-| `asset_type_code` | Must match an existing asset type `code` in the database |
+| `asset_family_code` | Must match an existing asset family `code` in the database |
 
 ### Behavior
 
-- Asset types are resolved by `asset_type_code` via a pre-fetched lookup table.
+- Asset families are resolved by `asset_family_code` via a pre-fetched lookup table.
 - Each row is validated independently; errors in one row do not block other rows.
 - A row that fails validation is **skipped** and its error is reported.
 - A row where the `code` already exists is skipped (duplicate).
@@ -358,7 +372,7 @@ See `docs/assets-sample.csv` for a reference file.
   "created": 2,
   "skipped": 1,
   "errors": [
-    { "row": 3, "field": "asset_type_code", "message": "Unknown asset_type_code: 'UNKNOWN'" }
+    { "row": 3, "field": "asset_family_code", "message": "Unknown asset_family_code: 'UNKNOWN'" }
   ]
 }
 ```
