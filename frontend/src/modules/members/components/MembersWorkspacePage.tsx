@@ -21,6 +21,7 @@ export function MembersWorkspacePage() {
         "workspace.members.description",
         "Annuaire, commissions et réinscription.",
       )}
+      helpSlug="members"
       tabs={[
         {
           value: "annuaire",

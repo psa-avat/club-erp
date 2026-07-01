@@ -24,6 +24,7 @@ import { FlightsWorkspacePage } from './modules/flights'
 import { PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
 import { ViWorkspacePage } from './modules/vi'
 import { RhWorkspacePage } from './modules/rh'
+import { HelpCenterPage } from './modules/help'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
 
@@ -61,6 +62,10 @@ function App() {
         <Route element={<AppShell />}>
           {/* ── 1. Dashboard ── */}
           <Route path="/dashboard" element={<DashboardPage />} />
+
+          {/* ── Help center ── */}
+          <Route path="/help" element={<HelpCenterPage />} />
+          <Route path="/help/:moduleSlug" element={<HelpCenterPage />} />
 
           {/* ── 2. Members ── */}
           <Route path="/club" element={<Navigate replace to="/workspace/members" />} />

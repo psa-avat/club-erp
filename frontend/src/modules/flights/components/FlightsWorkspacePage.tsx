@@ -51,6 +51,7 @@ export function FlightsWorkspacePage() {
         "workspace.description",
         "Saisie des vols, facturation OSRT/Gesasso, packs et import Planche.",
       )}
+      helpSlug="flights"
       actions={
         <span />
       }

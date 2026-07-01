@@ -42,6 +42,7 @@ i18n.use(initReactI18next).init({
       vi: fr.vi,
       rh: fr.rh,
       pricing: fr.pricing,
+      help: fr.help,
     },
     en: {
       common: en.common,
@@ -59,6 +60,7 @@ i18n.use(initReactI18next).init({
       vi: en.vi,
       rh: en.rh,
       pricing: en.pricing,
+      help: en.help,
     },
   },
   lng: detectInitialLanguage(),
@@ -67,7 +69,7 @@ i18n.use(initReactI18next).init({
     escapeValue: false,
   },
   defaultNS: 'common',
-  ns: ['common', 'dashboard', 'members', 'club', 'planning', 'helloasso', 'planche', 'storage', 'banque', 'admin', 'assets', 'flights', 'vi', 'rh', 'pricing'],
+  ns: ['common', 'dashboard', 'members', 'club', 'planning', 'helloasso', 'planche', 'storage', 'banque', 'admin', 'assets', 'flights', 'vi', 'rh', 'pricing', 'help'],
 })
 
 void i18n.on('languageChanged', (newLanguage) => {

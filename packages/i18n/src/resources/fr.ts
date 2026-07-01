@@ -2988,4 +2988,29 @@ export const fr = {
     unitFixed: 'Forfait',
     unitFixedDurationTranche: 'Tranche de durée',
   },
+  help: {
+    headerButton: {
+      ariaLabel: 'Aide',
+    },
+    center: {
+      title: "Centre d'aide",
+      description: 'Documentation utilisateur, module par module.',
+      notFound: "Aucun contenu d'aide pour ce module.",
+      notTranslatedYet: "Cette page n'est pas encore traduite en anglais — affichage en français.",
+    },
+    toc: {
+      ariaLabel: "Sommaire de l'aide",
+      gettingStarted: 'Présentation générale',
+      members: 'Membres',
+      assets: 'Aéronefs & Équipements',
+      flights: 'Vols & Facturation',
+      vi: "Vols d'Initiation (VI)",
+      finance: 'Comptabilité & Banque',
+      tarifs: 'Tarifs & Prix',
+      portal: 'Portail Membre',
+      admin: 'Intégrations & Administration',
+      dashboard: 'Tableau de bord',
+      faq: 'Questions fréquentes',
+    },
+  },
 } as const

@@ -1,6 +1,12 @@
 # Guide Utilisateur — ERP Club de Vol à Voile
 
 > Version : 2026-06 · Licence : AGPL-3.0
+>
+> **Ce contenu est désormais intégré dans l'application** (Centre d'aide — icône "?" dans
+> l'en-tête, ou `/help`), module par module :
+> `frontend/src/modules/help/content/fr/*.md`. Ce fichier reste la référence hors-ligne mais
+> n'est plus la source à éditer directement — modifiez les fichiers markdown du module `help`
+> puis répercutez ici si une copie consolidée est nécessaire.
 
 ---
 

@@ -19,7 +19,7 @@ Actively maintained functional specifications. Reflects intended and (mostly) sh
 
 | File | Covers |
 |------|--------|
-| `USER_GUIDE.md` | Full end-user guide across all modules, FAQ (French) |
+| `USER_GUIDE.md` | Full end-user guide across all modules, FAQ (French). Superseded as the primary interface by the in-app Help Center (`frontend/src/modules/help/content/fr/*.md`, reachable via the "?" icon in the header or `/help`) — kept here as an offline reference copy. |
 
 ## `developer/` — Architecture & dev guidance
 
@@ -69,7 +69,8 @@ Not maintained. Kept for design rationale and history. Includes:
 - One-time audits/checklists (`a11y-audit-phase0`, `ux-audit-phase1`, `ASSESSMENT_MEMBER_REGISTRATION_FLOW`, `CHECKLIST_ACCOUNTING_IMPLEMENTATION`, `EXECUTIVE_SUMMARY_ACCOUNTING_UXUI`, `CHALLENGE_ACCOUNTING_UXUI_DESIGN`) — findings already acted on or absorbed elsewhere.
 - Superseded UI-refactor sources (`plan-uiRefactoring.prompt.md`, `plan-ux-ui-navigation.md`, `plan-visualHarmonization.prompt.md`, `ERP_UI_Refactoring.md`) — consolidated into `plans/ui-refactoring.md`.
 - Misc superseded (`PROMPT_MIGRATION_DESIGN.md`, `compta.md`, `Flight_Billing_Specification_And_User_Manual.md`, `ai-agents-prompt.md`) — content merged into `product/` specs or fully redundant with `.claude/CLAUDE.md`.
+- `GUIDE_VI.html` — its content was migrated into the in-app Help Center (`frontend/src/modules/help/content/fr/vi.md`) and it is no longer linked from anywhere.
 
 ## Other assets in `docs/`
 
-SQL references (`*.sql`), sample CSVs, and standalone HTML guides (`GUIDE_VI.html`, etc.) were left in place at the `docs/` root — out of scope for this markdown reorganization pass.
+SQL references (`*.sql`), sample CSVs, and other standalone HTML guides (`flux_comptables.html`, `doc-deep.html`, `daily_accounting_club_erp_integrated.html`, `facturation_membres_multi.html` — AI-generated mockups, not end-user docs) were left in place at the `docs/` root — out of scope for this reorganization pass.

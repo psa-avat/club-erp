@@ -57,6 +57,7 @@ export function ViWorkspacePage() {
         "workspace.description",
         "Gestion des bons de vol d'initiation, achats HelloAsso et synchronisation Planche.",
       )}
+      helpSlug="vi"
       tabs={[
         {
           value: "bons",

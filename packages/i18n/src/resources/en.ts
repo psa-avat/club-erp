@@ -2969,4 +2969,29 @@ export const en = {
     unitFixed: 'Fixed',
     unitFixedDurationTranche: 'Duration bracket',
   },
+  help: {
+    headerButton: {
+      ariaLabel: 'Help',
+    },
+    center: {
+      title: 'Help Center',
+      description: 'User documentation, module by module.',
+      notFound: 'No help content for this module.',
+      notTranslatedYet: 'This page is not yet translated into English — showing the French version.',
+    },
+    toc: {
+      ariaLabel: 'Help table of contents',
+      gettingStarted: 'Getting Started',
+      members: 'Members',
+      assets: 'Aircraft & Equipment',
+      flights: 'Flights & Billing',
+      vi: 'Introductory Flights (VI)',
+      finance: 'Accounting & Bank',
+      tarifs: 'Pricing',
+      portal: 'Member Portal',
+      admin: 'Integrations & Administration',
+      dashboard: 'Dashboard',
+      faq: 'Frequently Asked Questions',
+    },
+  },
 } as const

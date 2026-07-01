@@ -21,9 +21,12 @@
 
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router";
-import type { LucideIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { HelpCircle, type LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@club-erp/ui";
 
@@ -56,6 +59,11 @@ export interface WorkspaceShellProps {
   defaultTab?: string;
   /** Classes CSS additionnelles sur le conteneur */
   className?: string;
+  /**
+   * Slug optionnel vers le Centre d'aide (/help/:helpSlug) — affiche une icône
+   * "?" contextuelle à côté des actions. Voir docs/plans/help-documentation-feature.md.
+   */
+  helpSlug?: string;
 }
 
 // ── Hook: useActiveTab ────────────────────────────────────────────────────────
@@ -129,12 +137,32 @@ export function WorkspaceShell({
   tabs,
   defaultTab,
   className,
+  helpSlug,
 }: WorkspaceShellProps) {
   const [activeTab, setActiveTab] = useActiveTab(tabs, defaultTab);
+  const navigate = useNavigate();
+  const { t } = useTranslation("help");
+
+  const headerActions = (
+    <>
+      {actions}
+      {helpSlug ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("headerButton.ariaLabel")}
+          title={t("headerButton.ariaLabel")}
+          onClick={() => navigate(`/help/${helpSlug}`)}
+        >
+          <HelpCircle className="h-4 w-4" />
+        </Button>
+      ) : null}
+    </>
+  );
 
   return (
     <div className={cn("flex w-full flex-col gap-6", className)}>
-      <PageHeader title={title} description={description} actions={actions} />
+      <PageHeader title={title} description={description} actions={helpSlug || actions ? headerActions : undefined} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>

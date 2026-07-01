@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { getPortalProfile } from '../api/client'
 import { useMemberPortalLogout, useMemberPortalFiscalYearsQuery } from '../api'
 import { useFiscalYearStore } from '@/store/fiscalYearStore'
+import { PortalHelpButton } from '@/modules/help'
 import type { MemberPortalProfile } from '../types'
 import type { FiscalYear } from '../../banque/api'
 
@@ -92,6 +93,7 @@ export function PortalShell() {
               <option value="fr">FR</option>
               <option value="en">EN</option>
             </select>
+            <PortalHelpButton />
             <button
               type="button"
               onClick={() => { logout(); navigate('/member-portal/login') }}

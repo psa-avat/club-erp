@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict j86ChAM3tQfxcNm0LBUdmeeHDB5C56R7xCS89XsAiqF1YBF0kvnsKLz4uSsMqii
+\restrict cKwqtZfxyvw3vZ0T5VIl5qFXVeF9tVRdRD4QTuM9yKTs0XnZ5grSdAqS2vafMFg
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -397,7 +397,7 @@ CREATE TABLE public.accounting_accounts (
     require_id smallint DEFAULT 0 NOT NULL,
     CONSTRAINT chk_account_normal_balance CHECK ((normal_balance = ANY (ARRAY[1, 2]))),
     CONSTRAINT chk_account_require_id CHECK ((require_id = ANY (ARRAY[0, 1, 2, 3]))),
-    CONSTRAINT chk_account_type CHECK ((type = ANY (ARRAY[1, 2, 3, 4, 5])))
+    CONSTRAINT chk_account_type CHECK ((type = ANY (ARRAY[1, 2, 3, 4, 5, 9])))
 );
 
 
@@ -760,6 +760,26 @@ CREATE TABLE public.asset_account_snapshots (
 
 
 --
+-- Name: asset_categories; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.asset_categories (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    code character varying(32) NOT NULL,
+    name character varying(100) NOT NULL,
+    description character varying(255),
+    is_active boolean DEFAULT true NOT NULL,
+    acquisition_account_uuid uuid,
+    depreciation_account_uuid uuid,
+    charge_account_uuid uuid,
+    revenue_account_uuid uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by integer
+);
+
+
+--
 -- Name: asset_depreciation_schedules; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -778,6 +798,28 @@ CREATE TABLE public.asset_depreciation_schedules (
     updated_by integer,
     CONSTRAINT chk_asset_depr_non_negative CHECK (((depreciation_amount >= (0)::numeric) AND (accumulated_depreciation >= (0)::numeric) AND (net_book_value >= (0)::numeric))),
     CONSTRAINT chk_asset_depr_status CHECK ((status = ANY (ARRAY[1, 2])))
+);
+
+
+--
+-- Name: asset_families; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.asset_families (
+    uuid uuid DEFAULT public.uuid_generate_v4() CONSTRAINT asset_types_uuid_not_null NOT NULL,
+    code character varying(32) CONSTRAINT asset_types_code_not_null NOT NULL,
+    name character varying(100) CONSTRAINT asset_types_name_not_null NOT NULL,
+    pricing_strategy smallint CONSTRAINT asset_types_pricing_strategy_not_null NOT NULL,
+    is_trackable_in_ledger boolean DEFAULT false CONSTRAINT asset_types_is_trackable_in_ledger_not_null NOT NULL,
+    is_active boolean DEFAULT true CONSTRAINT asset_types_is_active_not_null NOT NULL,
+    standard_depreciation_years integer,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT asset_types_created_at_not_null NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() CONSTRAINT asset_types_updated_at_not_null NOT NULL,
+    created_by integer,
+    updated_by integer,
+    category_uuid uuid NOT NULL,
+    CONSTRAINT chk_asset_families_pricing_strategy CHECK ((pricing_strategy = ANY (ARRAY[1, 2, 3, 4, 5, 6]))),
+    CONSTRAINT chk_asset_types_depr_years CHECK (((standard_depreciation_years IS NULL) OR (standard_depreciation_years > 0)))
 );
 
 
@@ -893,35 +935,12 @@ CREATE TABLE public.asset_stock_items (
 
 
 --
--- Name: asset_types; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.asset_types (
-    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    code character varying(32) NOT NULL,
-    name character varying(100) NOT NULL,
-    category smallint NOT NULL,
-    pricing_strategy smallint NOT NULL,
-    is_trackable_in_ledger boolean DEFAULT false NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    standard_depreciation_years integer,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    created_by integer,
-    updated_by integer,
-    CONSTRAINT chk_asset_types_category CHECK ((category = ANY (ARRAY[1, 2, 3, 4, 5]))),
-    CONSTRAINT chk_asset_types_depr_years CHECK (((standard_depreciation_years IS NULL) OR (standard_depreciation_years > 0))),
-    CONSTRAINT chk_asset_types_pricing_strategy CHECK ((pricing_strategy = ANY (ARRAY[1, 2, 3, 4, 5, 6])))
-);
-
-
---
 -- Name: assets; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.assets (
     uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    asset_type_uuid uuid NOT NULL,
+    asset_family_uuid uuid CONSTRAINT assets_asset_type_uuid_not_null NOT NULL,
     code character varying(64) NOT NULL,
     name character varying(150) NOT NULL,
     registration character varying(32),
@@ -1104,7 +1123,7 @@ CREATE TABLE public.cost_accrual_staging (
 
 CREATE TABLE public.cost_provision_rules (
     uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    asset_type_uuid uuid NOT NULL,
+    asset_family_uuid uuid CONSTRAINT cost_provision_rules_asset_type_uuid_not_null NOT NULL,
     fiscal_year_uuid uuid NOT NULL,
     metric_name character varying(32) NOT NULL,
     cost_per_unit numeric(10,4) NOT NULL,
@@ -1246,6 +1265,122 @@ CREATE TABLE public.helloasso_vi_staging (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_helloasso_vi_staging_amount_cents CHECK (((amount_cents IS NULL) OR (amount_cents >= 0))),
     CONSTRAINT chk_helloasso_vi_staging_status CHECK (((status >= 1) AND (status <= 3)))
+);
+
+
+--
+-- Name: hr_calendar_phases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hr_calendar_phases (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    calendar_uuid uuid NOT NULL,
+    name character varying(100) NOT NULL,
+    start_month smallint NOT NULL,
+    start_day smallint NOT NULL,
+    end_month smallint NOT NULL,
+    end_day smallint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT hr_calendar_phases_end_day_check CHECK (((end_day >= 1) AND (end_day <= 31))),
+    CONSTRAINT hr_calendar_phases_end_month_check CHECK (((end_month >= 1) AND (end_month <= 12))),
+    CONSTRAINT hr_calendar_phases_start_day_check CHECK (((start_day >= 1) AND (start_day <= 31))),
+    CONSTRAINT hr_calendar_phases_start_month_check CHECK (((start_month >= 1) AND (start_month <= 12)))
+);
+
+
+--
+-- Name: hr_employee_calendar_assignments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hr_employee_calendar_assignments (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    member_uuid uuid NOT NULL,
+    calendar_uuid uuid NOT NULL,
+    effective_from date NOT NULL,
+    effective_to date,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT hr_employee_calendar_assignments_check CHECK (((effective_to IS NULL) OR (effective_to > effective_from)))
+);
+
+
+--
+-- Name: hr_employee_profiles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hr_employee_profiles (
+    member_uuid uuid NOT NULL,
+    user_id integer,
+    contract_type character varying(16) NOT NULL,
+    hire_date date NOT NULL,
+    termination_date date,
+    weekly_hours numeric(5,2) DEFAULT 35.00 NOT NULL,
+    annual_work_hours numeric(6,2) DEFAULT 1607.00 NOT NULL,
+    current_leave_balance numeric(5,2) DEFAULT 0 NOT NULL,
+    last_leave_balance_update date,
+    is_active boolean DEFAULT true NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by integer,
+    CONSTRAINT chk_hr_annual_hours CHECK ((annual_work_hours >= (0)::numeric)),
+    CONSTRAINT chk_hr_contract_type CHECK (((contract_type)::text = ANY ((ARRAY['CDI'::character varying, 'CDD'::character varying, 'SAISONNIER'::character varying, 'VACATAIRE'::character varying, 'BENEVOLE'::character varying])::text[]))),
+    CONSTRAINT chk_hr_leave_balance CHECK ((current_leave_balance >= (0)::numeric)),
+    CONSTRAINT chk_hr_profile_dates CHECK (((termination_date IS NULL) OR (termination_date >= hire_date))),
+    CONSTRAINT chk_hr_weekly_hours CHECK ((weekly_hours >= (0)::numeric))
+);
+
+
+--
+-- Name: COLUMN hr_employee_profiles.annual_work_hours; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hr_employee_profiles.annual_work_hours IS 'Durée annuelle de référence (ex: 1607h pour un temps plein)';
+
+
+--
+-- Name: COLUMN hr_employee_profiles.current_leave_balance; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hr_employee_profiles.current_leave_balance IS 'Solde actuel de jours de congés disponibles';
+
+
+--
+-- Name: COLUMN hr_employee_profiles.last_leave_balance_update; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.hr_employee_profiles.last_leave_balance_update IS 'Date de dernière mise à jour du solde';
+
+
+--
+-- Name: hr_phase_day_rules; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hr_phase_day_rules (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    phase_uuid uuid NOT NULL,
+    day_of_week smallint NOT NULL,
+    is_working boolean DEFAULT true NOT NULL,
+    expected_hours numeric(4,2) DEFAULT 0 NOT NULL,
+    start_time time without time zone,
+    end_time time without time zone,
+    apply_on_week smallint DEFAULT 0 NOT NULL,
+    CONSTRAINT hr_phase_day_rules_apply_on_week_check CHECK (((apply_on_week >= 0) AND (apply_on_week <= 5))),
+    CONSTRAINT hr_phase_day_rules_day_of_week_check CHECK (((day_of_week >= 1) AND (day_of_week <= 7)))
+);
+
+
+--
+-- Name: hr_working_time_calendars; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.hr_working_time_calendars (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(100) NOT NULL,
+    description text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1681,7 +1816,7 @@ CREATE TABLE public.pricing_items (
 CREATE TABLE public.pricing_versions (
     uuid uuid NOT NULL,
     fiscal_year_uuid uuid,
-    asset_type_uuid uuid,
+    asset_family_uuid uuid,
     name character varying(100) NOT NULL,
     from_date date NOT NULL,
     to_date date,
@@ -2150,9 +2285,46 @@ CREATE TABLE public.vi_entitlements (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by integer,
+    amount_ttc numeric(10,4),
+    buyer_member_uuid uuid,
+    purchase_entry_uuid uuid,
+    realization_entry_uuid uuid,
+    registered_member_uuid uuid,
+    conversion_entry_uuid uuid,
+    is_generic boolean DEFAULT false NOT NULL,
+    insurance_amount_override numeric(10,4),
     CONSTRAINT chk_vi_entitlements_date_consistency CHECK (((realisation_date IS NULL) OR (scheduled_date IS NULL) OR (realisation_date >= scheduled_date))),
     CONSTRAINT chk_vi_entitlements_origin_type CHECK (((origin_type >= 1) AND (origin_type <= 5))),
     CONSTRAINT chk_vi_entitlements_status CHECK (((status >= 1) AND (status <= 6)))
+);
+
+
+--
+-- Name: COLUMN vi_entitlements.is_generic; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.vi_entitlements.is_generic IS 'When TRUE this voucher is a generic/placeholder; flights may reference it via vi_erp_id but it bypasses the individual flight-link and realization accounting workflow.';
+
+
+--
+-- Name: COLUMN vi_entitlements.insurance_amount_override; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.vi_entitlements.insurance_amount_override IS 'Per-entitlement insurance override. When set, supersedes vi_type.insurance_amount for realization.';
+
+
+--
+-- Name: vi_flight_links; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.vi_flight_links (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    entitlement_uuid uuid NOT NULL,
+    flight_uuid uuid,
+    sequence smallint DEFAULT 1 NOT NULL,
+    analytical_entry_uuid uuid,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -2169,7 +2341,16 @@ CREATE TABLE public.vi_type_catalog (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by integer,
-    charge_account_uuid uuid
+    charge_account_uuid uuid,
+    client_account_uuid uuid,
+    revenue_account_uuid uuid,
+    insurance_account_uuid uuid,
+    insurance_tiers_uuid uuid,
+    insurance_amount numeric(10,4),
+    max_flights smallint DEFAULT 1 NOT NULL,
+    analytical_cost_account_uuid uuid,
+    analytical_reflection_account_uuid uuid,
+    insurance_expense_account_uuid uuid
 );
 
 
@@ -2474,6 +2655,14 @@ ALTER TABLE ONLY public.asset_account_snapshots
 
 
 --
+-- Name: asset_categories asset_categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: asset_depreciation_schedules asset_depreciation_schedules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2538,18 +2727,18 @@ ALTER TABLE ONLY public.asset_stock_items
 
 
 --
--- Name: asset_types asset_types_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: asset_families asset_types_code_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.asset_types
+ALTER TABLE ONLY public.asset_families
     ADD CONSTRAINT asset_types_code_key UNIQUE (code);
 
 
 --
--- Name: asset_types asset_types_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: asset_families asset_types_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.asset_types
+ALTER TABLE ONLY public.asset_families
     ADD CONSTRAINT asset_types_pkey PRIMARY KEY (uuid);
 
 
@@ -2663,6 +2852,54 @@ ALTER TABLE ONLY public.flight_billing_settings
 
 ALTER TABLE ONLY public.helloasso_vi_staging
     ADD CONSTRAINT helloasso_vi_staging_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: hr_calendar_phases hr_calendar_phases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_calendar_phases
+    ADD CONSTRAINT hr_calendar_phases_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: hr_employee_calendar_assignments hr_employee_calendar_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_calendar_assignments
+    ADD CONSTRAINT hr_employee_calendar_assignments_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: hr_employee_profiles hr_employee_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_profiles
+    ADD CONSTRAINT hr_employee_profiles_pkey PRIMARY KEY (member_uuid);
+
+
+--
+-- Name: hr_phase_day_rules hr_phase_day_rules_phase_uuid_day_of_week_apply_on_week_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_phase_day_rules
+    ADD CONSTRAINT hr_phase_day_rules_phase_uuid_day_of_week_apply_on_week_key UNIQUE (phase_uuid, day_of_week, apply_on_week);
+
+
+--
+-- Name: hr_phase_day_rules hr_phase_day_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_phase_day_rules
+    ADD CONSTRAINT hr_phase_day_rules_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: hr_working_time_calendars hr_working_time_calendars_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_working_time_calendars
+    ADD CONSTRAINT hr_working_time_calendars_pkey PRIMARY KEY (uuid);
 
 
 --
@@ -2858,6 +3095,14 @@ ALTER TABLE ONLY public.trusted_devices
 
 
 --
+-- Name: asset_categories uq_asset_categories_code; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT uq_asset_categories_code UNIQUE (code);
+
+
+--
 -- Name: asset_depreciation_schedules uq_asset_depr_asset_year; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2954,6 +3199,14 @@ ALTER TABLE ONLY public.vi_entitlements
 
 
 --
+-- Name: vi_flight_links uq_vi_flight_link; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_flight_links
+    ADD CONSTRAINT uq_vi_flight_link UNIQUE (entitlement_uuid, flight_uuid);
+
+
+--
 -- Name: vi_type_catalog uq_vi_type_catalog_code; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3007,6 +3260,14 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.vi_entitlements
     ADD CONSTRAINT vi_entitlements_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: vi_flight_links vi_flight_links_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_flight_links
+    ADD CONSTRAINT vi_flight_links_pkey PRIMARY KEY (uuid);
 
 
 --
@@ -3337,6 +3598,20 @@ CREATE INDEX idx_helloasso_vi_staging_purchased_at ON public.helloasso_vi_stagin
 --
 
 CREATE INDEX idx_helloasso_vi_staging_status ON public.helloasso_vi_staging USING btree (status);
+
+
+--
+-- Name: idx_hr_employee_profiles_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_hr_employee_profiles_active ON public.hr_employee_profiles USING btree (is_active);
+
+
+--
+-- Name: idx_hr_employee_profiles_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_hr_employee_profiles_user ON public.hr_employee_profiles USING btree (user_id) WHERE (user_id IS NOT NULL);
 
 
 --
@@ -3704,6 +3979,20 @@ CREATE INDEX idx_vf_accounting_entry ON public.validated_flights USING btree (ac
 
 
 --
+-- Name: idx_vi_ent_buyer; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_vi_ent_buyer ON public.vi_entitlements USING btree (buyer_member_uuid);
+
+
+--
+-- Name: idx_vi_ent_reg_mem; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_vi_ent_reg_mem ON public.vi_entitlements USING btree (registered_member_uuid);
+
+
+--
 -- Name: idx_vi_entitlements_origin_ref; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3750,6 +4039,20 @@ CREATE INDEX idx_vi_entitlements_validity_date ON public.vi_entitlements USING b
 --
 
 CREATE INDEX idx_vi_entitlements_vi_type_uuid ON public.vi_entitlements USING btree (vi_type_uuid);
+
+
+--
+-- Name: idx_vi_fl_entitlement; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_vi_fl_entitlement ON public.vi_flight_links USING btree (entitlement_uuid);
+
+
+--
+-- Name: idx_vi_fl_flight; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_vi_fl_flight ON public.vi_flight_links USING btree (flight_uuid);
 
 
 --
@@ -3816,6 +4119,13 @@ CREATE INDEX ix_asset_depr_status ON public.asset_depreciation_schedules USING b
 
 
 --
+-- Name: ix_asset_families_category_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_asset_families_category_uuid ON public.asset_families USING btree (category_uuid);
+
+
+--
 -- Name: ix_asset_flight_types_active; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3844,24 +4154,17 @@ CREATE INDEX ix_asset_status_history_asset_uuid ON public.asset_status_history U
 
 
 --
--- Name: ix_asset_types_category; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_asset_types_category ON public.asset_types USING btree (category);
-
-
---
 -- Name: ix_asset_types_trackable; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_asset_types_trackable ON public.asset_types USING btree (is_trackable_in_ledger);
+CREATE INDEX ix_asset_types_trackable ON public.asset_families USING btree (is_trackable_in_ledger);
 
 
 --
 -- Name: ix_assets_asset_type; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_assets_asset_type ON public.assets USING btree (asset_type_uuid);
+CREATE INDEX ix_assets_asset_type ON public.assets USING btree (asset_family_uuid);
 
 
 --
@@ -3875,7 +4178,7 @@ CREATE INDEX ix_assets_status ON public.assets USING btree (status);
 -- Name: ix_cost_rules_asset_type; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_cost_rules_asset_type ON public.cost_provision_rules USING btree (asset_type_uuid);
+CREATE INDEX ix_cost_rules_asset_type ON public.cost_provision_rules USING btree (asset_family_uuid);
 
 
 --
@@ -3984,10 +4287,10 @@ CREATE INDEX ix_pricing_items_pricing_version ON public.pricing_items USING btre
 
 
 --
--- Name: ix_pricing_versions_asset_type; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_pricing_versions_asset_family; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_pricing_versions_asset_type ON public.pricing_versions USING btree (asset_type_uuid);
+CREATE INDEX ix_pricing_versions_asset_family ON public.pricing_versions USING btree (asset_family_uuid);
 
 
 --
@@ -4050,7 +4353,7 @@ CREATE INDEX ix_validated_flights_accounting_entry ON public.validated_flights U
 -- Name: uq_cost_rules_active_unique; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX uq_cost_rules_active_unique ON public.cost_provision_rules USING btree (asset_type_uuid, fiscal_year_uuid, metric_name) WHERE (is_active = true);
+CREATE UNIQUE INDEX uq_cost_rules_active_unique ON public.cost_provision_rules USING btree (asset_family_uuid, fiscal_year_uuid, metric_name) WHERE (is_active = true);
 
 
 --
@@ -4327,10 +4630,10 @@ CREATE TRIGGER trg_asset_products_updated_at BEFORE UPDATE ON public.asset_produ
 
 
 --
--- Name: asset_types trg_asset_types_updated_at; Type: TRIGGER; Schema: public; Owner: -
+-- Name: asset_families trg_asset_types_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER trg_asset_types_updated_at BEFORE UPDATE ON public.asset_types FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
+CREATE TRIGGER trg_asset_types_updated_at BEFORE UPDATE ON public.asset_families FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 
 
 --
@@ -4599,6 +4902,46 @@ ALTER TABLE ONLY public.asset_account_snapshots
 
 
 --
+-- Name: asset_categories asset_categories_acquisition_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_acquisition_account_uuid_fkey FOREIGN KEY (acquisition_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_categories asset_categories_charge_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_charge_account_uuid_fkey FOREIGN KEY (charge_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_categories asset_categories_depreciation_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_depreciation_account_uuid_fkey FOREIGN KEY (depreciation_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_categories asset_categories_revenue_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_revenue_account_uuid_fkey FOREIGN KEY (revenue_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_categories asset_categories_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: asset_depreciation_schedules asset_depreciation_schedules_asset_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4612,6 +4955,14 @@ ALTER TABLE ONLY public.asset_depreciation_schedules
 
 ALTER TABLE ONLY public.asset_depreciation_schedules
     ADD CONSTRAINT asset_depreciation_schedules_fiscal_year_uuid_fkey FOREIGN KEY (fiscal_year_uuid) REFERENCES public.accounting_fiscal_years(uuid);
+
+
+--
+-- Name: asset_families asset_families_category_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_families
+    ADD CONSTRAINT asset_families_category_uuid_fkey FOREIGN KEY (category_uuid) REFERENCES public.asset_categories(uuid);
 
 
 --
@@ -4643,7 +4994,7 @@ ALTER TABLE ONLY public.asset_private_owners
 --
 
 ALTER TABLE ONLY public.asset_products
-    ADD CONSTRAINT asset_products_asset_type_uuid_fkey FOREIGN KEY (asset_type_uuid) REFERENCES public.asset_types(uuid);
+    ADD CONSTRAINT asset_products_asset_type_uuid_fkey FOREIGN KEY (asset_type_uuid) REFERENCES public.asset_families(uuid);
 
 
 --
@@ -4667,7 +5018,7 @@ ALTER TABLE ONLY public.asset_stock_entries
 --
 
 ALTER TABLE ONLY public.asset_stock_items
-    ADD CONSTRAINT asset_stock_items_asset_type_uuid_fkey FOREIGN KEY (asset_type_uuid) REFERENCES public.asset_types(uuid);
+    ADD CONSTRAINT asset_stock_items_asset_type_uuid_fkey FOREIGN KEY (asset_type_uuid) REFERENCES public.asset_families(uuid);
 
 
 --
@@ -4691,7 +5042,7 @@ ALTER TABLE ONLY public.assets
 --
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT assets_asset_type_uuid_fkey FOREIGN KEY (asset_type_uuid) REFERENCES public.asset_types(uuid);
+    ADD CONSTRAINT assets_asset_type_uuid_fkey FOREIGN KEY (asset_family_uuid) REFERENCES public.asset_families(uuid);
 
 
 --
@@ -4763,7 +5114,7 @@ ALTER TABLE ONLY public.cost_accrual_staging
 --
 
 ALTER TABLE ONLY public.cost_provision_rules
-    ADD CONSTRAINT cost_provision_rules_asset_type_uuid_fkey FOREIGN KEY (asset_type_uuid) REFERENCES public.asset_types(uuid);
+    ADD CONSTRAINT cost_provision_rules_asset_type_uuid_fkey FOREIGN KEY (asset_family_uuid) REFERENCES public.asset_families(uuid);
 
 
 --
@@ -4935,6 +5286,62 @@ ALTER TABLE ONLY public.helloasso_vi_staging
 
 
 --
+-- Name: hr_calendar_phases hr_calendar_phases_calendar_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_calendar_phases
+    ADD CONSTRAINT hr_calendar_phases_calendar_uuid_fkey FOREIGN KEY (calendar_uuid) REFERENCES public.hr_working_time_calendars(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: hr_employee_calendar_assignments hr_employee_calendar_assignments_calendar_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_calendar_assignments
+    ADD CONSTRAINT hr_employee_calendar_assignments_calendar_uuid_fkey FOREIGN KEY (calendar_uuid) REFERENCES public.hr_working_time_calendars(uuid) ON DELETE RESTRICT;
+
+
+--
+-- Name: hr_employee_calendar_assignments hr_employee_calendar_assignments_member_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_calendar_assignments
+    ADD CONSTRAINT hr_employee_calendar_assignments_member_uuid_fkey FOREIGN KEY (member_uuid) REFERENCES public.members(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: hr_employee_profiles hr_employee_profiles_member_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_profiles
+    ADD CONSTRAINT hr_employee_profiles_member_uuid_fkey FOREIGN KEY (member_uuid) REFERENCES public.members(uuid) ON DELETE RESTRICT;
+
+
+--
+-- Name: hr_employee_profiles hr_employee_profiles_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_profiles
+    ADD CONSTRAINT hr_employee_profiles_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: hr_employee_profiles hr_employee_profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_employee_profiles
+    ADD CONSTRAINT hr_employee_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: hr_phase_day_rules hr_phase_day_rules_phase_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.hr_phase_day_rules
+    ADD CONSTRAINT hr_phase_day_rules_phase_uuid_fkey FOREIGN KEY (phase_uuid) REFERENCES public.hr_calendar_phases(uuid) ON DELETE CASCADE;
+
+
+--
 -- Name: member_pack_consumptions member_pack_consumptions_flight_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5019,7 +5426,7 @@ ALTER TABLE ONLY public.pack_applicability
 --
 
 ALTER TABLE ONLY public.pack_definitions
-    ADD CONSTRAINT pack_definitions_eligible_asset_type_uuid_fkey FOREIGN KEY (eligible_asset_type_uuid) REFERENCES public.asset_types(uuid) ON DELETE SET NULL;
+    ADD CONSTRAINT pack_definitions_eligible_asset_type_uuid_fkey FOREIGN KEY (eligible_asset_type_uuid) REFERENCES public.asset_families(uuid) ON DELETE SET NULL;
 
 
 --
@@ -5159,6 +5566,22 @@ ALTER TABLE ONLY public.validated_flights
 
 
 --
+-- Name: vi_entitlements vi_entitlements_buyer_member_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_entitlements
+    ADD CONSTRAINT vi_entitlements_buyer_member_uuid_fkey FOREIGN KEY (buyer_member_uuid) REFERENCES public.members(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_entitlements vi_entitlements_registered_member_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_entitlements
+    ADD CONSTRAINT vi_entitlements_registered_member_uuid_fkey FOREIGN KEY (registered_member_uuid) REFERENCES public.members(uuid) ON DELETE SET NULL;
+
+
+--
 -- Name: vi_entitlements vi_entitlements_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5175,11 +5598,75 @@ ALTER TABLE ONLY public.vi_entitlements
 
 
 --
+-- Name: vi_flight_links vi_flight_links_entitlement_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_flight_links
+    ADD CONSTRAINT vi_flight_links_entitlement_uuid_fkey FOREIGN KEY (entitlement_uuid) REFERENCES public.vi_entitlements(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: vi_flight_links vi_flight_links_flight_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_flight_links
+    ADD CONSTRAINT vi_flight_links_flight_uuid_fkey FOREIGN KEY (flight_uuid) REFERENCES public.validated_flights(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_type_catalog vi_type_catalog_analytical_cost_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_type_catalog
+    ADD CONSTRAINT vi_type_catalog_analytical_cost_account_uuid_fkey FOREIGN KEY (analytical_cost_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_type_catalog vi_type_catalog_analytical_reflection_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_type_catalog
+    ADD CONSTRAINT vi_type_catalog_analytical_reflection_account_uuid_fkey FOREIGN KEY (analytical_reflection_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
 -- Name: vi_type_catalog vi_type_catalog_charge_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.vi_type_catalog
     ADD CONSTRAINT vi_type_catalog_charge_account_uuid_fkey FOREIGN KEY (charge_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_type_catalog vi_type_catalog_client_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_type_catalog
+    ADD CONSTRAINT vi_type_catalog_client_account_uuid_fkey FOREIGN KEY (client_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_type_catalog vi_type_catalog_insurance_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_type_catalog
+    ADD CONSTRAINT vi_type_catalog_insurance_account_uuid_fkey FOREIGN KEY (insurance_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_type_catalog vi_type_catalog_insurance_expense_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_type_catalog
+    ADD CONSTRAINT vi_type_catalog_insurance_expense_account_uuid_fkey FOREIGN KEY (insurance_expense_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: vi_type_catalog vi_type_catalog_revenue_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vi_type_catalog
+    ADD CONSTRAINT vi_type_catalog_revenue_account_uuid_fkey FOREIGN KEY (revenue_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
 
 
 --
@@ -5194,5 +5681,5 @@ ALTER TABLE ONLY public.vi_type_catalog
 -- PostgreSQL database dump complete
 --
 
-\unrestrict j86ChAM3tQfxcNm0LBUdmeeHDB5C56R7xCS89XsAiqF1YBF0kvnsKLz4uSsMqii
+\unrestrict cKwqtZfxyvw3vZ0T5VIl5qFXVeF9tVRdRD4QTuM9yKTs0XnZ5grSdAqS2vafMFg
 

@@ -47,6 +47,7 @@ import { useCurrentUser, useLogout } from "@/auth/api/useAuth";
 import { ChangePasswordDialog } from "@/auth/components/ChangePasswordDialog";
 import { useActiveFiscalYearQuery, useFiscalYearsQuery } from "@/modules/banque/api";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
+import { HelpButton } from "@/modules/help";
 import type { FiscalYear } from "@/modules/banque/api";
 
 // ── Fiscal Year widgets ───────────────────────────────────────────────────────
@@ -163,6 +164,9 @@ export function AppHeader() {
             }}
           />
         ) : null}
+
+        {/* Help center */}
+        <HelpButton />
 
         {/* Notification bell (placeholder) */}
         <Button variant="ghost" size="icon" className="relative">
