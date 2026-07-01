@@ -561,6 +561,7 @@ def build_accounting_entries(
 
             # Account mapping: full legacy code → specific ERP account + optional asset
             mapped_asset_uuid = None
+            resolved_account_code = prefix
             if account_mapping and raw_compte in account_mapping:
                 map_entry = account_mapping[raw_compte]
                 erp_code = (map_entry.get("erp_code") or "").strip() or prefix
@@ -576,6 +577,7 @@ def build_accounting_entries(
                     )
                     stats["warnings"] += 1
                     continue
+                resolved_account_code = erp_code
                 asset_code_val = (map_entry.get("asset_code") or "").strip() or None
                 if asset_code_val:
                     mapped_asset_uuid = lookups["assets_by_code"].get(asset_code_val)
@@ -642,7 +644,7 @@ def build_accounting_entries(
                 "credit": str(credit.quantize(Decimal("0.0001"))),
                 "description": (line.get(col_label) or "").strip()[:255],
                 # Underscore-prefixed: used for CSV output, stripped before JSON
-                "_account_code": prefix,
+                "_account_code": resolved_account_code,
                 "_member_account_id": member_account_id,
                 "_legacy_account_code": raw_compte,
             }
