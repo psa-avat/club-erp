@@ -1,6 +1,6 @@
 # Spécification — Rôles et Capacités
 
-> Référence : `backend/constants.py` · Version : 2026-06
+> Référence : `backend/constants.py` · Version : 2026-07 (ajout `CAP_MANAGE_HR` manquant du catalogue et de la matrice)
 
 ---
 
@@ -76,6 +76,7 @@ Les capacités sont les permissions atomiques. Chaque route API protégée décl
 | `CAP_PLAN_VI` | `PLAN_VI` | Planification des vols d'initiation |
 | `CAP_SYNC_VI_PLANCHE` | `SYNC_VI_PLANCHE` | Synchronisation VI vers Planche |
 | `CAP_FEDERAL_SYNC` | `FEDERAL_SYNC` | Synchronisation fédérale (GesAsso / OSRT) |
+| `CAP_MANAGE_HR` | `MANAGE_HR` | Gestion RH (profils, congés, présences) |
 
 ### 4.2 Matrice rôle / capacité recommandée
 
@@ -96,6 +97,7 @@ Les capacités sont les permissions atomiques. Chaque route API protégée décl
 | `PLAN_VI` | ✓ | | ✓ | | |
 | `SYNC_VI_PLANCHE` | ✓ | | ✓ | | |
 | `FEDERAL_SYNC` | ✓ | ✓ | | | |
+| `MANAGE_HR` | ✓ | | | | |
 
 > Cette matrice est indicative. L'affectation réelle se configure dans **Admin → Rôles → Capacités**.
 

@@ -12,7 +12,7 @@ Repository layout (pnpm workspace + Python backend):
 - `frontend/`: Vite + React + TypeScript SPA, served by Nginx in Docker.
 - `packages/i18n/`: shared translation resources (`fr` and `en`).
 - `packages/ui/`: small shared UI package (`PageHeader`, `Tabs`, `cn`).
-- `docs/`: PRDs, specs, architecture notes, migration SQL, implementation plans.
+- `docs/`: product specs, manuals, architecture notes, active plans, migration SQL — see `docs/README.md`. Superseded material lives in `docs/archive/`.
 - `deploy/`: Docker Compose files, deployment notes, schema/init SQL.
 
 Preserve existing AGPL-3.0 license headers in backend files.
@@ -267,19 +267,25 @@ If local dependencies or services are missing, report the exact command and the 
 
 ## Reference Docs
 
+`docs/` is organized by audience — see `docs/README.md` for the full index. Summary:
+
 | Document | Description |
 |----------|-------------|
-| `docs/USER_GUIDE.md` | Complete end-user guide (all modules, FAQ) |
-| `docs/SPEC_MAIN.md` | Module list, menu structure, feature inventory |
-| `docs/SPEC_ROLES_CAPABILITIES.md` | Roles, capabilities, 2FA, role-capability matrix |
-| `docs/SPEC_MEMBERS.md` | Members module specification |
-| `docs/SPEC_ACCOUNTING.md` | Accounting module specification |
-| `docs/SPEC_FLIGHTS_BILLING.md` | Flight billing specification |
-| `docs/SPEC_ASSETS.md` | Assets module specification |
-| `docs/Flight_Billing_Specification_And_User_Manual.md` | Operational billing manual |
+| `docs/README.md` | Index of the whole `docs/` tree — check here first |
+| `docs/product/SPEC_MAIN.md` | Module list, menu structure, feature inventory |
+| `docs/product/SPEC_ROLES_CAPABILITIES.md` | Roles, capabilities, 2FA, role-capability matrix |
+| `docs/product/SPEC_MEMBERS.md` | Members module specification |
+| `docs/product/SPEC_ACCOUNTING.md` | Accounting module specification (incl. pack link table, REM journal) |
+| `docs/product/SPEC_FLIGHTS_BILLING.md` | Flight billing specification |
+| `docs/product/SPEC_ASSETS.md` | Assets module specification |
+| `docs/manual/USER_GUIDE.md` | Complete end-user guide (all modules, FAQ) |
+| `docs/developer/ARCHITECTURE_GLOBAL_FISCAL_YEAR.md` | Global fiscal-year store architecture |
+| `docs/operations/mapping_journal.md` | Journal → PCG account mapping reference |
+| `docs/plans/` | Active plans — real, unbuilt or partially-built features. Check before starting new work on a module. |
+| `docs/archive/` | Superseded PRDs, completed plans, one-time audits — historical only, not a source of truth |
 | `frontend/DESIGN_SYSTEM.md` | Frontend layout/component conventions |
 | `deploy/README.md` | Deployment and operations guide |
-| `docs/ai-agents-prompt.md` | Original AI-agent architecture guidance |
+| `.github/copilot-instructions.md` | Equivalent guidance for GitHub Copilot — keep in sync with this file |
 
 ---
 

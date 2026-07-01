@@ -7,7 +7,6 @@ pyjwt==2.10.1
 loguru==0.7.3
 email-validator>=2.3.0
 pydantic==2.12.5
-aiosqlite==0.21.0
 fastapi-mail==1.5.8
 python-multipart==0.0.20
 aioboto3==13.3.0

@@ -1281,5 +1281,5 @@ This plan translates SPEC_ACCOUNTING.md into a cohesive, user-friendly UX/UI imp
 2. Set up frontend module structure & TanStack Query hooks
 3. Implement API client layer
 4. Build component library (FiscalYearSelector, BalanceIndicator, etc.)
-5. Create Storybook stories for accessibility & consistency
+5. ~~Create Storybook stories for accessibility & consistency~~ — Storybook was deliberately removed from the project (commit `b98c705`, 2026-06-14); use accessibility audits instead (see `docs/archive/a11y-audit-phase0.md`)
 6. Begin Phase 1 E2E implementation & testing

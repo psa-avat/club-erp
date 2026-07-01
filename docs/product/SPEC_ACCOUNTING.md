@@ -51,6 +51,7 @@ Minimum journal codes:
 - OD (misc operations)
 - AN (opening/carry-forward)
 - FL (flights)
+- REM (pack discount rebates)
 
 Journal type enum values:
 - 1 = Sale
@@ -60,6 +61,13 @@ Journal type enum values:
 - 5 = General
 - 6 = Opening
 - 7 = Flight
+
+REM journal purpose:
+- Flights are billed in the FL journal at the gross (undiscounted) rate; see 9.3.
+- When a member holds an active pack, the corresponding discount is not netted into the FL entry. Instead it is captured in a separate Draft entry per member/fiscal-year in the REM journal, referenced `REM-DISCOUNT-{member_uuid}` (one running entry per member, upserted as consumption events accrue).
+- Canonical accounting pattern: debit the discount expense account (`flight_billing_settings.default_pack_discount_expense_account_uuid`, a 6xx expense account) / credit `411` (member receivable), for the cumulative discount amount.
+- `flight_billing_settings.rem_journal_uuid` and `default_pack_discount_expense_account_uuid` configure the journal and offsetting account per fiscal year; `rem_period_days` bounds how far back discount recalculation can reach.
+- A REM entry that has already been Posted is immutable; recalculation raises an error rather than silently rewriting it.
 
 
 ### 3.4 Pricing Version
@@ -104,7 +112,7 @@ Correction policy after activation:
 - If a change is required after activation, create a new `Draft` version (typically copied from the active one), apply edits, then activate the new version with the appropriate validity dates.
 - Historical versions already used remain immutable to preserve auditability and reproducibility.
 
-### 3.4 Accounting Entry (Header)
+### 3.5 Accounting Entry (Header)
 
 - Belongs to one fiscal year and one journal.
 - Carries description, references, and provenance fields.
@@ -115,7 +123,7 @@ Correction policy after activation:
 - sequence_number is assigned and locked at posting.
 - Supports reversal chain via reversal_of_entry_uuid and reversal_reason.
 
-### 3.5 Pricing Item
+### 3.6 Pricing Item
 - `uuid` (PK)
 - `pricing_version_uuid` (FK)
 - `name`, `unit` (1=FlightTime, 2=EngineTimeMin, 3=EngineTime1/100h, 4=FlightDuration, 5=PerFlight, 6=Fixed)
@@ -148,11 +156,7 @@ Age eligibility rule:
 - Age is computed from `members.date_of_birth`; if `date_of_birth` is NULL the member is treated as not eligible (no discount applied).
 - Eligibility is evaluated at billing time; the discount percentage stored on the item is the source of truth.
 
-### 3.6 Accounting Line
-
-- Belongs to one entry and one account.
-- Stores debit and credit in NUMERIC(10,4).
-### 3.5 Accounting Line
+### 3.7 Accounting Line
 
 - Belongs to one entry and one account.
 - Stores debit and credit in NUMERIC(10,4).
@@ -165,7 +169,7 @@ Age eligibility rule:
   - project_uuid
 - Optional tax snapshot fields are preserved when provided.
 
-### 3.6 Project/Special Action Dimension
+### 3.8 Project/Special Action Dimension
 
 Special actions (subventions, camps, events) must be reportable across fiscal years.
 
@@ -174,7 +178,7 @@ Decision:
 - Add an optional project dimension on lines (project_uuid).
 - Keep project master data in a dedicated module/table.
 
-### 3.7 Recurring Entry Model
+### 3.9 Recurring Entry Model
 
 Reusable journal structures for periodic or operator-driven entries.
 
@@ -195,6 +199,46 @@ Rules:
 - A model must remain balanced (`sum(debit) == sum(credit)`).
 - Models are reusable prefills; they do not post or schedule entries by themselves.
 - Operators can still adjust the generated draft before posting.
+
+### 3.10 Pack Catalog and Applicability (Link Table)
+
+A pack is a catalog definition (for example `PACK_25H_GLIDER`) that a member can purchase to obtain a discounted per-unit price on eligible pricing items. The discount is applied through a link table between a pack and an existing `pricing_item`, rather than by generating new discounted pricing items.
+
+**`pack_definitions`** — the purchasable pack template:
+- `uuid` (PK), `code` (unique), `name`
+- `pack_type`: one of `flight_hours`, `winch_launches`, `tow_launches`, `engine_time`
+- `quantity_allowance` (NUMERIC(10,2)): included quantity (for example 25.00 hours)
+- `quantity_unit`: `hours`, `launches`, etc.
+- `pack_sales_account_uuid` (FK → AccountingAccount, nullable): revenue account credited on purchase (overrides the fiscal year default in `flight_billing_settings.default_pack_sales_account_uuid`)
+- `pack_discount_expense_account_uuid` (FK → AccountingAccount, nullable): debit account for the REM discount expense, normally a class-6 account (overrides `flight_billing_settings.default_pack_discount_expense_account_uuid`)
+- `priority` (int): tie-breaker when multiple packs could apply to the same flight
+
+**`pack_applicability`** — the link table, the core of the discount design:
+- `uuid` (PK)
+- `pack_definition_uuid` (FK → pack_definitions)
+- `pricing_item_uuid` (FK → pricing_items)
+- `discounted_unit_price` (NUMERIC(10,4)): the discounted price for this pack/item pair
+- Unique constraint on `(pack_definition_uuid, pricing_item_uuid)`
+
+Design rules:
+- One pack can cover multiple pricing items (for example a 25h pack valid on both an ASK21 and an LS8 pricing item).
+- One pricing item can be covered by multiple packs (for example a standard hourly rate discounted by both a 25h pack and a season pack).
+- The link table stores only the discounted price; the standard price remains on `pricing_items.base_price`. No duplicate/discounted pricing items are created.
+
+**`member_pack_consumptions`** — operational (non-accounting) tracking of discount eligibility per flight:
+- `uuid` (PK), `tiers_uuid` (FK → members), `flight_uuid` (FK → validated_flights)
+- `pack_type`, `pack_definition_uuid` (FK, nullable — supports multi-pack FIFO sequencing)
+- `valid_from`: pack is applicable only to flights on or after this date
+- `quantity_consumed`, `discount_unit_price`, `total_discount_amount`
+- `accounting_entry_uuid` (nullable, app-level link to the REM entry, not a DB FK)
+
+This table is explicitly not an accounting table; it records which flights consumed which pack units so that `total_discount_amount` can be aggregated per member/fiscal-year and posted to the REM journal (see 3.3 and 9.3).
+
+Billing resolution at flight time:
+1. Identify the standard `pricing_item` for the flight (for example the aircraft's per-hour cell item).
+2. Query `pack_applicability` for an active pack of the matching `pack_type` held by the member, with remaining allowance in the fiscal year (FIFO across multiple packs of the same type when more than one exists).
+3. If found, bill the flight at gross (`pricing_items.base_price`) in the FL journal as usual, and record the discount (`base_price - discounted_unit_price`) as a consumption row feeding the REM entry — the discount is never netted directly into the FL entry.
+4. If pack allowance is insufficient, consume the remaining quantity and bill the rest at the standard rate; unused pack quantity does not carry over across fiscal years.
 
 ## 4. Ledger Rules
 
@@ -306,6 +350,15 @@ During member registration:
   - credit `pricing_items.gl_account_credit_uuid` for each item (e.g., `7061` membership, `7062` flight time, `7063` tow, `707x` misc)
 - Analytical tracking: when a flight is the billing source, the billing service stamps `analytical_asset_uuid` on the accounting line using the glider/tow-plane UUID from the flight record. Revenue by aircraft is then a query on `(account_uuid, analytical_asset_uuid)` — no per-aircraft sub-accounts in the chart of accounts are needed.
 
+### 9.3 Flight Billing and Pack Discount (REM) Workflow
+
+Flights are billed gross, then discounted separately:
+- Validated flights are billed in the `FL` journal at the full (gross) `pricing_items.base_price` rate — debit `411` (member, with `analytical_asset_uuid`), credit the item's revenue account (e.g., `7062` cell hours, `7063` launch, `7064` engine time). No discount is netted into this entry.
+- If the member holds an applicable pack (see 3.10), the discount for that flight is recorded as a `member_pack_consumptions` row instead of altering the FL entry.
+- Discount amounts accrued across a member's flights in a fiscal year are aggregated into a single running Draft entry per member in the `REM` journal (reference `REM-DISCOUNT-{member_uuid}`): debit the pack discount expense account, credit `411`.
+- This keeps FL entries simple and immutable once posted, while the REM entry absorbs recalculation as new consumptions are added, up to `flight_billing_settings.rem_period_days` in the past.
+- A pack purchase itself is a separate `VT` entry: debit `411`, credit `pack_sales_account_uuid` (pack-level override, else the fiscal year default).
+
 ## 10. Budget Management
 
 Budget is a dedicated module with tight accounting integration.
@@ -411,7 +464,7 @@ Requirements:
 - Support multi-year follow-up of grants/subventions.
 - Provide reports for project budget, actual, variance, and carry-forward.
 
-## 12. Employees and Schedule Financial Impact
+## 13. Employees and Schedule Financial Impact
 
 Employee scheduling is a separate module, but accounting integration is required.
 
@@ -424,7 +477,7 @@ Committees and events:
 - Committees can create events in a shared schedule visible to members.
 - Events with financial impact (for example meals) follow standard draft-to-posted accounting flow.
 
-## 13. Flight Synchronization Financial Workflow
+## 14. Flight Synchronization Financial Workflow
 
 Flights are sourced from an external FastAPI application.
 
@@ -439,9 +492,9 @@ Target workflow:
 Settings requirements:
 - Store endpoints, credentials, retry policy, and feature flags in module settings.
 
-## 14. API Scope
+## 15. API Scope
 
-### 14.1 Implemented V1 Accounting Endpoints
+### 15.1 Implemented V1 Accounting Endpoints
 
 - POST /api/v1/accounting/fiscal-years
 - GET /api/v1/accounting/fiscal-years
@@ -468,7 +521,7 @@ Implemented UI surface:
 - Save drafts, post drafts, and reverse posted entries
 - Create and maintain recurring entry models
 
-### 14.2 Next Accounting-Adjacent Endpoints
+### 15.2 Next Accounting-Adjacent Endpoints
 
 - Module settings endpoints (per module, capability-scoped).
 - Pricing lifecycle endpoints (year + date-range versioning).- Cost provision rule CRUD/list endpoints (asset family + fiscal year scoped).
@@ -476,7 +529,7 @@ Implemented UI surface:
 - Project/subvention reporting endpoints.
 - Flight sync monitoring and error reporting endpoints.
 
-### 14.3 Validation Error Contract Examples
+### 15.3 Validation Error Contract Examples
 
 V1 accounting endpoints return FastAPI standard error envelopes:
 
@@ -510,7 +563,7 @@ Examples for posting and fiscal-year violations:
 
 The OpenAPI operation definitions for V1 accounting endpoints include these examples under `400`, `404`, and `409` responses.
 
-## 15. Audit and Traceability
+## 16. Audit and Traceability
 
 Mandatory:
 - immutable posted records,
@@ -523,7 +576,7 @@ Recommended hardening:
 - entry_hash sealing at posting,
 - verification tooling for integrity checks.
 
-## 16. Out of Scope for V1 Core Ledger
+## 17. Out of Scope for V1 Core Ledger
 
 Handled by dedicated modules/services (must remain accounting-compatible):
 - full payroll engine,
@@ -531,7 +584,7 @@ Handled by dedicated modules/services (must remain accounting-compatible):
 - advanced stock valuation,
 - external orchestration beyond sync status and draft generation.
 
-## 17. Specification Acceptance Criteria
+## 18. Specification Acceptance Criteria
 
 1. No contradictory enum/state/field definitions.
 2. Draft/post immutability and reversal policy are explicit.
@@ -542,7 +595,7 @@ Handled by dedicated modules/services (must remain accounting-compatible):
 7. Flight-sync accounting workflow is explicit and auditable.
 8. Capability-based authorization expectations are explicit.
 
-## 18. Phased Implementation Checklist
+## 19. Phased Implementation Checklist
 
 This checklist translates the specification into executable work packages.
 
@@ -706,7 +759,7 @@ Testing and release:
 - [ ] Add contract tests for external API adapters.
 - [ ] Add end-to-end tests for validated flight -> draft entry generation -> posting.
 
-## 19. Cross-Phase Definition of Done
+## 20. Cross-Phase Definition of Done
 
 Each phase is complete only when all conditions below are true:
 - [ ] Database migration scripts are deterministic and reversible.
@@ -716,7 +769,7 @@ Each phase is complete only when all conditions below are true:
 - [ ] Monitoring/logging is actionable and excludes sensitive secrets.
 - [ ] Regression tests pass for accounting create/update/post/reversal critical paths.
 
-## 20. Suggested Execution Order by Team Track
+## 21. Suggested Execution Order by Team Track
 
 To parallelize delivery with low risk:
 - [ ] Track A (Backend/Core): Phase 1 then Phase 2 backend items.

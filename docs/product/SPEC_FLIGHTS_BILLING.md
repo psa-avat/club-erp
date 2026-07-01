@@ -15,7 +15,7 @@ It covers the complete lifecycle from importing validated flights from Planche t
 3. **Pricing is asset-bound**: pricing versions are resolved per machine (glider and optionally launch) by matching `asset_family_uuid`. No global fallback.
 4. **Two separate processes**: flight billing (gross) and discount application are **decoupled**. Flights are billed at gross/standard price. Discounts are computed in a dedicated operational table and applied via periodic adjustment entries.
 5. **Fiscal year scoping**: packs and accounting entries belong to exactly one fiscal year. Pack validity expires at year-end.
-6. **Deterministic billing hash**: every preview produces a SHA-256 hash covering selected pricing lines **and** discount consumption rows. Hash changes detect billing-impacting modifications.
+6. **Deterministic billing hash**: every preview produces a SHA-256 hash covering selected pricing lines **and** discount consumption rows. Hash changes detect billing-impacting modifications. Computed by `FlightBillingPreviewService._billing_hash()` (`backend/services/flight_billing.py`) from a sorted JSON payload of, per applied line: `source`, `payer_member_uuid`, `pricing_item_uuid`, `asset_uuid`, `quantity`, `applied_unit_price`, `amount`, `debit_account_uuid`, `credit_account_uuid`, `discount_reason`, `pack_hours_used`. It is recomputed on every preview call and returned as `billing_hash` on the preview response (`FlightBillingPreviewResponse`, member portal preview). Currently it is an opaque fingerprint only — surfaced for display/audit in the UI — with no server-side stored-hash comparison or "hash mismatch" check on apply today.
 7. **REM journal**: a dedicated journal (code `REM` or `DISC`) tracks discount adjustment entries — one Draft entry per pilot per period, updated as discounts accumulate.
 8. **Alert trigger after final net**: automated balance checks (e.g., minimum balance alerts) must evaluate `sum(debit) - sum(credit)` on account 411 after both the gross flight entry **and** the REM discount adjustment are accounted for.
 9. **Posted entries are immutable**: corrections use reversal + replacement, never direct editing.
@@ -290,8 +290,8 @@ LEFT JOIN pack_consumptions c ON p.member_uuid = c.member_uuid AND p.pack_type =
 
 1. A pack is eligible when `pack_type` matches the billed line's asset scope.
 2. Members can buy several identical packs (e.g. three 25h packs in the same FY) — aggregate balance pools all purchases.
-3. Consumption is FIFO by purchase date.
-4. If remaining units are insufficient for a full flight line, the line is split: partial discount, remainder at full price.
+3. Consumption is FIFO by purchase date. This is implemented as lot-level allocation, not a pooled-balance draw: `flight_packs.py` builds one in-memory `_PackSlot` per pack-purchase GL entry (VT journal, reference `PACK-%`), each carrying an `activated_at` date and a `remaining` quantity. `activated_at` is parsed from a `VALID_FROM:YYYY-MM-DD` marker in the purchase entry's description, falling back to the entry date if absent. Slots are sorted ascending by `activated_at` (`_load_pack_context`), and consumption walks that order, decrementing `slot.remaining` per flight line (`_apply_flight_consumptions`) — skipping any slot whose `activated_at` is after the flight date. `vw_member_pack_balances` (§5.5) remains the aggregate view used for display/reporting; it is not the structure used to decide consumption order.
+4. If remaining units are insufficient for a full flight line, the line is split: partial discount, remainder at full price. In the FIFO slot walk, a flight line can straddle multiple slots — the loop consumes `min(qty_to_consume, slot.remaining)` from each eligible slot in turn until the line's quantity is fully allocated or slots are exhausted.
 ### 5.7 Fiscal Year Boundary
 
 - Pack definitions are scoped to one fiscal year.

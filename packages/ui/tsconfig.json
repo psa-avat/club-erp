@@ -7,5 +7,5 @@
       "@/*": ["../../frontend/src/*"]
     }
   },
-  "include": ["src", ".storybook"]
+  "include": ["src"]
 }

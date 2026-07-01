@@ -597,9 +597,10 @@ docker exec -it erp-db-dev psql -U erpuser -d erp_club_db
 
 | Document | Description |
 |----------|-------------|
-| `docs/USER_GUIDE.md` | End-user guide for all ERP modules |
-| `docs/SPEC_MAIN.md` | Module list, menu structure, feature inventory |
-| `docs/SPEC_ROLES_CAPABILITIES.md` | Roles, capabilities, 2FA parameters |
-| `docs/SPEC_ACCOUNTING.md` | Accounting module specification |
-| `docs/SPEC_FLIGHTS_BILLING.md` | Flight billing and pack specification |
+| `docs/README.md` | Full documentation index |
+| `docs/manual/USER_GUIDE.md` | End-user guide for all ERP modules |
+| `docs/product/SPEC_MAIN.md` | Module list, menu structure, feature inventory |
+| `docs/product/SPEC_ROLES_CAPABILITIES.md` | Roles, capabilities, 2FA parameters |
+| `docs/product/SPEC_ACCOUNTING.md` | Accounting module specification |
+| `docs/product/SPEC_FLIGHTS_BILLING.md` | Flight billing and pack specification |
 | `docs/migrations/` | Numbered SQL migrations (001–054+) |

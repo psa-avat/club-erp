@@ -8,11 +8,21 @@
     REVISION 2: Removed redundant planche_*_id caching fields; moved charges to separate table.
 """
 
-# Phase 1 Implementation Complete ✓ (REVISED)
+# Phase 1 Implementation — Partially Implemented (REVISED)
+
+> **ACTUAL STATUS (verified 2026-07-01): Partially implemented — see "Remaining / Not Yet Done"
+> at the end of this document.** `ValidatedFlight`, `AuditLog`, and `PlancheIntegrationService`
+> (`batch_push_pilots`, `batch_push_machines`, `pull_validated_flights`) exist in code and match
+> this document's description. However, the `FlightCharges` model described below does **not**
+> exist in `backend/models.py`, and the `flight_charges` table was never created by the
+> migration SQL — only referenced in a comment. The split-charge / multi-beneficiary billing
+> pattern this document describes is unfinished. Do not treat Phase 1 as complete.
 
 ## Overview
 Phase 1 establishes the schema foundations and integration service for Planche-ERP sync.
-All backend code is production-ready with async support, retry logic, and audit trails.
+Core sync backend code (ValidatedFlight, AuditLog, PlancheIntegrationService) is implemented
+with async support, retry logic, and audit trails. The charge-splitting piece described below
+is still outstanding — see "Remaining / Not Yet Done".
 
 **KEY ARCHITECTURAL DECISIONS:**
 - Member/Asset do **not** cache Planche IDs (member_id and asset_code are sync keys)
@@ -103,7 +113,15 @@ Brand new SQLAlchemy model capturing full Planche flight context:
 
 ---
 
-### FlightCharges Model (backend/models.py - NEW)
+### FlightCharges Model (backend/models.py - NEW) — ⚠️ NOT ACTUALLY IMPLEMENTED
+**Verification note (2026-07-01): this model does not exist in `backend/models.py`.** A
+`grep -n "FlightCharges" backend/models.py` finds nothing, and the migration SQL
+(`deploy/init-db/phase1_planche_integration.sql`) does not create a `flight_charges` table —
+the string only appears in a header comment describing intent. The tables actually created by
+that migration are `planche_flight_snapshots`, `validated_flights`, and `planche_audit_log`.
+The description below is the **design that was planned but not built**; treat it as a spec for
+future work, not a completed deliverable.
+
 Per-flight charging breakdown with support for 2 beneficiaries (e.g., pilot + tow operator).
 
 Uses `NUMERIC(10,4)` precision per accounting standards (e.g., 125.5000 = €125.50).
@@ -277,7 +295,7 @@ class PlancheSettingsPayload(BaseModel):
 
 ### SQL Migration (deploy/init-db/phase1_planche_integration.sql)
 
-Ready-to-apply migration script (PostgreSQL/SQLite compatible):
+Ready-to-apply migration script (PostgreSQL):
 
 **Tables created:**
 
@@ -303,11 +321,7 @@ Ready-to-apply migration script (PostgreSQL/SQLite compatible):
 
 **Application**:
 ```bash
-# PostgreSQL
 psql -d erp_database -f deploy/init-db/phase1_planche_integration.sql
-
-# SQLite (ensure UUID support or adapt SQL)
-sqlite3 erp.db < deploy/init-db/phase1_planche_integration.sql
 ```
 
 ---
@@ -384,11 +398,11 @@ Phase 2 (API Endpoints) will require:
 
 | File | Status | Changes |
 |------|--------|---------|
-| backend/models.py | ✅ Modified | Added ValidatedFlight (38 cols), FlightCharges (supports 2 beneficiaries), AuditLog, enums TypeOfFlight & LaunchMethod. NO changes to Member/Asset. |
-| backend/services/planche_integration.py | ✅ NEW | PlancheIntegrationService with batch sync methods (pilots, machines, flights). No ID caching logic. |
+| backend/models.py | ⚠️ Partially done | Added ValidatedFlight (verified present), AuditLog (verified present), enums TypeOfFlight & LaunchMethod. **FlightCharges was NOT added** — verified absent via grep. NO changes to Member/Asset. |
+| backend/services/planche_integration.py | ✅ NEW | PlancheIntegrationService with batch sync methods (pilots, machines, flights) — verified present. No ID caching logic. |
 | backend/schemas/planche.py | ✅ Modified | Extended PlancheSettingsPayload with cursors and feature flags (no changes to validation). |
 | backend/requirements.txt | ✅ Modified | Added httpx>=0.25.0 |
-| deploy/init-db/phase1_planche_integration.sql | ✅ NEW | Migration: creates validated_flights, flight_charges, planche_audit_log tables. NO alterations to members/assets. |
+| deploy/init-db/phase1_planche_integration.sql | ⚠️ Partially done | Migration creates `validated_flights`, `planche_audit_log`, and `planche_flight_snapshots` — verified present. **Does NOT create `flight_charges`**; that table name only appears in a comment. NO alterations to members/assets. |
 
 ---
 
@@ -457,6 +471,32 @@ async with get_async_session() as db:
 - **Error Recovery**: Failed syncs logged to AuditLog; no tracking fields on Member/Asset (status can be inferred from AuditLog).
 
 - **Incremental Sync**: `sync_cursor_*` fields in PlancheSettingsPayload enable resumable pulls (Phase 2+ feature).
+
+---
+
+## 12. REMAINING / NOT YET DONE (audit 2026-07-01)
+
+Direct verification against the repo on 2026-07-01:
+
+- **`FlightCharges` model does not exist.** `grep -n "FlightCharges" backend/models.py`
+  returns no matches. Sections 1 ("FlightCharges Model — NEW"), 9 (file manifest), and 11
+  ("Split Charges Model") describe a model that was never implemented.
+- **`flight_charges` table was never created.** The migration
+  `deploy/init-db/phase1_planche_integration.sql` only creates `planche_flight_snapshots`,
+  `validated_flights`, and `planche_audit_log` (confirmed via `grep -n "^CREATE TABLE"`).
+  `flight_charges` appears exactly once, in a header comment stating the intent to create it.
+- **Split-charge / multi-beneficiary billing is unfinished.** Since there is no charges table,
+  `ValidatedFlight` has no way to record per-beneficiary `engine_price`/`airframe_price`, and
+  the "TOTAL FLIGHT COST = SUM(...)" logic described in section 1 has no backing storage.
+  Any billing/accounting code that assumes this table exists will fail.
+- **What IS confirmed working**: `ValidatedFlight` and `AuditLog` models in
+  `backend/models.py` (verified by grep), and `PlancheIntegrationService` in
+  `backend/services/planche_integration.py` with `batch_push_pilots`, `batch_push_machines`,
+  and `pull_validated_flights` methods (verified present).
+
+**Before starting Phase 2 API endpoints that touch flight charging, either implement the
+`FlightCharges` model + migration as originally designed, or revise this document's billing
+design if a different approach was chosen.**
 
 ---
 

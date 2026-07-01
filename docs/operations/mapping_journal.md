@@ -40,6 +40,11 @@ Specialized sales journal dedicated to automated flight billing.
 *   **Debit side:** `411` (Membres - Créances).
 *   **Credit side (Revenue):** `7062` (Activité vol - Heures cellule), `7063` (Produit des lancements).
 
+## 8. REM - Pack Discount Adjustments (Remises)
+Dedicated adjustment journal that settles member pack/discount consumption. Flights are always billed at gross price in the FL journal; REM entries are aggregated per pilot per period (one Draft entry, upserted as discounts accumulate) to apply the discount without polluting the gross flight revenue stream.
+*   **Debit side (Expense):** `6xx` (Rabais et remises accordés — configurable class 6 pack discount expense account, `default_pack_discount_expense_account_uuid`).
+*   **Credit side:** `411` (Membres - Créances).
+
 ---
 
 ### Summary Table
@@ -53,3 +58,4 @@ Specialized sales journal dedicated to automated flight billing.
 | **OD** | Misc Ops | General | 64x / 1xx / 4xx | 4xx / 1xx |
 | **AN** | Opening | Opening | 2xx / 3xx / 5xx | 1xx / 4xx |
 | **FL** | Flights | Flight | 411 | 7062 / 7063 |
+| **REM** | Discount Adjustments | Adjustment | 6xx | 411 |

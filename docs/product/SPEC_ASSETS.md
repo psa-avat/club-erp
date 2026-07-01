@@ -125,6 +125,9 @@ Precision rules:
 - Timestamps
 
 ### 3.8 Stock Item
+
+> **Status: Planned, not yet implemented.** No `StockItem` model, service, route, or frontend component exists in the codebase as of this writing.
+
 - `uuid`, `product_uuid` (FK), `asset_family_uuid` (FK, nullable)
 - `quantity_on_hand` (NUMERIC(10,4)), `unit` (liter, unit, etc.)
 - `cost_method` (1=FIFO, 2=Weighted Average, 3=Standard Cost)
@@ -133,6 +136,9 @@ Precision rules:
 - Timestamps
 
 ### 3.9 Stock Entry (Ledger)
+
+> **Status: Planned, not yet implemented.** No `StockEntry` model, service, route, or frontend component exists in the codebase as of this writing.
+
 - `uuid`, `stock_item_uuid` (FK)
 - `transaction_type` (1=Purchase, 2=Issue, 3=Return, 4=Adjustment, 5=Write-off)
 - `quantity_delta` (NUMERIC(10,4)), `unit_cost`
@@ -141,6 +147,9 @@ Precision rules:
 - `created_at`, `created_by` (FK)
 
 ### 3.10 Depreciation Schedule
+
+> **Status: Planned, not yet implemented.** The `Asset` model and category config store depreciation *inputs* (`depreciation_start_date`, `depreciation_duration_months`, category-level `depreciation_account_uuid`) and the frontend displays a computed depreciation summary, but there is no `DepreciationSchedule` table, generation/approval/posting workflow, or accounting-entry linkage as described below.
+
 - `uuid`, `asset_uuid` (FK), `fiscal_year_uuid` (FK)
 - `depreciation_amount`, `accumulated_depreciation`, `net_book_value` (all NUMERIC(10,4))
 - `accounting_entry_uuid` (FK, nullable)

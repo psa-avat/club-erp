@@ -4,7 +4,7 @@ Applies to: backend/**
 ## Stack And Data
 - Use FastAPI with async SQLAlchemy patterns already present in the project.
 - PostgreSQL enum-like values are persisted as SMALLINT; keep Python and API mappings consistent.
-- Use docs/pg.sql and docs/PRD files as the source of truth for schema and business constraints.
+- Use `backend/models.py` and the living specs in `docs/product/SPEC_*.md` as the source of truth for schema and business constraints (see `docs/README.md`). `docs/pg.sql` is an old design doc — do not treat it as current schema.
 
 ## API And Security
 - Keep route contracts backward compatible unless change is explicitly requested.

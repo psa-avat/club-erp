@@ -124,10 +124,10 @@ UI Features: Added "Credit Available" badges on member profiles to show funds cu
 - Dépendance: Phases 0 et 13. Impacte `JournalEntriesScreen.tsx` et `journalShared.tsx`.
 
 **Relevant files**
-- /home/erpadmin/club-erp/docs/SPEC_ACCOUNTING.md — règles métier comptables, états et contraintes de cycle.
-- /home/erpadmin/club-erp/docs/PLAN_ACCOUNTING_UXUI_IMPLEMENTATION.md — base d’implémentation UX déjà cadrée pour la comptabilité.
-- /home/erpadmin/club-erp/docs/CHECKLIST_ACCOUNTING_IMPLEMENTATION.md — séquencement et exigences de complétude.
-- /home/erpadmin/club-erp/docs/ux-audit-phase1.md — retours UX à intégrer dans les nouveaux parcours.
+- /home/erpadmin/club-erp/docs/product/SPEC_ACCOUNTING.md — règles métier comptables, états et contraintes de cycle.
+- /home/erpadmin/club-erp/docs/plans/PLAN_ACCOUNTING_UXUI_IMPLEMENTATION.md — base d’implémentation UX déjà cadrée pour la comptabilité.
+- /home/erpadmin/club-erp/docs/archive/CHECKLIST_ACCOUNTING_IMPLEMENTATION.md — séquencement et exigences de complétude (archivé, plan superseded).
+- /home/erpadmin/club-erp/docs/archive/ux-audit-phase1.md — retours UX à intégrer dans les nouveaux parcours (archivé, audit ponctuel).
 - /home/erpadmin/club-erp/frontend/src/modules/banque/components/JournalEntriesScreen.tsx — pattern liste/filtres pour opérations.
 - /home/erpadmin/club-erp/frontend/src/modules/banque/components/JournalEntryWorkspaceScreen.tsx — pattern écran de saisie/workspace.
 - /home/erpadmin/club-erp/frontend/src/modules/banque/components/journalShared.tsx — éditeur de lignes comptables, badges d’état, helpers Decimal.
