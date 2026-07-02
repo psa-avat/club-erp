@@ -241,7 +241,7 @@ Gère l'inventaire complet : planeurs, remorqueurs, treuils, remorques, réfecti
 Le modèle est à deux niveaux : **Famille → Actif** (les catégories ont été supprimées ; chaque famille porte directement ses comptes comptables).
 
 Chaque famille définit :
-- **Comptes comptables par défaut** : acquisition (classe 2), amortissement (classe 28), charge (classe 6), produit (classe 7). Ces comptes s'appliquent à tous les actifs de la famille, sauf override individuel (voir §7.3).
+- **Comptes comptables** : acquisition (classe 2), amortissement (classe 28), charge (classe 6), produit (classe 7). C'est l'unique endroit où ces comptes sont configurés — les actifs eux-mêmes ne portent aucun compte comptable propre, uniquement leurs données de prix et d'amortissement (voir §7.3).
 - **Tarifée ou non** (`is_priced`) : indique si la famille porte un tarif de vol (versions tarifaires). La plupart des familles d'aéronefs et de treuils sont tarifées ; les familles purement comptables (remorques, réfections, moteurs, véhicules de piste, tondeuse) ne le sont généralement pas.
 - La stratégie tarifaire, la durée d'amortissement standard (au niveau de chaque actif).
 
@@ -259,11 +259,14 @@ Exemples de familles reflétant l'usage réel d'un club : Aéronefs, Remorques, 
 | Statut | Opérationnel / En maintenance / Hors service / Cédé / Vendu |
 | Prix d'acquisition | Valeur d'entrée |
 | Amortissement | Date de début, durée, valeur résiduelle |
-| Comptes comptables | Un compte par type (acquisition, amortissement, charge, produit) ; laissé vide, chacun utilise la valeur par défaut de la famille — sinon la valeur saisie prévaut (override par actif) |
+
+Note : la fiche actif ne contient plus de champ compte comptable — les comptes affichés (lecture seule) sont ceux de la famille de l'actif.
 
 ### 7.3bis Sous-composants d'un actif
 
-Un actif « racine » (ex. un planeur) peut avoir des actifs « enfants » représentant des composants comptables distincts avec leur propre compte et leur propre plan d'amortissement : remorque, réfection gelcoat/peinture, changement moteur. La hiérarchie est limitée à **2 niveaux** : un actif enfant ne peut pas lui-même avoir d'enfant.
+Un actif « racine » (ex. un planeur) peut avoir des actifs « enfants » représentant des composants comptables distincts avec leur propre plan d'amortissement : remorque, réfection gelcoat/peinture, changement moteur. La hiérarchie est limitée à **2 niveaux** : un actif enfant ne peut pas lui-même avoir d'enfant.
+
+Comme les comptes comptables ne se configurent qu'au niveau de la famille (§7.2), un sous-composant obtient ses propres comptes en étant rattaché à une famille différente de celle de son parent (ex. une remorque dans la famille « Remorques », distincte de « Aéronefs »). Pour un sous-composant qui doit poster sur le **même** compte que son parent (ex. une réfection gelcoat capitalisée sur le compte de l'aéronef), rattachez-le à la **même famille** que l'actif parent : il héritera alors automatiquement des mêmes comptes.
 
 Exemple : le planeur F-CGVX (famille Aéronefs, tarifé, réservable) possède une remorque F-CGVX-REM en actif enfant (famille Remorques, non tarifée, non réservable), avec son propre prix d'achat et sa propre durée d'amortissement. Le total d'acquisition (planeur + remorque) et la liste des sous-composants sont visibles sur la fiche du planeur.
 
@@ -295,7 +298,7 @@ Le plan comptable du club dispose déjà d'un modèle de comptes dédiés par ac
 | Véhicules de piste | `2182` / `28182` (partagé avec les remorques) | `21824` / `281824` |
 | Moteurs (si suivis indépendamment) | aucun | `21825` / `281825` |
 | Parachutes (si immobilisés) | aucun (sinon charge directe en 606) | `21826` / `281826` |
-| Peinture / grosses réparations | — pas de nouvelle famille comptable : rattacher au compte du parent (`21821`/`21822`) via l'override par actif | — |
+| Peinture / grosses réparations | — pas de nouvelle famille comptable : rattacher le sous-composant à la **même famille** que l'actif parent (ex. Aéronefs) pour hériter automatiquement de ses comptes | — |
 | Tondeuse | `2188` / `288` (générique) | — suffisant pour un exemplaire unique |
 
 ---

@@ -23,8 +23,10 @@ This document defines the target specification for the Assets module of the ERP 
 - `is_active`
 - `is_priced` — whether this family is expected to carry a flight tariff (`pricing_versions`). Most
   accounting-only families (trailers, refits, engines, ground vehicles, mower) are not priced.
-- 4 optional accounting-account references, used as defaults for every asset in the family unless
-  overridden per-asset (see §3.3):
+- 4 optional accounting-account references — the **sole** source of GL accounts for every asset in the
+  family (assets carry no GL account fields of their own, see §3.3). A trailer and its parent glider get
+  different accounts by being assigned to different families (e.g. "Trailers" vs. "Aircrafts"), each with
+  its own account set, rather than through a per-asset override:
   - `acquisition_account_uuid` (FK → AccountingAccount, class 2, e.g. 218xx)
   - `depreciation_account_uuid` (FK → AccountingAccount, class 28 — accumulated depreciation, contra-asset;
     NOT the 68x expense account)
@@ -36,8 +38,10 @@ This document defines the target specification for the Assets module of the ERP 
 ### 3.1bis Asset Hierarchy (Parent/Child)
 - `assets.parent_asset_uuid` (FK → Asset, nullable, self-referential) — a "main machine" (e.g. a glider) can
   have child assets (trailer, gelcoat/paint refit, engine swap) that are independent accounting items with
-  their own GL account overrides and depreciation profile, while remaining grouped under the parent for
-  operational/reporting purposes.
+  their own depreciation profile, while remaining grouped under the parent for operational/reporting
+  purposes. A child is typically assigned to a different asset family than its parent (e.g. a trailer
+  belongs to a "Trailers" family, not "Aircrafts") so it automatically posts to that family's GL accounts —
+  see §3.3.
 - **Depth is strictly 2 levels**: a child asset can never itself become a parent. Enforced at the service
   layer (`_validate_parent_asset_uuid` in `services/assets.py`): a candidate parent must itself have
   `parent_asset_uuid IS NULL`, and an asset that already has children cannot be assigned a parent.
@@ -46,7 +50,9 @@ This document defines the target specification for the Assets module of the ERP 
   Independent of the family's `is_priced` flag because it is asset-level (e.g. one specific glider under
   long-term restoration could be temporarily non-bookable without touching its family).
 - The legacy `AssetCategory` catalog (migration 065) has been removed (migration 066): its 4 GL account
-  columns moved directly onto `AssetFamily` (§3.1).
+  columns moved directly onto `AssetFamily` (§3.1). A later pass (migration 067) removed the per-asset GL
+  account override columns introduced alongside the hierarchy — accounts are configured once, on the
+  family, and assets carry only price/depreciation inputs (§3.3).
 
 ### 3.2 Flight Type
 - `uuid`
@@ -63,9 +69,7 @@ This document defines the target specification for the Assets module of the ERP 
 - current owners for private assets stored in `AssetPrivateOwner(asset_uuid, member_uuid)`; supports one or many co-owners
 - `is_bookable` (boolean, default true — see §3.1bis)
 - `purchase_date`, `purchase_price` (NUMERIC(10,4))
-- `acquisition_account_uuid`, `depreciation_account_uuid`, `charge_account_uuid`, `revenue_account_uuid`
-  (all FK → AccountingAccount, nullable) — per-asset overrides; when null, the asset family's default for
-  that account type applies (§3.1)
+- No GL account fields — the asset's family (§3.1) is the sole source of GL accounts
 - `status` (1=Operational, 2=Under Maintenance, 3=Out of Service, 4=Disposed, 5=Sold)
 - `depreciation_start_date`, `depreciation_years`, `residual_value`
 - `is_active`
@@ -162,7 +166,7 @@ Precision rules:
 
 ### 3.10 Depreciation Schedule
 
-> **Status: Planned, not yet implemented.** The `Asset` model stores depreciation *inputs* (`depreciation_start_date`, `depreciation_duration_months`, family-level `depreciation_account_uuid`, overridable per-asset) and the frontend displays a computed depreciation summary, but there is no `DepreciationSchedule` table, generation/approval/posting workflow, or accounting-entry linkage as described below. Since child assets (§3.1bis) are independent `Asset` rows, they already carry their own depreciation inputs — no schema change is needed for a sub-component to have its own amortization clock.
+> **Status: Planned, not yet implemented.** The `Asset` model stores depreciation *inputs* (`depreciation_start_date`, `depreciation_duration_months`) and the frontend displays a computed depreciation summary, but there is no `DepreciationSchedule` table, generation/approval/posting workflow, or accounting-entry linkage as described below. The depreciation account itself is resolved from the asset's family (§3.1), not stored per-asset. Since child assets (§3.1bis) are independent `Asset` rows, they already carry their own depreciation inputs — no schema change is needed for a sub-component to have its own amortization clock.
 
 - `uuid`, `asset_uuid` (FK), `fiscal_year_uuid` (FK)
 - `depreciation_amount`, `accumulated_depreciation`, `net_book_value` (all NUMERIC(10,4))

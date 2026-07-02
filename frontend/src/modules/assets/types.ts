@@ -129,6 +129,7 @@ export type AssetDetail = {
   code: string
   name: string
   asset_family_uuid: string
+  asset_family?: AssetFamily | null
   parent_asset_uuid: string | null
   parent_asset_code: string | null
   parent_asset_name: string | null
@@ -144,21 +145,6 @@ export type AssetDetail = {
   /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold */
   status: number
   is_bookable: boolean
-  // Raw per-asset overrides (null = inherits the family default)
-  acquisition_account_uuid: string | null
-  depreciation_account_uuid: string | null
-  charge_account_uuid: string | null
-  revenue_account_uuid: string | null
-  // Resolved accounts: asset override if set, else the family's default
-  effective_acquisition_account_uuid: string | null
-  effective_acquisition_account_code: string | null
-  effective_depreciation_account_uuid: string | null
-  effective_depreciation_account_code: string | null
-  effective_charge_account_uuid: string | null
-  effective_charge_account_code: string | null
-  effective_revenue_account_uuid: string | null
-  effective_revenue_account_code: string | null
-  accounting_account_code_snapshot: string | null
   purchase_date: string | null
   purchase_price: string | null
   depreciation_start_date: string | null
@@ -213,10 +199,6 @@ export type CreateAssetPayload = {
   ownership: number
   owner_member_uuids?: string[]
   is_bookable?: boolean
-  acquisition_account_uuid?: string | null
-  depreciation_account_uuid?: string | null
-  charge_account_uuid?: string | null
-  revenue_account_uuid?: string | null
   purchase_date?: string | null
   purchase_price?: string | null
   depreciation_start_date?: string | null

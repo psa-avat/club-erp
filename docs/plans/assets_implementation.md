@@ -320,10 +320,22 @@ PCG account, different depreciation clock — while still belonging operationall
   `services/assets.py::_validate_parent_asset_uuid`.
 - `Asset.is_bookable` (new): whether the asset can appear in flight selection / gets pushed to Planche.
   Sub-components are typically non-bookable.
-- `Asset.depreciation_account_uuid` / `charge_account_uuid` / `revenue_account_uuid` (new): per-asset GL
-  overrides mirroring the existing `acquisition_account_uuid`, falling back to the family default when null.
 - CSV bulk import gained optional `parent_asset_code` and `is_bookable` columns (§14 of SPEC_ASSETS.md).
 
 Pricing (`PricingVersion`/`PricingItem`) is unchanged — still scoped by `asset_family_uuid`, unaffected by
 this refactor. Depreciation *calculation/posting* (Phase 3 above) remains unimplemented; unrelated to this
 change other than the account column move.
+
+### 13.1 2026-07 follow-up: per-asset GL overrides removed
+
+Migration 066 (above) initially added `acquisition_account_uuid` (pre-existing) plus new
+`depreciation_account_uuid` / `charge_account_uuid` / `revenue_account_uuid` override columns directly on
+`Asset`, falling back to the family default when null. Migration
+`067_remove_asset_gl_account_overrides.sql` removed all four columns (and the now-unused
+`accounting_account_code_snapshot`) from `Asset` shortly after: since a child asset is normally assigned to
+a *different* family than its parent (e.g. "Trailers" vs. "Aircrafts"), the family-level accounts already
+provide the differentiation the override existed for, making per-asset overrides redundant duplication. GL
+accounts are now configured exclusively on `AssetFamily`; `Asset` carries only price/depreciation inputs
+(`purchase_price`, `depreciation_start_date`, `depreciation_years`, `residual_value`). A sub-component that
+must post to the *same* account as its parent (e.g. a capitalized paint/gelcoat refit) is simply assigned to
+the same family as its parent instead of using an override.

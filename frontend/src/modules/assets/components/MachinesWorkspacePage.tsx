@@ -15,8 +15,8 @@ export function MachinesWorkspacePage() {
 
   return (
     <WorkspaceShell
-      title={t('workspace.machines.title', 'Machines')}
-      description={t('workspace.machines.description', 'Equipements et familles de machines.')}
+      title={t('workspace.machines.title', 'Équipements')}
+      description={t('workspace.machines.description', 'Équipements et familles.')}
       tabs={[
         {
           value: 'equipements',

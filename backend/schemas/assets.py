@@ -124,10 +124,6 @@ class AssetCreateRequest(BaseModel):
     ownership: int = Field(ge=1, le=2, default=1)
     owner_member_uuids: list[UUID] = Field(default_factory=list)
     is_bookable: bool = Field(default=True, description="Whether this asset can appear in flight selection and is pushed to Planche.")
-    acquisition_account_uuid: Optional[UUID] = None
-    depreciation_account_uuid: Optional[UUID] = None
-    charge_account_uuid: Optional[UUID] = None
-    revenue_account_uuid: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_price: Optional[Decimal] = Field(default=None, ge=0)
     depreciation_start_date: Optional[date] = None
@@ -157,10 +153,6 @@ class AssetUpdateRequest(BaseModel):
     ownership: Optional[int] = Field(default=None, ge=1, le=2)
     owner_member_uuids: Optional[list[UUID]] = None
     is_bookable: Optional[bool] = None
-    acquisition_account_uuid: Optional[UUID] = None
-    depreciation_account_uuid: Optional[UUID] = None
-    charge_account_uuid: Optional[UUID] = None
-    revenue_account_uuid: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_price: Optional[Decimal] = Field(default=None, ge=0)
     depreciation_start_date: Optional[date] = None
@@ -231,21 +223,6 @@ class AssetResponse(BaseModel):
     owner_members: list[AssetOwnerResponse] = Field(default_factory=list)
     status: int
     is_bookable: bool
-    # Raw per-asset overrides (null = inherits the family default)
-    acquisition_account_uuid: Optional[UUID]
-    depreciation_account_uuid: Optional[UUID] = None
-    charge_account_uuid: Optional[UUID] = None
-    revenue_account_uuid: Optional[UUID] = None
-    # Resolved accounts: asset override if set, else the family's default
-    effective_acquisition_account_uuid: Optional[UUID] = None
-    effective_acquisition_account_code: Optional[str] = None
-    effective_depreciation_account_uuid: Optional[UUID] = None
-    effective_depreciation_account_code: Optional[str] = None
-    effective_charge_account_uuid: Optional[UUID] = None
-    effective_charge_account_code: Optional[str] = None
-    effective_revenue_account_uuid: Optional[UUID] = None
-    effective_revenue_account_code: Optional[str] = None
-    accounting_account_code_snapshot: Optional[str]
     purchase_date: Optional[date]
     purchase_price: Optional[Decimal]
     depreciation_start_date: Optional[date]

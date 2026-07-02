@@ -1110,13 +1110,7 @@ class Asset(Base):
     # 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold
     status = Column(SmallInteger, nullable=False, default=1, index=True)
     is_bookable = Column(Boolean, nullable=False, default=True, comment="Whether this asset can appear in flight selection and is pushed to Planche. False for accounting-only sub-components.")
-    # Accounting integration (immobilisation) — per-asset overrides; fall back to the family's defaults when null.
-    acquisition_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True)
-    depreciation_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True)
-    charge_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True)
-    revenue_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True, index=True)
-    accounting_account_code_snapshot = Column(String(32), nullable=True)
-    # Financial tracking
+    # Financial tracking — GL accounts are configured once on the asset's family (AssetFamily), not here.
     purchase_date = Column(Date, nullable=True)
     purchase_price = Column(Numeric(10, 4), nullable=True)
     depreciation_start_date = Column(Date, nullable=True)
@@ -1142,10 +1136,6 @@ class Asset(Base):
     asset_family = relationship("AssetFamily", back_populates="assets")
     parent_asset = relationship("Asset", remote_side=[uuid], back_populates="child_assets")
     child_assets = relationship("Asset", back_populates="parent_asset")
-    acquisition_account = relationship("AccountingAccount", foreign_keys=[acquisition_account_uuid])
-    depreciation_account = relationship("AccountingAccount", foreign_keys=[depreciation_account_uuid])
-    charge_account = relationship("AccountingAccount", foreign_keys=[charge_account_uuid])
-    revenue_account = relationship("AccountingAccount", foreign_keys=[revenue_account_uuid])
     updated_by_user = relationship("User")
     status_history = relationship("AssetStatusHistory", back_populates="asset", cascade="all, delete-orphan")
     private_owner_links = relationship("AssetPrivateOwner", back_populates="asset", cascade="all, delete-orphan")

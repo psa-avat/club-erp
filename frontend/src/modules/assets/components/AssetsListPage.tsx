@@ -182,7 +182,7 @@ export function AssetsListPage() {
 
   const [filters, setFilters] = useState<AssetFilters>({ is_active: true })
   const [search, setSearch] = useState('')
-  const [showChildren, setShowChildren] = useState(false)
+  const [showChildren, setShowChildren] = useState(true)
   const [transitionError, setTransitionError] = useState<string | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
 
@@ -431,13 +431,15 @@ export function AssetsListPage() {
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  className="shrink-0 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container"
-                  onClick={() => navigate(`/assets/${asset.uuid}/pricing`)}
-                >
-                  {t('actions.pricing')}
-                </button>
+                {asset.is_bookable && (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container"
+                    onClick={() => navigate(`/assets/${asset.uuid}/pricing`)}
+                  >
+                    {t('actions.pricing')}
+                  </button>
+                )}
               </div>
             ))}
           </div>

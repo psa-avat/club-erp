@@ -30,7 +30,6 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
 import { useCapability } from '../../../auth/hooks/useCapability'
-import { useAccountsQuery } from '../../banque/api'
 import { useMemberOptionsQuery } from '../../members/api'
 import type { MemberOption } from '../../members/types'
 import {
@@ -81,10 +80,6 @@ type FormState = {
   ownership: number
   owner_member_uuids: string[]
   is_bookable: boolean
-  acquisition_account_uuid: string
-  depreciation_account_uuid: string
-  charge_account_uuid: string
-  revenue_account_uuid: string
   purchase_date: string
   purchase_price: string
   depreciation_start_date: string
@@ -107,10 +102,6 @@ function emptyForm(parentAssetUuid = ''): FormState {
     ownership: OWNERSHIP_CLUB,
     owner_member_uuids: [],
     is_bookable: !parentAssetUuid,
-    acquisition_account_uuid: '',
-    depreciation_account_uuid: '',
-    charge_account_uuid: '',
-    revenue_account_uuid: '',
     purchase_date: '',
     purchase_price: '',
     depreciation_start_date: '',
@@ -173,7 +164,6 @@ export function AssetFormPage() {
   const familiesQuery = useAssetFamiliesQuery(canManage)
   const assetQuery = useAssetQuery(isEdit ? (uuid ?? null) : null)
   const allAssetsQuery = useAssetsQuery({}, canManage)
-  const accountsQuery = useAccountsQuery(canManage)
   const [ownerSearch, setOwnerSearch] = useState('')
   const memberOptionsQuery = useMemberOptionsQuery({ search: ownerSearch, limit: 50 })
 
@@ -201,10 +191,6 @@ export function AssetFormPage() {
       ownership: asset.ownership,
       owner_member_uuids: asset.owner_member_uuids ?? [],
       is_bookable: asset.is_bookable,
-      acquisition_account_uuid: asset.acquisition_account_uuid ?? '',
-      depreciation_account_uuid: asset.depreciation_account_uuid ?? '',
-      charge_account_uuid: asset.charge_account_uuid ?? '',
-      revenue_account_uuid: asset.revenue_account_uuid ?? '',
       purchase_date: asset.purchase_date ?? '',
       purchase_price: asset.purchase_price ?? '',
       depreciation_start_date: asset.depreciation_start_date ?? '',
@@ -235,10 +221,6 @@ export function AssetFormPage() {
       owner_member_uuids:
         form.ownership === OWNERSHIP_PRIVATE ? form.owner_member_uuids : [],
       is_bookable: form.is_bookable,
-      acquisition_account_uuid: form.acquisition_account_uuid.trim() || null,
-      depreciation_account_uuid: form.depreciation_account_uuid.trim() || null,
-      charge_account_uuid: form.charge_account_uuid.trim() || null,
-      revenue_account_uuid: form.revenue_account_uuid.trim() || null,
       purchase_date: form.purchase_date || null,
       purchase_price: form.purchase_price.trim() || null,
       depreciation_start_date: form.depreciation_start_date || null,
@@ -273,15 +255,6 @@ export function AssetFormPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending
   const isPrivate = form.ownership === OWNERSHIP_PRIVATE
-  const filterAccounts = (prefix: string) =>
-    (accountsQuery.data ?? [])
-      .filter((account) => account.code.startsWith(prefix) && account.is_posting_allowed)
-      .sort((a, b) => a.code.localeCompare(b.code))
-  const acquisitionAccounts = filterAccounts('2')
-  const depreciationAccounts = filterAccounts('28')
-  const chargeAccounts = filterAccounts('6')
-  const revenueAccounts = filterAccounts('7')
-  const selectedFamily = (familiesQuery.data ?? []).find((f) => f.uuid === form.asset_family_uuid) ?? null
   const parentAssetOptions = (allAssetsQuery.data ?? [])
     .filter((a) => a.uuid !== uuid && !a.parent_asset_uuid)
     .map((a) => ({ value: a.uuid, label: `${a.code} — ${a.name}` }))
@@ -550,90 +523,6 @@ export function AssetFormPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">{t('form.sectionFinancial')}</h2>
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-            <div className="space-y-1">
-              <Label htmlFor="acqAccount" className="text-xs">{t('form.acquisitionAccountUuid')}</Label>
-              <select
-                id="acqAccount"
-                value={form.acquisition_account_uuid}
-                onChange={(e) => set('acquisition_account_uuid', e.target.value)}
-                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="">
-                  {selectedFamily?.acquisition_account_code
-                    ? `${t('form.accountPlaceholder')} (${selectedFamily.acquisition_account_code})`
-                    : t('form.accountPlaceholder')}
-                </option>
-                {acquisitionAccounts.map((account) => (
-                  <option key={account.uuid} value={account.uuid}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500">{t('form.accountHint')}</p>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="deprAccount" className="text-xs">{t('form.depreciationAccountUuid')}</Label>
-              <select
-                id="deprAccount"
-                value={form.depreciation_account_uuid}
-                onChange={(e) => set('depreciation_account_uuid', e.target.value)}
-                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="">
-                  {selectedFamily?.depreciation_account_code
-                    ? `${t('form.accountPlaceholder')} (${selectedFamily.depreciation_account_code})`
-                    : t('form.accountPlaceholder')}
-                </option>
-                {depreciationAccounts.map((account) => (
-                  <option key={account.uuid} value={account.uuid}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500">{t('form.depreciationAccountUuidHint')}</p>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="chargeAccount" className="text-xs">{t('form.chargeAccountUuid')}</Label>
-              <select
-                id="chargeAccount"
-                value={form.charge_account_uuid}
-                onChange={(e) => set('charge_account_uuid', e.target.value)}
-                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="">
-                  {selectedFamily?.charge_account_code
-                    ? `${t('form.accountPlaceholder')} (${selectedFamily.charge_account_code})`
-                    : t('form.accountPlaceholder')}
-                </option>
-                {chargeAccounts.map((account) => (
-                  <option key={account.uuid} value={account.uuid}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500">{t('form.chargeAccountUuidHint')}</p>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="revenueAccount" className="text-xs">{t('form.revenueAccountUuid')}</Label>
-              <select
-                id="revenueAccount"
-                value={form.revenue_account_uuid}
-                onChange={(e) => set('revenue_account_uuid', e.target.value)}
-                className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="">
-                  {selectedFamily?.revenue_account_code
-                    ? `${t('form.accountPlaceholder')} (${selectedFamily.revenue_account_code})`
-                    : t('form.accountPlaceholder')}
-                </option>
-                {revenueAccounts.map((account) => (
-                  <option key={account.uuid} value={account.uuid}>
-                    {account.code} - {account.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500">{t('form.revenueAccountUuidHint')}</p>
-            </div>
             <div className="space-y-1">
               <Label htmlFor="purchaseDate" className="text-xs">{t('form.purchaseDate')}</Label>
               <Input

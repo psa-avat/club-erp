@@ -88,17 +88,6 @@ function extractError(e: unknown, fallback: string): string {
   return fallback
 }
 
-/** Effective account code with an "inherited from family" vs "custom override" tag. */
-function accountLabel(
-  effectiveCode: string | null,
-  rawOverride: string | null,
-  t: (k: string) => string,
-): string | null {
-  if (!effectiveCode) return null
-  const tag = rawOverride ? t('detail.customOverride') : t('detail.inherited')
-  return `${effectiveCode} (${tag})`
-}
-
 // �"?�"? Status Timeline �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
 function StatusTimeline({
@@ -422,10 +411,12 @@ export function AssetDetailPage() {
                 {t('actions.edit')}
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={() => navigate(`/assets/${uuid}/pricing`)}>
-              <BarChart3 className="mr-1 h-3.5 w-3.5" />
-              {t('actions.pricing')}
-            </Button>
+            {asset.is_bookable && (
+              <Button size="sm" variant="ghost" onClick={() => navigate(`/assets/${uuid}/pricing`)}>
+                <BarChart3 className="mr-1 h-3.5 w-3.5" />
+                {t('actions.pricing')}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -508,24 +499,20 @@ export function AssetDetailPage() {
           <CardContent>
             <div className="space-y-0.5">
               <InfoRow
-                label={t('form.acquisitionAccountUuid')}
-                value={accountLabel(asset.effective_acquisition_account_code, asset.acquisition_account_uuid, t)}
+                label={t('assetFamilies.acquisitionAccount')}
+                value={asset.asset_family?.acquisition_account_code}
               />
               <InfoRow
-                label={t('form.depreciationAccountUuid')}
-                value={accountLabel(asset.effective_depreciation_account_code, asset.depreciation_account_uuid, t)}
+                label={t('assetFamilies.depreciationAccount')}
+                value={asset.asset_family?.depreciation_account_code}
               />
               <InfoRow
-                label={t('form.chargeAccountUuid')}
-                value={accountLabel(asset.effective_charge_account_code, asset.charge_account_uuid, t)}
+                label={t('assetFamilies.chargeAccount')}
+                value={asset.asset_family?.charge_account_code}
               />
               <InfoRow
-                label={t('form.revenueAccountUuid')}
-                value={accountLabel(asset.effective_revenue_account_code, asset.revenue_account_uuid, t)}
-              />
-              <InfoRow
-                label={t('detail.accountCodeSnapshot')}
-                value={asset.accounting_account_code_snapshot}
+                label={t('assetFamilies.revenueAccount')}
+                value={asset.asset_family?.revenue_account_code}
               />
             </div>
           </CardContent>

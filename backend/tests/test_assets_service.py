@@ -26,7 +26,6 @@ from fastapi import HTTPException
 
 from schemas.assets import AssetCreateRequest, AssetFamilyCreateRequest
 from services.assets import (
-    _assert_asset_gl_accounts_exist,
     _assert_family_gl_accounts_exist,
     _serialize_asset,
     _validate_parent_asset_uuid,
@@ -115,15 +114,6 @@ def _fake_asset(*, family, overrides=None):
         private_owner_links=[],
         status=1,
         is_bookable=True,
-        acquisition_account_uuid=None,
-        acquisition_account=None,
-        depreciation_account_uuid=None,
-        depreciation_account=None,
-        charge_account_uuid=None,
-        charge_account=None,
-        revenue_account_uuid=None,
-        revenue_account=None,
-        accounting_account_code_snapshot=None,
         purchase_date=None,
         purchase_price=None,
         depreciation_start_date=None,
@@ -218,15 +208,13 @@ class GlAccountValidationTests(IsolatedAsyncioTestCase):
         db = _FakeDb(execute_results=[_FakeResult(["21821"])])
         await _assert_family_gl_accounts_exist(db, {"acquisition_account_uuid": uuid4()})  # no exception
 
-    async def test_asset_gl_account_raises_422_for_unknown_uuid(self):
-        db = _FakeDb(execute_results=[_FakeResult([])])
-        with self.assertRaises(HTTPException) as cm:
-            await _assert_asset_gl_accounts_exist(db, {"depreciation_account_uuid": uuid4()})
-        self.assertEqual(cm.exception.status_code, 422)
 
+class AssetResponseTests(IsolatedAsyncioTestCase):
+    """GL accounts live only on AssetFamily; _serialize_asset just surfaces the family's
+    nested AssetFamilyResponse (which already carries acquisition/depreciation/charge/revenue
+    codes) — no per-asset override/resolution logic to test here anymore."""
 
-class EffectiveAccountResolutionTests(IsolatedAsyncioTestCase):
-    def test_no_override_uses_family_defaults(self):
+    def test_family_gl_accounts_surfaced_on_asset_family(self):
         family = _fake_family(
             acquisition_account_uuid=uuid4(),
             depreciation_account_uuid=uuid4(),
@@ -237,64 +225,9 @@ class EffectiveAccountResolutionTests(IsolatedAsyncioTestCase):
 
         response = _serialize_asset(asset)
 
-        self.assertEqual(response.effective_acquisition_account_uuid, family.acquisition_account_uuid)
-        self.assertEqual(response.effective_acquisition_account_code, "21821")
-        self.assertEqual(response.effective_depreciation_account_code, "281821")
-        self.assertIsNone(response.acquisition_account_uuid)  # raw override stays null
-
-    def test_partial_override_only_affects_that_account(self):
-        family = _fake_family(
-            acquisition_account_uuid=uuid4(),
-            depreciation_account_uuid=uuid4(),
-            charge_account_uuid=uuid4(),
-            revenue_account_uuid=uuid4(),
-        )
-        override_uuid = uuid4()
-        asset = _fake_asset(
-            family=family,
-            overrides={
-                "charge_account_uuid": override_uuid,
-                "charge_account": _fake_account("615"),
-            },
-        )
-
-        response = _serialize_asset(asset)
-
-        self.assertEqual(response.effective_charge_account_uuid, override_uuid)
-        self.assertEqual(response.effective_charge_account_code, "615")
-        # Other 3 accounts still fall back to family defaults
-        self.assertEqual(response.effective_acquisition_account_uuid, family.acquisition_account_uuid)
-        self.assertEqual(response.effective_revenue_account_uuid, family.revenue_account_uuid)
-
-    def test_full_override_ignores_family_defaults(self):
-        family = _fake_family(
-            acquisition_account_uuid=uuid4(),
-            depreciation_account_uuid=uuid4(),
-            charge_account_uuid=uuid4(),
-            revenue_account_uuid=uuid4(),
-        )
-        acq, dep, chg, rev = uuid4(), uuid4(), uuid4(), uuid4()
-        asset = _fake_asset(
-            family=family,
-            overrides={
-                "acquisition_account_uuid": acq,
-                "acquisition_account": _fake_account("2182"),
-                "depreciation_account_uuid": dep,
-                "depreciation_account": _fake_account("28182"),
-                "charge_account_uuid": chg,
-                "charge_account": _fake_account("615"),
-                "revenue_account_uuid": rev,
-                "revenue_account": _fake_account("7063"),
-            },
-        )
-
-        response = _serialize_asset(asset)
-
-        self.assertEqual(response.effective_acquisition_account_uuid, acq)
-        self.assertEqual(response.effective_depreciation_account_uuid, dep)
-        self.assertEqual(response.effective_charge_account_uuid, chg)
-        self.assertEqual(response.effective_revenue_account_uuid, rev)
-        self.assertEqual(response.effective_acquisition_account_code, "2182")
+        self.assertEqual(response.asset_family.acquisition_account_uuid, family.acquisition_account_uuid)
+        self.assertEqual(response.asset_family.acquisition_account_code, "21821")
+        self.assertEqual(response.asset_family.depreciation_account_code, "281821")
 
     def test_child_asset_exposes_parent_code_and_name(self):
         family = _fake_family()

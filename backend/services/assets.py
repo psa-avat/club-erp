@@ -67,10 +67,6 @@ def _asset_query():
         selectinload(Asset.asset_family).selectinload(AssetFamily.depreciation_account),
         selectinload(Asset.asset_family).selectinload(AssetFamily.charge_account),
         selectinload(Asset.asset_family).selectinload(AssetFamily.revenue_account),
-        selectinload(Asset.acquisition_account),
-        selectinload(Asset.depreciation_account),
-        selectinload(Asset.charge_account),
-        selectinload(Asset.revenue_account),
         selectinload(Asset.parent_asset),
     )
 
@@ -148,24 +144,6 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         updated_at=family.updated_at,
     )
 
-    def _effective_account(asset_uuid, asset_account, family_uuid, family_account):
-        if asset_uuid is not None:
-            return asset_uuid, (asset_account.code if asset_account else None)
-        return family_uuid, (family_account.code if family_account else None)
-
-    eff_acq_uuid, eff_acq_code = _effective_account(
-        asset.acquisition_account_uuid, asset.acquisition_account, family.acquisition_account_uuid, family.acquisition_account
-    )
-    eff_dep_uuid, eff_dep_code = _effective_account(
-        asset.depreciation_account_uuid, asset.depreciation_account, family.depreciation_account_uuid, family.depreciation_account
-    )
-    eff_chg_uuid, eff_chg_code = _effective_account(
-        asset.charge_account_uuid, asset.charge_account, family.charge_account_uuid, family.charge_account
-    )
-    eff_rev_uuid, eff_rev_code = _effective_account(
-        asset.revenue_account_uuid, asset.revenue_account, family.revenue_account_uuid, family.revenue_account
-    )
-
     current_price_version = None
     current_price_version_name = None
     if asset.asset_family.pricing_versions:
@@ -203,19 +181,6 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         owner_members=owner_members,
         status=asset.status,
         is_bookable=asset.is_bookable,
-        acquisition_account_uuid=asset.acquisition_account_uuid,
-        depreciation_account_uuid=asset.depreciation_account_uuid,
-        charge_account_uuid=asset.charge_account_uuid,
-        revenue_account_uuid=asset.revenue_account_uuid,
-        effective_acquisition_account_uuid=eff_acq_uuid,
-        effective_acquisition_account_code=eff_acq_code,
-        effective_depreciation_account_uuid=eff_dep_uuid,
-        effective_depreciation_account_code=eff_dep_code,
-        effective_charge_account_uuid=eff_chg_uuid,
-        effective_charge_account_code=eff_chg_code,
-        effective_revenue_account_uuid=eff_rev_uuid,
-        effective_revenue_account_code=eff_rev_code,
-        accounting_account_code_snapshot=asset.accounting_account_code_snapshot,
         purchase_date=asset.purchase_date,
         purchase_price=asset.purchase_price,
         depreciation_start_date=asset.depreciation_start_date,
@@ -518,13 +483,6 @@ async def _validate_parent_asset_uuid(db: AsyncSession, parent_asset_uuid: UUID,
             )
 
 
-async def _assert_asset_gl_accounts_exist(db: AsyncSession, data: dict) -> None:
-    for field in ("depreciation_account_uuid", "charge_account_uuid", "revenue_account_uuid"):
-        value = data.get(field)
-        if value is not None:
-            await _assert_accounting_account_exists(db, value)
-
-
 async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: int) -> AssetResponse:
     # Validate asset family exists
     await get_asset_family(db, request.asset_family_uuid)
@@ -551,18 +509,9 @@ async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: i
     if request.ownership == 2:
         await _assert_owner_members_exist(db, owner_member_uuids)
 
-    # Resolve accounting account snapshot
-    account_snapshot: str | None = None
-    if request.acquisition_account_uuid:
-        account_snapshot = await _assert_accounting_account_exists(db, request.acquisition_account_uuid)
-
-    # Validate the 3 other GL account overrides, if provided
-    await _assert_asset_gl_accounts_exist(db, request.model_dump())
-
     payload = request.model_dump(exclude={"owner_member_uuids"})
     obj = Asset(
         **payload,
-        accounting_account_code_snapshot=account_snapshot,
         updated_by=user_id,
     )
     db.add(obj)
@@ -603,9 +552,6 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
     elif "parent_asset_uuid" in data and data["parent_asset_uuid"] != obj.parent_asset_uuid:
         await _validate_parent_asset_uuid(db, data["parent_asset_uuid"], self_uuid=asset_uuid)
 
-    # Validate the 3 GL account overrides, if being changed
-    await _assert_asset_gl_accounts_exist(db, data)
-
     # Validate owner member if ownership being set to private
     new_ownership = data.get("ownership", obj.ownership)
     owner_member_uuids = _normalize_owner_member_uuids(data.get("owner_member_uuids"))
@@ -618,12 +564,6 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
         )
     if new_ownership == 2:
         await _assert_owner_members_exist(db, owner_member_uuids)
-
-    # Resolve accounting account snapshot if being updated
-    if "acquisition_account_uuid" in data and data["acquisition_account_uuid"] is not None:
-        data["accounting_account_code_snapshot"] = await _assert_accounting_account_exists(
-            db, data["acquisition_account_uuid"]
-        )
 
     # Unique registration check if changing registration
     if "registration" in data and data["registration"] != obj.registration:
