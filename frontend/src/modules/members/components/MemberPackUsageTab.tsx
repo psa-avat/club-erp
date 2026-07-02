@@ -36,11 +36,13 @@ export function MemberPackUsageTab({ memberUuid, mode }: MemberPackUsageTabProps
   const { data: activeFy } = useActiveFiscalYearQuery(mode === 'club' && !storeFyUuid)
   const clubFiscalYearUuid = mode === 'club' ? (storeFyUuid ?? (activeFy?.uuid ?? null)) : null
 
-  // Portal mode: use portal fiscal years endpoint, pick the open one (fallback: most recent)
-  // portalFiscalYears is ordered most-recent-first by the backend.
-  const { data: portalFiscalYears } = useMemberPortalFiscalYearsQuery(mode === 'portal')
+  // Portal mode: follow the fiscal year the member picked in the portal's top bar
+  // (PortalShell), which writes to the same global fiscal year store. Only fall back
+  // to auto-picking the open year if the store hasn't been initialized yet.
+  const { data: portalFiscalYears } = useMemberPortalFiscalYearsQuery(mode === 'portal' && !storeFyUuid)
   const portalFiscalYearUuid = mode === 'portal'
-    ? (portalFiscalYears?.find((fy) => fy.state === 1 || fy.state === 3)?.uuid
+    ? (storeFyUuid
+        ?? portalFiscalYears?.find((fy) => fy.state === 1 || fy.state === 3)?.uuid
         ?? portalFiscalYears?.[0]?.uuid
         ?? null)
     : null
