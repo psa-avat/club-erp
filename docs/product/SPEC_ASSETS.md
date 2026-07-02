@@ -19,24 +19,34 @@ This document defines the target specification for the Assets module of the ERP 
 
 ### 3.1 Asset Family
 - `uuid`, `code` (unique), `name`
-- `category_uuid` (FK → AssetCategory, required) — configurable catalog, not a fixed enum
 - `pricing_strategy` (1=FlightHours, 2=EngineTime, 3=PerFlight, 4=PerDuration, 5=PerUnit, 6=FlatRate)
 - `is_active`
-- Timestamps
-
-### 3.1bis Asset Category
-- `uuid`, `code` (unique), `name`, `description` (nullable)
-- `is_active`
-- 4 optional accounting-account references (configuration only — not yet consumed by any posting logic):
+- `is_priced` — whether this family is expected to carry a flight tariff (`pricing_versions`). Most
+  accounting-only families (trailers, refits, engines, ground vehicles, mower) are not priced.
+- 4 optional accounting-account references, used as defaults for every asset in the family unless
+  overridden per-asset (see §3.3):
   - `acquisition_account_uuid` (FK → AccountingAccount, class 2, e.g. 218xx)
   - `depreciation_account_uuid` (FK → AccountingAccount, class 28 — accumulated depreciation, contra-asset;
     NOT the 68x expense account)
   - `charge_account_uuid` (FK → AccountingAccount, class 6 — general expense, e.g. dotation aux amortissements
-    681 or maintenance costs; category's choice)
+    681 or maintenance costs)
   - `revenue_account_uuid` (FK → AccountingAccount, class 7)
-- Seeded on migration with 5 default categories matching the legacy enum: Aéronef, Équipement de lancement,
-  Support, Consommable, Service — but open-ended: admins may add/rename/deactivate categories freely.
-- Timestamps & `updated_by`
+- Timestamps
+
+### 3.1bis Asset Hierarchy (Parent/Child)
+- `assets.parent_asset_uuid` (FK → Asset, nullable, self-referential) — a "main machine" (e.g. a glider) can
+  have child assets (trailer, gelcoat/paint refit, engine swap) that are independent accounting items with
+  their own GL account overrides and depreciation profile, while remaining grouped under the parent for
+  operational/reporting purposes.
+- **Depth is strictly 2 levels**: a child asset can never itself become a parent. Enforced at the service
+  layer (`_validate_parent_asset_uuid` in `services/assets.py`): a candidate parent must itself have
+  `parent_asset_uuid IS NULL`, and an asset that already has children cannot be assigned a parent.
+- `assets.is_bookable` (boolean, default `true`) — whether this individual asset can appear in flight
+  selection and gets pushed to Planche. Sub-components (trailers, refits, engines) are typically `false`.
+  Independent of the family's `is_priced` flag because it is asset-level (e.g. one specific glider under
+  long-term restoration could be temporarily non-bookable without touching its family).
+- The legacy `AssetCategory` catalog (migration 065) has been removed (migration 066): its 4 GL account
+  columns moved directly onto `AssetFamily` (§3.1).
 
 ### 3.2 Flight Type
 - `uuid`
@@ -47,11 +57,15 @@ This document defines the target specification for the Assets module of the ERP 
 
 ### 3.3 Asset (Master)
 - `uuid`, `asset_family_uuid` (FK)
+- `parent_asset_uuid` (FK → Asset, nullable, self-referential, max depth 2 — see §3.1bis)
 - `code` (unique, e.g., F-CGVX), `name`, `serial_number`
 - `ownership` (1=Club, 2=Private)
 - current owners for private assets stored in `AssetPrivateOwner(asset_uuid, member_uuid)`; supports one or many co-owners
+- `is_bookable` (boolean, default true — see §3.1bis)
 - `purchase_date`, `purchase_price` (NUMERIC(10,4))
-- `acquisition_account_uuid` (FK → AccountingAccount, if trackable)
+- `acquisition_account_uuid`, `depreciation_account_uuid`, `charge_account_uuid`, `revenue_account_uuid`
+  (all FK → AccountingAccount, nullable) — per-asset overrides; when null, the asset family's default for
+  that account type applies (§3.1)
 - `status` (1=Operational, 2=Under Maintenance, 3=Out of Service, 4=Disposed, 5=Sold)
 - `depreciation_start_date`, `depreciation_years`, `residual_value`
 - `is_active`
@@ -148,7 +162,7 @@ Precision rules:
 
 ### 3.10 Depreciation Schedule
 
-> **Status: Planned, not yet implemented.** The `Asset` model and category config store depreciation *inputs* (`depreciation_start_date`, `depreciation_duration_months`, category-level `depreciation_account_uuid`) and the frontend displays a computed depreciation summary, but there is no `DepreciationSchedule` table, generation/approval/posting workflow, or accounting-entry linkage as described below.
+> **Status: Planned, not yet implemented.** The `Asset` model stores depreciation *inputs* (`depreciation_start_date`, `depreciation_duration_months`, family-level `depreciation_account_uuid`, overridable per-asset) and the frontend displays a computed depreciation summary, but there is no `DepreciationSchedule` table, generation/approval/posting workflow, or accounting-entry linkage as described below. Since child assets (§3.1bis) are independent `Asset` rows, they already carry their own depreciation inputs — no schema change is needed for a sub-component to have its own amortization clock.
 
 - `uuid`, `asset_uuid` (FK), `fiscal_year_uuid` (FK)
 - `depreciation_amount`, `accumulated_depreciation`, `net_book_value` (all NUMERIC(10,4))
@@ -356,7 +370,7 @@ See `docs/assets-sample.csv` for a reference file.
 
 **Required columns:** `code`, `name`, `asset_family_code`
 
-**Optional columns:** `ownership`, `status`, `year_of_manufacture`, `purchase_price`, `residual_value`, `purchase_date` (YYYY-MM-DD), `depreciation_years`, `useful_life_years`, `depreciation_start_date` (YYYY-MM-DD), `registration`, `serial_number`, `notes`
+**Optional columns:** `ownership`, `status`, `year_of_manufacture`, `purchase_price`, `residual_value`, `purchase_date` (YYYY-MM-DD), `depreciation_years`, `useful_life_years`, `depreciation_start_date` (YYYY-MM-DD), `registration`, `serial_number`, `notes`, `parent_asset_code`, `is_bookable`
 
 **Enum values accepted (case-insensitive):**
 
@@ -365,10 +379,13 @@ See `docs/assets-sample.csv` for a reference file.
 | `ownership` | `1`/`club`, `2`/`private`/`privé` |
 | `status` | `1`/`operational`/`opérationnel`, `2`/`maintenance`, `3`/`out_of_service`/`hors_service`, `4`/`disposed`/`cédé` |
 | `asset_family_code` | Must match an existing asset family `code` in the database |
+| `parent_asset_code` | Optional — must match an existing asset `code` already in the database (see Behavior below) |
+| `is_bookable` | `1`/`true`/`yes`/`oui`, `0`/`false`/`no`/`non`; defaults to bookable when omitted |
 
 ### Behavior
 
 - Asset families are resolved by `asset_family_code` via a pre-fetched lookup table.
+- `parent_asset_code`, when set, is resolved against a pre-fetched map of **already-existing** asset codes — built once before the import loop starts, not refreshed mid-run. A CSV import therefore **cannot create a parent and its child in the same run**: the parent must already exist in the database (either from a prior import or created manually) before a row can reference it as `parent_asset_code`. An unknown `parent_asset_code` produces a row-level error and the row is skipped.
 - Each row is validated independently; errors in one row do not block other rows.
 - A row that fails validation is **skipped** and its error is reported.
 - A row where the `code` already exists is skipped (duplicate).

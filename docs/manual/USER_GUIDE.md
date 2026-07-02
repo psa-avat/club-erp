@@ -234,30 +234,42 @@ Les comités regroupent des membres autour de missions spécifiques (sécurité,
 
 ### 7.1 Vue d'ensemble
 
-Gère l'inventaire complet : planeurs, remorqueurs, treuils, équipements sol, consommables.
+Gère l'inventaire complet : planeurs, remorqueurs, treuils, remorques, réfections/grosses réparations, moteurs, parachutes, véhicules de piste, équipements de club (ex. tondeuse).
 
-### 7.2 Types d'aéronef
+### 7.2 Familles d'actifs
 
-Chaque type définit :
-- Une catégorie (Aéronef, Équipement de lancement, Support, Consommable, Service)
-- La durée d'amortissement standard
-- Le suivi comptable (immobilisation ou non)
+Le modèle est à deux niveaux : **Famille → Actif** (les catégories ont été supprimées ; chaque famille porte directement ses comptes comptables).
+
+Chaque famille définit :
+- **Comptes comptables par défaut** : acquisition (classe 2), amortissement (classe 28), charge (classe 6), produit (classe 7). Ces comptes s'appliquent à tous les actifs de la famille, sauf override individuel (voir §7.3).
+- **Tarifée ou non** (`is_priced`) : indique si la famille porte un tarif de vol (versions tarifaires). La plupart des familles d'aéronefs et de treuils sont tarifées ; les familles purement comptables (remorques, réfections, moteurs, véhicules de piste, tondeuse) ne le sont généralement pas.
+- La stratégie tarifaire, la durée d'amortissement standard (au niveau de chaque actif).
+
+Exemples de familles reflétant l'usage réel d'un club : Aéronefs, Remorques, Peinture (réfection gelcoat), Grosses réparations, Parachutes, Moteurs, Treuils, Véhicules de piste, Tondeuse.
 
 ### 7.3 Fiche aéronef
 
 | Champ | Description |
 |-------|-------------|
 | Immatriculation / Code | Identifiant unique (ex. : F-CGVX) |
-| Type | Référence au type d'aéronef |
+| Famille | Référence à la famille d'actifs |
+| Actif parent | Optionnel — pour un sous-composant (remorque, réfection, moteur) rattaché à un actif principal (voir §7.3bis) |
+| Réservable pour les vols | Décoché pour un sous-composant qui ne doit ni apparaître dans la sélection de vol ni être poussé vers Planche |
 | Propriété | Club ou Privé (avec co-propriétaires) |
 | Statut | Opérationnel / En maintenance / Hors service / Cédé / Vendu |
 | Prix d'acquisition | Valeur d'entrée |
 | Amortissement | Date de début, durée, valeur résiduelle |
-| Compte comptable | Compte d'immobilisation associé |
+| Comptes comptables | Un compte par type (acquisition, amortissement, charge, produit) ; laissé vide, chacun utilise la valeur par défaut de la famille — sinon la valeur saisie prévaut (override par actif) |
+
+### 7.3bis Sous-composants d'un actif
+
+Un actif « racine » (ex. un planeur) peut avoir des actifs « enfants » représentant des composants comptables distincts avec leur propre compte et leur propre plan d'amortissement : remorque, réfection gelcoat/peinture, changement moteur. La hiérarchie est limitée à **2 niveaux** : un actif enfant ne peut pas lui-même avoir d'enfant.
+
+Exemple : le planeur F-CGVX (famille Aéronefs, tarifé, réservable) possède une remorque F-CGVX-REM en actif enfant (famille Remorques, non tarifée, non réservable), avec son propre prix d'achat et sa propre durée d'amortissement. Le total d'acquisition (planeur + remorque) et la liste des sous-composants sont visibles sur la fiche du planeur.
 
 ### 7.4 Propriété privée
 
-Pour les planeurs privés, un ou plusieurs co-propriétaires membres sont enregistrés. La facturation des vols sur ces appareils génère un avertissement non bloquant si aucun tarif n'est configuré.
+Pour les planeurs privés, un ou plusieurs co-propriétaires membres sont enregistrés. La facturation des vols sur ces appareils génère un avertissement non bloquant si aucun tarif n'est configuré — ce message apparaît systématiquement pour toute famille marquée non tarifée (`is_priced = false`).
 
 ### 7.5 Statuts d'un aéronef
 
@@ -268,7 +280,23 @@ Opérationnel → En maintenance → Opérationnel
 
 ### 7.6 Synchronisation Planche
 
-Les aéronefs actifs sont automatiquement poussés vers **Planche** pour être disponibles lors de la saisie des vols.
+Seuls les actifs actifs, opérationnels **et réservables** sont automatiquement poussés vers **Planche** pour être disponibles lors de la saisie des vols. Les sous-composants (remorques, réfections, moteurs) ne sont jamais poussés.
+
+### 7.7 Comptes comptables recommandés
+
+Le plan comptable du club dispose déjà d'un modèle de comptes dédiés par actif pour les planeurs (`21821`/`281821`) et les avions/remorqueurs (`21822`/`281822`). Pour les autres familles, comptes à envisager (numérotation à confirmer avec le trésorier avant création) :
+
+| Famille | Compte(s) existant(s) | Compte(s) proposé(s) si suivi individualisé souhaité |
+|---|---|---|
+| Aéronefs (planeurs) | `21821` / `281821` | — déjà adapté |
+| Aéronefs (remorqueurs) | `21822` / `281822` | — déjà adapté |
+| Treuils | `2154` / `28154` (partagé, non individualisé) | `21541` / `281541` |
+| Remorques | `2182` / `28182` (partagé avec les véhicules de piste) | `21823` / `281823` |
+| Véhicules de piste | `2182` / `28182` (partagé avec les remorques) | `21824` / `281824` |
+| Moteurs (si suivis indépendamment) | aucun | `21825` / `281825` |
+| Parachutes (si immobilisés) | aucun (sinon charge directe en 606) | `21826` / `281826` |
+| Peinture / grosses réparations | — pas de nouvelle famille comptable : rattacher au compte du parent (`21821`/`21822`) via l'override par actif | — |
+| Tondeuse | `2188` / `288` (générique) | — suffisant pour un exemplaire unique |
 
 ---
 

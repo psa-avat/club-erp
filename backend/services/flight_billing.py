@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -757,7 +757,9 @@ class FlightBillingPreviewService:
         clauses = [Asset.registration == value, Asset.code == value]
         if parsed is not None:
             clauses.append(Asset.uuid == parsed)
-        result = await self.db.execute(select(Asset).where(or_(*clauses)))
+        # Non-bookable assets (accounting-only sub-components: trailers, refits, engines) never
+        # resolve here — falls into the existing asset_not_found error path in _resolve_machine.
+        result = await self.db.execute(select(Asset).where(and_(or_(*clauses), Asset.is_bookable.is_(True))))
         return result.scalars().first()
 
     def _flight_type_codes_for_machine(self, source: str, flight: ValidatedFlight, resolved_code: str | None = None) -> set[str]:

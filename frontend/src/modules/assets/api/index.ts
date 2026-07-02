@@ -21,7 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import type {
-  AssetCategory,
+  AssetChild,
   AssetDetail,
   AssetFilters,
   AssetPricingVersion,
@@ -30,7 +30,6 @@ import type {
   AssetSummary,
   AssetFamily,
   CreateAssetPayload,
-  CreateAssetCategoryPayload,
   CreateAssetFamilyPayload,
   CreateFlightTypePayload,
   CreatePricingItemPayload,
@@ -39,7 +38,6 @@ import type {
   PricingItem,
   ReplaceTiersPayload,
   UpdateAssetPayload,
-  UpdateAssetCategoryPayload,
   UpdateAssetFamilyPayload,
   UpdateFlightTypePayload,
   UpdatePricingItemPayload,
@@ -49,12 +47,12 @@ import type {
 
 export const assetsQueryKeys = {
   root: ['assets'] as const,
-  categories: () => ['assets', 'categories'] as const,
   families: () => ['assets', 'families'] as const,
   flightTypes: () => ['assets', 'flight-types'] as const,
   list: (filters: AssetFilters) => ['assets', 'list', filters] as const,
   detail: (uuid: string) => ['assets', 'detail', uuid] as const,
   statusHistory: (uuid: string) => ['assets', 'status-history', uuid] as const,
+  children: (uuid: string) => ['assets', 'children', uuid] as const,
   pricingVersions: (assetFamilyUuid: string) =>
     ['assets', 'pricing-versions', assetFamilyUuid] as const,
   pricingItems: (versionUuid: string) => ['assets', 'pricing-items', versionUuid] as const,
@@ -64,61 +62,6 @@ function compactParams(obj: Record<string, unknown>) {
   return Object.fromEntries(
     Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== ''),
   )
-}
-
-// ── Asset Categories ─────────────────────────────────────────────────────────────
-
-export function useAssetCategoriesQuery(enabled = true) {
-  return useQuery({
-    queryKey: assetsQueryKeys.categories(),
-    enabled,
-    queryFn: async () => {
-      const { data } = await apiClient.get<AssetCategory[]>('/api/v1/assets/categories', getAuthRequestConfig())
-      return data
-    },
-  })
-}
-
-export function useCreateAssetCategoryMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: CreateAssetCategoryPayload) => {
-      const { data } = await apiClient.post<AssetCategory>('/api/v1/assets/categories', payload, getAuthRequestConfig())
-      return data
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.categories() })
-    },
-  })
-}
-
-export function useUpdateAssetCategoryMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ uuid, ...payload }: UpdateAssetCategoryPayload & { uuid: string }) => {
-      const { data } = await apiClient.patch<AssetCategory>(
-        `/api/v1/assets/categories/${uuid}`,
-        payload,
-        getAuthRequestConfig(),
-      )
-      return data
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.categories() })
-    },
-  })
-}
-
-export function useDeleteAssetCategoryMutation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (uuid: string) => {
-      await apiClient.delete(`/api/v1/assets/categories/${uuid}`, getAuthRequestConfig())
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: assetsQueryKeys.categories() })
-    },
-  })
 }
 
 // ── Asset Families ───────────────────────────────────────────────────────────────
@@ -264,6 +207,20 @@ export function useAssetStatusHistoryQuery(uuid: string | null) {
     queryFn: async () => {
       const { data } = await apiClient.get<AssetStatusHistoryEntry[]>(
         `/api/v1/assets/${uuid}/status-history`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useAssetChildrenQuery(uuid: string | null) {
+  return useQuery({
+    queryKey: assetsQueryKeys.children(uuid ?? ''),
+    enabled: Boolean(uuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<AssetChild[]>(
+        `/api/v1/assets/${uuid}/children`,
         getAuthRequestConfig(),
       )
       return data

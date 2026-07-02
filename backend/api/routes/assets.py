@@ -29,9 +29,7 @@ from api.security import get_current_user, require_capability
 from constants import CAP_MANAGE_ASSETS, CAP_VIEW_FINANCIALS
 from models import User
 from schemas.assets import (
-    AssetCategoryCreateRequest,
-    AssetCategoryResponse,
-    AssetCategoryUpdateRequest,
+    AssetChildResponse,
     AssetCreateRequest,
     AssetFamilyCreateRequest,
     AssetFamilyResponse,
@@ -51,28 +49,24 @@ from schemas.assets import (
 )
 from services.assets import (
     create_asset,
-    create_asset_category,
     create_asset_family,
     create_flight_type,
     create_pricing_item,
-    delete_asset_category,
     delete_asset_family,
     delete_pricing_item,
     get_asset,
-    get_asset_category,
     get_asset_family,
     get_pricing_item,
     import_assets_from_csv,
-    list_asset_categories,
     list_asset_families,
     list_asset_status_history,
     list_assets,
+    list_child_assets,
     list_flight_types,
     list_pricing_items,
     lookup_pricing,
     transition_asset_status,
     update_asset,
-    update_asset_category,
     update_asset_family,
     update_flight_type,
     update_pricing_item,
@@ -84,63 +78,6 @@ logger = logging.getLogger(__name__)
 # Capability guards
 _manage_guard = Depends(require_capability(CAP_MANAGE_ASSETS))
 _view_guard = Depends(require_capability(CAP_VIEW_FINANCIALS))
-
-
-# ---------------------------------------------------------------------------
-# Asset Categories
-# ---------------------------------------------------------------------------
-
-@router.get("/categories", response_model=list[AssetCategoryResponse])
-async def list_asset_categories_endpoint(
-    active_only: bool = Query(default=False),
-    db: AsyncSession = Depends(get_db),
-    _: User = _view_guard,
-):
-    """List all asset categories."""
-    return await list_asset_categories(db, active_only=active_only)
-
-
-@router.post("/categories", response_model=AssetCategoryResponse, status_code=201)
-async def create_asset_category_endpoint(
-    request: AssetCategoryCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    _: User = _manage_guard,
-    current_user: User = Depends(get_current_user),
-):
-    """Create a new asset category."""
-    return await create_asset_category(db, request, user_id=current_user.id)
-
-
-@router.get("/categories/{category_uuid}", response_model=AssetCategoryResponse)
-async def get_asset_category_endpoint(
-    category_uuid: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = _view_guard,
-):
-    """Get a single asset category."""
-    return await get_asset_category(db, category_uuid)
-
-
-@router.patch("/categories/{category_uuid}", response_model=AssetCategoryResponse)
-async def update_asset_category_endpoint(
-    category_uuid: UUID,
-    request: AssetCategoryUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    _: User = _manage_guard,
-    current_user: User = Depends(get_current_user),
-):
-    """Update an asset category."""
-    return await update_asset_category(db, category_uuid, request, user_id=current_user.id)
-
-
-@router.delete("/categories/{category_uuid}", status_code=204)
-async def delete_asset_category_endpoint(
-    category_uuid: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = _manage_guard,
-):
-    """Delete an asset category. Rejected if any asset family still uses it."""
-    await delete_asset_category(db, category_uuid)
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +177,8 @@ async def update_flight_type_endpoint(
 @router.get("", response_model=list[AssetResponse])
 async def list_assets_endpoint(
     asset_family_uuid: Optional[UUID] = Query(default=None),
-    category_uuid: Optional[UUID] = Query(default=None),
+    parent_asset_uuid: Optional[UUID] = Query(default=None),
+    is_bookable: Optional[bool] = Query(default=None),
     status: Optional[int] = Query(default=None, ge=1, le=5),
     ownership: Optional[int] = Query(default=None, ge=1, le=2),
     active_only: bool = Query(default=False),
@@ -251,7 +189,8 @@ async def list_assets_endpoint(
     return await list_assets(
         db,
         asset_family_uuid=asset_family_uuid,
-        category_uuid=category_uuid,
+        parent_asset_uuid=parent_asset_uuid,
+        is_bookable=is_bookable,
         status=status,
         ownership=ownership,
         active_only=active_only,
@@ -311,6 +250,16 @@ async def list_asset_status_history_endpoint(
 ):
     """List the status change history for an asset."""
     return await list_asset_status_history(db, asset_uuid)
+
+
+@router.get("/{asset_uuid}/children", response_model=list[AssetChildResponse])
+async def list_asset_children_endpoint(
+    asset_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = _view_guard,
+):
+    """List the direct child assets (sub-components) of an asset."""
+    return await list_child_assets(db, asset_uuid)
 
 
 # ---------------------------------------------------------------------------

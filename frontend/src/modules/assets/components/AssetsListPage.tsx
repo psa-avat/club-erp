@@ -32,7 +32,6 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetsQuery,
-  useAssetCategoriesQuery,
   useAssetFamiliesQuery,
   useImportAssetsMutation,
   useTransitionAssetStatusMutation,
@@ -183,26 +182,26 @@ export function AssetsListPage() {
 
   const [filters, setFilters] = useState<AssetFilters>({ is_active: true })
   const [search, setSearch] = useState('')
+  const [showChildren, setShowChildren] = useState(false)
   const [transitionError, setTransitionError] = useState<string | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   const familiesQuery = useAssetFamiliesQuery(canView)
-  const categoriesQuery = useAssetCategoriesQuery(canView)
   const assetsQuery = useAssetsQuery(filters, canView)
   const importAssetsMutation = useImportAssetsMutation()
 
   const assets = assetsQuery.data ?? []
   const families = familiesQuery.data ?? []
-  const categories = categoriesQuery.data ?? []
 
   // Client-side name search (backend doesn't support text search for assets)
-  const filtered = search.trim()
+  const filtered = (search.trim()
     ? assets.filter(
         (a) =>
           a.name.toLowerCase().includes(search.toLowerCase()) ||
           a.code.toLowerCase().includes(search.toLowerCase()),
       )
     : assets
+  ).filter((a) => showChildren || !a.parent_asset_uuid)
 
   const sortedAssets = [...filtered].sort((a, b) => {
     if (a.ownership !== b.ownership) {
@@ -289,21 +288,18 @@ export function AssetsListPage() {
             </select>
           </div>
 
-          {/* Category filter */}
+          {/* Show sub-components toggle */}
           <div className="space-y-1">
-            <Label className="text-xs">{t('filters.category')}</Label>
-            <select
-              value={filters.category_uuid ?? ''}
-              onChange={(e) => setFilter('category_uuid', e.target.value || undefined)}
-              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
-            >
-              <option value="">{t('filters.allCategories')}</option>
-              {categories.map((category) => (
-                <option key={category.uuid} value={category.uuid}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+            <Label className="text-xs">{t('filters.subComponents')}</Label>
+            <label className="flex h-8 cursor-pointer items-center gap-2 text-xs text-on-surface-variant">
+              <input
+                type="checkbox"
+                checked={showChildren}
+                onChange={(e) => setShowChildren(e.target.checked)}
+                className="h-4 w-4 rounded border-outline"
+              />
+              {t('filters.showSubComponents')}
+            </label>
           </div>
 
           {/* Status filter */}
@@ -400,6 +396,11 @@ export function AssetsListPage() {
                   >
                     {asset.name}
                   </button>
+                  {asset.parent_asset_uuid && (
+                    <span className="ml-2 rounded-full bg-surface-container px-2 py-0.5 text-[10px] text-on-surface-variant">
+                      {t('list.subComponent')}
+                    </span>
+                  )}
                   <p className="truncate text-xs text-on-surface-variant">
                     {asset.code} · {assetFamilyLabel(asset)} ·{' '}
                     {ownershipLabel(asset.ownership, t)}

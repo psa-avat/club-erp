@@ -26,36 +26,40 @@ from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
-# Asset Category
+# Asset Family
 # ---------------------------------------------------------------------------
 
-class AssetCategoryCreateRequest(BaseModel):
+class AssetFamilyCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, max_length=255)
+    # 1=FlightHours 2=EngineTime 3=PerFlight 4=PerDuration 5=PerUnit 6=FlatRate
+    pricing_strategy: int = Field(ge=1, le=6, default=1)
     is_active: bool = True
+    is_priced: bool = Field(default=True, description="Whether this family is expected to carry a flight tariff (pricing_versions).")
     acquisition_account_uuid: Optional[UUID] = None
     depreciation_account_uuid: Optional[UUID] = None
     charge_account_uuid: Optional[UUID] = None
     revenue_account_uuid: Optional[UUID] = None
 
 
-class AssetCategoryUpdateRequest(BaseModel):
+class AssetFamilyUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    description: Optional[str] = Field(default=None, max_length=255)
+    pricing_strategy: Optional[int] = Field(default=None, ge=1, le=6)
     is_active: Optional[bool] = None
+    is_priced: Optional[bool] = None
     acquisition_account_uuid: Optional[UUID] = None
     depreciation_account_uuid: Optional[UUID] = None
     charge_account_uuid: Optional[UUID] = None
     revenue_account_uuid: Optional[UUID] = None
 
 
-class AssetCategoryResponse(BaseModel):
+class AssetFamilyResponse(BaseModel):
     uuid: UUID
     code: str
     name: str
-    description: Optional[str] = None
+    pricing_strategy: int
     is_active: bool
+    is_priced: bool
     acquisition_account_uuid: Optional[UUID] = None
     acquisition_account_code: Optional[str] = None
     depreciation_account_uuid: Optional[UUID] = None
@@ -64,42 +68,6 @@ class AssetCategoryResponse(BaseModel):
     charge_account_code: Optional[str] = None
     revenue_account_uuid: Optional[UUID] = None
     revenue_account_code: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-    updated_by: Optional[int] = None
-
-    class Config:
-        from_attributes = True
-
-
-# ---------------------------------------------------------------------------
-# Asset Family
-# ---------------------------------------------------------------------------
-
-class AssetFamilyCreateRequest(BaseModel):
-    code: str = Field(min_length=1, max_length=32)
-    name: str = Field(min_length=1, max_length=100)
-    category_uuid: UUID
-    # 1=FlightHours 2=EngineTime 3=PerFlight 4=PerDuration 5=PerUnit 6=FlatRate
-    pricing_strategy: int = Field(ge=1, le=6, default=1)
-    is_active: bool = True
-
-
-class AssetFamilyUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    category_uuid: Optional[UUID] = None
-    pricing_strategy: Optional[int] = Field(default=None, ge=1, le=6)
-    is_active: Optional[bool] = None
-
-
-class AssetFamilyResponse(BaseModel):
-    uuid: UUID
-    code: str
-    name: str
-    category_uuid: UUID
-    category: Optional[AssetCategoryResponse] = None
-    pricing_strategy: int
-    is_active: bool
     updated_at: datetime
 
     class Config:
@@ -144,6 +112,7 @@ class FlightTypeResponse(BaseModel):
 
 class AssetCreateRequest(BaseModel):
     asset_family_uuid: UUID
+    parent_asset_uuid: Optional[UUID] = Field(default=None, description="Parent asset for a sub-component (trailer, refit, engine). Parent must itself be a top-level asset (max depth 2).")
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=150)
     registration: Optional[str] = Field(default=None, max_length=32)
@@ -154,7 +123,11 @@ class AssetCreateRequest(BaseModel):
     # 1=Club, 2=Private
     ownership: int = Field(ge=1, le=2, default=1)
     owner_member_uuids: list[UUID] = Field(default_factory=list)
+    is_bookable: bool = Field(default=True, description="Whether this asset can appear in flight selection and is pushed to Planche.")
     acquisition_account_uuid: Optional[UUID] = None
+    depreciation_account_uuid: Optional[UUID] = None
+    charge_account_uuid: Optional[UUID] = None
+    revenue_account_uuid: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_price: Optional[Decimal] = Field(default=None, ge=0)
     depreciation_start_date: Optional[date] = None
@@ -173,6 +146,8 @@ class AssetCreateRequest(BaseModel):
 
 class AssetUpdateRequest(BaseModel):
     asset_family_uuid: Optional[UUID] = None
+    parent_asset_uuid: Optional[UUID] = None
+    clear_parent_asset: bool = Field(default=False, description="Set to true to detach this asset from its parent (clears parent_asset_uuid); required since a bare null is dropped by the partial-update semantics below.")
     name: Optional[str] = Field(default=None, min_length=1, max_length=150)
     registration: Optional[str] = Field(default=None, max_length=32)
     serial_number: Optional[str] = Field(default=None, max_length=100)
@@ -181,7 +156,11 @@ class AssetUpdateRequest(BaseModel):
     year_of_manufacture: Optional[int] = Field(default=None, ge=1900, le=2100)
     ownership: Optional[int] = Field(default=None, ge=1, le=2)
     owner_member_uuids: Optional[list[UUID]] = None
+    is_bookable: Optional[bool] = None
     acquisition_account_uuid: Optional[UUID] = None
+    depreciation_account_uuid: Optional[UUID] = None
+    charge_account_uuid: Optional[UUID] = None
+    revenue_account_uuid: Optional[UUID] = None
     purchase_date: Optional[date] = None
     purchase_price: Optional[Decimal] = Field(default=None, ge=0)
     depreciation_start_date: Optional[date] = None
@@ -220,9 +199,26 @@ class AssetOwnerResponse(BaseModel):
         from_attributes = True
 
 
+class AssetChildResponse(BaseModel):
+    """Minimal shape for an asset's children, used by GET /assets/{uuid}/children."""
+
+    uuid: UUID
+    code: str
+    name: str
+    purchase_price: Optional[Decimal] = None
+    status: int
+    is_bookable: bool
+
+    class Config:
+        from_attributes = True
+
+
 class AssetResponse(BaseModel):
     uuid: UUID
     asset_family_uuid: UUID
+    parent_asset_uuid: Optional[UUID] = None
+    parent_asset_code: Optional[str] = None
+    parent_asset_name: Optional[str] = None
     code: str
     name: str
     registration: Optional[str]
@@ -234,7 +230,21 @@ class AssetResponse(BaseModel):
     owner_member_uuids: list[UUID] = Field(default_factory=list)
     owner_members: list[AssetOwnerResponse] = Field(default_factory=list)
     status: int
+    is_bookable: bool
+    # Raw per-asset overrides (null = inherits the family default)
     acquisition_account_uuid: Optional[UUID]
+    depreciation_account_uuid: Optional[UUID] = None
+    charge_account_uuid: Optional[UUID] = None
+    revenue_account_uuid: Optional[UUID] = None
+    # Resolved accounts: asset override if set, else the family's default
+    effective_acquisition_account_uuid: Optional[UUID] = None
+    effective_acquisition_account_code: Optional[str] = None
+    effective_depreciation_account_uuid: Optional[UUID] = None
+    effective_depreciation_account_code: Optional[str] = None
+    effective_charge_account_uuid: Optional[UUID] = None
+    effective_charge_account_code: Optional[str] = None
+    effective_revenue_account_uuid: Optional[UUID] = None
+    effective_revenue_account_code: Optional[str] = None
     accounting_account_code_snapshot: Optional[str]
     purchase_date: Optional[date]
     purchase_price: Optional[Decimal]

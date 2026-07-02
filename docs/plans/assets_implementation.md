@@ -299,3 +299,31 @@ Frontend tests:
 7. A single asset type can be priced with multiple metrics in the same pricing version.
 8. Pricing items and cost provision rules use the same metric vocabulary.
 9. Asset type does not carry pricing behavior fields.
+
+## 13. 2026-07 Refactor: Category/Family Collapse & Asset Hierarchy
+
+This section is an addendum, not a rewrite — Phase 1 above still documents the original build decisions
+(including the Category/Family split introduced by migration 065), and this section documents what
+superseded it. See `docs/migrations/066_family_gl_accounts_and_asset_hierarchy.sql` for the schema change.
+
+**Why:** In practice every asset family mapped to exactly one category, so the extra level added a UI/data
+hop without adding flexibility. Meanwhile there was no way to model a "main machine" (e.g. a glider) with
+sub-components (trailer, gelcoat/paint refit, engine swap) that are distinct accounting items — different
+PCG account, different depreciation clock — while still belonging operationally to one asset.
+
+**What changed:**
+- `AssetCategory` is removed. Its 4 GL account columns (acquisition/depreciation/charge/revenue) moved
+  directly onto `AssetFamily` as defaults (1:1 data copy during migration, no data loss).
+- `AssetFamily.is_priced` (new): explicit flag for whether the family is expected to carry a flight tariff.
+  Most accounting-only families (trailers, refits, engines, ground vehicles, mower) are not priced.
+- `Asset.parent_asset_uuid` (new): self-referential FK, strictly 2 levels deep, enforced in
+  `services/assets.py::_validate_parent_asset_uuid`.
+- `Asset.is_bookable` (new): whether the asset can appear in flight selection / gets pushed to Planche.
+  Sub-components are typically non-bookable.
+- `Asset.depreciation_account_uuid` / `charge_account_uuid` / `revenue_account_uuid` (new): per-asset GL
+  overrides mirroring the existing `acquisition_account_uuid`, falling back to the family default when null.
+- CSV bulk import gained optional `parent_asset_code` and `is_bookable` columns (§14 of SPEC_ASSETS.md).
+
+Pricing (`PricingVersion`/`PricingItem`) is unchanged — still scoped by `asset_family_uuid`, unaffected by
+this refactor. Depreciation *calculation/posting* (Phase 3 above) remains unimplemented; unrelated to this
+change other than the account column move.

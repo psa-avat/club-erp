@@ -1,5 +1,5 @@
-code,name,asset_type_code,ownership,owner_account_ids,status,year_of_manufacture,purchase_price,residual_value,purchase_date,depreciation_years,useful_life_years,registration,serial_number
-F-CFAA,ASK-21 F-CFAA,BIMO,1,,1,2005,45000.00,5000.00,2005-06-01,20,25,F-CFAA,21-123
-F-CGBB,LS-8 F-CGBB,MONO,1,,1,2010,52000.00,8000.00,2010-09-15,20,30,F-CGBB,LS8-456
-F-PRIV1,Discus privé copropriété,MONO,2,ME2026-0001;ME2026-0002,1,2012,48000.00,7000.00,2012-04-10,20,25,F-PRIV1,DISC-234
-F-REMORQ,Remorqueur PA-18,REMORQ,1,,1,1998,38000.00,3000.00,1998-03-20,15,20,F-REMORQ,PA18-789
+code,name,asset_family_code,ownership,owner_account_ids,status,year_of_manufacture,purchase_price,residual_value,purchase_date,depreciation_years,useful_life_years,registration,serial_number,parent_asset_code,is_bookable
+F-CFAA,ASK-21 F-CFAA,BIMO,1,,1,2005,45000.00,5000.00,2005-06-01,20,25,F-CFAA,21-123,,1
+F-CGBB,LS-8 F-CGBB,MONO,1,,1,2010,52000.00,8000.00,2010-09-15,20,30,F-CGBB,LS8-456,,1
+F-PRIV1,Discus privé copropriété,MONO,2,ME2026-0001;ME2026-0002,1,2012,48000.00,7000.00,2012-04-10,20,25,F-PRIV1,DISC-234,,1
+F-REMORQ,Remorqueur PA-18,REMORQ,1,,1,1998,38000.00,3000.00,1998-03-20,15,20,F-REMORQ,PA18-789,,1

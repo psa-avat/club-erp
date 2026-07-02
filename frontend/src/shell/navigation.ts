@@ -135,7 +135,6 @@ export const shellNavItems: ShellNavItem[] = [
     children: [
       { to: '/workspace/machines', labelKey: 'nav.equipment', requiredCapability: 'MANAGE_ASSETS' },
       { to: '/workspace/machines?tab=families', labelKey: 'nav.assetFamilies', requiredCapability: 'MANAGE_ASSETS' },
-      { to: '/workspace/machines?tab=categories', labelKey: 'nav.assetCategories', requiredCapability: 'MANAGE_ASSETS' },
       { to: '/planche/machines-push', labelKey: 'nav.plancheMachinesPush', requiredCapability: 'MANAGE_PLANCHE' },
     ],
   },

@@ -32,11 +32,12 @@ import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
   useAssetQuery,
+  useAssetChildrenQuery,
   useAssetStatusHistoryQuery,
   useAssetFamiliesQuery,
   useTransitionAssetStatusMutation,
 } from '../api'
-import type { AssetStatusHistoryEntry } from '../types'
+import type { AssetChild, AssetStatusHistoryEntry } from '../types'
 
 // �"?�"? Constants �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 
@@ -85,6 +86,17 @@ function extractError(e: unknown, fallback: string): string {
     return String(e.response.data.detail)
   }
   return fallback
+}
+
+/** Effective account code with an "inherited from family" vs "custom override" tag. */
+function accountLabel(
+  effectiveCode: string | null,
+  rawOverride: string | null,
+  t: (k: string) => string,
+): string | null {
+  if (!effectiveCode) return null
+  const tag = rawOverride ? t('detail.customOverride') : t('detail.inherited')
+  return `${effectiveCode} (${tag})`
 }
 
 // �"?�"? Status Timeline �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
@@ -249,7 +261,81 @@ function DepreciationSummary({
   )
 }
 
-// �"?�"? Main Component �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+// ── Child Assets (sub-components) ──────────────────────────────────────────────
+
+function ChildAssetsCard({
+  parentUuid,
+  parentPurchasePrice,
+  canManage,
+  navigate,
+  t,
+}: {
+  parentUuid: string
+  parentPurchasePrice: string | null
+  canManage: boolean
+  navigate: (path: string) => void
+  t: (k: string, opts?: Record<string, unknown>) => string
+}) {
+  const childrenQuery = useAssetChildrenQuery(parentUuid)
+  const children: AssetChild[] = childrenQuery.data ?? []
+
+  let total: string | null = null
+  try {
+    if (children.length > 0) {
+      const sum = children.reduce(
+        (acc, child) => acc.plus(new Decimal(child.purchase_price ?? 0)),
+        new Decimal(parentPurchasePrice ?? 0),
+      )
+      total = sum.toFixed(2)
+    }
+  } catch {
+    // non-critical: skip rollup on invalid decimals
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{t('detail.childAssets')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {children.length === 0 ? (
+          <p className="text-xs text-on-surface-variant">{t('detail.noChildAssets')}</p>
+        ) : (
+          <div className="space-y-0.5">
+            {children.map((child) => (
+              <div
+                key={child.uuid}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/assets/${child.uuid}`)}
+                className="flex cursor-pointer justify-between gap-2 border-b border-outline-variant py-1.5 text-xs last:border-0 hover:text-primary"
+              >
+                <span className="font-mono text-on-surface-variant">{child.code}</span>
+                <span className="truncate text-on-surface">{child.name}</span>
+                <span className="text-on-surface-variant">{formatDecimal(child.purchase_price)}</span>
+              </div>
+            ))}
+            {total !== null && (
+              <InfoRow label={t('detail.totalPurchasePrice')} value={total} />
+            )}
+          </div>
+        )}
+        {canManage && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mt-3"
+            onClick={() => navigate(`/assets/new?parent=${parentUuid}`)}
+          >
+            {t('detail.addChildAsset')}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Main Component ──────────────────────────────────────────────────────────────
 
 export function AssetDetailPage() {
   const { t } = useTranslation('assets')
@@ -316,6 +402,15 @@ export function AssetDetailPage() {
             </button>
             <h1 className="text-xl font-semibold text-on-surface">{asset.name}</h1>
             <p className="mt-0.5 text-sm text-on-surface-variant">{asset.code}</p>
+            {asset.parent_asset_uuid && (
+              <button
+                type="button"
+                className="mt-1 text-xs text-primary hover:underline"
+                onClick={() => navigate(`/assets/${asset.parent_asset_uuid}`)}
+              >
+                {t('detail.parentAssetLink', { name: asset.parent_asset_name ?? asset.parent_asset_code })}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${currentStatusColor}`}>
@@ -414,7 +509,19 @@ export function AssetDetailPage() {
             <div className="space-y-0.5">
               <InfoRow
                 label={t('form.acquisitionAccountUuid')}
-                value={asset.acquisition_account_uuid}
+                value={accountLabel(asset.effective_acquisition_account_code, asset.acquisition_account_uuid, t)}
+              />
+              <InfoRow
+                label={t('form.depreciationAccountUuid')}
+                value={accountLabel(asset.effective_depreciation_account_code, asset.depreciation_account_uuid, t)}
+              />
+              <InfoRow
+                label={t('form.chargeAccountUuid')}
+                value={accountLabel(asset.effective_charge_account_code, asset.charge_account_uuid, t)}
+              />
+              <InfoRow
+                label={t('form.revenueAccountUuid')}
+                value={accountLabel(asset.effective_revenue_account_code, asset.revenue_account_uuid, t)}
               />
               <InfoRow
                 label={t('detail.accountCodeSnapshot')}
@@ -424,6 +531,17 @@ export function AssetDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sub-components (children) — only root assets (no parent) can have children */}
+      {!asset.parent_asset_uuid && (
+        <ChildAssetsCard
+          parentUuid={asset.uuid}
+          parentPurchasePrice={asset.purchase_price}
+          canManage={canManage}
+          navigate={navigate}
+          t={t}
+        />
+      )}
 
       {/* Lifecycle / status transitions */}
       {canManage && (

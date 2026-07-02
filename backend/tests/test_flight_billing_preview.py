@@ -18,6 +18,7 @@ if "httpx" not in sys.modules:
     httpx_stub.TimeoutException = TimeoutError
     httpx_stub.NetworkError = OSError
     httpx_stub.RequestError = OSError
+    httpx_stub.Auth = object  # services.gesasso_client.WsseAuth subclasses this
     sys.modules["httpx"] = httpx_stub
 
 if "aioboto3" not in sys.modules:
@@ -248,6 +249,24 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         self.assertFalse(any(warn.code == "pricing_global_fallback" for warn in warnings))
         service.db.execute.assert_awaited_once()
 
+    async def test_resolve_asset_query_filters_non_bookable(self):
+        _member, asset, *_ = self._objects()
+        service = FlightBillingPreviewService(AsyncMock())
+        captured = {}
+
+        async def fake_execute(stmt):
+            captured["stmt"] = stmt
+            return types.SimpleNamespace(scalars=lambda: types.SimpleNamespace(first=lambda: None))
+
+        service.db.execute = fake_execute
+
+        result = await service._resolve_asset(asset.code)
+
+        # A non-bookable sub-component (trailer, refit) must never resolve here — the
+        # query itself must filter on is_bookable, so this asserts the filter is present
+        # regardless of what the (mocked) database would actually return.
+        self.assertIsNone(result)
+        self.assertIn("is_bookable", str(captured["stmt"]))
 
 
 class FlightBillingPreviewRouteTests(TestCase):

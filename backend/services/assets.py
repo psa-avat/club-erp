@@ -28,11 +28,9 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetFamily, AssetCategory, CostProvisionRule, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
+from models import Asset, AssetPrivateOwner, AssetStatusHistory, AssetFamily, CostProvisionRule, FlightType, AccountingAccount, Member, PricingItem, PricingVersion
 from schemas.assets import (
-    AssetCategoryCreateRequest,
-    AssetCategoryResponse,
-    AssetCategoryUpdateRequest,
+    AssetChildResponse,
     AssetCreateRequest,
     AssetOwnerResponse,
     AssetResponse,
@@ -52,12 +50,12 @@ from schemas.assets import (
 logger = logging.getLogger(__name__)
 
 
-def _category_account_options():
+def _family_account_options():
     return (
-        selectinload(AssetCategory.acquisition_account),
-        selectinload(AssetCategory.depreciation_account),
-        selectinload(AssetCategory.charge_account),
-        selectinload(AssetCategory.revenue_account),
+        selectinload(AssetFamily.acquisition_account),
+        selectinload(AssetFamily.depreciation_account),
+        selectinload(AssetFamily.charge_account),
+        selectinload(AssetFamily.revenue_account),
     )
 
 
@@ -65,10 +63,15 @@ def _asset_query():
     return select(Asset).options(
         selectinload(Asset.private_owner_links).selectinload(AssetPrivateOwner.member),
         selectinload(Asset.asset_family).selectinload(AssetFamily.pricing_versions),
-        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.acquisition_account),
-        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.depreciation_account),
-        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.charge_account),
-        selectinload(Asset.asset_family).selectinload(AssetFamily.category).selectinload(AssetCategory.revenue_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.acquisition_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.depreciation_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.charge_account),
+        selectinload(Asset.asset_family).selectinload(AssetFamily.revenue_account),
+        selectinload(Asset.acquisition_account),
+        selectinload(Asset.depreciation_account),
+        selectinload(Asset.charge_account),
+        selectinload(Asset.revenue_account),
+        selectinload(Asset.parent_asset),
     )
 
 
@@ -126,20 +129,41 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
     ]
     owner_member_uuids = [owner.uuid for owner in owner_members]
 
-    category_response = (
-        AssetCategoryResponse.model_validate(asset.asset_family.category)
-        if asset.asset_family.category is not None
-        else None
-    )
+    family = asset.asset_family
     asset_family = AssetFamilyResponse(
-        uuid=asset.asset_family.uuid,
-        code=asset.asset_family.code,
-        name=asset.asset_family.name,
-        category_uuid=asset.asset_family.category_uuid,
-        category=category_response,
-        pricing_strategy=asset.asset_family.pricing_strategy,
-        is_active=asset.asset_family.is_active,
-        updated_at=asset.asset_family.updated_at,
+        uuid=family.uuid,
+        code=family.code,
+        name=family.name,
+        pricing_strategy=family.pricing_strategy,
+        is_active=family.is_active,
+        is_priced=family.is_priced,
+        acquisition_account_uuid=family.acquisition_account_uuid,
+        acquisition_account_code=family.acquisition_account_code,
+        depreciation_account_uuid=family.depreciation_account_uuid,
+        depreciation_account_code=family.depreciation_account_code,
+        charge_account_uuid=family.charge_account_uuid,
+        charge_account_code=family.charge_account_code,
+        revenue_account_uuid=family.revenue_account_uuid,
+        revenue_account_code=family.revenue_account_code,
+        updated_at=family.updated_at,
+    )
+
+    def _effective_account(asset_uuid, asset_account, family_uuid, family_account):
+        if asset_uuid is not None:
+            return asset_uuid, (asset_account.code if asset_account else None)
+        return family_uuid, (family_account.code if family_account else None)
+
+    eff_acq_uuid, eff_acq_code = _effective_account(
+        asset.acquisition_account_uuid, asset.acquisition_account, family.acquisition_account_uuid, family.acquisition_account
+    )
+    eff_dep_uuid, eff_dep_code = _effective_account(
+        asset.depreciation_account_uuid, asset.depreciation_account, family.depreciation_account_uuid, family.depreciation_account
+    )
+    eff_chg_uuid, eff_chg_code = _effective_account(
+        asset.charge_account_uuid, asset.charge_account, family.charge_account_uuid, family.charge_account
+    )
+    eff_rev_uuid, eff_rev_code = _effective_account(
+        asset.revenue_account_uuid, asset.revenue_account, family.revenue_account_uuid, family.revenue_account
     )
 
     current_price_version = None
@@ -164,6 +188,9 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
     return AssetResponse(
         uuid=asset.uuid,
         asset_family_uuid=asset.asset_family_uuid,
+        parent_asset_uuid=asset.parent_asset_uuid,
+        parent_asset_code=asset.parent_asset.code if asset.parent_asset else None,
+        parent_asset_name=asset.parent_asset.name if asset.parent_asset else None,
         code=asset.code,
         name=asset.name,
         registration=asset.registration,
@@ -175,7 +202,19 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         owner_member_uuids=owner_member_uuids,
         owner_members=owner_members,
         status=asset.status,
+        is_bookable=asset.is_bookable,
         acquisition_account_uuid=asset.acquisition_account_uuid,
+        depreciation_account_uuid=asset.depreciation_account_uuid,
+        charge_account_uuid=asset.charge_account_uuid,
+        revenue_account_uuid=asset.revenue_account_uuid,
+        effective_acquisition_account_uuid=eff_acq_uuid,
+        effective_acquisition_account_code=eff_acq_code,
+        effective_depreciation_account_uuid=eff_dep_uuid,
+        effective_depreciation_account_code=eff_dep_code,
+        effective_charge_account_uuid=eff_chg_uuid,
+        effective_charge_account_code=eff_chg_code,
+        effective_revenue_account_uuid=eff_rev_uuid,
+        effective_revenue_account_code=eff_rev_code,
         accounting_account_code_snapshot=asset.accounting_account_code_snapshot,
         purchase_date=asset.purchase_date,
         purchase_price=asset.purchase_price,
@@ -239,76 +278,32 @@ ASSET_STATUS_LABELS = {
 
 
 # ---------------------------------------------------------------------------
-# Asset Categories
-# ---------------------------------------------------------------------------
-
-async def list_asset_categories(db: AsyncSession, *, active_only: bool = False) -> list[AssetCategory]:
-    stmt = select(AssetCategory).options(*_category_account_options()).order_by(AssetCategory.code)
-    if active_only:
-        stmt = stmt.where(AssetCategory.is_active.is_(True))
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
-async def get_asset_category(db: AsyncSession, category_uuid: UUID) -> AssetCategory:
-    result = await db.execute(
-        select(AssetCategory).options(*_category_account_options()).where(AssetCategory.uuid == category_uuid)
-    )
-    obj = result.scalar_one_or_none()
-    if obj is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset category not found.")
-    return obj
-
-
-async def create_asset_category(db: AsyncSession, request: AssetCategoryCreateRequest, user_id: int) -> AssetCategory:
-    existing = await db.execute(select(AssetCategory).where(AssetCategory.code == request.code))
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Asset category code {request.code!r} already exists.")
-
-    obj = AssetCategory(**request.model_dump(), updated_by=user_id)
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    logger.info("Created asset category code=%s uuid=%s", obj.code, obj.uuid)
-    return await get_asset_category(db, obj.uuid)
-
-
-async def update_asset_category(
-    db: AsyncSession, category_uuid: UUID, request: AssetCategoryUpdateRequest, user_id: int,
-) -> AssetCategory:
-    obj = await get_asset_category(db, category_uuid)
-    for field, value in request.model_dump(exclude_none=True).items():
-        setattr(obj, field, value)
-    obj.updated_by = user_id
-    await db.commit()
-    await db.refresh(obj)
-    return await get_asset_category(db, category_uuid)
-
-
-async def delete_asset_category(db: AsyncSession, category_uuid: UUID) -> None:
-    obj = await get_asset_category(db, category_uuid)
-
-    in_use = await db.execute(
-        select(AssetFamily.uuid).where(AssetFamily.category_uuid == category_uuid).limit(1)
-    )
-    if in_use.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete a category that is still assigned to an asset family.",
-        )
-
-    await db.delete(obj)
-    await db.commit()
-
-
-# ---------------------------------------------------------------------------
 # Asset Families
 # ---------------------------------------------------------------------------
 
+async def _assert_accounting_account_exists(db: AsyncSession, account_uuid: UUID) -> str:
+    """Return account code snapshot or raise 422 if not found. (Also used by asset validation below.)"""
+    result = await db.execute(
+        select(AccountingAccount.code).where(AccountingAccount.uuid == account_uuid)
+    )
+    code = result.scalar_one_or_none()
+    if code is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Accounting account {account_uuid} not found.",
+        )
+    return code
+
+
+async def _assert_family_gl_accounts_exist(db: AsyncSession, data: dict) -> None:
+    for field in ("acquisition_account_uuid", "depreciation_account_uuid", "charge_account_uuid", "revenue_account_uuid"):
+        value = data.get(field)
+        if value is not None:
+            await _assert_accounting_account_exists(db, value)
+
+
 async def list_asset_families(db: AsyncSession, *, active_only: bool = False) -> list[AssetFamily]:
-    stmt = select(AssetFamily).options(
-        selectinload(AssetFamily.category).options(*_category_account_options()),
-    ).order_by(AssetFamily.code)
+    stmt = select(AssetFamily).options(*_family_account_options()).order_by(AssetFamily.code)
     if active_only:
         stmt = stmt.where(AssetFamily.is_active.is_(True))
     result = await db.execute(stmt)
@@ -318,7 +313,7 @@ async def list_asset_families(db: AsyncSession, *, active_only: bool = False) ->
 async def get_asset_family(db: AsyncSession, asset_family_uuid: UUID) -> AssetFamily:
     result = await db.execute(
         select(AssetFamily)
-        .options(selectinload(AssetFamily.category).options(*_category_account_options()))
+        .options(*_family_account_options())
         .where(AssetFamily.uuid == asset_family_uuid)
     )
     obj = result.scalar_one_or_none()
@@ -331,9 +326,11 @@ async def create_asset_family(db: AsyncSession, request: AssetFamilyCreateReques
     existing = await db.execute(select(AssetFamily).where(AssetFamily.code == request.code))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Asset family code {request.code!r} already exists.")
-    await get_asset_category(db, request.category_uuid)
 
-    obj = AssetFamily(**request.model_dump())
+    data = request.model_dump()
+    await _assert_family_gl_accounts_exist(db, data)
+
+    obj = AssetFamily(**data)
     db.add(obj)
     await db.commit()
     await db.refresh(obj)
@@ -344,8 +341,7 @@ async def create_asset_family(db: AsyncSession, request: AssetFamilyCreateReques
 async def update_asset_family(db: AsyncSession, asset_family_uuid: UUID, request: AssetFamilyUpdateRequest) -> AssetFamily:
     obj = await get_asset_family(db, asset_family_uuid)
     data = request.model_dump(exclude_none=True)
-    if "category_uuid" in data:
-        await get_asset_category(db, data["category_uuid"])
+    await _assert_family_gl_accounts_exist(db, data)
     for field, value in data.items():
         setattr(obj, field, value)
     await db.commit()
@@ -440,19 +436,6 @@ async def update_flight_type(db: AsyncSession, flight_type_uuid: UUID, request: 
 # Assets
 # ---------------------------------------------------------------------------
 
-async def _assert_accounting_account_exists(db: AsyncSession, account_uuid: UUID) -> str:
-    """Return account code snapshot or raise 422 if not found."""
-    result = await db.execute(
-        select(AccountingAccount.code).where(AccountingAccount.uuid == account_uuid)
-    )
-    code = result.scalar_one_or_none()
-    if code is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Accounting account {account_uuid} not found.",
-        )
-    return code
-
 async def _assert_owner_member_exists(db: AsyncSession, member_uuid: UUID) -> None:
     result = await db.execute(select(Member.uuid).where(Member.uuid == member_uuid))
     if result.scalar_one_or_none() is None:
@@ -466,7 +449,8 @@ async def list_assets(
     db: AsyncSession,
     *,
     asset_family_uuid: UUID | None = None,
-    category_uuid: UUID | None = None,
+    parent_asset_uuid: UUID | None = None,
+    is_bookable: bool | None = None,
     status: int | None = None,
     ownership: int | None = None,
     active_only: bool = False,
@@ -474,10 +458,10 @@ async def list_assets(
     stmt = _asset_query().order_by(Asset.code)
     if asset_family_uuid is not None:
         stmt = stmt.where(Asset.asset_family_uuid == asset_family_uuid)
-    if category_uuid is not None:
-        stmt = stmt.join(AssetFamily, Asset.asset_family_uuid == AssetFamily.uuid).where(
-            AssetFamily.category_uuid == category_uuid
-        )
+    if parent_asset_uuid is not None:
+        stmt = stmt.where(Asset.parent_asset_uuid == parent_asset_uuid)
+    if is_bookable is not None:
+        stmt = stmt.where(Asset.is_bookable == is_bookable)
     if status is not None:
         stmt = stmt.where(Asset.status == status)
     if ownership is not None:
@@ -501,6 +485,46 @@ async def get_asset(db: AsyncSession, asset_uuid: UUID) -> AssetResponse:
     return _serialize_asset(obj)
 
 
+async def list_child_assets(db: AsyncSession, parent_asset_uuid: UUID) -> list[AssetChildResponse]:
+    result = await db.execute(
+        select(Asset).where(Asset.parent_asset_uuid == parent_asset_uuid).order_by(Asset.code)
+    )
+    return [AssetChildResponse.model_validate(child) for child in result.scalars().all()]
+
+
+async def _validate_parent_asset_uuid(db: AsyncSession, parent_asset_uuid: UUID, *, self_uuid: UUID | None = None) -> None:
+    """Enforce a strict 2-level asset hierarchy: no self-reference, no grandchildren."""
+    if self_uuid is not None and parent_asset_uuid == self_uuid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An asset cannot be its own parent.")
+
+    parent_result = await db.execute(select(Asset.parent_asset_uuid).where(Asset.uuid == parent_asset_uuid))
+    parent_row = parent_result.first()
+    if parent_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent asset not found.")
+    if parent_row[0] is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot attach a child asset to an asset that is itself a child (maximum 2-level hierarchy).",
+        )
+
+    if self_uuid is not None:
+        has_children = await db.execute(
+            select(Asset.uuid).where(Asset.parent_asset_uuid == self_uuid).limit(1)
+        )
+        if has_children.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot make this asset a child: it already has child assets of its own.",
+            )
+
+
+async def _assert_asset_gl_accounts_exist(db: AsyncSession, data: dict) -> None:
+    for field in ("depreciation_account_uuid", "charge_account_uuid", "revenue_account_uuid"):
+        value = data.get(field)
+        if value is not None:
+            await _assert_accounting_account_exists(db, value)
+
+
 async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: int) -> AssetResponse:
     # Validate asset family exists
     await get_asset_family(db, request.asset_family_uuid)
@@ -519,6 +543,10 @@ async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: i
                 detail=f"Registration {request.registration!r} already used by another asset.",
             )
 
+    # Parent asset validation (max 2-level hierarchy)
+    if request.parent_asset_uuid is not None:
+        await _validate_parent_asset_uuid(db, request.parent_asset_uuid)
+
     owner_member_uuids = _normalize_owner_member_uuids(request.owner_member_uuids)
     if request.ownership == 2:
         await _assert_owner_members_exist(db, owner_member_uuids)
@@ -527,6 +555,9 @@ async def create_asset(db: AsyncSession, request: AssetCreateRequest, user_id: i
     account_snapshot: str | None = None
     if request.acquisition_account_uuid:
         account_snapshot = await _assert_accounting_account_exists(db, request.acquisition_account_uuid)
+
+    # Validate the 3 other GL account overrides, if provided
+    await _assert_asset_gl_accounts_exist(db, request.model_dump())
 
     payload = request.model_dump(exclude={"owner_member_uuids"})
     obj = Asset(
@@ -560,10 +591,20 @@ async def update_asset(db: AsyncSession, asset_uuid: UUID, request: AssetUpdateR
     obj = await _get_asset_model(db, asset_uuid)
 
     data = request.model_dump(exclude_none=True)
+    data.pop("clear_parent_asset", None)
 
     # Validate asset family when changed
     if "asset_family_uuid" in data and data["asset_family_uuid"] != obj.asset_family_uuid:
         await get_asset_family(db, data["asset_family_uuid"])
+
+    # Parent asset validation (max 2-level hierarchy), including explicit detach
+    if request.clear_parent_asset:
+        data["parent_asset_uuid"] = None
+    elif "parent_asset_uuid" in data and data["parent_asset_uuid"] != obj.parent_asset_uuid:
+        await _validate_parent_asset_uuid(db, data["parent_asset_uuid"], self_uuid=asset_uuid)
+
+    # Validate the 3 GL account overrides, if being changed
+    await _assert_asset_gl_accounts_exist(db, data)
 
     # Validate owner member if ownership being set to private
     new_ownership = data.get("ownership", obj.ownership)
@@ -874,6 +915,11 @@ _ASSET_STATUS_MAP: dict[str, int] = {
     "5": 5, "sold": 5, "vendu": 5,
 }
 
+_ASSET_BOOKABLE_MAP: dict[str, bool] = {
+    "1": True, "true": True, "yes": True, "oui": True,
+    "0": False, "false": False, "no": False, "non": False,
+}
+
 
 async def import_assets_from_csv(
     db: AsyncSession,
@@ -883,7 +929,10 @@ async def import_assets_from_csv(
 ) -> ImportResultResponse:
     """Parse a CSV file and bulk-create assets, collecting per-row errors.
 
-    Asset families are resolved by their `code` column (case-insensitive).
+    Asset families are resolved by their `code` column (case-insensitive). A row's optional
+    `parent_asset_code` is resolved against assets that already exist in the database — parent
+    assets must be imported (or created) before their children; a CSV cannot create a parent and
+    its child in the same run.
     Rows with errors are skipped; valid rows are committed individually.
     """
     errors: list[ImportRowError] = []
@@ -911,6 +960,12 @@ async def import_assets_from_csv(
     af_rows = (await db.execute(select(AssetFamily.code, AssetFamily.uuid))).all()
     asset_family_map: dict[str, str] = {r[0].lower(): str(r[1]) for r in af_rows}
 
+    # Pre-fetch existing asset code → uuid map, for resolving parent_asset_code. Parents must
+    # already exist in the DB — this map is not refreshed mid-loop, so a CSV cannot create a
+    # parent and its child in the same run.
+    asset_rows = (await db.execute(select(Asset.code, Asset.uuid))).all()
+    asset_code_map: dict[str, str] = {r[0].lower(): str(r[1]) for r in asset_rows}
+
     for row_index, raw in enumerate(reader, start=2):
         row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
 
@@ -933,6 +988,24 @@ async def import_assets_from_csv(
 
         from uuid import UUID as _UUID
         asset_family_uuid = _UUID(asset_family_map[raw_af_code])
+
+        parent_asset_uuid = None
+        raw_parent_code = row.get("parent_asset_code", "").lower()
+        if raw_parent_code:
+            if raw_parent_code not in asset_code_map:
+                errors.append(
+                    ImportRowError(
+                        row=row_index,
+                        field="parent_asset_code",
+                        message=f"Unknown parent asset code {raw_parent_code!r} — parent assets must be imported before their children.",
+                    )
+                )
+                skipped += 1
+                continue
+            parent_asset_uuid = _UUID(asset_code_map[raw_parent_code])
+
+        raw_bookable = row.get("is_bookable", "")
+        is_bookable = _ASSET_BOOKABLE_MAP.get(raw_bookable.lower(), True) if raw_bookable else True
 
         raw_ownership = row.get("ownership", "club").lower()
         ownership = _ASSET_OWNERSHIP_MAP.get(raw_ownership, 1)
@@ -1057,6 +1130,8 @@ async def import_assets_from_csv(
 
         request = AssetCreateRequest(
             asset_family_uuid=asset_family_uuid,
+            parent_asset_uuid=parent_asset_uuid,
+            is_bookable=is_bookable,
             code=code,
             name=name,
             registration=row.get("registration", "") or None,

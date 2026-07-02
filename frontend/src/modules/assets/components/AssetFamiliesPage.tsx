@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - Asset families management: list, create and edit asset families with flight types
+    - Asset families management: list, create and edit asset families, configure their 4 GL accounts
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -38,14 +38,14 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog'
 import { useCapability } from '../../../auth/hooks/useCapability'
+import { useAccountsQuery } from '../../banque/api'
 import {
-  useAssetCategoriesQuery,
   useAssetFamiliesQuery,
   useCreateAssetFamilyMutation,
   useDeleteAssetFamilyMutation,
   useUpdateAssetFamilyMutation,
 } from '../api'
-import type { AssetCategory, AssetFamily, CreateAssetFamilyPayload } from '../types'
+import type { AssetFamily, CreateAssetFamilyPayload } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,35 +56,52 @@ function extractError(e: unknown, fallback: string): string {
   return fallback
 }
 
+function accountOptions(accounts: ReturnType<typeof useAccountsQuery>['data'], prefix: string) {
+  return (accounts ?? [])
+    .filter((a) => a.is_posting_allowed && a.code.startsWith(prefix))
+    .map((a) => ({ value: a.uuid, label: `${a.code} — ${a.name}` }))
+}
+
 // ── Asset Family Form ─────────────────────────────────────────────────────────
 
 type FamilyFormState = {
   code: string
   name: string
-  category_uuid: string
   is_active: boolean
+  is_priced: boolean
+  acquisition_account_uuid: string
+  depreciation_account_uuid: string
+  charge_account_uuid: string
+  revenue_account_uuid: string
 }
 
 const EMPTY_FORM: FamilyFormState = {
   code: '',
   name: '',
-  category_uuid: '',
   is_active: true,
+  is_priced: true,
+  acquisition_account_uuid: '',
+  depreciation_account_uuid: '',
+  charge_account_uuid: '',
+  revenue_account_uuid: '',
 }
 
 function familyToForm(af: AssetFamily): FamilyFormState {
   return {
     code: af.code,
     name: af.name,
-    category_uuid: af.category_uuid,
     is_active: af.is_active,
+    is_priced: af.is_priced,
+    acquisition_account_uuid: af.acquisition_account_uuid ?? '',
+    depreciation_account_uuid: af.depreciation_account_uuid ?? '',
+    charge_account_uuid: af.charge_account_uuid ?? '',
+    revenue_account_uuid: af.revenue_account_uuid ?? '',
   }
 }
 
 function FamilyForm({
   initial,
   isEdit,
-  categories,
   saving,
   error,
   onSave,
@@ -93,7 +110,6 @@ function FamilyForm({
 }: {
   initial: FamilyFormState
   isEdit: boolean
-  categories: AssetCategory[]
   saving: boolean
   error: string | null
   onSave: (f: FamilyFormState) => void
@@ -101,16 +117,22 @@ function FamilyForm({
   t: (k: string) => string
 }) {
   const [form, setForm] = useState<FamilyFormState>(initial)
+  const accountsQuery = useAccountsQuery()
 
   function set<K extends keyof FamilyFormState>(key: K, value: FamilyFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const valid = form.code.trim() !== '' && form.name.trim() !== '' && form.category_uuid !== ''
+  const valid = form.code.trim() !== '' && form.name.trim() !== ''
+
+  const acquisitionOpts = accountOptions(accountsQuery.data, '2')
+  const depreciationOpts = accountOptions(accountsQuery.data, '28')
+  const chargeOpts = accountOptions(accountsQuery.data, '6')
+  const revenueOpts = accountOptions(accountsQuery.data, '7')
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+    <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="grid gap-3 sm:grid-cols-2">
         {/* Code — readonly when editing */}
         <div className="space-y-1">
           <Label className="text-xs">{t('assetFamilies.code')} *</Label>
@@ -132,29 +154,77 @@ function FamilyForm({
             className="h-8 text-sm"
           />
         </div>
-
-        {/* Category */}
-        <div className="space-y-1">
-          <Label className="text-xs">{t('assetFamilies.category')} *</Label>
-          <SearchableSelect
-            options={categories.map((c) => ({ value: c.uuid, label: c.name }))}
-            value={form.category_uuid || undefined}
-            onChange={(val) => set('category_uuid', val ?? '')}
-            placeholder={t('assetFamilies.categoryPlaceholder')}
-          />
-        </div>
       </div>
 
-      {/* Active toggle */}
-      <label className="flex cursor-pointer items-center gap-2 text-xs">
-        <input
-          type="checkbox"
-          checked={form.is_active}
-          onChange={(e) => set('is_active', e.target.checked)}
-          className="h-4 w-4 rounded border-slate-300"
-        />
-        {t('assetFamilies.active')}
-      </label>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => set('is_active', e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          {t('assetFamilies.active')}
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={form.is_priced}
+            onChange={(e) => set('is_priced', e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          {t('assetFamilies.isPriced')}
+        </label>
+      </div>
+      <p className="text-xs text-slate-500">{t('assetFamilies.isPricedHint')}</p>
+
+      <div className="space-y-3 border-t border-outline-variant pt-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {t('assetFamilies.accountsSectionTitle')}
+        </h4>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs">{t('assetFamilies.acquisitionAccount')}</Label>
+            <SearchableSelect
+              options={acquisitionOpts}
+              value={form.acquisition_account_uuid || undefined}
+              onChange={(val) => set('acquisition_account_uuid', val ?? '')}
+              placeholder="Ex: 218xxx"
+            />
+            <p className="text-xs text-muted-foreground">{t('assetFamilies.acquisitionAccountHelp')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('assetFamilies.depreciationAccount')}</Label>
+            <SearchableSelect
+              options={depreciationOpts}
+              value={form.depreciation_account_uuid || undefined}
+              onChange={(val) => set('depreciation_account_uuid', val ?? '')}
+              placeholder="Ex: 281xxx"
+            />
+            <p className="text-xs text-muted-foreground">{t('assetFamilies.depreciationAccountHelp')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('assetFamilies.chargeAccount')}</Label>
+            <SearchableSelect
+              options={chargeOpts}
+              value={form.charge_account_uuid || undefined}
+              onChange={(val) => set('charge_account_uuid', val ?? '')}
+              placeholder="Ex: 615xxx"
+            />
+            <p className="text-xs text-muted-foreground">{t('assetFamilies.chargeAccountHelp')}</p>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">{t('assetFamilies.revenueAccount')}</Label>
+            <SearchableSelect
+              options={revenueOpts}
+              value={form.revenue_account_uuid || undefined}
+              onChange={(val) => set('revenue_account_uuid', val ?? '')}
+              placeholder="Ex: 7xxxxx"
+            />
+            <p className="text-xs text-muted-foreground">{t('assetFamilies.revenueAccountHelp')}</p>
+          </div>
+        </div>
+      </div>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
 
@@ -201,8 +271,12 @@ function FamilyRow({
                 {t('assetFamilies.inactive')}
               </span>
             )}
+            {!assetFamily.is_priced && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                {t('assetFamilies.notPriced')}
+              </span>
+            )}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">{assetFamily.category?.name ?? '—'}</p>
         </div>
         {canManage && (
           <div className="flex shrink-0 items-center gap-1">
@@ -237,41 +311,36 @@ export function AssetFamiliesPage() {
   const canView = useCapability('MANAGE_ASSETS') || useCapability('VIEW_FINANCIALS')
 
   const familiesQuery = useAssetFamiliesQuery(canView)
-  const categoriesQuery = useAssetCategoriesQuery(canView)
   const createMutation = useCreateAssetFamilyMutation()
 
   const [showForm, setShowForm] = useState(false)
   const [editingFamily, setEditingFamily] = useState<AssetFamily | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [activeOnly, setActiveOnly] = useState(false)
-  const [categoryFilter, setCategoryFilter] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AssetFamily | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const allFamilies = familiesQuery.data ?? []
-  const families = allFamilies
-    .filter((af) => (activeOnly ? af.is_active : true))
-    .filter((af) => (categoryFilter ? af.category_uuid === categoryFilter : true))
-  const categories = categoriesQuery.data ?? []
-
-  const groupedFamilies = categories
-    .map((cat) => ({
-      category: cat,
-      items: families.filter((af) => af.category_uuid === cat.uuid),
-    }))
-    .filter((group) => group.items.length > 0)
+  const families = allFamilies.filter((af) => (activeOnly ? af.is_active : true))
 
   const updateMutation = useUpdateAssetFamilyMutation(editingFamily?.uuid ?? '')
   const deleteMutation = useDeleteAssetFamilyMutation()
 
-  async function handleCreate(form: FamilyFormState) {
-    const payload: CreateAssetFamilyPayload = {
+  function toPayload(form: FamilyFormState): CreateAssetFamilyPayload {
+    return {
       code: form.code.trim(),
       name: form.name.trim(),
-      category_uuid: form.category_uuid,
       is_active: form.is_active,
+      is_priced: form.is_priced,
+      acquisition_account_uuid: form.acquisition_account_uuid || null,
+      depreciation_account_uuid: form.depreciation_account_uuid || null,
+      charge_account_uuid: form.charge_account_uuid || null,
+      revenue_account_uuid: form.revenue_account_uuid || null,
     }
+  }
+
+  async function handleCreate(form: FamilyFormState) {
     try {
-      await createMutation.mutateAsync(payload)
+      await createMutation.mutateAsync(toPayload(form))
       setShowForm(false)
       setFormError(null)
     } catch (e) {
@@ -282,11 +351,7 @@ export function AssetFamiliesPage() {
   async function handleUpdate(form: FamilyFormState) {
     if (!editingFamily) return
     try {
-      await updateMutation.mutateAsync({
-        name: form.name.trim(),
-        category_uuid: form.category_uuid,
-        is_active: form.is_active,
-      })
+      await updateMutation.mutateAsync(toPayload(form))
       setEditingFamily(null)
       setFormError(null)
     } catch (e) {
@@ -344,7 +409,6 @@ export function AssetFamiliesPage() {
           <FamilyForm
             initial={EMPTY_FORM}
             isEdit={false}
-            categories={categories}
             saving={createMutation.isPending}
             error={formError}
             onSave={handleCreate}
@@ -367,21 +431,6 @@ export function AssetFamiliesPage() {
             />
             {t('assetFamilies.activeOnly')}
           </label>
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-slate-600">{t('filters.category')}</Label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs"
-            >
-              <option value="">{t('filters.allCategories')}</option>
-              {categories.map((cat) => (
-                <option key={cat.uuid} value={cat.uuid}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
         {familiesQuery.isLoading ? (
@@ -391,39 +440,31 @@ export function AssetFamiliesPage() {
             {t('assetFamilies.noFamilies')}
           </p>
         ) : (
-          <div className="space-y-4">
-            {groupedFamilies.map(({ category, items }) => (
-              <div key={category.uuid} className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {category.name}
-                </h3>
-                {items.map((af) =>
-                  editingFamily?.uuid === af.uuid ? (
-                    <div key={af.uuid} className="rounded-lg border border-slate-200 bg-white p-4">
-                      <FamilyForm
-                        initial={familyToForm(af)}
-                        isEdit
-                        categories={categories}
-                        saving={updateMutation.isPending}
-                        error={formError}
-                        onSave={handleUpdate}
-                        onCancel={() => { setEditingFamily(null); setFormError(null) }}
-                        t={t}
-                      />
-                    </div>
-                  ) : (
-                    <FamilyRow
-                      key={af.uuid}
-                      assetFamily={af}
-                      canManage={canManage}
-                      onEdit={(af) => { setEditingFamily(af); setFormError(null); setShowForm(false) }}
-                      onDelete={(af) => { setDeleteTarget(af); setDeleteError(null) }}
-                      t={t}
-                    />
-                  ),
-                )}
-              </div>
-            ))}
+          <div className="space-y-2">
+            {families.map((af) =>
+              editingFamily?.uuid === af.uuid ? (
+                <div key={af.uuid} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <FamilyForm
+                    initial={familyToForm(af)}
+                    isEdit
+                    saving={updateMutation.isPending}
+                    error={formError}
+                    onSave={handleUpdate}
+                    onCancel={() => { setEditingFamily(null); setFormError(null) }}
+                    t={t}
+                  />
+                </div>
+              ) : (
+                <FamilyRow
+                  key={af.uuid}
+                  assetFamily={af}
+                  canManage={canManage}
+                  onEdit={(af) => { setEditingFamily(af); setFormError(null); setShowForm(false) }}
+                  onDelete={(af) => { setDeleteTarget(af); setDeleteError(null) }}
+                  t={t}
+                />
+              ),
+            )}
           </div>
         )}
       </div>

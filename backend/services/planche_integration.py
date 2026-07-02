@@ -886,9 +886,10 @@ class PlancheIntegrationService:
             }
         """
         try:
-            # Query active assets
+            # Query active, operational, bookable assets — accounting-only sub-components
+            # (trailers, refits, engines) are never pushed to Planche.
             stmt = select(Asset).where(
-                (Asset.is_active == True) & (Asset.status == 1)  # Operational
+                (Asset.is_active == True) & (Asset.status == 1) & (Asset.is_bookable == True)  # Operational
             )
             result = await db.execute(stmt)
             eligible_assets = result.scalars().all()
@@ -995,7 +996,7 @@ class PlancheIntegrationService:
     async def get_machine_push_preview(self, db: AsyncSession) -> dict[str, Any]:
         """Return machine push eligibility counters for confirmation UI."""
         eligible_stmt = select(func.count()).select_from(Asset).where(
-            (Asset.is_active == True) & (Asset.status == 1)
+            (Asset.is_active == True) & (Asset.status == 1) & (Asset.is_bookable == True)
         )
         last_push_stmt = (
             select(AuditLog.created_at)

@@ -18,14 +18,17 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// ── Asset Categories ─────────────────────────────────────────────────────────────
+// ── Asset Families ──────────────────────────────────────────────────────────────
 
-export type AssetCategory = {
+export type AssetFamily = {
   uuid: string
   code: string
   name: string
-  description: string | null
+  /** 1=PerHour, 2=PerLaunch, 3=PerFlight, 4=Pack, 5=Subscription, 6=Fixed */
+  pricing_strategy: number
   is_active: boolean
+  /** Whether this family is expected to carry a flight tariff (pricing_versions). */
+  is_priced: boolean
   acquisition_account_uuid: string | null
   acquisition_account_code: string | null
   depreciation_account_uuid: string | null
@@ -34,53 +37,15 @@ export type AssetCategory = {
   charge_account_code: string | null
   revenue_account_uuid: string | null
   revenue_account_code: string | null
-  created_at: string
   updated_at: string
-  updated_by: number | null
 }
 
-export type CreateAssetCategoryPayload = {
-  code: string
-  name: string
-  description?: string | null
-  is_active?: boolean
+/** Narrow patch type for the family accounting-configuration section. */
+export type AssetFamilyAccountingPatch = {
   acquisition_account_uuid?: string | null
   depreciation_account_uuid?: string | null
   charge_account_uuid?: string | null
   revenue_account_uuid?: string | null
-}
-
-export type UpdateAssetCategoryPayload = {
-  name?: string
-  description?: string | null
-  is_active?: boolean
-  acquisition_account_uuid?: string | null
-  depreciation_account_uuid?: string | null
-  charge_account_uuid?: string | null
-  revenue_account_uuid?: string | null
-}
-
-/** Narrow patch type for the account-configuration dialog. */
-export type AssetCategoryAccountingPatch = {
-  acquisition_account_uuid?: string | null
-  depreciation_account_uuid?: string | null
-  charge_account_uuid?: string | null
-  revenue_account_uuid?: string | null
-}
-
-// ── Asset Families ──────────────────────────────────────────────────────────────
-
-export type AssetFamily = {
-  uuid: string
-  code: string
-  name: string
-  category_uuid: string
-  category?: AssetCategory | null
-  /** 1=PerHour, 2=PerLaunch, 3=PerFlight, 4=Pack, 5=Subscription, 6=Fixed */
-  pricing_strategy: number
-  is_active: boolean
-  created_at: string
-  updated_at: string
 }
 
 export type FlightType = {
@@ -117,6 +82,9 @@ export type AssetSummary = {
   asset_family_uuid: string
   asset_family?: AssetFamily | null
   asset_family_name?: string
+  parent_asset_uuid: string | null
+  parent_asset_code?: string | null
+  parent_asset_name?: string | null
   current_price_version?: string | null
   current_price_version_name?: string | null
   pricing_version?: string | null
@@ -127,6 +95,17 @@ export type AssetSummary = {
   owner_member_uuids?: string[]
   owner_members?: AssetOwner[]
   is_active: boolean
+  is_bookable: boolean
+}
+
+/** Minimal shape for an asset's children, from GET /assets/{uuid}/children. */
+export type AssetChild = {
+  uuid: string
+  code: string
+  name: string
+  purchase_price: string | null
+  status: number
+  is_bookable: boolean
 }
 
 export type AssetStatusHistoryEntry = {
@@ -150,6 +129,9 @@ export type AssetDetail = {
   code: string
   name: string
   asset_family_uuid: string
+  parent_asset_uuid: string | null
+  parent_asset_code: string | null
+  parent_asset_name: string | null
   registration: string | null
   serial_number: string | null
   manufacturer: string | null
@@ -161,7 +143,21 @@ export type AssetDetail = {
   owner_members: AssetOwner[]
   /** 1=Operational, 2=Maintenance, 3=OutOfService, 4=Disposed, 5=Sold */
   status: number
+  is_bookable: boolean
+  // Raw per-asset overrides (null = inherits the family default)
   acquisition_account_uuid: string | null
+  depreciation_account_uuid: string | null
+  charge_account_uuid: string | null
+  revenue_account_uuid: string | null
+  // Resolved accounts: asset override if set, else the family's default
+  effective_acquisition_account_uuid: string | null
+  effective_acquisition_account_code: string | null
+  effective_depreciation_account_uuid: string | null
+  effective_depreciation_account_code: string | null
+  effective_charge_account_uuid: string | null
+  effective_charge_account_code: string | null
+  effective_revenue_account_uuid: string | null
+  effective_revenue_account_code: string | null
   accounting_account_code_snapshot: string | null
   purchase_date: string | null
   purchase_price: string | null
@@ -177,19 +173,28 @@ export type AssetDetail = {
 export type CreateAssetFamilyPayload = {
   code: string
   name: string
-  category_uuid: string
   is_active?: boolean
+  is_priced?: boolean
+  acquisition_account_uuid?: string | null
+  depreciation_account_uuid?: string | null
+  charge_account_uuid?: string | null
+  revenue_account_uuid?: string | null
 }
 
 export type UpdateAssetFamilyPayload = {
   name?: string
-  category_uuid?: string
   is_active?: boolean
+  is_priced?: boolean
+  acquisition_account_uuid?: string | null
+  depreciation_account_uuid?: string | null
+  charge_account_uuid?: string | null
+  revenue_account_uuid?: string | null
 }
 
 export type AssetFilters = {
   asset_family_uuid?: string
-  category_uuid?: string
+  parent_asset_uuid?: string
+  is_bookable?: boolean
   status?: number
   ownership?: number
   is_active?: boolean
@@ -199,6 +204,7 @@ export type CreateAssetPayload = {
   code: string
   name: string
   asset_family_uuid: string
+  parent_asset_uuid?: string | null
   registration?: string | null
   serial_number?: string | null
   manufacturer?: string | null
@@ -206,7 +212,11 @@ export type CreateAssetPayload = {
   year_of_manufacture?: number | null
   ownership: number
   owner_member_uuids?: string[]
+  is_bookable?: boolean
   acquisition_account_uuid?: string | null
+  depreciation_account_uuid?: string | null
+  charge_account_uuid?: string | null
+  revenue_account_uuid?: string | null
   purchase_date?: string | null
   purchase_price?: string | null
   depreciation_start_date?: string | null
@@ -215,7 +225,10 @@ export type CreateAssetPayload = {
   osrt_sync_enabled?: boolean
 }
 
-export type UpdateAssetPayload = Partial<CreateAssetPayload>
+export type UpdateAssetPayload = Partial<CreateAssetPayload> & {
+  /** Set to true to detach this asset from its parent (clears parent_asset_uuid). */
+  clear_parent_asset?: boolean
+}
 
 export type AssetStatusTransitionPayload = {
   status: number
