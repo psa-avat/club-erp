@@ -11,6 +11,15 @@ Transform bank reconciliation from a table-driven feature into an operations coc
 
 The backend already supports the core lifecycle: import, matching, manual match, discrepancy resolution, correcting entries, closure, and report. This plan focuses on clarity, efficiency, and a UI system that matches the accountant's real workflow.
 
+## Status vs Current Implementation (2026-07-03)
+
+Several items below are already partially built and should be evolved, not recreated:
+
+- **Exception resolver already exists in embryo.** The statement detail table has an expand chevron per unresolved line; the expanded row shows discrepancy actions (accept/exclude/generate correcting entry) and a candidate-entries list with computed amount, sort, and Draft badge, inline — no modal. Phase 2 should restructure/extend this into the three-zone workbench, not build resolution UI from zero.
+- **Filtering is already explicit-apply**, not live/debounced (a "Filtrer" button plus draft vs. applied filter state). Any redesigned queue/inbox must keep this pattern — do not reintroduce live filtering.
+- **Lines are already server-paginated** (`GET /statements/{uuid}/lines` with `limit`/`offset`, `BankStatementLineListResponse{items,total}`). This was added specifically because loading 400+ lines client-side was slow. Any new "left queue" or "inbox" view must stay paginated/filtered server-side — see the correction under Backend/API Enhancements below.
+- **Not yet built:** statement-level summary/progress counts, import preview, three-zone workbench layout, candidate-explanation endpoint, bulk accept. The rest of this plan (as amended) still applies to these.
+
 ## Core Product Principle
 
 The default screen should answer:
@@ -70,7 +79,9 @@ Primary actions:
 Data requirement:
 
 - Extend statement list response or add a summary endpoint with status counts and balance difference per statement.
-- Reuse `get_reconciliation_report` logic server-side to avoid client-side aggregation.
+- **Correction:** do not call `get_reconciliation_report` per statement to build this list — it eager-loads every line of a statement plus a second matched-entries query, so computing it once per row is an N+1 that reintroduces the exact slowness the line-pagination work fixed for a single statement, multiplied across every statement in the inbox. Instead:
+  - `status_counts` per statement: a single `SELECT statement_uuid, match_status, count(*) FROM bank_statement_lines WHERE statement_uuid = ANY(:uuids) GROUP BY statement_uuid, match_status`.
+  - `balance_difference` for statements not yet reconciled: a single aggregate `SUM(amount) FILTER (WHERE match_status IN (...locked/excluded...))` per statement, added to `opening_balance` and compared to `closing_balance` — not a Python loop over ORM-loaded lines. For already-reconciled statements, the stored `balance_difference` column is authoritative and needs no computation.
 
 ### 2. Import Wizard
 
@@ -104,6 +115,7 @@ CSV behavior:
 
 - If CSV mapping is missing, show mapping fields inline in the wizard.
 - Existing saved mappings should be selectable without leaving the flow.
+- Clarify persistence timing: a mapping created inline during the wizard should be saved as a reusable `BankCsvMapping` immediately (on leaving step 1 / before preview), not deferred to final import confirmation — otherwise the preview step can't use it, and re-running preview after a tweak would create duplicate unsaved mappings.
 
 Backend requirement:
 
@@ -111,6 +123,7 @@ Backend requirement:
   - `POST /api/v1/reconciliation/import/preview`
   - returns parsed metadata and sample lines without persisting.
 - Existing import endpoint remains the final commit action.
+- Confirmed feasible with low risk: `import_statement` (`backend/services/bank_parsers.py`) already separates cleanly — validation, format detection, parsing, duplicate-hash check, and balance-mismatch warning all happen before the first `db.add`/`commit`. Extract that portion into a shared `_validate_and_parse(...)` helper used by both `import_statement` and the new preview function, so the two paths can't silently drift apart.
 
 ### 3. Statement Workbench
 
@@ -250,6 +263,7 @@ Closure button states:
    - Add optional candidate scoring endpoint:
      - `GET /api/v1/reconciliation/lines/{line_uuid}/candidates`
    - Return amount diff, date diff, description score, final score.
+   - **Must reuse the auto-match scoring path verbatim**: same `_load_eligible_entries` (respecting `include_drafts`), same `_score_candidate`/`_description_similarity`, same `_is_internal_transfer_candidate` cap. This is not a "nice to have" cosmetic addition — today the frontend candidate list reimplements a simplified amount+date-only ranking in TypeScript that ignores description similarity and the internal-transfer cap entirely, so the manual-match picker and `run_auto_match` can rank/flag the same entry differently. A shared endpoint removes that duplicated, drifting logic. Recommend pulling this into **Phase 2** (see below) rather than deferring it to Phase 4 — it's a correctness fix, not just a confidence-band nicety.
 
 ### Nice To Have
 
@@ -291,10 +305,11 @@ Acceptance criteria:
 
 Scope:
 
-- Introduce queue/resolver/proof layout.
-- Move expanded-row logic into a dedicated resolver panel.
+- Introduce queue/resolver/proof layout, evolving the existing expandable-row resolver (candidate list + discrepancy actions already inline) rather than rebuilding it.
+- Add the candidate-explanation endpoint (`GET /lines/{line_uuid}/candidates`, reusing auto-match scoring — see Backend/API Enhancements) and switch the frontend candidate list to it, retiring the client-side amount/date-only ranking.
 - Add "accept and next" workflow.
-- Improve candidate card clarity.
+- Improve candidate card clarity (confidence band, internal-transfer warning badge when capped).
+- Keep the existing paginated/explicit-apply-filter data fetching for the queue — do not fetch all lines client-side.
 
 Files likely touched:
 
@@ -336,8 +351,7 @@ Acceptance criteria:
 
 Scope:
 
-- Candidate explanation endpoint.
-- Confidence bands in UI.
+- Confidence bands in UI (candidate explanation endpoint itself moved to Phase 2 — see above).
 - Bulk accept high-confidence suggestions.
 - Rerun matching unresolved only.
 
