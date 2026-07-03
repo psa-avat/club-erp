@@ -29,11 +29,13 @@ from fastapi import HTTPException
 from models import AccountingAccount, AccountingEntry, AccountingJournal, AccountingLine, BankCsvMapping, BankStatement, BankStatementLine
 from services.bank_parsers import CsvParser, OfxParser, detect_format, import_statement
 from services.bank_reconciliation import (
+    _DEFAULT_MATCHING_SETTINGS,
     _entry_bank_line,
     _is_internal_transfer_candidate,
     _score_candidate,
     close_reconciliation,
     detect_discrepancies,
+    list_statement_lines,
     manual_match,
     run_auto_match,
     unmatch,
@@ -231,20 +233,44 @@ class CsvParserTests(IsolatedAsyncioTestCase):
 
 
 class ScoringHelperTests(IsolatedAsyncioTestCase):
-    def test_exact_reference_and_date_scores_perfect(self):
-        self.assertEqual(_score_candidate(0, True), Decimal("1.000"))
-        self.assertEqual(_score_candidate(1, True), Decimal("1.000"))
+    def _settings(self, **overrides):
+        settings = dict(_DEFAULT_MATCHING_SETTINGS)
+        settings.update(overrides)
+        return settings
 
-    def test_exact_date_without_reference_scores_high(self):
-        self.assertEqual(_score_candidate(0, False), Decimal("0.950"))
+    def test_exact_amount_and_date_with_perfect_description_scores_top(self):
+        score = _score_candidate(
+            amount_diff=Decimal("0"), date_diff=0, description_score=1.0, settings=self._settings(),
+        )
+        self.assertEqual(score, Decimal("1.000"))
 
-    def test_within_three_days_scores_auto_accept(self):
-        self.assertEqual(_score_candidate(3, False), Decimal("0.850"))
+    def test_amount_beyond_tolerance_scores_zero_on_amount_component(self):
+        # amount_component floors at 0 beyond the tolerance; date+description still contribute.
+        score = _score_candidate(
+            amount_diff=Decimal("10"), date_diff=0, description_score=1.0,
+            settings=self._settings(amount_tolerance="0.05"),
+        )
+        # weight_date(0.3) + weight_description(0.2) fully credited, amount(0.5) is zero:
+        # (0*0.5 + 1*0.3 + 1*0.2) / 1.0 = 0.5
+        self.assertEqual(score, Decimal("0.500"))
 
-    def test_far_date_scores_below_auto_accept_threshold(self):
-        self.assertEqual(_score_candidate(7, False), Decimal("0.600"))
-        self.assertEqual(_score_candidate(10, False), Decimal("0.500"))
-        self.assertEqual(_score_candidate(45, False), Decimal("0.400"))
+    def test_date_beyond_tolerance_decays_to_zero_component(self):
+        score_at_tolerance = _score_candidate(
+            amount_diff=Decimal("0"), date_diff=7, description_score=0.0, settings=self._settings(),
+        )
+        score_beyond = _score_candidate(
+            amount_diff=Decimal("0"), date_diff=30, description_score=0.0, settings=self._settings(),
+        )
+        # Both should score the amount component only (0.5 weight) since date/description are 0.
+        self.assertEqual(score_at_tolerance, Decimal("0.500"))
+        self.assertEqual(score_beyond, Decimal("0.500"))
+
+    def test_description_similarity_contributes_partial_credit(self):
+        score = _score_candidate(
+            amount_diff=Decimal("0"), date_diff=7, description_score=0.5, settings=self._settings(),
+        )
+        # amount=1*0.5 + date=0*0.3 + description=0.5*0.2 = 0.6
+        self.assertEqual(score, Decimal("0.600"))
 
     def test_entry_bank_line_finds_matching_account(self):
         account_uuid = uuid4()
@@ -366,7 +392,8 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
-             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[entry_exact])):
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[entry_exact])), \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             result = await run_auto_match(db, statement.uuid)
 
         self.assertEqual(result, {"auto_matched": 1, "flagged_review": 0, "unmatched": 1})
@@ -395,7 +422,8 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
-             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[transfer_entry])):
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[transfer_entry])), \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             result = await run_auto_match(db, statement.uuid)
 
         self.assertEqual(result, {"auto_matched": 0, "flagged_review": 1, "unmatched": 0})
@@ -411,8 +439,24 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
         db = AsyncMock()
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
-             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load:
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load, \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             await run_auto_match(db, statement.uuid, include_drafts=True)
+
+        mock_load.assert_awaited_once_with(db, statement, include_drafts=True)
+
+    async def test_defaults_to_including_drafts(self):
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=uuid4(),
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="imported",
+        )
+        statement.lines = []
+        db = AsyncMock()
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load, \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
+            await run_auto_match(db, statement.uuid)
 
         mock_load.assert_awaited_once_with(db, statement, include_drafts=True)
 
@@ -480,7 +524,7 @@ class ManualMatchTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.matched_entry_uuid, entry.uuid)
         self.assertEqual(result.resolved_by, 42)
 
-    async def test_rejects_draft_entry_by_default(self):
+    async def test_rejects_draft_entry_when_include_drafts_explicitly_disabled(self):
         account_uuid = uuid4()
         journal_uuid = uuid4()
         fiscal_year_uuid = uuid4()
@@ -504,7 +548,7 @@ class ManualMatchTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
             with self.assertRaises(HTTPException) as ctx:
-                await manual_match(db, line.uuid, draft_entry.uuid, fiscal_year_uuid, user_id=1)
+                await manual_match(db, line.uuid, draft_entry.uuid, fiscal_year_uuid, user_id=1, include_drafts=False)
         self.assertEqual(ctx.exception.status_code, 400)
 
     async def test_allows_draft_entry_when_include_drafts_true(self):
@@ -690,7 +734,7 @@ class CloseReconciliationTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.status, "reconciled")
         self.assertEqual(result.balance_difference, Decimal("0"))
 
-    async def test_refuses_close_with_unposted_correcting_entry(self):
+    async def test_posts_draft_matched_entries_before_closing(self):
         account_uuid = uuid4()
         fiscal_year_uuid = uuid4()
         statement = BankStatement(
@@ -700,7 +744,7 @@ class CloseReconciliationTests(IsolatedAsyncioTestCase):
         )
         draft_entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"), entry_date=date(2026, 6, 3))
         draft_entry.fiscal_year_uuid = fiscal_year_uuid
-        draft_entry.state = 1  # Draft — not yet posted
+        draft_entry.state = 1  # Draft — reconciling is what confirms and posts it
         line = BankStatementLine(
             uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
             amount=Decimal("10"), match_status="manually_matched",
@@ -710,8 +754,67 @@ class CloseReconciliationTests(IsolatedAsyncioTestCase):
         db = AsyncMock()
         db.execute = AsyncMock(return_value=_FakeExecuteResult([draft_entry]))
 
-        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
-            with self.assertRaises(HTTPException) as ctx:
-                await close_reconciliation(db, statement.uuid, user_id=1)
-        self.assertEqual(ctx.exception.status_code, 409)
-        self.assertIn("not posted", ctx.exception.detail)
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch(
+                 "services.bank_reconciliation.post_accounting_entries_batch",
+                 new=AsyncMock(return_value=[draft_entry]),
+             ) as mock_post:
+            result = await close_reconciliation(db, statement.uuid, user_id=1)
+
+        mock_post.assert_awaited_once_with(db, fiscal_year_uuid, [draft_entry.uuid])
+        self.assertEqual(result.status, "reconciled")
+
+    async def test_skips_posting_when_no_draft_matched_entries(self):
+        account_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1,
+            opening_balance=Decimal("0"), closing_balance=Decimal("10"), status="matching",
+        )
+        posted_entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"), entry_date=date(2026, 6, 3))
+        posted_entry.fiscal_year_uuid = fiscal_year_uuid
+        posted_entry.state = 2  # Already posted
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="auto_matched",
+            matched_entry_uuid=posted_entry.uuid, matched_fiscal_year_uuid=fiscal_year_uuid,
+        )
+        statement.lines = [line]
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=_FakeExecuteResult([posted_entry]))
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation.post_accounting_entries_batch", new=AsyncMock()) as mock_post:
+            result = await close_reconciliation(db, statement.uuid, user_id=1)
+
+        mock_post.assert_not_called()
+        self.assertEqual(result.status, "reconciled")
+
+
+class ListStatementLinesTests(IsolatedAsyncioTestCase):
+    async def test_returns_items_and_total_from_paginated_query(self):
+        statement_uuid = uuid4()
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement_uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="unmatched",
+        )
+        db = AsyncMock()
+        db.scalar = AsyncMock(return_value=137)
+        db.execute = AsyncMock(return_value=_FakeExecuteResult([line]))
+
+        items, total = await list_statement_lines(db, statement_uuid, limit=50, offset=0)
+
+        self.assertEqual(items, [line])
+        self.assertEqual(total, 137)
+
+    async def test_defaults_total_to_zero_when_count_is_none(self):
+        statement_uuid = uuid4()
+        db = AsyncMock()
+        db.scalar = AsyncMock(return_value=None)
+        db.execute = AsyncMock(return_value=_FakeExecuteResult([]))
+
+        items, total = await list_statement_lines(db, statement_uuid)
+
+        self.assertEqual(items, [])
+        self.assertEqual(total, 0)

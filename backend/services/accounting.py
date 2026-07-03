@@ -196,6 +196,22 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, dict] = {
         "max_days_for_post_purchase_discount": 30,
         "require_approval_for_late_discount": True,
     },
+    "bank_reconciliation": {
+        "matching": {
+            # Hard candidacy gate: entries whose bank-line amount differs from the
+            # statement line by more than this are never proposed as a match.
+            "amount_tolerance": "0.05",
+            # Soft decay only — a wide date gap lowers the score but never excludes
+            # a candidate outright (bank posting lag is common and expected).
+            "date_tolerance_days": 7,
+            "weight_amount": 0.5,
+            "weight_date": 0.3,
+            "weight_description": 0.2,
+            "auto_accept_threshold": 0.90,
+            "review_threshold": 0.40,
+            "internal_transfer_cap": 0.60,
+        },
+    },
 }
 
 

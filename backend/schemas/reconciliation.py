@@ -77,12 +77,13 @@ class BankStatementResponse(BaseModel):
         from_attributes = True
 
 
-class BankStatementDetailResponse(BankStatementResponse):
-    lines: list[BankStatementLineResponse] = Field(default_factory=list)
-
-
 class BankStatementListResponse(BaseModel):
     items: list[BankStatementResponse]
+    total: int
+
+
+class BankStatementLineListResponse(BaseModel):
+    items: list[BankStatementLineResponse]
     total: int
 
 
@@ -96,7 +97,7 @@ class ManualMatchRequest(BaseModel):
     line_uuid: UUID
     entry_uuid: UUID
     fiscal_year_uuid: UUID
-    include_drafts: bool = False
+    include_drafts: bool = True
 
 
 class UnmatchRequest(BaseModel):

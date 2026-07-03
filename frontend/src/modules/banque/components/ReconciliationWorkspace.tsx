@@ -17,32 +17,36 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
-import Decimal from 'decimal.js'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DataTable } from '@/components/ui/data-table'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useCapability } from '@/auth/hooks/useCapability'
 import {
   useAccountingEntriesQuery,
   useManualMatchMutation,
+  useReconciliationLinesQuery,
   useReconciliationStatementQuery,
   useRunAutoMatchMutation,
   useUnmatchLineMutation,
+  type AccountingEntry,
   type BankStatement,
   type BankStatementLine,
 } from '../api'
-import { reconciliationLineStatusBadgeClass, reconciliationStatusBadgeClass } from './journalShared'
+import { normalizeAmountFilter, reconciliationLineStatusBadgeClass, reconciliationStatusBadgeClass, useDebounce } from './journalShared'
 import { ReconciliationStatementList } from './ReconciliationStatementList'
 import { ReconciliationDiscrepancies } from './ReconciliationDiscrepancies'
 import { ReconciliationReport } from './ReconciliationReport'
+import { ReconciliationMatchingSettingsDialog } from './ReconciliationMatchingSettingsDialog'
+
+const PAGE_SIZE = 50
 
 export function ReconciliationWorkspace() {
   const [selectedStatementUuid, setSelectedStatementUuid] = useState<string | null>(null)
@@ -67,24 +71,15 @@ const LINE_STATUSES: BankStatementLine['match_status'][] = [
   'excluded',
 ]
 
-/** Parses a filter input as a Decimal, tolerating incomplete typing (e.g. "-", "1."). */
-function parseFilterDecimal(raw: string): Decimal | null {
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-  try {
-    return new Decimal(trimmed)
-  } catch {
-    return null
-  }
-}
-
 function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onBack: () => void }) {
   const { t } = useTranslation('banque')
   const { data: statement, isLoading } = useReconciliationStatementQuery(statementUuid)
   const runMatchMutation = useRunAutoMatchMutation()
-  const [pickerLine, setPickerLine] = useState<BankStatementLine | null>(null)
-  const [includeDrafts, setIncludeDrafts] = useState(false)
+  const [includeDrafts, setIncludeDrafts] = useState(true)
   const unmatchMutation = useUnmatchLineMutation()
+  const [expandedLineUuid, setExpandedLineUuid] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const canManageSettings = useCapability('MANAGE_SYSTEM_SETTINGS')
 
   const [filterDescription, setFilterDescription] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -92,23 +87,36 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterAmountMin, setFilterAmountMin] = useState('')
   const [filterAmountMax, setFilterAmountMax] = useState('')
+  const [page, setPage] = useState(0)
 
-  const filteredLines = useMemo(() => {
-    if (!statement) return []
-    const descriptionQuery = filterDescription.trim().toLowerCase()
-    const minAmount = parseFilterDecimal(filterAmountMin)
-    const maxAmount = parseFilterDecimal(filterAmountMax)
+  const debouncedDescription = useDebounce(filterDescription, 350)
 
-    return statement.lines.filter((line) => {
-      if (descriptionQuery && !(line.description ?? '').toLowerCase().includes(descriptionQuery)) return false
-      if (filterStatus && line.match_status !== filterStatus) return false
-      if (filterDateFrom && line.line_date < filterDateFrom) return false
-      if (filterDateTo && line.line_date > filterDateTo) return false
-      if (minAmount && new Decimal(line.amount).lessThan(minAmount)) return false
-      if (maxAmount && new Decimal(line.amount).greaterThan(maxAmount)) return false
-      return true
-    })
-  }, [statement, filterDescription, filterStatus, filterDateFrom, filterDateTo, filterAmountMin, filterAmountMax])
+  const baseLineFilters = useMemo(
+    () => ({
+      description: debouncedDescription.trim() || undefined,
+      match_status: filterStatus || undefined,
+      date_from: filterDateFrom || undefined,
+      date_to: filterDateTo || undefined,
+      amount_min: normalizeAmountFilter(filterAmountMin),
+      amount_max: normalizeAmountFilter(filterAmountMax),
+    }),
+    [debouncedDescription, filterStatus, filterDateFrom, filterDateTo, filterAmountMin, filterAmountMax],
+  )
+
+  // Reset to page 0 whenever a filter changes, so the user isn't left on an out-of-range page.
+  useEffect(() => {
+    setPage(0)
+  }, [baseLineFilters])
+
+  const linesFilters = useMemo(
+    () => ({ ...baseLineFilters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+    [baseLineFilters, page],
+  )
+
+  const linesQuery = useReconciliationLinesQuery(statement?.uuid ?? null, linesFilters, Boolean(statement))
+  const lines = linesQuery.data?.items ?? []
+  const totalLines = linesQuery.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalLines / PAGE_SIZE))
 
   function clearFilters() {
     setFilterDescription('')
@@ -173,6 +181,12 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
               ? t('reconciliation.workspace.matching', 'Matching…')
               : t('reconciliation.workspace.runMatch', 'Lancer le matching')}
           </Button>
+          {canManageSettings && (
+            <Button size="sm" variant="outline" onClick={() => setSettingsOpen(true)}>
+              <Settings2 className="mr-1 h-4 w-4" />
+              {t('reconciliation.settings.title', 'Paramètres de matching')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -241,16 +255,32 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
         </Button>
         <span className="ml-auto text-xs text-muted-foreground">
           {t('reconciliation.workspace.filters.count', '{{count}} / {{total}} ligne(s)', {
-            count: filteredLines.length,
-            total: statement.lines.length,
+            count: lines.length,
+            total: totalLines,
           })}
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
+        <div className="xl:col-span-2 space-y-2">
           <DataTable<BankStatementLine>
             columns={[
+              {
+                key: 'expand',
+                header: '',
+                className: 'w-8',
+                cell: (row) =>
+                  row.match_status === 'unmatched' || row.match_status === 'discrepancy' ? (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedLineUuid(expandedLineUuid === row.uuid ? null : row.uuid)}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label={t('reconciliation.workspace.associate', 'Associer')}
+                    >
+                      <ChevronDown className={`h-4 w-4 transition-transform ${expandedLineUuid === row.uuid ? '' : '-rotate-90'}`} />
+                    </button>
+                  ) : null,
+              },
               { key: 'line_date', header: t('reconciliation.workspace.columns.date', 'Date'), cell: (row) => row.line_date },
               {
                 key: 'description',
@@ -272,38 +302,59 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
                 ),
               },
             ]}
-            data={filteredLines}
+            data={lines}
             getRowKey={(row) => row.uuid}
-            actions={(row) => (
-              <div className="flex gap-2">
-                {(row.match_status === 'unmatched' || row.match_status === 'discrepancy') && (
-                  <button
-                    type="button"
-                    className="text-xs text-blue-600 hover:underline"
-                    onClick={() => setPickerLine(row)}
-                  >
-                    {t('reconciliation.workspace.associate', 'Associer')}
-                  </button>
-                )}
-                {(row.match_status === 'auto_matched' || row.match_status === 'manually_matched') && (
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-destructive hover:underline"
-                    onClick={() => void handleUnmatch(row)}
-                  >
-                    {t('reconciliation.workspace.dissociate', 'Dissocier')}
-                  </button>
-                )}
-              </div>
+            expandedRow={expandedLineUuid}
+            renderExpanded={(row) => (
+              <CandidateEntriesSubList
+                statement={statement}
+                line={row}
+                includeDrafts={includeDrafts}
+                onMatched={() => setExpandedLineUuid(null)}
+              />
             )}
+            actions={(row) =>
+              (row.match_status === 'auto_matched' || row.match_status === 'manually_matched') && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-destructive hover:underline"
+                  onClick={() => void handleUnmatch(row)}
+                >
+                  {t('reconciliation.workspace.dissociate', 'Dissocier')}
+                </button>
+              )
+            }
             emptyState={
               <p className="py-8 text-center text-sm text-muted-foreground">
-                {statement.lines.length === 0
-                  ? t('reconciliation.workspace.noLines', 'Aucune ligne dans ce relevé.')
-                  : t('reconciliation.workspace.noLinesMatchFilters', 'Aucune ligne ne correspond aux filtres.')}
+                {linesQuery.isLoading
+                  ? t('common.loading', 'Chargement…')
+                  : statement.line_count === 0
+                    ? t('reconciliation.workspace.noLines', 'Aucune ligne dans ce relevé.')
+                    : t('reconciliation.workspace.noLinesMatchFilters', 'Aucune ligne ne correspond aux filtres.')}
               </p>
             }
           />
+
+          {totalLines > 0 && (
+            <div className="flex items-center justify-center gap-2">
+              <Button size="sm" variant="secondary" disabled={page <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                <ChevronLeft className="h-4 w-4" />
+                {t('reconciliation.workspace.prev', 'Précédent')}
+              </Button>
+              <span className="px-2 text-sm text-muted-foreground">
+                {t('reconciliation.workspace.pageInfo', 'Page {{page}} / {{total}}', { page: page + 1, total: totalPages })}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {t('reconciliation.workspace.next', 'Suivant')}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -315,28 +366,27 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
         </div>
       </div>
 
-      {pickerLine && (
-        <EntryPickerDialog
-          statement={statement}
-          line={pickerLine}
-          includeDrafts={includeDrafts}
-          onClose={() => setPickerLine(null)}
-        />
-      )}
+      <ReconciliationMatchingSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }
 
-function EntryPickerDialog({
+/** Cheap client-side relevance ordering (closest date first) — the full weighted
+ * score lives server-side in run_auto_match; this is just a browsing aid. */
+function daysBetween(isoDate: string, other: string): number {
+  return Math.abs((new Date(isoDate).getTime() - new Date(other).getTime()) / 86_400_000)
+}
+
+function CandidateEntriesSubList({
   statement,
   line,
   includeDrafts,
-  onClose,
+  onMatched,
 }: {
   statement: BankStatement
   line: BankStatementLine
   includeDrafts: boolean
-  onClose: () => void
+  onMatched: () => void
 }) {
   const { t } = useTranslation('banque')
   const { data: entries, isLoading } = useAccountingEntriesQuery({
@@ -347,6 +397,11 @@ function EntryPickerDialog({
   })
   const manualMatchMutation = useManualMatchMutation()
 
+  const sortedEntries = useMemo(() => {
+    const list: AccountingEntry[] = entries ?? []
+    return [...list].sort((a, b) => daysBetween(a.entry_date, line.line_date) - daysBetween(b.entry_date, line.line_date))
+  }, [entries, line.line_date])
+
   async function handlePick(entryUuid: string) {
     try {
       await manualMatchMutation.mutateAsync({
@@ -356,7 +411,7 @@ function EntryPickerDialog({
         include_drafts: includeDrafts,
       })
       toast.success(t('reconciliation.workspace.associated', 'Ligne associée'))
-      onClose()
+      onMatched()
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -366,50 +421,35 @@ function EntryPickerDialog({
   }
 
   return (
-    <Dialog open onClose={onClose}>
-      <DialogContent className="sm:max-w-lg" aria-labelledby="entry-picker-title">
-        <div className="space-y-3">
-          <div>
-            <h2 id="entry-picker-title" className="text-lg font-semibold text-foreground">
-              {t('reconciliation.workspace.pickEntry', 'Associer une écriture')}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {line.line_date} · {line.description || '—'} · {line.amount}
-            </p>
-          </div>
-
-          <div className="max-h-80 space-y-1 overflow-y-auto">
-            {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading', 'Chargement…')}</p>}
-            {!isLoading && (entries ?? []).length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t('reconciliation.workspace.noEntries', 'Aucune écriture postée disponible.')}
-              </p>
-            )}
-            {(entries ?? []).map((entry) => (
-              <button
-                key={entry.uuid}
-                type="button"
-                onClick={() => void handlePick(entry.uuid)}
-                className="flex w-full items-center justify-between gap-2 rounded border px-3 py-2 text-left text-sm hover:bg-muted"
-              >
-                <span className="truncate">
-                  {entry.entry_date} · {entry.description}
-                  {entry.state === 1 && (
-                    <Badge className="ml-2 badge-warning">{t('reconciliation.workspace.draft', 'Brouillon')}</Badge>
-                  )}
-                </span>
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">{entry.reference || '—'}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex justify-end">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              {t('reconciliation.workspace.cancel', 'Annuler')}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="space-y-2 border-y bg-muted/30 px-4 py-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        {t('reconciliation.workspace.pickEntry', 'Associer une écriture')}
+      </p>
+      <div className="max-h-64 space-y-1 overflow-y-auto">
+        {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading', 'Chargement…')}</p>}
+        {!isLoading && sortedEntries.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            {t('reconciliation.workspace.noEntries', 'Aucune écriture postée disponible.')}
+          </p>
+        )}
+        {sortedEntries.map((entry) => (
+          <button
+            key={entry.uuid}
+            type="button"
+            onClick={() => void handlePick(entry.uuid)}
+            disabled={manualMatchMutation.isPending}
+            className="flex w-full items-center justify-between gap-2 rounded border bg-card px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+          >
+            <span className="truncate">
+              {entry.entry_date} · {entry.description}
+              {entry.state === 1 && (
+                <Badge className="ml-2 badge-warning">{t('reconciliation.workspace.draft', 'Brouillon')}</Badge>
+              )}
+            </span>
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">{entry.reference || '—'}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

@@ -1916,6 +1916,8 @@ export function useUpsertFlightBillingSettingsMutation() {
 export const reconciliationQueryKeys = {
   statements: (filters: Record<string, unknown>) => ['banque', 'reconciliation', 'statements', filters] as const,
   statement: (statementUuid: string) => ['banque', 'reconciliation', 'statement', statementUuid] as const,
+  lines: (statementUuid: string, filters: Record<string, unknown>) =>
+    ['banque', 'reconciliation', 'lines', statementUuid, filters] as const,
   discrepancies: (statementUuid: string) => ['banque', 'reconciliation', 'discrepancies', statementUuid] as const,
   report: (statementUuid: string) => ['banque', 'reconciliation', 'report', statementUuid] as const,
   csvMappings: ['banque', 'reconciliation', 'csv-mappings'] as const,
@@ -1966,8 +1968,6 @@ export type BankStatement = {
   created_at: string
   updated_at: string
 }
-
-export type BankStatementDetail = BankStatement & { lines: BankStatementLine[] }
 
 export type MatchResult = {
   auto_matched: number
@@ -2064,9 +2064,43 @@ export function useReconciliationStatementQuery(statementUuid: string | null, en
     queryKey: reconciliationQueryKeys.statement(statementUuid ?? 'none'),
     enabled: enabled && Boolean(statementUuid),
     queryFn: async () => {
-      const { data } = await apiClient.get<BankStatementDetail>(
+      const { data } = await apiClient.get<BankStatement>(
         `/api/v1/reconciliation/statements/${statementUuid}`,
         getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export type ReconciliationLineFilters = {
+  description?: string
+  match_status?: string
+  date_from?: string
+  date_to?: string
+  amount_min?: string
+  amount_max?: string
+  limit?: number
+  offset?: number
+}
+
+export type BankStatementLineListResponse = {
+  items: BankStatementLine[]
+  total: number
+}
+
+export function useReconciliationLinesQuery(
+  statementUuid: string | null,
+  filters: ReconciliationLineFilters,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.lines(statementUuid ?? 'none', filters),
+    enabled: enabled && Boolean(statementUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<BankStatementLineListResponse>(
+        `/api/v1/reconciliation/statements/${statementUuid}/lines`,
+        { ...getAuthRequestConfig(), params: filters },
       )
       return data
     },
@@ -2096,7 +2130,7 @@ export function useImportStatementMutation() {
       formData.append('journal_uuid', journal_uuid)
       formData.append('account_uuid', account_uuid)
       if (csv_mapping_uuid) formData.append('csv_mapping_uuid', csv_mapping_uuid)
-      const { data } = await apiClient.post<BankStatementDetail>(
+      const { data } = await apiClient.post<BankStatement>(
         '/api/v1/reconciliation/import',
         formData,
         { ...(authConfig ?? {}), headers: { ...(authConfig?.headers ?? {}) } },
@@ -2134,6 +2168,7 @@ export function useRunAutoMatchMutation() {
     },
     onSuccess: async (_data, { statementUuid }) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', statementUuid] })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(statementUuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
     },
@@ -2158,6 +2193,7 @@ export function useManualMatchMutation() {
     },
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
     },
   })
@@ -2176,6 +2212,7 @@ export function useUnmatchLineMutation() {
     },
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
     },
   })
@@ -2213,6 +2250,7 @@ export function useResolveDiscrepancyMutation() {
     },
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.report(data.statement_uuid) })
     },
@@ -2232,6 +2270,7 @@ export function useCloseReconciliationMutation() {
     },
     onSuccess: async (_data, statementUuid) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', statementUuid] })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.report(statementUuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
     },

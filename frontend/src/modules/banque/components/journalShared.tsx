@@ -353,6 +353,15 @@ export function useDebounce<T>(value: T, delayMs: number): T {
   return debounced
 }
 
+/** Normalizes a free-typed amount filter (comma or dot decimal, optional sign) into
+ * a canonical numeric string, or undefined if the input isn't a valid amount yet. */
+export function normalizeAmountFilter(value: string): string | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  const normalized = trimmed.replace(',', '.')
+  return /^-?\d+(\.\d{1,4})?$/.test(normalized) ? normalized : undefined
+}
+
 // ---------------------------------------------------------------------------
 // Shared primitive: LineEditor
 // ---------------------------------------------------------------------------

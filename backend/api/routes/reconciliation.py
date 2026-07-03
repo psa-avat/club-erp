@@ -20,6 +20,8 @@
 import io
 import json
 import logging
+from datetime import date
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -33,8 +35,8 @@ from models import User
 from schemas.reconciliation import (
     BankCsvMappingCreateRequest,
     BankCsvMappingResponse,
-    BankStatementDetailResponse,
     BankStatementListResponse,
+    BankStatementLineListResponse,
     BankStatementLineResponse,
     BankStatementResponse,
     DiscrepancyResponse,
@@ -54,6 +56,7 @@ from services.bank_reconciliation import (
     get_reconciliation_report,
     get_statement,
     list_csv_mappings,
+    list_statement_lines,
     list_statements,
     manual_match,
     resolve_discrepancy,
@@ -73,7 +76,7 @@ settings_guard = Depends(require_capability(CAP_MANAGE_SYSTEM_SETTINGS))
 # Import & statements
 # ---------------------------------------------------------------------------
 
-@router.post("/import", response_model=BankStatementDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/import", response_model=BankStatementResponse, status_code=status.HTTP_201_CREATED)
 async def import_statement_endpoint(
     file: UploadFile = File(...),
     fiscal_year_uuid: UUID = Form(...),
@@ -111,7 +114,7 @@ async def list_statements_endpoint(
     return BankStatementListResponse(items=items, total=len(items))
 
 
-@router.get("/statements/{statement_uuid}", response_model=BankStatementDetailResponse)
+@router.get("/statements/{statement_uuid}", response_model=BankStatementResponse)
 async def get_statement_endpoint(
     statement_uuid: UUID,
     db: AsyncSession = Depends(get_db),
@@ -129,6 +132,35 @@ async def delete_statement_endpoint(
     await delete_statement(db, statement_uuid)
 
 
+@router.get("/statements/{statement_uuid}/lines", response_model=BankStatementLineListResponse)
+async def list_statement_lines_endpoint(
+    statement_uuid: UUID,
+    description: str | None = Query(None),
+    match_status: str | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    amount_min: Decimal | None = Query(None),
+    amount_max: Decimal | None = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    items, total = await list_statement_lines(
+        db,
+        statement_uuid,
+        description=description,
+        match_status=match_status,
+        date_from=date_from,
+        date_to=date_to,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        limit=limit,
+        offset=offset,
+    )
+    return BankStatementLineListResponse(items=items, total=total)
+
+
 # ---------------------------------------------------------------------------
 # Matching
 # ---------------------------------------------------------------------------
@@ -136,7 +168,7 @@ async def delete_statement_endpoint(
 @router.post("/statements/{statement_uuid}/match", response_model=MatchResultResponse)
 async def run_auto_match_endpoint(
     statement_uuid: UUID,
-    include_drafts: bool = Query(False, description="Also consider Draft (unposted) entries as match candidates"),
+    include_drafts: bool = Query(True, description="Also consider Draft (unposted) entries as match candidates"),
     db: AsyncSession = Depends(get_db),
     _: User = post_guard,
 ):

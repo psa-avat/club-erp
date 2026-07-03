@@ -43,7 +43,7 @@ import {
 } from '../api'
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { entryStateLabel, totals, entryStateBadgeClass, useDebounce, decimalOrZero, toErrorMessage } from './journalShared'
+import { entryStateLabel, totals, entryStateBadgeClass, useDebounce, decimalOrZero, normalizeAmountFilter, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
 import type { AccountingEntry } from '../api'
 
@@ -89,13 +89,6 @@ function formatAmountFr(amount: string): string {
   const withGrouping = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
   const sign = intPartRaw.startsWith('-') ? '-' : ''
   return `${sign}${withGrouping},${decimalRaw.padEnd(2, '0').slice(0, 2)}`
-}
-
-function normalizeAmountFilter(value: string): string | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) return undefined
-  const normalized = trimmed.replace(',', '.')
-  return /^\d+(\.\d{1,4})?$/.test(normalized) ? normalized : undefined
 }
 
 type Props = {

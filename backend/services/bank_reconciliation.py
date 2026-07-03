@@ -19,12 +19,13 @@
  """
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
+from difflib import SequenceMatcher
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,6 +37,7 @@ from models import (
     BankStatement,
     BankStatementLine,
 )
+from services.accounting import DEFAULT_SYSTEM_SETTINGS, get_system_setting, post_accounting_entries_batch
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +45,10 @@ logger = logging.getLogger(__name__)
 _REMATCHABLE_STATUSES = ("unmatched", "discrepancy")
 _LOCKED_MATCH_STATUSES = ("auto_matched", "manually_matched")
 
-_AUTO_ACCEPT_THRESHOLD = Decimal("0.90")
-_MIN_MATCH_SCORE = Decimal("0.40")
 _TIMING_DISCREPANCY_DAYS = 7
 _BALANCE_TOLERANCE = Decimal("0.01")
+_MATCHING_SETTINGS_MODULE = "bank_reconciliation"
+_DEFAULT_MATCHING_SETTINGS = DEFAULT_SYSTEM_SETTINGS[_MATCHING_SETTINGS_MODULE]["matching"]
 
 # Note on sign convention: bank_statement_lines.amount follows the bank-statement
 # convention (positive = money received / "crédit" on the customer's statement).
@@ -89,34 +91,143 @@ async def delete_statement(db: AsyncSession, statement_uuid: UUID) -> None:
     await db.commit()
 
 
+async def list_statement_lines(
+    db: AsyncSession,
+    statement_uuid: UUID,
+    *,
+    description: str | None = None,
+    match_status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[BankStatementLine], int]:
+    """Server-side paginated + filtered listing of a statement's lines, so the
+    workspace UI doesn't have to render hundreds of rows at once."""
+    conditions = [BankStatementLine.statement_uuid == statement_uuid]
+    if description:
+        conditions.append(BankStatementLine.description.ilike(f"%{description}%"))
+    if match_status:
+        conditions.append(BankStatementLine.match_status == match_status)
+    if date_from:
+        conditions.append(BankStatementLine.line_date >= date_from)
+    if date_to:
+        conditions.append(BankStatementLine.line_date <= date_to)
+    if amount_min is not None:
+        conditions.append(BankStatementLine.amount >= amount_min)
+    if amount_max is not None:
+        conditions.append(BankStatementLine.amount <= amount_max)
+
+    total = await db.scalar(select(func.count()).select_from(BankStatementLine).where(*conditions))
+
+    result = await db.execute(
+        select(BankStatementLine)
+        .where(*conditions)
+        .order_by(BankStatementLine.line_index)
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars().all()), total or 0
+
+
 # ---------------------------------------------------------------------------
 # Matching engine
+#
+# Score is a weighted composite of three independent signals, each in [0, 1]:
+#   - amount: 1.0 at an exact match, decaying linearly to 0 at amount_tolerance.
+#             Also acts as a hard candidacy gate — entries beyond the tolerance
+#             are never proposed (two different amounts are never "the same
+#             transaction", tolerance only exists to absorb rounding).
+#   - date:   1.0 at same-day, decaying linearly to 0 at date_tolerance_days.
+#             Soft only — a wide date gap lowers confidence but never excludes
+#             a candidate, since bank posting lag is common and expected.
+#   - description: fuzzy text similarity (difflib) between the statement line's
+#             description/counterparty/reference and the entry's description/reference.
+# The weighted average is compared against auto_accept_threshold (-> auto_matched)
+# and review_threshold (-> discrepancy, needs human review); below review_threshold
+# the line is left unmatched. All of the above are per-club parameters stored under
+# system_settings.module_name = "bank_reconciliation" (see DEFAULT_SYSTEM_SETTINGS).
 # ---------------------------------------------------------------------------
 
-def _score_candidate(date_diff: int, reference_match: bool) -> Decimal:
-    if reference_match and date_diff <= 1:
-        return Decimal("1.000")
-    if date_diff == 0:
-        return Decimal("0.950")
-    if date_diff <= 3:
-        return Decimal("0.850")
-    if date_diff <= 7:
-        return Decimal("0.600")
-    if date_diff <= 30:
-        return Decimal("0.500")
-    return _MIN_MATCH_SCORE
+async def get_matching_settings(db: AsyncSession) -> dict:
+    """Load matching thresholds/weights, falling back to defaults for any missing key
+    (so a partially-customized settings payload never crashes the matching engine)."""
+    try:
+        setting = await get_system_setting(db, _MATCHING_SETTINGS_MODULE)
+        stored = setting.settings.get("matching", {}) if setting.settings else {}
+    except HTTPException:
+        stored = {}
+    return {**_DEFAULT_MATCHING_SETTINGS, **stored}
+
+
+def _normalize_text(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _description_similarity(line: BankStatementLine, entry: AccountingEntry) -> float:
+    """Best-effort fuzzy similarity between the statement line's free text and the
+    entry's — checked across every plausible field pairing since either side might
+    carry the useful text in description, reference, or counterparty."""
+    line_texts = [_normalize_text(line.description), _normalize_text(line.reference), _normalize_text(line.counterparty)]
+    entry_texts = [_normalize_text(entry.description), _normalize_text(entry.reference)]
+
+    best = 0.0
+    for a in line_texts:
+        if not a:
+            continue
+        for b in entry_texts:
+            if not b:
+                continue
+            ratio = SequenceMatcher(None, a, b).ratio()
+            best = max(best, ratio)
+    return best
+
+
+def _score_candidate(
+    *,
+    amount_diff: Decimal,
+    date_diff: int,
+    description_score: float,
+    settings: dict,
+) -> Decimal:
+    amount_tolerance = Decimal(str(settings["amount_tolerance"]))
+    date_tolerance = int(settings["date_tolerance_days"])
+    weight_amount = Decimal(str(settings["weight_amount"]))
+    weight_date = Decimal(str(settings["weight_date"]))
+    weight_description = Decimal(str(settings["weight_description"]))
+
+    amount_component = (
+        max(Decimal("0"), Decimal("1") - (amount_diff / amount_tolerance)) if amount_tolerance > 0
+        else (Decimal("1") if amount_diff == 0 else Decimal("0"))
+    )
+    date_component = (
+        max(Decimal("0"), Decimal("1") - (Decimal(date_diff) / Decimal(date_tolerance))) if date_tolerance > 0
+        else (Decimal("1") if date_diff == 0 else Decimal("0"))
+    )
+    description_component = Decimal(str(round(description_score, 4)))
+
+    total_weight = weight_amount + weight_date + weight_description
+    if total_weight <= 0:
+        return Decimal("0")
+
+    score = (
+        amount_component * weight_amount + date_component * weight_date + description_component * weight_description
+    ) / total_weight
+    return score.quantize(Decimal("0.001"))
 
 
 async def _load_eligible_entries(
-    db: AsyncSession, statement: BankStatement, *, include_drafts: bool = False
+    db: AsyncSession, statement: BankStatement, *, include_drafts: bool = True
 ) -> list[AccountingEntry]:
     """Entries in the statement's journal/fiscal year with a line on the statement's
     account, excluding entries already reconciled to another line.
 
-    Posted (state=2) only by default. When include_drafts is true, Draft (state=1)
-    entries are also eligible for matching/preview — useful when a club drafts its
-    bank-journal entries before posting them. This never affects close_reconciliation,
-    which always requires matched entries to be Posted before a statement can close.
+    Draft (state=1) entries are eligible by default alongside Posted (state=2) ones —
+    clubs typically draft their bank-journal entries and only post them once reconciled;
+    close_reconciliation posts any still-Draft matched entries automatically. Pass
+    include_drafts=False to restrict matching to already-Posted entries only.
     """
     bank_line_exists = (
         select(AccountingLine.uuid)
@@ -165,14 +276,22 @@ def _is_internal_transfer_candidate(entry: AccountingEntry, bank_line: Accountin
     )
 
 
-async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_drafts: bool = False) -> dict:
+async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_drafts: bool = True) -> dict:
     """Score unmatched/discrepancy lines against eligible entries and assign the best
-    1-to-1 matches. Posted-only by default; pass include_drafts=True to also consider
-    Draft entries (e.g. when the club hasn't posted its bank-journal entries yet).
+    1-to-1 matches. Drafts are included by default — clubs typically draft their
+    bank-journal entries and only post them once reconciled (post_accounting_entries_batch
+    posts them automatically when the statement is closed, see close_reconciliation).
+    Pass include_drafts=False to restrict matching to already-Posted entries only.
     Returns {auto_matched, flagged_review, unmatched}."""
     statement = await get_statement(db, statement_uuid)
     lines = [l for l in statement.lines if l.match_status in _REMATCHABLE_STATUSES]
     entries = await _load_eligible_entries(db, statement, include_drafts=include_drafts)
+    settings = await get_matching_settings(db)
+
+    amount_tolerance = Decimal(str(settings["amount_tolerance"]))
+    auto_accept_threshold = Decimal(str(settings["auto_accept_threshold"]))
+    review_threshold = Decimal(str(settings["review_threshold"]))
+    internal_transfer_cap = Decimal(str(settings["internal_transfer_cap"]))
 
     candidates: list[tuple[Decimal, BankStatementLine, AccountingEntry]] = []
     for entry in entries:
@@ -183,18 +302,23 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
         is_internal_transfer = _is_internal_transfer_candidate(entry, bank_line)
 
         for line in lines:
-            if entry_signed_amount != line.amount:
+            amount_diff = abs(entry_signed_amount - line.amount)
+            if amount_diff > amount_tolerance:
                 continue
 
             date_diff = abs((line.line_date - entry.entry_date).days)
-            reference_match = bool(line.reference) and (
-                line.reference == entry.reference
-                or (entry.reference and line.reference in entry.reference)
-                or (entry.description and line.reference in entry.description)
+            description_score = _description_similarity(line, entry)
+            score = _score_candidate(
+                amount_diff=amount_diff,
+                date_diff=date_diff,
+                description_score=description_score,
+                settings=settings,
             )
-            score = _score_candidate(date_diff, reference_match)
             if is_internal_transfer:
-                score = min(score, Decimal("0.60"))
+                score = min(score, internal_transfer_cap)
+
+            if score < review_threshold:
+                continue
 
             candidates.append((score, line, entry))
 
@@ -211,7 +335,7 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
         line.match_confidence = score
         line.matched_entry_uuid = entry.uuid
         line.matched_fiscal_year_uuid = entry.fiscal_year_uuid
-        if score >= _AUTO_ACCEPT_THRESHOLD:
+        if score >= auto_accept_threshold:
             line.match_status = "auto_matched"
             line.discrepancy_type = None
         else:
@@ -245,7 +369,7 @@ async def manual_match(
     fiscal_year_uuid: UUID,
     user_id: int,
     *,
-    include_drafts: bool = False,
+    include_drafts: bool = True,
 ) -> BankStatementLine:
     line = await db.get(BankStatementLine, line_uuid)
     if not line:
@@ -365,10 +489,18 @@ async def _load_matched_entries(
     return {(entry.uuid, entry.fiscal_year_uuid): entry for entry in entries}
 
 
-async def _find_unposted_matched_entries(db: AsyncSession, matched_lines: list[BankStatementLine]) -> list[UUID]:
-    """Return the entry uuids referenced by matched_lines that are not yet Posted (state=2)."""
+async def _post_draft_matched_entries(
+    db: AsyncSession, fiscal_year_uuid: UUID, matched_lines: list[BankStatementLine]
+) -> list[AccountingEntry]:
+    """Post any still-Draft entries referenced by matched_lines. Reconciling a statement
+    is what confirms a Draft bank-journal entry actually happened as recorded, so closing
+    is the natural point to post it — this is the standard practice this club follows
+    (draft during review so mismatches are still correctable, post at reconciliation)."""
     entries_by_key = await _load_matched_entries(db, matched_lines)
-    return [entry.uuid for entry in entries_by_key.values() if entry.state != 2]
+    draft_entry_uuids = [entry.uuid for entry in entries_by_key.values() if entry.state == 1]
+    if not draft_entry_uuids:
+        return []
+    return await post_accounting_entries_batch(db, fiscal_year_uuid, draft_entry_uuids)
 
 
 async def detect_discrepancies(db: AsyncSession, statement_uuid: UUID) -> list[dict]:
@@ -575,15 +707,7 @@ async def close_reconciliation(db: AsyncSession, statement_uuid: UUID, user_id: 
         )
 
     matched_lines = [l for l in lines if l.match_status in _LOCKED_MATCH_STATUSES]
-    unposted = await _find_unposted_matched_entries(db, matched_lines)
-    if unposted:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"{len(unposted)} matched entry(ies) are not posted yet — post them before closing "
-                f"(entry uuids: {', '.join(str(u) for u in unposted)})"
-            ),
-        )
+    await _post_draft_matched_entries(db, statement.fiscal_year_uuid, matched_lines)
 
     # 'excluded' lines represent real bank movements with no GL counterpart (e.g. bank
     # fees): they still affect the bank's closing balance, so they count toward it here
