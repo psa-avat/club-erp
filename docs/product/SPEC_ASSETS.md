@@ -370,11 +370,13 @@ Real-time accruals are linked via flight_uuid in accounting entry.
 
 ### CSV Format
 
-See `docs/assets-sample.csv` for a reference file.
+See `docs/assets-sample.csv` for a reference file. The import dialog's "sample CSV" link
+downloads a live export of the current assets (`GET /api/v1/assets/export`, see below) instead
+of a static example, so the template always matches the club's actual data and column set.
 
 **Required columns:** `code`, `name`, `asset_family_code`
 
-**Optional columns:** `ownership`, `status`, `year_of_manufacture`, `purchase_price`, `residual_value`, `purchase_date` (YYYY-MM-DD), `depreciation_years`, `useful_life_years`, `depreciation_start_date` (YYYY-MM-DD), `registration`, `serial_number`, `notes`, `parent_asset_code`, `is_bookable`
+**Optional columns:** `ownership`, `owner_account_ids`, `status`, `year_of_manufacture`, `manufacturer`, `model`, `purchase_price`, `residual_value`, `purchase_date` (YYYY-MM-DD), `depreciation_years`, `useful_life_years`, `depreciation_start_date` (YYYY-MM-DD), `registration`, `serial_number`, `notes`, `parent_asset_code`, `is_bookable`
 
 **Enum values accepted (case-insensitive):**
 
@@ -406,3 +408,13 @@ See `docs/assets-sample.csv` for a reference file.
   ]
 }
 ```
+
+### Export
+
+`GET /api/v1/assets/export`
+
+- Requires `MANAGE_ASSETS` capability.
+- Optional query param: `active_only` (bool, default `false`).
+- Returns a CSV (`text/csv`) of current assets using the exact column set accepted by the
+  import endpoint above, so it can be edited and re-imported directly. `parent_asset_code` and
+  `asset_family_code` reference the parent asset / family by their `code`, never by uuid.

@@ -44,8 +44,10 @@ type Props = {
   title: string
   /** Called with the selected file; must resolve to ImportResult */
   onUpload: (file: File, options: ImportOptions) => Promise<ImportResult>
-  /** Optional href for downloading a sample CSV file */
+  /** Optional href for downloading a static sample CSV file (ignored if onDownloadSample is set) */
   sampleCsvHref?: string
+  /** Optional async callback to fetch and download a real-data template CSV (e.g. a live export) */
+  onDownloadSample?: () => Promise<void>
   /** Show a toggle allowing updates of existing records when supported by the endpoint */
   showUpdateExistingToggle?: boolean
   /** Called when the dialog should close */
@@ -56,6 +58,7 @@ export function ImportDialog({
   title,
   onUpload,
   sampleCsvHref,
+  onDownloadSample,
   showUpdateExistingToggle = false,
   onClose,
 }: Props) {
@@ -66,6 +69,8 @@ export function ImportDialog({
   const [result, setResult] = useState<ImportResult | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isSampleDownloading, setIsSampleDownloading] = useState(false)
+  const [sampleDownloadError, setSampleDownloadError] = useState<string | null>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null
@@ -100,6 +105,19 @@ export function ImportDialog({
     }
   }
 
+  const handleDownloadSample = async () => {
+    if (!onDownloadSample) return
+    setIsSampleDownloading(true)
+    setSampleDownloadError(null)
+    try {
+      await onDownloadSample()
+    } catch (err: unknown) {
+      setSampleDownloadError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setIsSampleDownloading(false)
+    }
+  }
+
   return (
     /* Backdrop */
     <div
@@ -125,16 +143,32 @@ export function ImportDialog({
         </div>
 
         {/* Sample CSV link */}
-        {sampleCsvHref && (
+        {(onDownloadSample || sampleCsvHref) && (
           <p className="mb-3 text-sm text-muted-foreground">
             {t('import.sampleDownloadPrefix')}{' '}
-            <a
-              href={sampleCsvHref}
-              download
-              className="text-blue-600 underline hover:text-blue-800"
-            >
-              {t('import.sampleDownloadLink')}
-            </a>
+            {onDownloadSample ? (
+              <button
+                type="button"
+                onClick={handleDownloadSample}
+                disabled={isSampleDownloading}
+                className="text-blue-600 underline hover:text-blue-800 disabled:opacity-50"
+              >
+                {isSampleDownloading ? t('import.sampleDownloading') : t('import.sampleDownloadLink')}
+              </button>
+            ) : (
+              <a
+                href={sampleCsvHref}
+                download
+                className="text-blue-600 underline hover:text-blue-800"
+              >
+                {t('import.sampleDownloadLink')}
+              </a>
+            )}
+          </p>
+        )}
+        {sampleDownloadError && (
+          <p className="mb-3 rounded-md bg-destructive/10 p-2 text-sm text-destructive">
+            {sampleDownloadError}
           </p>
         )}
 

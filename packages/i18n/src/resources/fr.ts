@@ -180,6 +180,7 @@ export const fr = {
       colMessage: 'Message',
       sampleDownloadPrefix: 'Télécharger un exemple de fichier CSV :',
       sampleDownloadLink: 'Exemple CSV',
+      sampleDownloading: 'Téléchargement...',
     },
     export: {
       button: 'Exporter CSV',

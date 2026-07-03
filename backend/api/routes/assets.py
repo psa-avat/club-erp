@@ -22,6 +22,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
@@ -54,6 +55,7 @@ from services.assets import (
     create_pricing_item,
     delete_asset_family,
     delete_pricing_item,
+    export_assets_to_csv,
     get_asset,
     get_asset_family,
     get_pricing_item,
@@ -206,6 +208,35 @@ async def create_asset_endpoint(
 ):
     """Create a new asset."""
     return await create_asset(db, request, user_id=current_user.id)
+
+
+@router.get("/export", response_class=StreamingResponse)
+async def export_assets_endpoint(
+    active_only: bool = Query(default=False),
+    _: User = _manage_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export current assets to CSV, in the same column format accepted by the bulk import endpoint.
+
+    Used by the frontend import dialog as a real-data template instead of a static example file;
+    parent assets are referenced by `parent_asset_code`, never by uuid.
+
+    Registered before `/{asset_uuid}` — since that route's path param has no `:uuid` converter,
+    Starlette matches it as a plain string, so a same-method route defined after it would never
+    be reached ("export" would 422 as an invalid UUID instead of routing here).
+    """
+    from datetime import datetime
+
+    csv_content = await export_assets_to_csv(db=db, active_only=active_only)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"assets_{timestamp}.csv"
+
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/{asset_uuid}", response_model=AssetResponse)

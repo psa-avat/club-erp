@@ -494,3 +494,44 @@ export function useImportAssetsMutation() {
     },
   })
 }
+
+export async function exportAssetsToCSV() {
+  try {
+    const { data } = await apiClient.get<Blob | string>('/api/v1/assets/export', {
+      ...getAuthRequestConfig(),
+      responseType: 'blob',
+    })
+
+    const blob = data instanceof Blob ? data : new Blob([data], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `assets_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    const responseData =
+      typeof error === 'object' &&
+      error !== null &&
+      'response' in error &&
+      typeof (error as { response?: unknown }).response === 'object'
+        ? (error as { response?: { data?: unknown } }).response?.data
+        : null
+
+    if (responseData instanceof Blob) {
+      const errorText = await responseData.text()
+      try {
+        const parsed = JSON.parse(errorText) as { detail?: unknown; message?: unknown }
+        const detailMessage = typeof parsed.detail === 'string' ? parsed.detail : null
+        const message = typeof parsed.message === 'string' ? parsed.message : null
+        throw new Error(detailMessage ?? message ?? errorText)
+      } catch {
+        throw new Error(errorText || 'Export failed')
+      }
+    }
+
+    throw error
+  }
+}

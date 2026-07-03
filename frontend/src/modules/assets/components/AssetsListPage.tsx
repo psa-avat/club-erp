@@ -31,6 +31,7 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
+  exportAssetsToCSV,
   useAssetsQuery,
   useAssetFamiliesQuery,
   useImportAssetsMutation,
@@ -449,7 +450,7 @@ export function AssetsListPage() {
         <ImportDialog
           title={tCommon('import.button')}
           onUpload={(file) => importAssetsMutation.mutateAsync(file)}
-          sampleCsvHref="/samples/assets-sample.csv"
+          onDownloadSample={() => exportAssetsToCSV()}
           onClose={() => setShowImportDialog(false)}
         />
       )}

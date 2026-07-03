@@ -1102,3 +1102,65 @@ async def import_assets_from_csv(
             skipped += 1
 
     return ImportResultResponse(created=created, skipped=skipped, errors=errors)
+
+
+# ---------------------------------------------------------------------------
+# CSV export
+# ---------------------------------------------------------------------------
+
+_ASSET_OWNERSHIP_LABELS: dict[int, str] = {1: "club", 2: "private"}
+_ASSET_STATUS_LABELS: dict[int, str] = {
+    1: "operational",
+    2: "maintenance",
+    3: "out_of_service",
+    4: "disposed",
+    5: "sold",
+}
+
+
+async def export_assets_to_csv(db: AsyncSession, *, active_only: bool = False) -> bytes:
+    """Export current assets to a CSV using the exact column set accepted by `import_assets_from_csv`.
+
+    Serves as the "real data" template offered by the import dialog: `parent_asset_code`
+    references the parent by its `code`, never by uuid.
+    """
+    assets = await list_assets(db, active_only=active_only)
+
+    headers = [
+        "code", "name", "asset_family_code", "parent_asset_code",
+        "ownership", "owner_account_ids", "status", "is_bookable",
+        "year_of_manufacture", "manufacturer", "model", "registration", "serial_number",
+        "purchase_date", "purchase_price", "depreciation_start_date", "depreciation_years",
+        "residual_value", "useful_life_years", "notes",
+    ]
+
+    rows: list[list[str]] = []
+    for asset in assets:
+        rows.append([
+            asset.code,
+            asset.name,
+            asset.asset_family.code if asset.asset_family else "",
+            asset.parent_asset_code or "",
+            _ASSET_OWNERSHIP_LABELS.get(asset.ownership, str(asset.ownership)),
+            "|".join(owner.account_id for owner in asset.owner_members),
+            _ASSET_STATUS_LABELS.get(asset.status, str(asset.status)),
+            "true" if asset.is_bookable else "false",
+            str(asset.year_of_manufacture) if asset.year_of_manufacture is not None else "",
+            asset.manufacturer or "",
+            asset.model or "",
+            asset.registration or "",
+            asset.serial_number or "",
+            asset.purchase_date.isoformat() if asset.purchase_date else "",
+            str(asset.purchase_price) if asset.purchase_price is not None else "",
+            asset.depreciation_start_date.isoformat() if asset.depreciation_start_date else "",
+            str(asset.depreciation_years) if asset.depreciation_years is not None else "",
+            str(asset.residual_value) if asset.residual_value is not None else "",
+            str(asset.useful_life_years) if asset.useful_life_years is not None else "",
+            asset.notes or "",
+        ])
+
+    csv_lines = [",".join(f'"{cell.replace('"', '""')}"' for cell in headers)]
+    for row in rows:
+        csv_lines.append(",".join(f'"{cell.replace('"', '""')}"' for cell in row))
+
+    return "\n".join(csv_lines).encode("utf-8")

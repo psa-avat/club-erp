@@ -64,3 +64,34 @@ class AssetsRouteGuardTests(TestCase):
         self.assertIn("parent_asset_uuid", param_names)
         self.assertIn("is_bookable", param_names)
         self.assertNotIn("category_uuid", param_names)
+
+    def test_export_endpoint_registered_with_manage_guard(self):
+        route = _route("/export", "GET")
+        self.assertIsNotNone(route, "Missing GET /export route")
+
+        dependency_names = [
+            dependency.call.__name__
+            for dependency in route.dependant.dependencies
+            if getattr(dependency, "call", None) is not None
+        ]
+        self.assertIn(
+            "_capability_guard",
+            dependency_names,
+            "Capability guard dependency missing on GET /export",
+        )
+        param_names = {p.name for p in route.dependant.query_params}
+        self.assertIn("active_only", param_names)
+
+    def test_export_endpoint_registered_before_asset_uuid_route(self):
+        # `/{asset_uuid}` has no `:uuid` path converter, so Starlette matches it as a plain
+        # string at the routing layer — a same-method (GET) static route registered after it
+        # would never be reached; "export" would 422 as an invalid UUID instead of routing here.
+        export_route = _route("/export", "GET")
+        detail_route = _route("/{asset_uuid}", "GET")
+        self.assertIsNotNone(export_route)
+        self.assertIsNotNone(detail_route)
+        self.assertLess(
+            router.routes.index(export_route),
+            router.routes.index(detail_route),
+            "GET /export must be registered before GET /{asset_uuid} or it will be shadowed",
+        )
