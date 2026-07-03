@@ -139,7 +139,7 @@ function App() {
           <Route path="/banque/pricing" element={<Navigate replace to="/workspace/tarifs" />} />
           <Route path="/banque/pricing/versions/:fiscalYearUuid/:versionUuid/edit" element={<BankPricingVersionEditPage />} />
           <Route path="/banque/reports" element={<Navigate replace to="/workspace/reports" />} />
-          <Route path="/banque/reconciliation" element={<Navigate replace to="/workspace/finance?tab=comptabilite" />} />
+          <Route path="/banque/reconciliation" element={<Navigate replace to="/workspace/finance?tab=comptabilite&subtab=rapprochement" />} />
           <Route path="/banque/settings/:section" element={<Navigate replace to="/admin?tab=parametres&subtab=finance" />} />
           <Route path="/pricing" element={<Navigate replace to="/banque/pricing" />} />
           <Route path="/workspace/purchases" element={<Navigate replace to="/workspace/finance?tab=achats" />} />

@@ -31,6 +31,7 @@ import {
   Receipt,
   Repeat,
   Scale,
+  ScanSearch,
   TableProperties,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ import { MemberBulkBillingPage } from "./MemberBulkBillingPage";
 import { OpsSalesTab } from "./OpsSalesTab";
 import { SupplierInvoicePage } from "./SupplierInvoicePage";
 import { OpsSupplierTab } from "./OpsSupplierTab";
+import { ReconciliationWorkspace } from "./ReconciliationWorkspace";
 
 // ---------------------------------------------------------------------------
 // Sub-sections (use ?subtab= to avoid conflicting with outer ?tab=)
@@ -164,6 +166,12 @@ function ComptabiliteSection() {
           label: t("workspace.accounting.tabs.trialBalance", "Balance"),
           icon: Scale,
           content: <AccountTrialBalancePage />,
+        },
+        {
+          value: "rapprochement",
+          label: t("workspace.accounting.tabs.rapprochement", "Rapprochement"),
+          icon: ScanSearch,
+          content: <ReconciliationWorkspace />,
         },
       ]}
     />

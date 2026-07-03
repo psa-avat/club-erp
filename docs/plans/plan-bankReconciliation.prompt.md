@@ -1,25 +1,34 @@
 # Plan 069 — Rapprochements Bancaires (v5 amendé)
 
-> **État (2026-07-03) : rien n'est encore implémenté.** Aucun modèle, migration, service, route ou composant frontend de ce plan n'existe dans le code actuel — voir la table de suivi ci-dessous. Le numéro de migration a été mis à jour de **052** (désormais occupé par `052_federal_sync_logs.sql`) vers **069**, prochain numéro libre (dernier existant : `068_vi_entitlement_planche_sync_lock.sql`). Les hypothèses du plan (colonne `accounting_accounts.is_reconcilable`, `accounting_journals.type` 1-7 avec 3=Banque/4=Caisse, `accounting_entries.state` 1/2/3, `reversal_of_entry_uuid` sans FK DB, `services.accounting.create_accounting_entry()`) sont toutes vérifiées correctes dans le code actuel.
+> **État (2026-07-03) : implémentation v1 complète (backend + frontend).** Voir la table de suivi ci-dessous. Migration numérotée **069** (prochain numéro libre après `068_vi_entitlement_planche_sync_lock.sql`, `052` étant déjà pris par `052_federal_sync_logs.sql`).
+>
+> **Écart volontaire par rapport au pseudo-code du plan** : les services (`bank_parsers.py`, `bank_reconciliation.py`) lèvent des `HTTPException` (400/404/409) directement plutôt que des classes d'exception dédiées (`InvalidJournalError`, etc.), conformément à la convention déjà en place dans `services/accounting.py` et à `CLAUDE.md` ("Use explicit HTTPException (400, 404, 409) consistently").
+>
+> **Convention de signe** (non explicite dans le plan v5) : `bank_statement_lines.amount` suit la convention du relevé (positif = dépôt/crédit reçu). Côté écriture GL, le compte banque/caisse étant un compte d'actif, un dépôt est un **débit** — le montant GL équivalent utilisé pour le matching est donc `debit - credit` (et non `credit - debit` comme suggéré par le commentaire SQL du plan). Documenté en tête de `services/bank_reconciliation.py`.
+>
+> **Décision d'intégration frontend** : sous-onglet `rapprochement` ajouté dans `ComptabiliteSection` de `FinanceWorkspacePage.tsx` (et non un onglet top-level), conformément à la Phase H du plan — les clés i18n `workspace.finance.tabs.reconciliation` / `workspace.banque.tabs.reconciliation` déjà présentes dans `fr.ts`/`en.ts` étaient des restes d'une ancienne maquette jamais câblée et n'ont pas été réutilisées ; les nouvelles clés vivent sous `banque.reconciliation.*`.
 
 ## Suivi d'implémentation
 
 | Phase | Élément | État |
 |---|---|---|
-| A | `docs/migrations/069_bank_reconciliation.sql` | ❌ Non créé (renommer depuis `052_...` mentionné plus bas) |
-| B | `BankStatement`, `BankStatementLine`, `BankCsvMapping` dans `backend/models.py` | ❌ Non créé |
-| C | `backend/services/bank_parsers.py` | ❌ Non créé |
-| D | `backend/services/bank_reconciliation.py` | ❌ Non créé |
-| E | Écarts / clôture (`detect_discrepancies`, `close_reconciliation`, etc.) | ❌ Non créé |
-| F | `backend/api/routes/reconciliation.py` + enregistrement dans `backend/main.py` | ❌ Non créé |
-| F | `backend/schemas/reconciliation.py` | ❌ Non créé |
-| — | `ofxparse`, `chardet` dans `backend/requirements.txt` | ❌ Non ajoutés |
-| G | Composants `frontend/src/modules/banque/components/Reconciliation*.tsx` | ❌ Non créés |
-| G | Hooks/types rapprochement dans `frontend/src/modules/banque/api/index.ts` | ❌ Non ajoutés |
-| H | Sous-onglet `rapprochement` dans `FinanceWorkspacePage.tsx` | ❌ Non ajouté |
-| H | Redirection `/banque/reconciliation` | ✅ Existe déjà (`frontend/src/App.tsx:142`), pointe vers `/workspace/finance?tab=comptabilite` — à affiner vers `&subtab=rapprochement` une fois le sous-onglet créé |
-| H | i18n `banque.reconciliation.*` (`fr.ts` / `en.ts`) | ❌ Non ajouté |
-| Tests | `backend/tests/test_bank_reconciliation*.py` | ❌ Non créé |
+| A | `docs/migrations/069_bank_reconciliation.sql` | ✅ Créé |
+| B | `BankStatement`, `BankStatementLine`, `BankCsvMapping` dans `backend/models.py` | ✅ Créé |
+| C | `backend/services/bank_parsers.py` (detect_format, OfxParser, CsvParser, import_statement) | ✅ Créé |
+| D | `backend/services/bank_reconciliation.py` — moteur de matching (run_auto_match, manual_match, unmatch) | ✅ Créé |
+| E | Écarts / clôture (`detect_discrepancies`, `create_correcting_entry`, `resolve_discrepancy`, `close_reconciliation`, `get_reconciliation_report`) | ✅ Créé |
+| F | `backend/api/routes/reconciliation.py` + enregistrement dans `backend/main.py` | ✅ Créé |
+| F | `backend/schemas/reconciliation.py` | ✅ Créé |
+| — | `ofxparse==0.21`, `chardet==5.2.0` dans `backend/requirements.txt` | ✅ Ajoutés et installés |
+| G | Composants `frontend/src/modules/banque/components/Reconciliation*.tsx` + `CsvMappingWizard.tsx` | ✅ Créés (Import panel, Statement list, Workspace + entry picker, Discrepancies, Report) |
+| G | Hooks/types rapprochement dans `frontend/src/modules/banque/api/index.ts` | ✅ Ajoutés (`reconciliationQueryKeys` + hooks CRUD/matching/report) |
+| H | Sous-onglet `rapprochement` dans `FinanceWorkspacePage.tsx` (`ComptabiliteSection`) | ✅ Ajouté |
+| H | Redirection `/banque/reconciliation` | ✅ Mise à jour vers `/workspace/finance?tab=comptabilite&subtab=rapprochement` (`frontend/src/App.tsx:142`) |
+| H | i18n `banque.reconciliation.*` (`fr.ts` / `en.ts`) | ✅ Ajouté |
+| Tests | `backend/tests/test_bank_reconciliation.py` (32 tests : parsers, scoring, matching, discrepancies, closure, guards d'import) | ✅ Créé, tous verts |
+| Revue | Auto-revue de code post-implémentation (8 angles) | ✅ 4 bugs de correction confirmés et corrigés : (1) solde d'ouverture OFX forcé à 0 empêchait toute clôture réelle — désormais dérivé de closing − crédits + débits ; (2) les lignes `excluded` étaient ignorées du solde rapproché tout en étant traitées comme résolues — elles comptent maintenant dans `reconciled_sum` ; (3) `create_correcting_entry` marquait la ligne "manually_matched" alors que l'écriture générée reste en Brouillon — `close_reconciliation` vérifie désormais que toutes les écritures rapprochées sont Postées (state=2) ; (4) la détection d'écriture corrective dans le rapport utilisait le préfixe de référence `RAPPRO-` au lieu du champ fiable `source_system`. Nettoyages associés : requêtes de lignes dédupliquées via `statement.lines` déjà chargé, helper `_load_matched_entries` partagé, badges de statut factorisés dans `journalShared.tsx`.
+| — | PDF export (v2), QIF/MT940 parsers (v2) | ⏳ Non implémenté (hors scope v1, stubs présents) |
+| — | `pnpm --filter @club-erp/web build` / `lint` | ✅ Build et lint passent (0 erreur introduite ; 157 erreurs/warnings pré-existantes non liées) |
 
 ## TL;DR
 

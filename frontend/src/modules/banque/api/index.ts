@@ -205,6 +205,8 @@ export type AccountOption = {
   name: string
   type: number            // 1=Asset 2=Liability 3=Equity 4=Expense 5=Revenue
   is_posting_allowed: boolean
+  is_reconcilable?: boolean
+  is_active?: boolean
   require_id: number      // 0=none,1=member,2=asset,3=supplier
 }
 
@@ -214,6 +216,7 @@ export type JournalOption = {
   name: string
   type: number
   is_active: boolean
+  default_account_uuid?: string | null
 }
 
 export type AccountingEntryLinePayload = {
@@ -1904,6 +1907,405 @@ export function useUpsertFlightBillingSettingsMutation() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', data.fiscal_year_uuid] })
       queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', 'defaults', data.fiscal_year_uuid] })
+    },
+  })
+}
+
+// ── Bank reconciliation ───────────────────────────────────────────────────────
+
+export const reconciliationQueryKeys = {
+  statements: (filters: Record<string, unknown>) => ['banque', 'reconciliation', 'statements', filters] as const,
+  statement: (statementUuid: string) => ['banque', 'reconciliation', 'statement', statementUuid] as const,
+  discrepancies: (statementUuid: string) => ['banque', 'reconciliation', 'discrepancies', statementUuid] as const,
+  report: (statementUuid: string) => ['banque', 'reconciliation', 'report', statementUuid] as const,
+  csvMappings: ['banque', 'reconciliation', 'csv-mappings'] as const,
+}
+
+export type BankStatementLine = {
+  uuid: string
+  statement_uuid: string
+  line_index: number
+  line_date: string
+  description: string | null
+  amount: string
+  reference: string | null
+  counterparty: string | null
+  match_status: 'unmatched' | 'auto_matched' | 'manually_matched' | 'excluded' | 'discrepancy'
+  matched_entry_uuid: string | null
+  matched_fiscal_year_uuid: string | null
+  match_confidence: string | null
+  discrepancy_type: 'missing_entry' | 'amount_variance' | 'timing' | 'duplicate' | null
+  discrepancy_notes: string | null
+  resolved_at: string | null
+  resolved_by: number | null
+  created_at: string
+}
+
+export type BankStatement = {
+  uuid: string
+  fiscal_year_uuid: string
+  journal_uuid: string
+  account_uuid: string
+  import_date: string
+  statement_date: string
+  statement_period_start: string | null
+  statement_period_end: string | null
+  source_format: string
+  raw_filename: string | null
+  opening_balance: string
+  closing_balance: string
+  total_debits: string
+  total_credits: string
+  line_count: number
+  status: 'imported' | 'matching' | 'reconciled' | 'flagged'
+  reconciled_balance: string | null
+  balance_difference: string | null
+  reconciled_at: string | null
+  reconciled_by: number | null
+  created_by: number
+  created_at: string
+  updated_at: string
+}
+
+export type BankStatementDetail = BankStatement & { lines: BankStatementLine[] }
+
+export type MatchResult = {
+  auto_matched: number
+  flagged_review: number
+  unmatched: number
+}
+
+export type Discrepancy = {
+  line_uuid: string
+  type: 'missing_entry' | 'amount_variance' | 'timing' | 'duplicate'
+  description: string
+}
+
+export type ReconciliationUnresolvedLine = {
+  uuid: string
+  line_date: string
+  description: string | null
+  amount: string
+  match_status: string
+  discrepancy_type: string | null
+  discrepancy_notes: string | null
+}
+
+export type ReconciliationCorrectingEntry = {
+  line_uuid: string
+  entry_uuid: string
+  fiscal_year_uuid: string
+  reference: string | null
+  description: string | null
+}
+
+export type ReconciliationReport = {
+  statement_uuid: string
+  fiscal_year_uuid: string
+  journal_uuid: string
+  account_uuid: string
+  statement_date: string
+  period_start: string | null
+  period_end: string | null
+  opening_balance: string
+  closing_balance: string
+  reconciled_balance: string | null
+  balance_difference: string | null
+  status: string
+  line_count: number
+  status_counts: Record<string, number>
+  correcting_entries: ReconciliationCorrectingEntry[]
+  unresolved_lines: ReconciliationUnresolvedLine[]
+  reconciled_at: string | null
+  reconciled_by: number | null
+}
+
+export type BankCsvMapping = {
+  uuid: string
+  name: string
+  created_by: number
+  column_mapping: Record<string, string>
+  separator: string | null
+  encoding: string | null
+  date_format: string
+  created_at: string
+}
+
+export type BankCsvMappingCreatePayload = {
+  name: string
+  column_mapping: Record<string, string>
+  separator?: string | null
+  encoding?: string | null
+  date_format: string
+}
+
+export type ReconciliationStatementFilters = {
+  fiscal_year_uuid?: string
+  journal_uuid?: string
+  status?: string
+}
+
+export function useReconciliationStatementsQuery(filters: ReconciliationStatementFilters, enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.statements(filters),
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ items: BankStatement[]; total: number }>(
+        '/api/v1/reconciliation/statements',
+        { ...getAuthRequestConfig(), params: filters },
+      )
+      return data
+    },
+  })
+}
+
+export function useReconciliationStatementQuery(statementUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.statement(statementUuid ?? 'none'),
+    enabled: enabled && Boolean(statementUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<BankStatementDetail>(
+        `/api/v1/reconciliation/statements/${statementUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useImportStatementMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      file,
+      fiscal_year_uuid,
+      journal_uuid,
+      account_uuid,
+      csv_mapping_uuid,
+    }: {
+      file: File
+      fiscal_year_uuid: string
+      journal_uuid: string
+      account_uuid: string
+      csv_mapping_uuid?: string
+    }) => {
+      const authConfig = getAuthRequestConfig()
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('fiscal_year_uuid', fiscal_year_uuid)
+      formData.append('journal_uuid', journal_uuid)
+      formData.append('account_uuid', account_uuid)
+      if (csv_mapping_uuid) formData.append('csv_mapping_uuid', csv_mapping_uuid)
+      const { data } = await apiClient.post<BankStatementDetail>(
+        '/api/v1/reconciliation/import',
+        formData,
+        { ...(authConfig ?? {}), headers: { ...(authConfig?.headers ?? {}) } },
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation'] })
+    },
+  })
+}
+
+export function useDeleteReconciliationStatementMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (statementUuid: string) => {
+      await apiClient.delete(`/api/v1/reconciliation/statements/${statementUuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation'] })
+    },
+  })
+}
+
+export function useRunAutoMatchMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ statementUuid, includeDrafts }: { statementUuid: string; includeDrafts?: boolean }) => {
+      const { data } = await apiClient.post<MatchResult>(
+        `/api/v1/reconciliation/statements/${statementUuid}/match`,
+        {},
+        { ...getAuthRequestConfig(), params: { include_drafts: includeDrafts ?? false } },
+      )
+      return data
+    },
+    onSuccess: async (_data, { statementUuid }) => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
+    },
+  })
+}
+
+export function useManualMatchMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      line_uuid: string
+      entry_uuid: string
+      fiscal_year_uuid: string
+      include_drafts?: boolean
+    }) => {
+      const { data } = await apiClient.post<BankStatementLine>(
+        '/api/v1/reconciliation/manual-match',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
+    },
+  })
+}
+
+export function useUnmatchLineMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { line_uuid: string; reason: string }) => {
+      const { data } = await apiClient.post<BankStatementLine>(
+        '/api/v1/reconciliation/unmatch',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
+    },
+  })
+}
+
+export function useReconciliationDiscrepanciesQuery(statementUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.discrepancies(statementUuid ?? 'none'),
+    enabled: enabled && Boolean(statementUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<Discrepancy[]>(
+        `/api/v1/reconciliation/statements/${statementUuid}/discrepancies`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useResolveDiscrepancyMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      line_uuid: string
+      action: 'accept' | 'exclude' | 'create_correcting_entry'
+      counter_account_uuid?: string
+      notes?: string
+    }) => {
+      const { data } = await apiClient.post<BankStatementLine>(
+        '/api/v1/reconciliation/resolve-discrepancy',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.report(data.statement_uuid) })
+    },
+  })
+}
+
+export function useCloseReconciliationMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (statementUuid: string) => {
+      const { data } = await apiClient.post<BankStatement>(
+        `/api/v1/reconciliation/statements/${statementUuid}/close`,
+        {},
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async (_data, statementUuid) => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.report(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
+    },
+  })
+}
+
+export function useReconciliationReportQuery(statementUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.report(statementUuid ?? 'none'),
+    enabled: enabled && Boolean(statementUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<ReconciliationReport>(
+        `/api/v1/reconciliation/statements/${statementUuid}/report`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export async function downloadReconciliationReport(statementUuid: string, filename: string) {
+  const { data } = await apiClient.get(
+    `/api/v1/reconciliation/statements/${statementUuid}/report/download`,
+    { ...getAuthRequestConfig(), params: { format: 'json' }, responseType: 'blob' },
+  )
+  const url = window.URL.createObjectURL(data as Blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${filename}.json`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+export function useCsvMappingsQuery(enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.csvMappings,
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<BankCsvMapping[]>(
+        '/api/v1/reconciliation/csv-mappings',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useCreateCsvMappingMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: BankCsvMappingCreatePayload) => {
+      const { data } = await apiClient.post<BankCsvMapping>(
+        '/api/v1/reconciliation/csv-mappings',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.csvMappings })
+    },
+  })
+}
+
+export function useDeleteCsvMappingMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (mappingUuid: string) => {
+      await apiClient.delete(`/api/v1/reconciliation/csv-mappings/${mappingUuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.csvMappings })
     },
   })
 }

@@ -83,6 +83,34 @@ export function opsStatusLabel(status: OpsStatus, t: (key: string) => string): s
 }
 
 // ---------------------------------------------------------------------------
+// Bank reconciliation status vocabulary
+// ---------------------------------------------------------------------------
+
+export function reconciliationStatusBadgeClass(status: 'imported' | 'matching' | 'reconciled' | 'flagged'): string {
+  switch (status) {
+    case 'imported': return 'badge-info'
+    case 'matching': return 'badge-warning'
+    case 'reconciled': return 'badge-success'
+    case 'flagged': return 'badge-destructive'
+    default: return 'bg-muted text-muted-foreground'
+  }
+}
+
+export function reconciliationLineStatusBadgeClass(
+  status: 'unmatched' | 'auto_matched' | 'manually_matched' | 'discrepancy' | 'excluded',
+): string {
+  switch (status) {
+    case 'auto_matched': return 'badge-success'
+    case 'manually_matched': return 'badge-info'
+    case 'discrepancy': return 'badge-warning'
+    case 'excluded': return 'bg-muted text-muted-foreground line-through'
+    case 'unmatched':
+    default:
+      return 'bg-muted text-muted-foreground'
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Local form state shapes
 // ---------------------------------------------------------------------------
 

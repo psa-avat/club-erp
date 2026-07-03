@@ -895,6 +895,117 @@ class AccountingLine(Base):
         return f"<AccountingLine uuid={self.uuid} entry={self.entry_uuid} account={self.account_uuid}>"
 
 
+class BankStatement(Base):
+    """Imported bank/cash statement, scoped to a Banque (3) or Caisse (4) journal + account."""
+
+    __tablename__ = "bank_statements"
+    __table_args__ = (
+        CheckConstraint(
+            "source_format IN ('ofx', 'qfx', 'csv', 'qif', 'mt940')", name="chk_bank_statement_source_format"
+        ),
+        CheckConstraint(
+            "status IN ('imported', 'matching', 'reconciled', 'flagged')", name="chk_bank_statement_status"
+        ),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False, index=True)
+    account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=False, index=True)
+    import_date = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    statement_date = Column(Date, nullable=False)
+    statement_period_start = Column(Date, nullable=True)
+    statement_period_end = Column(Date, nullable=True)
+    source_format = Column(String(8), nullable=False)
+    raw_filename = Column(String(255), nullable=True)
+    raw_content_hash = Column(String(64), nullable=True, index=True)
+    opening_balance = Column(Numeric(10, 4), default=0)
+    closing_balance = Column(Numeric(10, 4), default=0)
+    total_debits = Column(Numeric(10, 4), default=0)
+    total_credits = Column(Numeric(10, 4), default=0)
+    line_count = Column(Integer, default=0)
+    status = Column(String(16), nullable=False, default="imported")
+    reconciled_balance = Column(Numeric(10, 4), nullable=True)
+    balance_difference = Column(Numeric(10, 4), nullable=True)
+    reconciled_at = Column(DateTime(timezone=True), nullable=True)
+    reconciled_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    fiscal_year = relationship("AccountingFiscalYear")
+    journal = relationship("AccountingJournal")
+    account = relationship("AccountingAccount")
+    lines = relationship("BankStatementLine", back_populates="statement", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<BankStatement uuid={self.uuid} date={self.statement_date} status={self.status}>"
+
+
+class BankStatementLine(Base):
+    """Single transaction line of an imported bank statement, carrying its own reconciliation state.
+
+    accounting_lines is never modified: reconciliation state lives entirely here to preserve
+    posted-entry immutability. matched_entry_uuid/matched_fiscal_year_uuid have no DB FK because
+    accounting_entries has a composite primary key (uuid, fiscal_year_uuid) — same pattern as
+    AccountingEntry.reversal_of_entry_uuid.
+    """
+
+    __tablename__ = "bank_statement_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "match_status IN ('unmatched', 'auto_matched', 'manually_matched', 'excluded', 'discrepancy')",
+            name="chk_bank_lines_match_status",
+        ),
+        CheckConstraint(
+            "discrepancy_type IS NULL OR discrepancy_type IN ('missing_entry', 'amount_variance', 'timing', 'duplicate')",
+            name="chk_bank_lines_discrepancy_type",
+        ),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    statement_uuid = Column(UUID(as_uuid=True), ForeignKey("bank_statements.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    line_index = Column(Integer, nullable=False, default=0)
+    line_date = Column(Date, nullable=False)
+    description = Column(Text, nullable=True)
+    amount = Column(Numeric(10, 4), nullable=False)  # positive = credit, negative = debit
+    reference = Column(String(255), nullable=True)
+    counterparty = Column(String(255), nullable=True)
+    bank_raw_data = Column(JSON, nullable=True)
+    match_status = Column(String(20), nullable=False, default="unmatched")
+    matched_entry_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)  # no DB FK
+    matched_fiscal_year_uuid = Column(UUID(as_uuid=True), nullable=True)
+    match_confidence = Column(Numeric(4, 3), nullable=True)
+    discrepancy_type = Column(String(32), nullable=True)
+    discrepancy_notes = Column(Text, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    statement = relationship("BankStatement", back_populates="lines")
+
+    def __repr__(self):
+        return f"<BankStatementLine uuid={self.uuid} date={self.line_date} amount={self.amount} status={self.match_status}>"
+
+
+class BankCsvMapping(Base):
+    """Per-user saved CSV column mapping for bank statement imports."""
+
+    __tablename__ = "bank_csv_mappings"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    column_mapping = Column(JSON, nullable=False)
+    separator = Column(String(4), nullable=True)
+    encoding = Column(String(16), nullable=True)
+    date_format = Column(String(16), nullable=False, default="DD/MM/YYYY")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<BankCsvMapping uuid={self.uuid} name={self.name}>"
+
+
 class AccountingEntryTemplate(Base):
     """Reusable journal entry model for recurring or manual prefills."""
 
