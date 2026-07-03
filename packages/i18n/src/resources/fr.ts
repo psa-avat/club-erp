@@ -2737,6 +2737,9 @@ export const fr = {
         account: 'Sélectionner un compte',
       },
     },
+    entitlementForm: {
+      codeLockedPlanche: 'Ce bon a déjà été envoyé à Planche : le code ne peut plus être modifié.',
+    },
   },
   rh: {
     workspace: {

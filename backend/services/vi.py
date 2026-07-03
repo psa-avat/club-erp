@@ -245,6 +245,11 @@ async def update_vi_entitlement(
 
     if payload.code is not None:
         new_code = _normalize_code(payload.code)
+        if new_code != row.code and row.planche_synced_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot change code: this VI entitlement has already been sent to Planche",
+            )
         existing = await db.execute(
             select(ViEntitlement).where(and_(ViEntitlement.code == new_code, ViEntitlement.uuid != entitlement_uuid))
         )

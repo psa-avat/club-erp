@@ -154,6 +154,7 @@ export type ViEntitlement = {
   realization_entry_uuid: string | null
   conversion_entry_uuid: string | null
   flight_link_count: number
+  planche_synced_at: string | null
   created_at: string
   updated_at: string
 }

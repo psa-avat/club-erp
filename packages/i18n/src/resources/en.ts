@@ -2718,6 +2718,9 @@ export const en = {
         account: 'Select an account',
       },
     },
+    entitlementForm: {
+      codeLockedPlanche: 'This voucher has already been sent to Planche: the code can no longer be changed.',
+    },
   },
   rh: {
     workspace: {

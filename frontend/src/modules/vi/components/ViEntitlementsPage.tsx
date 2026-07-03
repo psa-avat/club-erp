@@ -21,7 +21,7 @@
 import { useMemo, useState } from 'react'
 import Decimal from 'decimal.js'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, Pencil, Plus, UserCheck, XCircle } from 'lucide-react'
+import { BookOpen, Lock, Pencil, Plus, UserCheck, XCircle } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
@@ -400,7 +400,9 @@ function VoucherSheet({
   row: ViEntitlement | null  // null = create mode
   activeTypes: { uuid: string; code: string; name: string }[]
 }) {
+  const { t } = useTranslation('vi')
   const isEdit = row !== null
+  const isCodeLocked = isEdit && row.planche_synced_at != null
   const createMutation = useCreateViEntitlementMutation()
   const patchMutation = usePatchViEntitlementMutation()
   const purchaseMutation = useCreateViPurchaseEntryMutation()
@@ -537,10 +539,17 @@ function VoucherSheet({
                 <Input
                   id="vs-code"
                   required
+                  disabled={isCodeLocked}
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="Ex : VI2026-0001"
                 />
+                {isCodeLocked && (
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Lock className="h-3 w-3" />
+                    {t('entitlementForm.codeLockedPlanche')}
+                  </p>
+                )}
               </div>
               <div className="space-y-1">
                 <Label htmlFor="vs-amount">Montant TTC (€)</Label>

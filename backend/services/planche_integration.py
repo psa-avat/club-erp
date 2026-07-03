@@ -26,7 +26,7 @@ import json
 import logging
 
 import httpx
-from sqlalchemy import String, cast, desc, func, select
+from sqlalchemy import String, cast, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import (
@@ -1043,6 +1043,7 @@ class PlancheIntegrationService:
             raise ValueError(f"Some entitlement UUIDs were not found: {', '.join(missing_ids)}")
 
         payload_items = []
+        payload_uuids = []
         for entitlement, vi_type in rows:
             payload_items.append(
                 {
@@ -1058,14 +1059,20 @@ class PlancheIntegrationService:
                     "status": int(entitlement.status),
                 }
             )
+            payload_uuids.append(entitlement.uuid)
 
         chunks = [
             payload_items[i : i + self.chunk_size]
             for i in range(0, len(payload_items), self.chunk_size)
         ]
+        uuid_chunks = [
+            payload_uuids[i : i + self.chunk_size]
+            for i in range(0, len(payload_uuids), self.chunk_size)
+        ]
         success_count = 0
         failure_count = 0
         error_details: list[str] = []
+        synced_uuids: list = []
 
         for idx, chunk in enumerate(chunks):
             if idx == 0:
@@ -1077,6 +1084,7 @@ class PlancheIntegrationService:
             )
             if response.status_code in (200, 201):
                 success_count += len(chunk)
+                synced_uuids.extend(uuid_chunks[idx])
             else:
                 failure_count += len(chunk)
                 error_body = ""
@@ -1085,6 +1093,13 @@ class PlancheIntegrationService:
                 except Exception:
                     error_body = "(unable to read response body)"
                 error_details.append(f"Chunk failed: HTTP {response.status_code} - {error_body}")
+
+        if synced_uuids:
+            await db.execute(
+                update(ViEntitlement)
+                .where(ViEntitlement.uuid.in_(synced_uuids))
+                .values(planche_synced_at=datetime.now(timezone.utc))
+            )
 
         await self._log_audit(
             db=db,

@@ -1687,6 +1687,10 @@ class ViEntitlement(Base):
         UUID(as_uuid=True), nullable=True,
         comment="OD entry UUID for Step 4 member conversion. Plain UUID.",
     )
+    planche_synced_at = Column(
+        DateTime(timezone=True), nullable=True,
+        comment="Timestamp of the last successful push to Planche. Once set, `code` is locked (it is the Planche join key).",
+    )
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
