@@ -2721,6 +2721,14 @@ export const en = {
     entitlementForm: {
       codeLockedPlanche: 'This voucher has already been sent to Planche: the code can no longer be changed.',
     },
+    planning: {
+      legend: {
+        loaded: 'Loaded',
+        scheduled: 'Scheduled',
+        sentToPlanche: 'Sent to Planche',
+        realized: 'Realized (locked)',
+      },
+    },
   },
   rh: {
     workspace: {

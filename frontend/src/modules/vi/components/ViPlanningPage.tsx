@@ -20,6 +20,7 @@
 
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
@@ -62,21 +63,29 @@ function VoucherCard({
   onDragEnd: () => void
   onUnschedule?: () => void
 }) {
+  const isRealized = row.status === 3
+  const isSentToPlanche = row.planche_synced_at != null
+
   return (
     <div
-      draggable
-      onDragStart={() => onDragStart(row.uuid)}
+      draggable={!isRealized}
+      onDragStart={() => { if (!isRealized) onDragStart(row.uuid) }}
       onDragEnd={onDragEnd}
       title={row.description ?? row.code}
       className={[
-        'group relative flex flex-col gap-0.5 rounded border px-1.5 py-1 cursor-grab text-xs shadow-sm select-none transition-opacity',
+        'group relative flex flex-col gap-0.5 rounded border px-1.5 py-1 text-xs shadow-sm select-none transition-opacity',
+        isRealized ? 'cursor-default' : 'cursor-grab',
         isDragging ? 'opacity-30' : 'opacity-100',
-        row.status === 1
-          ? 'bg-blue-50 border-blue-200 hover:border-blue-400'
-          : 'bg-amber-50 border-amber-200 hover:border-amber-400',
+        isRealized
+          ? 'bg-emerald-50 border-emerald-200'
+          : isSentToPlanche
+            ? 'bg-violet-50 border-violet-200 hover:border-violet-400'
+            : row.status === 1
+              ? 'bg-blue-50 border-blue-200 hover:border-blue-400'
+              : 'bg-amber-50 border-amber-200 hover:border-amber-400',
       ].join(' ')}
     >
-      {onUnschedule && (
+      {onUnschedule && !isRealized && (
         <button
           type="button"
           onMouseDown={(e) => e.stopPropagation()}
@@ -167,6 +176,7 @@ function DayCell({
 const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
 export function ViPlanningPage() {
+  const { t } = useTranslation('vi')
   const entitlementsQuery = useViEntitlementsQuery()
   const patchMutation = usePatchViEntitlementMutation()
 
@@ -207,10 +217,10 @@ export function ViPlanningPage() {
     return `${fmt(start)} ${start.getFullYear()} – ${fmt(end)} ${end.getFullYear()}`
   }, [days])
 
-  // Non-generic, active (Chargé=1 or Planifié=2)
+  // Non-generic, still relevant to the calendar: Chargé=1, Planifié=2, Réalisé=3 (locked, shown for reference)
   const baseRows = useMemo(
     () => (entitlementsQuery.data ?? []).filter(
-      (r) => !r.is_generic && (r.status === 1 || r.status === 2),
+      (r) => !r.is_generic && (r.status === 1 || r.status === 2 || r.status === 3),
     ),
     [entitlementsQuery.data],
   )
@@ -312,6 +322,26 @@ export function ViPlanningPage() {
         onChange={(e) => setSearch(e.target.value)}
         className="max-w-sm text-sm"
       />
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-blue-50 border border-blue-200" />
+          {t('planning.legend.loaded')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-amber-50 border border-amber-200" />
+          {t('planning.legend.scheduled')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-violet-50 border border-violet-200" />
+          {t('planning.legend.sentToPlanche')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-50 border border-emerald-200" />
+          {t('planning.legend.realized')}
+        </span>
+      </div>
 
       {entitlementsQuery.error && <Alert>{toErrorMessage(entitlementsQuery.error)}</Alert>}
       {patchMutation.error && <Alert>{toErrorMessage(patchMutation.error)}</Alert>}

@@ -2740,6 +2740,14 @@ export const fr = {
     entitlementForm: {
       codeLockedPlanche: 'Ce bon a déjà été envoyé à Planche : le code ne peut plus être modifié.',
     },
+    planning: {
+      legend: {
+        loaded: 'Chargé',
+        scheduled: 'Planifié',
+        sentToPlanche: 'Envoyé à Planche',
+        realized: 'Réalisé (verrouillé)',
+      },
+    },
   },
   rh: {
     workspace: {

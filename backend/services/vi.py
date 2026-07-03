@@ -268,6 +268,11 @@ async def update_vi_entitlement(
     if payload.validity_date is not None:
         row.validity_date = payload.validity_date
     if 'scheduled_date' in payload.model_fields_set:
+        if payload.scheduled_date != row.scheduled_date and row.status == int(ViEntitlementStatus.REALIZED):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot reschedule: this VI entitlement has already been realized",
+            )
         row.scheduled_date = payload.scheduled_date
         if payload.status is None and row.status in (int(ViEntitlementStatus.LOADED), int(ViEntitlementStatus.SCHEDULED)):
             row.status = int(ViEntitlementStatus.SCHEDULED if payload.scheduled_date else ViEntitlementStatus.LOADED)
@@ -305,6 +310,11 @@ async def patch_vi_scheduled_date(
     user_id: int | None,
 ) -> ViEntitlement:
     row = await get_vi_entitlement(db, entitlement_uuid)
+    if scheduled_date != row.scheduled_date and row.status == int(ViEntitlementStatus.REALIZED):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot reschedule: this VI entitlement has already been realized",
+        )
     _assert_date_consistency(scheduled_date, row.realisation_date)
     row.scheduled_date = scheduled_date
     if row.status in (int(ViEntitlementStatus.LOADED), int(ViEntitlementStatus.SCHEDULED)):

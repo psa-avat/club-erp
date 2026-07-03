@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from uuid import uuid4
@@ -25,7 +25,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from schemas.vi import ViEntitlementUpdateRequest
-from services.vi import update_vi_entitlement
+from services.vi import patch_vi_scheduled_date, update_vi_entitlement
 
 
 class _FakeResult:
@@ -50,16 +50,17 @@ class _FakeDb:
         pass
 
 
-def _fake_entitlement(*, code="VI2026-0001", planche_synced_at=None):
+def _fake_entitlement(*, code="VI2026-0001", planche_synced_at=None, status=2, scheduled_date=None):
     return SimpleNamespace(
         uuid=uuid4(),
         code=code,
         vi_type_uuid=uuid4(),
         vi_type=None,
         description=None,
-        scheduled_date=None,
+        scheduled_date=scheduled_date,
         realisation_date=None,
         planche_synced_at=planche_synced_at,
+        status=status,
     )
 
 
@@ -89,3 +90,39 @@ class ViEntitlementCodeLockTests(IsolatedAsyncioTestCase):
 
         result = await update_vi_entitlement(db, row.uuid, payload, user_id=None)
         self.assertEqual(result.code, "VI2026-9999")
+
+
+class ViEntitlementRescheduleLockTests(IsolatedAsyncioTestCase):
+    async def test_generic_patch_rejects_reschedule_once_realized(self):
+        row = _fake_entitlement(status=3, scheduled_date=date(2026, 7, 1))
+        db = _FakeDb(execute_results=[_FakeResult(row)])
+        payload = ViEntitlementUpdateRequest(scheduled_date=date(2026, 7, 15))
+
+        with self.assertRaises(HTTPException) as ctx:
+            await update_vi_entitlement(db, row.uuid, payload, user_id=None)
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(row.scheduled_date, date(2026, 7, 1))
+
+    async def test_generic_patch_allows_same_date_once_realized(self):
+        row = _fake_entitlement(status=3, scheduled_date=date(2026, 7, 1))
+        db = _FakeDb(execute_results=[_FakeResult(row)])
+        payload = ViEntitlementUpdateRequest(scheduled_date=date(2026, 7, 1))
+
+        result = await update_vi_entitlement(db, row.uuid, payload, user_id=None)
+        self.assertEqual(result.scheduled_date, date(2026, 7, 1))
+
+    async def test_generic_patch_allows_reschedule_when_not_realized(self):
+        row = _fake_entitlement(status=2, scheduled_date=date(2026, 7, 1))
+        db = _FakeDb(execute_results=[_FakeResult(row)])
+        payload = ViEntitlementUpdateRequest(scheduled_date=date(2026, 7, 15))
+
+        result = await update_vi_entitlement(db, row.uuid, payload, user_id=None)
+        self.assertEqual(result.scheduled_date, date(2026, 7, 15))
+
+    async def test_dedicated_scheduled_date_endpoint_rejects_once_realized(self):
+        row = _fake_entitlement(status=3, scheduled_date=date(2026, 7, 1))
+        db = _FakeDb(execute_results=[_FakeResult(row)])
+
+        with self.assertRaises(HTTPException) as ctx:
+            await patch_vi_scheduled_date(db, row.uuid, date(2026, 7, 20), user_id=None)
+        self.assertEqual(ctx.exception.status_code, 409)
