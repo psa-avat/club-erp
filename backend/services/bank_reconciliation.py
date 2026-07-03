@@ -266,14 +266,21 @@ def _entry_bank_line(entry: AccountingEntry, account_uuid: UUID) -> AccountingLi
     return next((l for l in entry.lines if l.account_uuid == account_uuid), None)
 
 
+def _is_treasury_account(account) -> bool:
+    """PCG class 5 (Trésorerie: Banque/Caisse/Livrets/Régies/Virements internes) —
+    the club's own liquidity accounts. NOT the same as `is_reconcilable`, which also
+    flags ordinary third-party accounts (411 Membres, 401 Fournisseurs, 43x Organismes
+    sociaux...) for lettrage and would otherwise make routine payments look like
+    inter-account transfers."""
+    return bool(account is not None and account.code and account.code.startswith("5"))
+
+
 def _is_internal_transfer_candidate(entry: AccountingEntry, bank_line: AccountingLine) -> bool:
-    """An entry whose other line also sits on a reconcilable account is a transfer
+    """An entry whose other line also sits on a treasury account is a transfer
     between two of the club's own bank/cash accounts — cap its score to avoid a
-    false-positive 1.0 auto-accept."""
-    return any(
-        line.uuid != bank_line.uuid and line.account is not None and line.account.is_reconcilable
-        for line in entry.lines
-    )
+    false-positive auto-accept (either leg could plausibly match the same statement
+    line, so this always needs human judgment regardless of textual score)."""
+    return any(line.uuid != bank_line.uuid and _is_treasury_account(line.account) for line in entry.lines)
 
 
 async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_drafts: bool = True) -> dict:

@@ -279,16 +279,26 @@ class ScoringHelperTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(line)
         self.assertEqual(line.account_uuid, account_uuid)
 
-    def test_internal_transfer_detected_via_other_reconcilable_account(self):
+    def test_internal_transfer_detected_via_other_treasury_account(self):
         account_uuid = uuid4()
         caisse = _bank_account(code="531", type=1, is_reconcilable=True)
         entry = _entry_with_bank_line(account_uuid, debit=Decimal("100"), other_account=caisse)
         bank_line = _entry_bank_line(entry, account_uuid)
         self.assertTrue(_is_internal_transfer_candidate(entry, bank_line))
 
-    def test_not_internal_transfer_when_other_side_is_not_reconcilable(self):
+    def test_not_internal_transfer_when_other_side_is_not_treasury(self):
         account_uuid = uuid4()
         member_account = _bank_account(code="411", type=1, is_reconcilable=False)
+        entry = _entry_with_bank_line(account_uuid, debit=Decimal("100"), other_account=member_account)
+        bank_line = _entry_bank_line(entry, account_uuid)
+        self.assertFalse(_is_internal_transfer_candidate(entry, bank_line))
+
+    def test_not_internal_transfer_for_reconcilable_third_party_account(self):
+        # Regression: 411 "Membres - Créances" is_reconcilable=True (for lettrage of
+        # invoices vs payments) must NOT be mistaken for a treasury/bank-cash account —
+        # a routine member payment (Banque <-> 411) is not an inter-account transfer.
+        account_uuid = uuid4()
+        member_account = _bank_account(code="411", type=1, is_reconcilable=True)
         entry = _entry_with_bank_line(account_uuid, debit=Decimal("100"), other_account=member_account)
         bank_line = _entry_bank_line(entry, account_uuid)
         self.assertFalse(_is_internal_transfer_candidate(entry, bank_line))

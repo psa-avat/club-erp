@@ -1918,7 +1918,6 @@ export const reconciliationQueryKeys = {
   statement: (statementUuid: string) => ['banque', 'reconciliation', 'statement', statementUuid] as const,
   lines: (statementUuid: string, filters: Record<string, unknown>) =>
     ['banque', 'reconciliation', 'lines', statementUuid, filters] as const,
-  discrepancies: (statementUuid: string) => ['banque', 'reconciliation', 'discrepancies', statementUuid] as const,
   report: (statementUuid: string) => ['banque', 'reconciliation', 'report', statementUuid] as const,
   csvMappings: ['banque', 'reconciliation', 'csv-mappings'] as const,
 }
@@ -2169,7 +2168,6 @@ export function useRunAutoMatchMutation() {
     onSuccess: async (_data, { statementUuid }) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', statementUuid] })
-      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(statementUuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
     },
   })
@@ -2194,7 +2192,6 @@ export function useManualMatchMutation() {
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
-      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
     },
   })
 }
@@ -2213,21 +2210,25 @@ export function useUnmatchLineMutation() {
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
-      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
     },
   })
 }
 
-export function useReconciliationDiscrepanciesQuery(statementUuid: string | null, enabled = true) {
-  return useQuery({
-    queryKey: reconciliationQueryKeys.discrepancies(statementUuid ?? 'none'),
-    enabled: enabled && Boolean(statementUuid),
-    queryFn: async () => {
+/** One-shot discrepancy detection — invoked explicitly (e.g. right after a matching run)
+ * rather than as an ambient query, since it scans every line of the statement server-side. */
+export function useDetectDiscrepanciesMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (statementUuid: string) => {
       const { data } = await apiClient.get<Discrepancy[]>(
         `/api/v1/reconciliation/statements/${statementUuid}/discrepancies`,
         getAuthRequestConfig(),
       )
       return data
+    },
+    onSuccess: async (_data, statementUuid) => {
+      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', statementUuid] })
     },
   })
 }
@@ -2251,7 +2252,6 @@ export function useResolveDiscrepancyMutation() {
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
-      await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.discrepancies(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.report(data.statement_uuid) })
     },
   })
