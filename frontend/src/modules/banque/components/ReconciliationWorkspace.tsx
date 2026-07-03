@@ -17,15 +17,19 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
+import Decimal from 'decimal.js'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DataTable } from '@/components/ui/data-table'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   useAccountingEntriesQuery,
   useManualMatchMutation,
@@ -55,6 +59,25 @@ export function ReconciliationWorkspace() {
   )
 }
 
+const LINE_STATUSES: BankStatementLine['match_status'][] = [
+  'unmatched',
+  'auto_matched',
+  'manually_matched',
+  'discrepancy',
+  'excluded',
+]
+
+/** Parses a filter input as a Decimal, tolerating incomplete typing (e.g. "-", "1."). */
+function parseFilterDecimal(raw: string): Decimal | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  try {
+    return new Decimal(trimmed)
+  } catch {
+    return null
+  }
+}
+
 function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onBack: () => void }) {
   const { t } = useTranslation('banque')
   const { data: statement, isLoading } = useReconciliationStatementQuery(statementUuid)
@@ -62,6 +85,39 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
   const [pickerLine, setPickerLine] = useState<BankStatementLine | null>(null)
   const [includeDrafts, setIncludeDrafts] = useState(false)
   const unmatchMutation = useUnmatchLineMutation()
+
+  const [filterDescription, setFilterDescription] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterAmountMin, setFilterAmountMin] = useState('')
+  const [filterAmountMax, setFilterAmountMax] = useState('')
+
+  const filteredLines = useMemo(() => {
+    if (!statement) return []
+    const descriptionQuery = filterDescription.trim().toLowerCase()
+    const minAmount = parseFilterDecimal(filterAmountMin)
+    const maxAmount = parseFilterDecimal(filterAmountMax)
+
+    return statement.lines.filter((line) => {
+      if (descriptionQuery && !(line.description ?? '').toLowerCase().includes(descriptionQuery)) return false
+      if (filterStatus && line.match_status !== filterStatus) return false
+      if (filterDateFrom && line.line_date < filterDateFrom) return false
+      if (filterDateTo && line.line_date > filterDateTo) return false
+      if (minAmount && new Decimal(line.amount).lessThan(minAmount)) return false
+      if (maxAmount && new Decimal(line.amount).greaterThan(maxAmount)) return false
+      return true
+    })
+  }, [statement, filterDescription, filterStatus, filterDateFrom, filterDateTo, filterAmountMin, filterAmountMax])
+
+  function clearFilters() {
+    setFilterDescription('')
+    setFilterStatus('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterAmountMin('')
+    setFilterAmountMax('')
+  }
 
   async function handleRunMatch() {
     if (!statement) return
@@ -120,6 +176,77 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
         </div>
       </div>
 
+      <div className="flex flex-wrap items-end gap-2 rounded-md border bg-card p-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">
+            {t('reconciliation.workspace.filters.description', 'Libellé')}
+          </Label>
+          <Input
+            value={filterDescription}
+            onChange={(e) => setFilterDescription(e.target.value)}
+            placeholder={t('reconciliation.workspace.filters.descriptionPlaceholder', 'Rechercher…')}
+            className="h-8 w-48"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">
+            {t('reconciliation.workspace.filters.status', 'Statut')}
+          </Label>
+          <Select value={filterStatus || 'all'} onValueChange={(v) => setFilterStatus(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-8 w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('reconciliation.workspace.filters.all', 'Tous')}</SelectItem>
+              {LINE_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>{t(`reconciliation.lineStatus.${s}`, s)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">{t('reconciliation.workspace.filters.dateFrom', 'Du')}</Label>
+          <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="h-8 w-36" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">{t('reconciliation.workspace.filters.dateTo', 'Au')}</Label>
+          <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="h-8 w-36" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">
+            {t('reconciliation.workspace.filters.amountMin', 'Montant min')}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={filterAmountMin}
+            onChange={(e) => setFilterAmountMin(e.target.value)}
+            className="h-8 w-28"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">
+            {t('reconciliation.workspace.filters.amountMax', 'Montant max')}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            value={filterAmountMax}
+            onChange={(e) => setFilterAmountMax(e.target.value)}
+            className="h-8 w-28"
+          />
+        </div>
+        <Button size="sm" variant="outline" onClick={clearFilters}>
+          {t('reconciliation.workspace.filters.clear', 'Effacer les filtres')}
+        </Button>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {t('reconciliation.workspace.filters.count', '{{count}} / {{total}} ligne(s)', {
+            count: filteredLines.length,
+            total: statement.lines.length,
+          })}
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <DataTable<BankStatementLine>
@@ -145,7 +272,7 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
                 ),
               },
             ]}
-            data={statement.lines}
+            data={filteredLines}
             getRowKey={(row) => row.uuid}
             actions={(row) => (
               <div className="flex gap-2">
@@ -171,7 +298,9 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
             )}
             emptyState={
               <p className="py-8 text-center text-sm text-muted-foreground">
-                {t('reconciliation.workspace.noLines', 'Aucune ligne dans ce relevé.')}
+                {statement.lines.length === 0
+                  ? t('reconciliation.workspace.noLines', 'Aucune ligne dans ce relevé.')
+                  : t('reconciliation.workspace.noLinesMatchFilters', 'Aucune ligne ne correspond aux filtres.')}
               </p>
             }
           />

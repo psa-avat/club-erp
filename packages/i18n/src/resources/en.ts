@@ -2320,6 +2320,7 @@ export const en = {
         pickEntry: 'Match an entry',
         noEntries: 'No posted entry available.',
         noLines: 'No lines in this statement.',
+        noLinesMatchFilters: 'No line matches the filters.',
         discrepancies: 'Discrepancies to resolve',
         cancel: 'Cancel',
         columns: {
@@ -2327,6 +2328,18 @@ export const en = {
           description: 'Description',
           amount: 'Amount',
           status: 'Status',
+        },
+        filters: {
+          description: 'Description',
+          descriptionPlaceholder: 'Search…',
+          status: 'Status',
+          all: 'All',
+          dateFrom: 'From',
+          dateTo: 'To',
+          amountMin: 'Min amount',
+          amountMax: 'Max amount',
+          clear: 'Clear filters',
+          count: '{{count}} / {{total}} line(s)',
         },
       },
       discrepancies: {

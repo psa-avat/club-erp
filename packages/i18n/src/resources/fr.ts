@@ -2331,6 +2331,7 @@ export const fr = {
         pickEntry: 'Associer une écriture',
         noEntries: 'Aucune écriture postée disponible.',
         noLines: 'Aucune ligne dans ce relevé.',
+        noLinesMatchFilters: 'Aucune ligne ne correspond aux filtres.',
         discrepancies: 'Écarts à résoudre',
         cancel: 'Annuler',
         columns: {
@@ -2338,6 +2339,18 @@ export const fr = {
           description: 'Libellé',
           amount: 'Montant',
           status: 'Statut',
+        },
+        filters: {
+          description: 'Libellé',
+          descriptionPlaceholder: 'Rechercher…',
+          status: 'Statut',
+          all: 'Tous',
+          dateFrom: 'Du',
+          dateTo: 'Au',
+          amountMin: 'Montant min',
+          amountMax: 'Montant max',
+          clear: 'Effacer les filtres',
+          count: '{{count}} / {{total}} ligne(s)',
         },
       },
       discrepancies: {

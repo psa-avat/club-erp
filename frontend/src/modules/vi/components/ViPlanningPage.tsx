@@ -245,7 +245,7 @@ export function ViPlanningPage() {
   }, [filteredRows])
 
   const unscheduled = useMemo(
-    () => filteredRows.filter((r) => !r.scheduled_date),
+    () => filteredRows.filter((r) => !r.scheduled_date && r.status === 1),
     [filteredRows],
   )
 
