@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -30,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db
 from api.security import require_capability
 from constants import CAP_FEDERAL_SYNC, CAP_MANAGE_SYSTEM_SETTINGS
-from models import FederalSyncLog, SystemSetting, User
+from models import FederalSyncLog, Member, SystemSetting, User, ValidatedFlight
 from schemas.gesasso import GESASSO_SETTINGS_MODULE
 from services.federal_sync import GesassoSyncService
 
@@ -58,6 +59,40 @@ class SyncStatusItem(BaseModel):
     status: int
     external_id: str | None
     last_attempt_at: str | None
+
+
+class SyncCandidateIssue(BaseModel):
+    code: str
+    blocking: bool
+
+
+class SyncCandidateItem(BaseModel):
+    flight_uuid: str
+    jour: str | None
+    pilot_name: str | None
+    second_pilot_name: str | None
+    asset_code: str | None
+    type_of_flight: int
+    status: int
+    external_id: str | None
+    last_attempt_at: str | None
+    issues: list[SyncCandidateIssue]
+
+
+class SyncCandidatesSummary(BaseModel):
+    pending: int
+    sent: int
+    failed: int
+    blocked: int
+
+
+class SyncCandidatesResponse(BaseModel):
+    items: list[SyncCandidateItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    summary: SyncCandidatesSummary
 
 
 class PlatformConfig(BaseModel):
@@ -185,6 +220,137 @@ async def list_sync_status(
         )
         for r in rows
     ]
+
+
+@router.get("/sync-candidates", response_model=SyncCandidatesResponse)
+async def list_sync_candidates(
+    platform: str = Query("gesasso", description="Platform: currently only 'gesasso' is supported"),
+    date_from: date | None = Query(None, description="Flight date >= date_from"),
+    date_to: date | None = Query(None, description="Flight date <= date_to"),
+    status_filter: str | None = Query(
+        None, description="Filter: 'pending', 'sent', 'failed' or 'blocked'"
+    ),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: User = federal_sync_guard,
+):
+    """Return validated flights eligible for federal sync in a date range, with the
+    latest known status per flight (0 when never attempted) and any blocking issues
+    (e.g. pilot/instructor/winch operator missing an FFVP licence number) computed
+    live from GesassoSyncService.check_flight_issues — so the UI reflects exactly
+    what a real sync attempt would accept or reject, without needing to attempt it.
+    """
+    if platform != "gesasso":
+        raise HTTPException(status_code=400, detail="Only 'gesasso' is supported for now.")
+
+    # Note: source_status carries whatever raw status string Planche sent for the
+    # change (e.g. "created", "corrected"), not an active/deleted flag — it is
+    # not filtered here, matching list_validated_flights in api/routes/flights.py.
+    filters: list = []
+    if date_from is not None:
+        filters.append(ValidatedFlight.jour >= date_from)
+    if date_to is not None:
+        filters.append(ValidatedFlight.jour <= date_to)
+
+    flights_result = await db.execute(
+        select(ValidatedFlight).where(*filters).order_by(ValidatedFlight.jour.desc())
+    )
+    flights = flights_result.scalars().all()
+
+    if not flights:
+        return SyncCandidatesResponse(
+            items=[], total=0, page=page, page_size=page_size, total_pages=0,
+            summary=SyncCandidatesSummary(pending=0, sent=0, failed=0, blocked=0),
+        )
+
+    flight_uuids = [f.uuid for f in flights]
+
+    # Latest log per flight for this platform
+    subq = (
+        select(
+            FederalSyncLog.validated_flight_uuid,
+            FederalSyncLog.status,
+            FederalSyncLog.external_id,
+            FederalSyncLog.attempt_at,
+        )
+        .distinct(FederalSyncLog.validated_flight_uuid)
+        .where(
+            FederalSyncLog.platform == platform,
+            FederalSyncLog.validated_flight_uuid.in_(flight_uuids),
+        )
+        .order_by(FederalSyncLog.validated_flight_uuid, FederalSyncLog.attempt_at.desc())
+        .subquery()
+    )
+    log_rows = await db.execute(select(subq))
+    log_map = {
+        row.validated_flight_uuid: row for row in log_rows.all()
+    }
+
+    # Pilot/second-pilot display names
+    member_uuids = {f.pilot_erp_id for f in flights if f.pilot_erp_id} | \
+                   {f.second_pilot_erp_id for f in flights if f.second_pilot_erp_id}
+    member_map: dict[str, str] = {}
+    if member_uuids:
+        member_rows = await db.execute(
+            select(Member.account_id, Member.first_name, Member.last_name).where(
+                Member.account_id.in_(member_uuids)
+            )
+        )
+        for row in member_rows.all():
+            if row.first_name and row.last_name:
+                member_map[str(row.account_id)] = f"{row.first_name} {row.last_name}"
+
+    ffvp_map = await GesassoSyncService.build_ffvp_map(db, flights)
+
+    items: list[SyncCandidateItem] = []
+    summary = SyncCandidatesSummary(pending=0, sent=0, failed=0, blocked=0)
+    for f in flights:
+        log_row = log_map.get(f.uuid)
+        db_status = log_row.status if log_row else 0
+        issues = GesassoSyncService.check_flight_issues(f, ffvp_map)
+        has_blocking_issue = any(i["blocking"] for i in issues)
+
+        if has_blocking_issue:
+            bucket = "blocked"
+        elif db_status == 2:
+            bucket = "sent"
+        elif db_status == 3:
+            bucket = "failed"
+        else:
+            bucket = "pending"
+
+        setattr(summary, bucket, getattr(summary, bucket) + 1)
+
+        if status_filter is not None and bucket != status_filter:
+            continue
+
+        items.append(SyncCandidateItem(
+            flight_uuid=str(f.uuid),
+            jour=f.jour.isoformat() if f.jour else None,
+            pilot_name=member_map.get(f.pilot_erp_id),
+            second_pilot_name=member_map.get(f.second_pilot_erp_id) if f.second_pilot_erp_id else None,
+            asset_code=f.asset_code,
+            type_of_flight=f.type_of_flight,
+            status=db_status or 0,
+            external_id=log_row.external_id if log_row else None,
+            last_attempt_at=log_row.attempt_at.isoformat() if log_row and log_row.attempt_at else None,
+            issues=issues,
+        ))
+
+    total = len(items)
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    offset = (page - 1) * page_size
+    page_items = items[offset:offset + page_size]
+
+    return SyncCandidatesResponse(
+        items=page_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        summary=summary,
+    )
 
 
 # ---------------------------------------------------------------------------

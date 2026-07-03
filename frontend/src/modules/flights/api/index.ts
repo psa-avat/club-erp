@@ -299,8 +299,52 @@ export type SyncResult = {
   errors: string[]
 }
 
+export type SyncCandidateIssue = {
+  code: string
+  blocking: boolean
+}
+
+export type SyncCandidateItem = {
+  flight_uuid: string
+  jour: string | null
+  pilot_name: string | null
+  second_pilot_name: string | null
+  asset_code: string | null
+  type_of_flight: number
+  status: number
+  external_id: string | null
+  last_attempt_at: string | null
+  issues: SyncCandidateIssue[]
+}
+
+export type SyncCandidatesSummary = {
+  pending: number
+  sent: number
+  failed: number
+  blocked: number
+}
+
+export type SyncCandidatesResponse = {
+  items: SyncCandidateItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  summary: SyncCandidatesSummary
+}
+
+export type SyncCandidatesFilters = {
+  dateFrom?: string
+  dateTo?: string
+  statusFilter?: 'pending' | 'sent' | 'failed' | 'blocked'
+  page?: number
+  pageSize?: number
+}
+
 export const federalSyncQueryKeys = {
   status: (platform: string) => ['flights', 'sync-status', platform] as const,
+  candidates: (platform: string, filters: SyncCandidatesFilters) =>
+    ['flights', 'sync-candidates', platform, filters] as const,
 }
 
 export function useFederalSyncStatusQuery(platform: "gesasso" | "osrt") {
@@ -309,6 +353,25 @@ export function useFederalSyncStatusQuery(platform: "gesasso" | "osrt") {
     queryFn: async () => {
       const { data } = await apiClient.get<SyncStatusItem[]>(
         `/api/v1/flights/sync-status?platform=${platform}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useFederalSyncCandidatesQuery(platform: "gesasso", filters: SyncCandidatesFilters) {
+  return useQuery<SyncCandidatesResponse>({
+    queryKey: federalSyncQueryKeys.candidates(platform, filters),
+    queryFn: async () => {
+      const params = new URLSearchParams({ platform })
+      if (filters.dateFrom) params.set('date_from', filters.dateFrom)
+      if (filters.dateTo) params.set('date_to', filters.dateTo)
+      if (filters.statusFilter) params.set('status_filter', filters.statusFilter)
+      params.set('page', String(filters.page ?? 1))
+      params.set('page_size', String(filters.pageSize ?? 50))
+      const { data } = await apiClient.get<SyncCandidatesResponse>(
+        `/api/v1/flights/sync-candidates?${params.toString()}`,
         getAuthRequestConfig(),
       )
       return data
@@ -328,7 +391,8 @@ export function useFederalSyncMutation(platform: "gesasso" | "osrt") {
       return data
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: federalSyncQueryKeys.status(platform) })
+      await queryClient.invalidateQueries({ queryKey: ['flights', 'sync-status', platform] })
+      await queryClient.invalidateQueries({ queryKey: ['flights', 'sync-candidates', platform] })
     },
   })
 }

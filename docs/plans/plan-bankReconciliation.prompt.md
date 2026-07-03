@@ -1,4 +1,25 @@
-# Plan 052 — Rapprochements Bancaires (v5 amendé)
+# Plan 069 — Rapprochements Bancaires (v5 amendé)
+
+> **État (2026-07-03) : rien n'est encore implémenté.** Aucun modèle, migration, service, route ou composant frontend de ce plan n'existe dans le code actuel — voir la table de suivi ci-dessous. Le numéro de migration a été mis à jour de **052** (désormais occupé par `052_federal_sync_logs.sql`) vers **069**, prochain numéro libre (dernier existant : `068_vi_entitlement_planche_sync_lock.sql`). Les hypothèses du plan (colonne `accounting_accounts.is_reconcilable`, `accounting_journals.type` 1-7 avec 3=Banque/4=Caisse, `accounting_entries.state` 1/2/3, `reversal_of_entry_uuid` sans FK DB, `services.accounting.create_accounting_entry()`) sont toutes vérifiées correctes dans le code actuel.
+
+## Suivi d'implémentation
+
+| Phase | Élément | État |
+|---|---|---|
+| A | `docs/migrations/069_bank_reconciliation.sql` | ❌ Non créé (renommer depuis `052_...` mentionné plus bas) |
+| B | `BankStatement`, `BankStatementLine`, `BankCsvMapping` dans `backend/models.py` | ❌ Non créé |
+| C | `backend/services/bank_parsers.py` | ❌ Non créé |
+| D | `backend/services/bank_reconciliation.py` | ❌ Non créé |
+| E | Écarts / clôture (`detect_discrepancies`, `close_reconciliation`, etc.) | ❌ Non créé |
+| F | `backend/api/routes/reconciliation.py` + enregistrement dans `backend/main.py` | ❌ Non créé |
+| F | `backend/schemas/reconciliation.py` | ❌ Non créé |
+| — | `ofxparse`, `chardet` dans `backend/requirements.txt` | ❌ Non ajoutés |
+| G | Composants `frontend/src/modules/banque/components/Reconciliation*.tsx` | ❌ Non créés |
+| G | Hooks/types rapprochement dans `frontend/src/modules/banque/api/index.ts` | ❌ Non ajoutés |
+| H | Sous-onglet `rapprochement` dans `FinanceWorkspacePage.tsx` | ❌ Non ajouté |
+| H | Redirection `/banque/reconciliation` | ✅ Existe déjà (`frontend/src/App.tsx:142`), pointe vers `/workspace/finance?tab=comptabilite` — à affiner vers `&subtab=rapprochement` une fois le sous-onglet créé |
+| H | i18n `banque.reconciliation.*` (`fr.ts` / `en.ts`) | ❌ Non ajouté |
+| Tests | `backend/tests/test_bank_reconciliation*.py` | ❌ Non créé |
 
 ## TL;DR
 
@@ -66,7 +87,7 @@ IMPORT (journal + compte Banque/Caisse) → PARSING → MATCHING AUTO → VALIDA
 
 ## Phase A — Migration SQL
 
-**Fichier** : `docs/migrations/052_bank_reconciliation.sql`
+**Fichier** : `docs/migrations/069_bank_reconciliation.sql`
 
 ```sql
 -- ============================================================
@@ -601,7 +622,7 @@ chardet==5.2.0    # Détection encodage CSV v1
 
 | Fichier | Action |
 |---|---|
-| `docs/migrations/052_bank_reconciliation.sql` | **Créer** |
+| `docs/migrations/069_bank_reconciliation.sql` | **Créer** |
 | `backend/models.py` | **Modifier** — 3 nouveaux modèles (+ `date_format` sur `BankCsvMapping`) |
 | `backend/schemas/reconciliation.py` | **Créer** |
 | `backend/services/bank_parsers.py` | **Créer** |

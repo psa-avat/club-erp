@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { Plane, Tags, Database, ArrowLeftRight, Plug } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
+import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
 import { FlightsBillingPage } from "./FlightsBillingPage";
 import { FederalSyncPage } from "./FederalSyncPage";
 import { OpsPacksTab } from "../../banque";
@@ -33,8 +34,8 @@ import { PlancheFlightsPullPage } from "../../planche";
  * Regroupe en une seule page avec tabs :
  * - vols      → Cockpit facturation unifié (FlightsBillingPage — fusion vols + facturation)
  * - packs     → Achats et consommation forfaits (OpsPacksTab)
- * - gesasso   → Envoi Gesasso (placeholder, Phase 8)
- * - osrt      → Envoi OSRT (placeholder, Phase 8)
+ * - gesasso   → Envoi GesAsso (FederalSyncPage — vérification et envoi des vols)
+ * - osrt      → Envoi OSRT (indisponible : format de l'API OSRT non encore déterminé)
  * - sync      → Import vols depuis Planche (PlancheFlightsPullPage)
  *
  * Note: les tabs "vols" et "facturation" ont été fusionnés en un seul cockpit
@@ -78,7 +79,15 @@ export function FlightsWorkspacePage() {
           value: "osrt",
           label: t("workspace.tabs.osrt", "Envoi OSRT"),
           icon: Plug,
-          content: <FederalSyncPage platform="osrt" label="OSRT" />,
+          content: (
+            <PlaceholderPage
+              title={t("federalSync.osrtUnavailable.title", "Synchronisation OSRT indisponible")}
+              description={t(
+                "federalSync.osrtUnavailable.body",
+                "L'API OSRT n'a pas encore été intégrée : le format des données de vol attendu par le service reste à confirmer avec la fédération.",
+              )}
+            />
+          ),
         },
         {
           value: "sync",

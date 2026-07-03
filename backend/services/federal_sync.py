@@ -23,6 +23,7 @@ import base64
 import hashlib
 import logging
 import os
+import re
 from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -34,6 +35,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import AuditLog, FederalSyncLog, Member, ValidatedFlight
 
 logger = logging.getLogger(__name__)
+
+_TRIGRAM_PAREN_PATTERN = re.compile(r"\(([A-Za-z]{3})\)")
+
+
+def _normalize_trigram(raw: str) -> str:
+    """Best-effort normalization of a Planche launch_pilot_trigram value.
+
+    Usually a plain 3-letter code, returned as-is (uppercased). Occasionally a
+    full name is entered in that field by mistake, e.g. "Prénom Nom (ABC)" —
+    in that case extract the parenthesized code so the member lookup still
+    matches instead of silently falling back to an "external" declaration.
+    """
+    value = raw.strip()
+    if len(value) == 3:
+        return value.upper()
+    match = _TRIGRAM_PAREN_PATTERN.search(value)
+    if match:
+        return match.group(1).upper()
+    return value
 
 
 class FederalSyncService:
@@ -103,6 +123,26 @@ class FederalSyncService:
 
     def map_flight(self, flight: ValidatedFlight) -> dict[str, Any]:
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Error classification (override in subclasses)
+    #
+    # A platform's "flight already exists" validation error means the flight
+    # really is present server-side — recording it as a plain failure would
+    # make it fail forever on every retry. Subclasses that can parse their
+    # platform's error payload should override these to map such errors to
+    # status=2 (transferred) instead of status=3 (failed).
+    # ------------------------------------------------------------------
+
+    def _classify_batch_error(
+        self, exc: httpx.HTTPStatusError, flights: list[ValidatedFlight]
+    ) -> dict[UUID, int]:
+        """Default: every flight in the failed batch is marked failed (status=3)."""
+        return {f.uuid: 3 for f in flights}
+
+    def _classify_single_error(self, exc: httpx.HTTPStatusError) -> int:
+        """Default: any single-flight (PUT) error is marked failed (status=3)."""
+        return 3
 
     # ------------------------------------------------------------------
     # API Calls (override in subclasses)
@@ -191,9 +231,14 @@ class FederalSyncService:
                             await self._write_log(db, flight.uuid, status=3)
                             failed += 1
                 except httpx.HTTPStatusError as exc:
+                    status_map = self._classify_batch_error(exc, new_flights)
                     for flight in new_flights:
-                        await self._write_log(db, flight.uuid, status=3)
-                        failed += 1
+                        flight_status = status_map.get(flight.uuid, 3)
+                        await self._write_log(db, flight.uuid, status=flight_status)
+                        if flight_status == 2:
+                            synced += 1
+                        else:
+                            failed += 1
                     errors.append(f"POST batch failed: {exc.response.status_code}")
                 except httpx.RequestError as exc:
                     for flight in new_flights:
@@ -209,9 +254,13 @@ class FederalSyncService:
                     await self._write_log(db, flight.uuid, status=2, external_id=ext_id)
                     synced += 1
                 except httpx.HTTPStatusError as exc:
-                    await self._write_log(db, flight.uuid, status=3, external_id=ext_id)
-                    failed += 1
-                    errors.append(f"PUT {ext_id} failed: {exc.response.status_code}")
+                    flight_status = self._classify_single_error(exc)
+                    await self._write_log(db, flight.uuid, status=flight_status, external_id=ext_id)
+                    if flight_status == 2:
+                        synced += 1
+                    else:
+                        failed += 1
+                        errors.append(f"PUT {ext_id} failed: {exc.response.status_code}")
                 except httpx.RequestError as exc:
                     await self._write_log(db, flight.uuid, status=3, external_id=ext_id)
                     failed += 1
@@ -277,6 +326,26 @@ class GesassoSyncService(FederalSyncService):
 
     PLATFORM = "gesasso"
 
+    # Issue codes returned by check_flight_issues(). Shared between the actual
+    # sync path (batch_sync_flights) and the read-only candidates listing, so the
+    # UI can never show a flight as sendable when it would in fact be rejected.
+    #
+    # person_one (pilot, or instructor for instruction flights) has no GesAsso
+    # "external" fallback as far as we know — missing their ffvp_id blocks the
+    # send. Winch/tow operators DO have one (winch_person_external /
+    # tow_person_one_external + *_information, sent by map_flight when no
+    # ffvp_id is found) — so those issues are informational only, not blocking.
+    ISSUE_PERSON_ONE_MISSING_FFVP_ID = "person_one_missing_ffvp_id"
+    ISSUE_WINCH_OPERATOR_MISSING_FFVP_ID = "winch_operator_missing_ffvp_id"
+    ISSUE_TOW_OPERATOR_MISSING_FFVP_ID = "tow_operator_missing_ffvp_id"
+    BLOCKING_ISSUE_CODES = {ISSUE_PERSON_ONE_MISSING_FFVP_ID}
+
+    # tow_aircraft_registration is validated against a real aircraft registry
+    # and is rejected outright when tow_aircraft_external=true ("not allowed
+    # for externals" / "cannot find this identifier") — the two are mutually
+    # exclusive. AircraftTypeEnum accepted values: PLANE|GLIDER|ULM|TMG.
+    TOW_AIRCRAFT_EXTERNAL_TYPE = "PLANE"
+
     def __init__(
         self,
         base_url: str,
@@ -292,6 +361,93 @@ class GesassoSyncService(FederalSyncService):
 
     def _wsse_headers(self) -> dict[str, str]:
         return _make_wsse_headers(self._username, self._password)
+
+    # ------------------------------------------------------------------
+    # Pre-check helpers — shared between batch_sync_flights (actual rejection)
+    # and the read-only sync-candidates listing (UI preview of what would happen)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def build_ffvp_map(db: AsyncSession, flights: list[ValidatedFlight]) -> dict[str, str]:
+        """Build a lookup map (member account_id or trigram) → str(ffvp_id) for every
+        pilot, second pilot/instructor, and winch/tow operator referenced by `flights`."""
+        ffvp_map: dict[str, str] = {}
+
+        all_erp_ids = {f.pilot_erp_id for f in flights if f.pilot_erp_id} | \
+                      {f.second_pilot_erp_id for f in flights if f.second_pilot_erp_id}
+        if all_erp_ids:
+            try:
+                mr = await db.execute(
+                    select(Member.account_id, Member.ffvp_id).where(
+                        Member.account_id.in_(all_erp_ids)
+                    )
+                )
+                ffvp_map = {
+                    str(row.account_id): str(row.ffvp_id)
+                    for row in mr.all()
+                    if row.ffvp_id is not None
+                }
+            except Exception:
+                ffvp_map = {}
+
+        # Extend map with trigram → ffvp_id for winch/tow persons
+        all_trigrams = {
+            _normalize_trigram(f.launch_pilot_trigram) for f in flights if f.launch_pilot_trigram
+        }
+        if all_trigrams:
+            try:
+                tr = await db.execute(
+                    select(Member.trigram, Member.ffvp_id).where(
+                        Member.trigram.in_(all_trigrams)
+                    )
+                )
+                for row in tr.all():
+                    if row.ffvp_id is not None:
+                        ffvp_map[str(row.trigram)] = str(row.ffvp_id)
+            except Exception:
+                pass
+
+        return ffvp_map
+
+    @classmethod
+    def check_flight_issues(cls, flight: ValidatedFlight, ffvp_map: dict[str, str]) -> list[dict[str, Any]]:
+        """Return issues for `flight` given a pre-built ffvp_map, each as
+        {"code": str, "blocking": bool}.
+
+        An empty list, or a list containing only non-blocking issues, means the
+        flight can be sent to GesAsso as-is.
+        - Instruction flights (type_of_flight 0/5/6) require the instructor
+          (second_pilot_erp_id) to have a known ffvp_id — blocking, no fallback.
+        - Other flights require the pilot (pilot_erp_id) to have one — blocking.
+        - WINCH/tow launches (launch_method 1/other) flag a missing operator
+          ffvp_id, but map_flight falls back to GesAsso's *_external fields for
+          them, so this is informational only (not blocking).
+        """
+        issues: list[dict[str, Any]] = []
+
+        def _add(code: str) -> None:
+            issues.append({"code": code, "blocking": code in cls.BLOCKING_ISSUE_CODES})
+
+        is_instruction = flight.type_of_flight in (0, 5, 6)
+        person_one_id = str(flight.second_pilot_erp_id) if is_instruction and flight.second_pilot_erp_id \
+                        else str(flight.pilot_erp_id) if flight.pilot_erp_id else ""
+        if not ffvp_map.get(person_one_id):
+            _add(cls.ISSUE_PERSON_ONE_MISSING_FFVP_ID)
+
+        if flight.launch_method == 1:  # WINCH — only checked when a machine was recorded
+            if flight.launch_asset_code:
+                trigram = str(flight.launch_pilot_trigram) if flight.launch_pilot_trigram else ""
+                lookup_trigram = _normalize_trigram(trigram) if trigram else ""
+                if not ffvp_map.get(lookup_trigram):
+                    _add(cls.ISSUE_WINCH_OPERATOR_MISSING_FFVP_ID)
+        elif flight.launch_method in (0, 2):  # AIRCRAFT_TOWING — always applies, even
+            # when the tow happened outside the club's own roster (no launch_asset_code)
+            trigram = str(flight.launch_pilot_trigram) if flight.launch_pilot_trigram else ""
+            lookup_trigram = _normalize_trigram(trigram) if trigram else ""
+            if not ffvp_map.get(lookup_trigram):
+                _add(cls.ISSUE_TOW_OPERATOR_MISSING_FFVP_ID)
+
+        return issues
 
     # ------------------------------------------------------------------
     # Override batch_sync_flights to add ffvp_id pre-check
@@ -318,69 +474,23 @@ class GesassoSyncService(FederalSyncService):
                 "already_transferred": 0,
             }
 
-        # Build ffvp_id map: account_id → str(ffvp_id) for all pilots and second pilots
-        all_erp_ids = {f.pilot_erp_id for f in flights if f.pilot_erp_id} | \
-                      {f.second_pilot_erp_id for f in flights if f.second_pilot_erp_id}
-        if all_erp_ids:
-            try:
-                mr = await db.execute(
-                    select(Member.account_id, Member.ffvp_id).where(
-                        Member.account_id.in_(all_erp_ids)
-                    )
-                )
-                self._ffvp_map = {
-                    str(row.account_id): str(row.ffvp_id)
-                    for row in mr.all()
-                    if row.ffvp_id is not None
-                }
-            except Exception:
-                self._ffvp_map = {}
-        else:
-            self._ffvp_map = {}
+        self._ffvp_map = await self.build_ffvp_map(db, flights)
 
-        # Extend map with trigram → ffvp_id for winch/tow persons
-        all_trigrams = {f.launch_pilot_trigram for f in flights if f.launch_pilot_trigram}
-        if all_trigrams:
-            try:
-                tr = await db.execute(
-                    select(Member.trigram, Member.ffvp_id).where(
-                        Member.trigram.in_(all_trigrams)
-                    )
-                )
-                for row in tr.all():
-                    if row.ffvp_id is not None:
-                        self._ffvp_map[str(row.trigram)] = str(row.ffvp_id)
-            except Exception:
-                pass
-
-        # Pre-reject flights with missing required ffvp_ids.
-        # For instruction flights person_one is the instructor (second_pilot_erp_id).
-        # For other flights person_one is the pilot (pilot_erp_id).
-        # For WINCH flights the winch operator (launch_pilot_trigram) is also required.
+        # Pre-reject flights with blocking issues (missing ffvp_id on required persons).
+        # Non-blocking issues (e.g. winch/tow operator without a licence) are sent
+        # anyway — map_flight declares them "external" to GesAsso instead.
         rejected_count = 0
         valid_uuids: list[UUID] = []
         for f in flights:
-            is_instruction = f.type_of_flight in (0, 5, 6)
-            person_one_id = str(f.second_pilot_erp_id) if is_instruction and f.second_pilot_erp_id \
-                            else str(f.pilot_erp_id) if f.pilot_erp_id else ""
-            if not self._ffvp_map.get(person_one_id):
+            issues = self.check_flight_issues(f, self._ffvp_map)
+            blocking_issues = [i for i in issues if i["blocking"]]
+            if blocking_issues:
                 await self._write_log(db, f.uuid, status=3)
                 rejected_count += 1
                 logger.warning(
-                    "gesasso_sync: flight %s rejected — person_one %s has no ffvp_id",
-                    f.uuid, person_one_id,
+                    "gesasso_sync: flight %s rejected — issues=%s", f.uuid, blocking_issues,
                 )
                 continue
-            if f.launch_method == 1:  # WINCH — winch operator required
-                trigram = str(f.launch_pilot_trigram) if f.launch_pilot_trigram else ""
-                if not self._ffvp_map.get(trigram):
-                    await self._write_log(db, f.uuid, status=3)
-                    rejected_count += 1
-                    logger.warning(
-                        "gesasso_sync: flight %s rejected — winch operator trigram %r has no ffvp_id",
-                        f.uuid, trigram or "(none)",
-                    )
-                    continue
             valid_uuids.append(f.uuid)
 
         if rejected_count:
@@ -475,19 +585,47 @@ class GesassoSyncService(FederalSyncService):
             payload["launching_mode"] = launching_mode_map.get(flight.launch_method, "AUTONOMOUS")
         if flight.engine_time is not None:
             payload["engine_duration"] = int(flight.engine_time*100)
-        if flight.launch_asset_code:
-            if flight.launch_method == 1:  # treuil → WINCH
+        if flight.launch_method == 1:  # treuil → WINCH
+            if flight.launch_asset_code:
                 payload["winch_registration"] = flight.launch_asset_code
-                winch_ffvp = self._ffvp_map.get(str(flight.launch_pilot_trigram)) \
-                             if flight.launch_pilot_trigram else None
-                if winch_ffvp:
-                    payload["winch_person_licence_number"] = winch_ffvp
+            trigram = str(flight.launch_pilot_trigram) if flight.launch_pilot_trigram else None
+            launch_ffvp = self._ffvp_map.get(_normalize_trigram(trigram)) if trigram else None
+            if launch_ffvp:
+                payload["winch_person_licence_number"] = launch_ffvp
             else:
+                # GesAsso requires either a licence number or an explicit
+                # "external" declaration — the operator has no matching ERP
+                # member/ffvp_id (e.g. a substitute not yet registered), so
+                # declare them external rather than omitting a required field.
+                payload["winch_person_external"] = True
+                payload["winch_person_external_information"] = trigram or "Non identifié"
+        elif flight.launch_method in (0, 2):  # extérieur / remorqueur → AIRCRAFT_TOWING
+            # GesAsso requires the tow aircraft/person to be identified one way
+            # or the other whenever launching_mode is AIRCRAFT_TOWING, even when
+            # the tow happened outside the club's own roster (e.g. an out-landing
+            # towed back by another airfield) — so these are sent unconditionally,
+            # not gated on launch_asset_code like the WINCH fields above.
+            #
+            # tow_aircraft_registration is validated against a real aircraft
+            # registry and is rejected outright when tow_aircraft_external=true
+            # — the two are mutually exclusive. Use the real registration when
+            # we have one (a known club tow plane); otherwise declare external
+            # with free-text info + an AircraftTypeEnum value, and omit
+            # tow_aircraft_registration entirely.
+            if flight.launch_asset_code:
                 payload["tow_aircraft_registration"] = flight.launch_asset_code
-                tow_ffvp = self._ffvp_map.get(str(flight.launch_pilot_trigram)) \
-                           if flight.launch_pilot_trigram else None
-                if tow_ffvp:
-                    payload["tow_person_one_licence_number"] = tow_ffvp
+            else:
+                payload["tow_aircraft_external"] = True
+                payload["tow_aircraft_external_information"] = "Remorqueur non identifié"
+                payload["tow_aircraft_external_type"] = self.TOW_AIRCRAFT_EXTERNAL_TYPE
+
+            trigram = str(flight.launch_pilot_trigram) if flight.launch_pilot_trigram else None
+            launch_ffvp = self._ffvp_map.get(_normalize_trigram(trigram)) if trigram else None
+            if launch_ffvp:
+                payload["tow_person_one_licence_number"] = launch_ffvp
+            else:
+                payload["tow_person_one_external"] = True
+                payload["tow_person_one_external_information"] = trigram or "Non identifié"
         takeoff_oaci = flight.takeoff_location or flight.aero
         landing_oaci = flight.landed_location or flight.aero
         if takeoff_oaci:
@@ -522,3 +660,54 @@ class GesassoSyncService(FederalSyncService):
         )
         response.raise_for_status()
         return response.json()
+
+    # ------------------------------------------------------------------
+    # Error classification — GesAsso rejects an exact duplicate flight with a
+    # 400 whose body includes a validation error on the flight itself (not a
+    # specific field) saying it already exists. That flight IS present on
+    # GesAsso, so it must be recorded as transferred (status=2), not failed,
+    # or it would fail identically on every future retry.
+    # ------------------------------------------------------------------
+
+    _DUPLICATE_ERROR_MARKERS = ("existe déjà", "already exist")
+    _FLIGHT_INDEX_PATTERN = re.compile(r"flightCollection\[(\d+)\]")
+
+    @classmethod
+    def _is_duplicate_error_message(cls, message: str) -> bool:
+        lowered = (message or "").lower()
+        return any(marker in lowered for marker in cls._DUPLICATE_ERROR_MARKERS)
+
+    def _classify_batch_error(
+        self, exc: httpx.HTTPStatusError, flights: list[ValidatedFlight]
+    ) -> dict[UUID, int]:
+        status_map = {f.uuid: 3 for f in flights}
+        try:
+            body = exc.response.json()
+        except Exception:
+            return status_map
+        if not isinstance(body, list):
+            return status_map
+
+        for entry in body:
+            if not isinstance(entry, dict):
+                continue
+            match = self._FLIGHT_INDEX_PATTERN.search(entry.get("property_path", ""))
+            if not match:
+                continue
+            index = int(match.group(1))
+            if 0 <= index < len(flights) and self._is_duplicate_error_message(entry.get("message", "")):
+                status_map[flights[index].uuid] = 2
+
+        return status_map
+
+    def _classify_single_error(self, exc: httpx.HTTPStatusError) -> int:
+        try:
+            body = exc.response.json()
+        except Exception:
+            return 3
+
+        entries = body if isinstance(body, list) else [body] if isinstance(body, dict) else []
+        for entry in entries:
+            if isinstance(entry, dict) and self._is_duplicate_error_message(entry.get("message", "")):
+                return 2
+        return 3
