@@ -63,6 +63,23 @@ export type PlancheViReconcileResponse = {
   unmatched: number
 }
 
+export type PlancheViFullSyncPhaseResult = {
+  pushed_count: number
+  failed_count: number
+  errors: string[]
+  skipped?: boolean
+}
+
+export type PlancheViFullSyncResponse = {
+  success: boolean
+  generic_count: number
+  eligible_count: number
+  phase1: PlancheViFullSyncPhaseResult
+  phase2: PlancheViFullSyncPhaseResult
+  errors: string[]
+  last_synced_at: string | null
+}
+
 export type PlancheMachinesPushPreviewResponse = {
   eligible_count: number
   last_synced_at: string | null
@@ -315,6 +332,19 @@ export function usePlancheViPushMutation() {
       const { data } = await apiClient.post<PlancheViPushResponse>(
         '/api/v1/planche/vi/push',
         payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function usePlancheViFullSyncMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<PlancheViFullSyncResponse>(
+        '/api/v1/planche/vi/full-sync',
+        {},
         getAuthRequestConfig(),
       )
       return data

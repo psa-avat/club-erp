@@ -19,13 +19,15 @@
 */
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowUpFromLine, CheckCircle2, Loader2, RefreshCw, Search, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { AlertCircle, ArrowUpFromLine, CheckCircle2, Loader2, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { useViEntitlementsQuery } from '../../vi/api'
-import { usePlancheViListQuery, usePlancheViPushMutation } from '../api'
+import { usePlancheViFullSyncMutation, usePlancheViListQuery, usePlancheViPushMutation } from '../api'
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -42,14 +44,17 @@ function fmtAmount(v: string | null | undefined): string {
 }
 
 export function PlancheViSyncPage() {
+  const { t } = useTranslation('planche')
   const entitlementsQuery = useViEntitlementsQuery()
   const pushMutation = usePlancheViPushMutation()
+  const fullSyncMutation = usePlancheViFullSyncMutation()
   const plancheListQuery = usePlancheViListQuery()
 
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [replace, setReplace] = useState(false)
   const [nameFilter, setNameFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<'generic' | 'loaded' | 'scheduled' | null>(null)
+  const [showFullSyncConfirm, setShowFullSyncConfirm] = useState(false)
 
   // All active vouchers: generics + Chargé (1) + Planifié (2)
   const rows = useMemo(
@@ -130,6 +135,12 @@ export function PlancheViSyncPage() {
     void plancheListQuery.refetch()
   }
 
+  async function runFullSync() {
+    await fullSyncMutation.mutateAsync()
+    setShowFullSyncConfirm(false)
+    void plancheListQuery.refetch()
+  }
+
   const countGeneric   = rows.filter((r) => r.is_generic).length
   const countLoaded    = rows.filter((r) => !r.is_generic && r.status === 1).length
   const countScheduled = rows.filter((r) => !r.is_generic && r.status === 2).length
@@ -171,6 +182,18 @@ export function PlancheViSyncPage() {
             : <ArrowUpFromLine className="h-4 w-4 mr-1.5" />
           }
           Pousser vers Planche ({selectedIds.length})
+        </Button>
+
+        <Button
+          variant="outline"
+          disabled={fullSyncMutation.isPending}
+          onClick={() => setShowFullSyncConfirm(true)}
+        >
+          {fullSyncMutation.isPending
+            ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            : <RotateCcw className="h-4 w-4 mr-1.5" />
+          }
+          {fullSyncMutation.isPending ? t('viSync.fullSync.actionRunning') : t('viSync.fullSync.action')}
         </Button>
 
         <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none ml-auto">
@@ -282,8 +305,41 @@ export function PlancheViSyncPage() {
         </div>
       )}
 
+      {/* Full resync result */}
+      {fullSyncMutation.data && (
+        <div className="flex items-start gap-3 rounded-lg border border-outline-variant bg-slate-50 p-3 text-sm">
+          {!fullSyncMutation.data.success
+            ? <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            : <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+          }
+          <div className="space-y-0.5">
+            <p className="font-medium">{t('viSync.fullSync.result.title')}</p>
+            <p className="text-muted-foreground">
+              {t('viSync.fullSync.result.phase1', {
+                pushed: fullSyncMutation.data.phase1.pushed_count,
+                failed: fullSyncMutation.data.phase1.failed_count,
+              })}
+            </p>
+            {fullSyncMutation.data.phase2.skipped ? (
+              <p className="text-destructive">{t('viSync.fullSync.result.phase2Skipped')}</p>
+            ) : (
+              <p className="text-muted-foreground">
+                {t('viSync.fullSync.result.phase2', {
+                  pushed: fullSyncMutation.data.phase2.pushed_count,
+                  failed: fullSyncMutation.data.phase2.failed_count,
+                })}
+              </p>
+            )}
+            {fullSyncMutation.data.success && (
+              <p className="text-green-700">{t('viSync.fullSync.result.success')}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {entitlementsQuery.error && <Alert>{toErrorMessage(entitlementsQuery.error)}</Alert>}
       {pushMutation.error && <Alert>{toErrorMessage(pushMutation.error)}</Alert>}
+      {fullSyncMutation.error && <Alert>{toErrorMessage(fullSyncMutation.error)}</Alert>}
       {plancheListQuery.error && (
         <Alert>
           Impossible de vérifier la présence sur Planche : {toErrorMessage(plancheListQuery.error)}
@@ -388,6 +444,20 @@ export function PlancheViSyncPage() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={showFullSyncConfirm}
+        title={t('viSync.fullSync.confirm.title')}
+        body={t('viSync.fullSync.confirm.description', {
+          generic: countGeneric,
+          eligible: countLoaded + countScheduled,
+        })}
+        cancelLabel={t('viSync.fullSync.confirm.cancel')}
+        confirmLabel={t('viSync.fullSync.confirm.confirm')}
+        variant="destructive"
+        onConfirm={() => { void runFullSync() }}
+        onCancel={() => setShowFullSyncConfirm(false)}
+      />
     </section>
   )
 }

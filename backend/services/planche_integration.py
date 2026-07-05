@@ -1013,6 +1013,84 @@ class PlancheIntegrationService:
             "last_synced_at": last_push_at.isoformat() if last_push_at else None,
         }
 
+    @staticmethod
+    def _build_vi_payload_item(entitlement: ViEntitlement, vi_type: ViTypeCatalog) -> dict[str, Any]:
+        return {
+            "erp_id": entitlement.code,
+            "entitlement_code": entitlement.code,
+            "type": vi_type.code,
+            "scheduled_date": entitlement.scheduled_date.isoformat() if entitlement.scheduled_date else None,
+            "validity_date": entitlement.validity_date.isoformat() if entitlement.validity_date else None,
+            "origin_type": int(entitlement.origin_type),
+            "notes": entitlement.notes,
+            "description": entitlement.description,
+            "partner_code": entitlement.partner_code,
+            "status": int(entitlement.status),
+        }
+
+    async def _push_vi_chunks(
+        self,
+        db: AsyncSession,
+        rows: list[tuple[ViEntitlement, ViTypeCatalog]],
+        mode: str,
+    ) -> dict[str, Any]:
+        """Chunk `rows`, POST each chunk to /erp/vi/sync with the given mode, stamp
+        planche_synced_at for chunks that succeed, and return aggregated counters."""
+        payload_items = [self._build_vi_payload_item(entitlement, vi_type) for entitlement, vi_type in rows]
+        payload_uuids = [entitlement.uuid for entitlement, _ in rows]
+
+        chunks = [
+            payload_items[i : i + self.chunk_size]
+            for i in range(0, len(payload_items), self.chunk_size)
+        ]
+        uuid_chunks = [
+            payload_uuids[i : i + self.chunk_size]
+            for i in range(0, len(payload_uuids), self.chunk_size)
+        ]
+        success_count = 0
+        failure_count = 0
+        error_details: list[str] = []
+        synced_uuids: list = []
+
+        for idx, chunk in enumerate(chunks):
+            if idx == 0:
+                logger.info("VI push chunk[0] payload (mode=%s): %s", mode, json.dumps(chunk, default=str))
+            try:
+                response = await self._perform_request(
+                    method="POST",
+                    endpoint="/erp/vi/sync",
+                    json={"dry_run": False, "mode": mode, "items": chunk},
+                )
+            except Exception as exc:
+                failure_count += len(chunk)
+                error_details.append(f"Chunk exception (mode={mode}): {exc}")
+                continue
+            if response.status_code in (200, 201):
+                success_count += len(chunk)
+                synced_uuids.extend(uuid_chunks[idx])
+            else:
+                failure_count += len(chunk)
+                error_body = ""
+                try:
+                    error_body = response.text
+                except Exception:
+                    error_body = "(unable to read response body)"
+                error_details.append(f"Chunk failed (mode={mode}): HTTP {response.status_code} - {error_body}")
+
+        if synced_uuids:
+            await db.execute(
+                update(ViEntitlement)
+                .where(ViEntitlement.uuid.in_(synced_uuids))
+                .values(planche_synced_at=datetime.now(timezone.utc))
+            )
+
+        return {
+            "success": success_count,
+            "failure": failure_count,
+            "error_details": error_details,
+            "synced_uuids": synced_uuids,
+        }
+
     async def push_vi_entitlements(
         self,
         db: AsyncSession,
@@ -1042,70 +1120,16 @@ class PlancheIntegrationService:
         if missing_ids:
             raise ValueError(f"Some entitlement UUIDs were not found: {', '.join(missing_ids)}")
 
-        payload_items = []
-        payload_uuids = []
-        for entitlement, vi_type in rows:
-            payload_items.append(
-                {
-                    "erp_id": entitlement.code,
-                    "entitlement_code": entitlement.code,
-                    "type": vi_type.code,
-                    "scheduled_date": entitlement.scheduled_date.isoformat() if entitlement.scheduled_date else None,
-                    "validity_date": entitlement.validity_date.isoformat() if entitlement.validity_date else None,
-                    "origin_type": int(entitlement.origin_type),
-                    "notes": entitlement.notes,
-                    "description": entitlement.description,
-                    "partner_code": entitlement.partner_code,
-                    "status": int(entitlement.status),
-                }
-            )
-            payload_uuids.append(entitlement.uuid)
-
-        chunks = [
-            payload_items[i : i + self.chunk_size]
-            for i in range(0, len(payload_items), self.chunk_size)
-        ]
-        uuid_chunks = [
-            payload_uuids[i : i + self.chunk_size]
-            for i in range(0, len(payload_uuids), self.chunk_size)
-        ]
-        success_count = 0
-        failure_count = 0
-        error_details: list[str] = []
-        synced_uuids: list = []
-
-        for idx, chunk in enumerate(chunks):
-            if idx == 0:
-                logger.info("VI push chunk[0] payload: %s", json.dumps(chunk, default=str))
-            response = await self._perform_request(
-                method="POST",
-                endpoint="/erp/vi/sync",
-                json={"dry_run": False, "mode": "replace" if replace else "update", "items": chunk},
-            )
-            if response.status_code in (200, 201):
-                success_count += len(chunk)
-                synced_uuids.extend(uuid_chunks[idx])
-            else:
-                failure_count += len(chunk)
-                error_body = ""
-                try:
-                    error_body = response.text
-                except Exception:
-                    error_body = "(unable to read response body)"
-                error_details.append(f"Chunk failed: HTTP {response.status_code} - {error_body}")
-
-        if synced_uuids:
-            await db.execute(
-                update(ViEntitlement)
-                .where(ViEntitlement.uuid.in_(synced_uuids))
-                .values(planche_synced_at=datetime.now(timezone.utc))
-            )
+        push_result = await self._push_vi_chunks(db, rows, mode="replace" if replace else "update")
+        success_count = push_result["success"]
+        failure_count = push_result["failure"]
+        error_details = push_result["error_details"]
 
         await self._log_audit(
             db=db,
             operation_type="vi_push",
             status=0 if failure_count == 0 else (2 if success_count > 0 else 1),
-            total_records=len(payload_items),
+            total_records=len(rows),
             success_count=success_count,
             failure_count=failure_count,
             error_message="\n".join(error_details) if error_details else None,
@@ -1118,6 +1142,96 @@ class PlancheIntegrationService:
             "success": success_count,
             "failure": failure_count,
             "error_details": error_details,
+        }
+
+    async def sync_vi_entitlements_full(
+        self,
+        db: AsyncSession,
+        triggered_by: str = "system",
+    ) -> dict[str, Any]:
+        """Two-phase full resync of VI entitlements to Planche.
+
+        Phase 1 replaces Planche's VI list with ONLY generic entitlements
+        (mode="replace"), which implicitly deactivates every stale non-generic
+        voucher already on Planche (REALIZED/CANCELLED/EXPIRED/CONVERTED
+        included) via Planche's overwrite/"écraser" semantics. Phase 2 then
+        re-adds the currently eligible LOADED/SCHEDULED non-generic vouchers
+        (mode="update"), restoring genuinely active vouchers without
+        disturbing the generics pushed in phase 1.
+        """
+        base_stmt = select(ViEntitlement, ViTypeCatalog).join(
+            ViTypeCatalog, ViTypeCatalog.uuid == ViEntitlement.vi_type_uuid
+        )
+
+        generic_stmt = base_stmt.where(ViEntitlement.is_generic.is_(True))
+        eligible_stmt = base_stmt.where(
+            ViEntitlement.is_generic.is_(False),
+            ViEntitlement.status.in_(
+                [int(ViEntitlementStatus.LOADED), int(ViEntitlementStatus.SCHEDULED)]
+            ),
+        )
+
+        generic_rows = (await db.execute(generic_stmt)).all()
+        eligible_rows = (await db.execute(eligible_stmt)).all()
+
+        # Phase 1: reset — replace mode, generics only. If this doesn't fully
+        # succeed, skip phase 2: restoring the eligible set on top of an
+        # unknown/partially-reset Planche state would leave an indeterminate
+        # number of stale vouchers wrongly active — worse than reporting a
+        # clear failure and letting the admin retry.
+        phase1 = await self._push_vi_chunks(db, generic_rows, mode="replace")
+        phase1_ok = phase1["failure"] == 0
+
+        phase2: dict[str, Any] = {"success": 0, "failure": 0, "error_details": [], "synced_uuids": []}
+        if phase1_ok:
+            phase2 = await self._push_vi_chunks(db, eligible_rows, mode="update")
+        else:
+            phase2["error_details"].append("Phase 2 skipped: phase 1 (reset) did not fully succeed.")
+
+        total_success = phase1["success"] + phase2["success"]
+        total_failure = phase1["failure"] + phase2["failure"]
+        all_errors = [f"[phase1] {e}" for e in phase1["error_details"]] + [
+            f"[phase2] {e}" for e in phase2["error_details"]
+        ]
+
+        await self._log_audit(
+            db=db,
+            operation_type="vi_full_sync",
+            status=0 if total_failure == 0 else (2 if total_success > 0 else 1),
+            total_records=len(generic_rows) + len(eligible_rows),
+            success_count=total_success,
+            failure_count=total_failure,
+            error_message="\n".join(all_errors) if all_errors else None,
+            triggered_by=triggered_by,
+            metadata=json.dumps(
+                {
+                    "generic_count": len(generic_rows),
+                    "eligible_count": len(eligible_rows),
+                    "phase1_success": phase1["success"],
+                    "phase1_failure": phase1["failure"],
+                    "phase2_success": phase2["success"],
+                    "phase2_failure": phase2["failure"],
+                    "chunk_size": self.chunk_size,
+                }
+            ),
+        )
+
+        return {
+            "success": total_failure == 0,
+            "generic_count": len(generic_rows),
+            "eligible_count": len(eligible_rows),
+            "phase1": {
+                "pushed_count": phase1["success"],
+                "failed_count": phase1["failure"],
+                "errors": phase1["error_details"],
+            },
+            "phase2": {
+                "pushed_count": phase2["success"],
+                "failed_count": phase2["failure"],
+                "errors": phase2["error_details"],
+                "skipped": not phase1_ok,
+            },
+            "errors": all_errors,
         }
 
     async def fetch_vi_from_planche(self) -> list[dict]:

@@ -1261,6 +1261,25 @@ export const fr = {
         lastFetch: 'Dernière récup.',
       },
     },
+    viSync: {
+      fullSync: {
+        action: 'Resynchronisation complète',
+        actionRunning: 'Resynchronisation en cours...',
+        confirm: {
+          title: 'Confirmer la resynchronisation complète',
+          description: 'Cette opération va réinitialiser la liste des bons sur Planche à uniquement les bons génériques ({{generic}}), puis restaurer les {{eligible}} bons actuellement chargés ou planifiés. Tout bon déjà réalisé, expiré, annulé ou converti sera désactivé sur Planche. Cette action ne peut pas être annulée.',
+          cancel: 'Annuler',
+          confirm: 'Resynchroniser',
+        },
+        result: {
+          title: 'Résultat de la resynchronisation complète',
+          phase1: 'Phase 1 (réinitialisation) : {{pushed}} envoyé(s), {{failed}} échec(s)',
+          phase2: 'Phase 2 (restauration) : {{pushed}} envoyé(s), {{failed}} échec(s)',
+          phase2Skipped: 'Phase 2 non exécutée : la phase 1 a échoué, aucun bon n\'a été restauré.',
+          success: 'Resynchronisation terminée avec succès.',
+        },
+      },
+    },
   },
   banque: {
     workspace: {

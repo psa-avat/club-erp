@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
-from constants import CAP_MANAGE_PLANCHE, CAP_MANAGE_SYSTEM_SETTINGS
+from constants import CAP_MANAGE_PLANCHE, CAP_MANAGE_SYSTEM_SETTINGS, CAP_SYNC_VI_PLANCHE
 from models import User
 from schemas.accounting import SystemSettingUpdateRequest
 from schemas.planche import (
@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 configuration_guard = Depends(require_capability(CAP_MANAGE_SYSTEM_SETTINGS))
 planche_guard = Depends(require_capability(CAP_MANAGE_PLANCHE))
+vi_sync_guard = Depends(require_capability(CAP_SYNC_VI_PLANCHE))
 
 
 class PilotPushRequest(BaseModel):
@@ -245,6 +246,30 @@ async def push_vi_entitlements_to_planche(
             "pushed_count": result.get("success", 0),
             "failed_count": result.get("failure", 0),
             "errors": result.get("error_details", []),
+            "last_synced_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+
+@router.post("/vi/full-sync")
+async def full_sync_vi_entitlements_to_planche(
+    db: AsyncSession = Depends(get_db),
+    _: User = vi_sync_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Two-phase full resync: reset Planche's VI list to generics only (mode=replace),
+    then restore currently-eligible LOADED/SCHEDULED vouchers (mode=update). Net effect:
+    stale REALIZED/CANCELLED/EXPIRED/CONVERTED vouchers are deactivated on Planche."""
+    service = await _get_planche_service(db)
+    result = await service.sync_vi_entitlements_full(db=db, triggered_by=str(current_user.id))
+    return JSONResponse(
+        {
+            "success": result["success"],
+            "generic_count": result["generic_count"],
+            "eligible_count": result["eligible_count"],
+            "phase1": result["phase1"],
+            "phase2": result["phase2"],
+            "errors": result["errors"],
             "last_synced_at": datetime.now(UTC).isoformat(),
         }
     )

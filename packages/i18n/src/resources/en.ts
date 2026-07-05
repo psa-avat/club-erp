@@ -1261,6 +1261,25 @@ export const en = {
         lastFetch: 'Last fetch',
       },
     },
+    viSync: {
+      fullSync: {
+        action: 'Full resync',
+        actionRunning: 'Resyncing...',
+        confirm: {
+          title: 'Confirm full resync',
+          description: 'This will reset Planche\'s voucher list to generic vouchers only ({{generic}}), then restore the {{eligible}} currently loaded or scheduled vouchers. Any already-realized, expired, cancelled or converted voucher will be deactivated on Planche. This action cannot be undone.',
+          cancel: 'Cancel',
+          confirm: 'Resync',
+        },
+        result: {
+          title: 'Full resync result',
+          phase1: 'Phase 1 (reset): {{pushed}} sent, {{failed}} failed',
+          phase2: 'Phase 2 (restore): {{pushed}} sent, {{failed}} failed',
+          phase2Skipped: 'Phase 2 skipped: phase 1 failed, no vouchers were restored.',
+          success: 'Resync completed successfully.',
+        },
+      },
+    },
   },
   banque: {
     workspace: {

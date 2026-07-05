@@ -38,6 +38,7 @@ class PlancheViRouteGuardTests(TestCase):
         privileged = [
             ("/vi/push", "POST"),
             ("/vi/reconcile", "POST"),
+            ("/vi/full-sync", "POST"),
         ]
 
         for path, method in privileged:
