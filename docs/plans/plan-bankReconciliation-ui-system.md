@@ -11,14 +11,37 @@ Transform bank reconciliation from a table-driven feature into an operations coc
 
 The backend already supports the core lifecycle: import, matching, manual match, discrepancy resolution, correcting entries, closure, and report. This plan focuses on clarity, efficiency, and a UI system that matches the accountant's real workflow.
 
-## Status vs Current Implementation (2026-07-03)
+## Status vs Current Implementation (2026-07-04)
 
-Several items below are already partially built and should be evolved, not recreated:
+Several items below are already built and should be evolved, not recreated:
 
 - **Exception resolver already exists in embryo.** The statement detail table has an expand chevron per unresolved line; the expanded row shows discrepancy actions (accept/exclude/generate correcting entry) and a candidate-entries list with computed amount, sort, and Draft badge, inline — no modal. Phase 2 should restructure/extend this into the three-zone workbench, not build resolution UI from zero.
 - **Filtering is already explicit-apply**, not live/debounced (a "Filtrer" button plus draft vs. applied filter state). Any redesigned queue/inbox must keep this pattern — do not reintroduce live filtering.
 - **Lines are already server-paginated** (`GET /statements/{uuid}/lines` with `limit`/`offset`, `BankStatementLineListResponse{items,total}`). This was added specifically because loading 400+ lines client-side was slow. Any new "left queue" or "inbox" view must stay paginated/filtered server-side — see the correction under Backend/API Enhancements below.
-- **Not yet built:** statement-level summary/progress counts, import preview, three-zone workbench layout, candidate-explanation endpoint, bulk accept. The rest of this plan (as amended) still applies to these.
+
+### Phase 1 — done (2026-07-04)
+
+- `GET /statements` now returns `BankStatementSummaryResponse` (status_counts, unresolved_count, live_balance_difference) via `list_statement_summaries`, computed with two `GROUP BY` aggregates over `bank_statement_lines` — not per-statement `get_reconciliation_report` calls, per the correction below.
+- Statement inbox (`ReconciliationStatementList.tsx`) shows "À traiter" (unresolved_count) and "Écart" (live_balance_difference) columns; dropped the low-value "Format" column to make room.
+- Statement detail (`ReconciliationWorkspace.tsx`) now defaults its status filter to unresolved (`match_status=unmatched,discrepancy`, backend accepts a comma-separated list) instead of showing everything on open. Manually clearing filters still resets to "Tous".
+- `get_reconciliation_report` / `ReconciliationReportResponse` gained `live_balance_difference`, computed by a helper (`_compute_live_balance_difference`) shared with `close_reconciliation`'s own check — the closure proof panel can now show the *same* blocker (unresolved lines vs. balance mismatch) the backend would otherwise only report after a failed close attempt. Closure button now has 4 distinct states/labels matching the table above (unresolved count / balance mismatch amount / ready / closed).
+- Backend: 6 new tests (`ListStatementSummariesTests`, `GetReconciliationReportTests`, comma-separated match_status filter) — 47 reconciliation tests total, full suite still at the same 15 pre-existing unrelated failures.
+
+### Candidate-explanation endpoint — done (2026-07-04, pulled forward from Phase 2)
+
+Built earlier than planned, as a correctness fix rather than a Phase 2 nicety: `GET /lines/{line_uuid}/candidates` (`get_match_candidates`) reuses `_load_eligible_entries`/`_score_candidate`/`_description_similarity`/`_is_internal_transfer_candidate` verbatim — the exact same logic `run_auto_match` uses. This fixed a real bug: the candidate picker previously queried the generic accounting-entries endpoint client-side (amount+date-only ranking, no description weight, no internal-transfer cap, and — critically — no exclusion of entries already reconciled to another line), so an already-matched ledger entry could appear as a pickable candidate and only fail with a 409 on click. `_load_eligible_entries` excludes matched entries by construction (an entry can only ever be matched once), so this is now structurally impossible, not just filtered client-side. `ReconciliationWorkspace.tsx`'s `CandidateEntriesList` now renders this endpoint's ranked output directly (score, internal-transfer badge) instead of re-scoring in TypeScript; the old date-window fetch, amount-tolerance settings fetch, and client-side ranking code were deleted. 4 new backend tests (`GetMatchCandidatesTests`) — 51 reconciliation tests total.
+
+### Follow-up fixes — done (2026-07-04)
+
+- **Matching is now scoped by account, not journal.** `_load_eligible_entries` and `manual_match` no longer restrict candidates/matches to entries in the statement's own journal — only that they have a line on `statement.account_uuid` and match the fiscal year. A correcting entry recorded in an OD journal (or any journal) that hits the bank account is now a legitimate candidate; previously it was silently invisible. `AccountingJournal` join/import dropped from `bank_reconciliation.py` as a result. Tests: `test_accepts_entry_from_a_different_journal_when_account_and_fiscal_year_match`, renamed `test_rejects_entry_from_different_journal` → `test_rejects_entry_from_different_fiscal_year`.
+- **Reconciliation status now visible on the main journal entries list** (`/workspace/finance?tab=comptabilite`, not just the reconciliation subtab). `list_accounting_entries`/`get_accounting_entry` batch-enrich each entry with `bank_match_status`/`bank_statement_status` (one extra query, same transient-attribute pattern as `_enrich_lines_tiers`), surfaced as a second badge next to the existing state badge: "Associé" (badge-info, matched but statement not yet closed), "Rapproché" (badge-success, statement closed), "Écart" (badge-warning, discrepancy). New file `test_accounting_bank_match_status.py`.
+- **Reconciliation filters: only the libellé field needs the Filtrer button.** Status/date/amount filters now apply immediately on change (`setFilter` merges straight into `appliedFilters`); only free-text description filtering is debounced-via-button, since it's the only field where per-keystroke queries would actually be wasteful — a Select/date pick/completed amount is already a single discrete action.
+- **Chevron stays after matching.** The expand chevron is no longer hidden once a line becomes `auto_matched`/`manually_matched` (only `excluded` hides it) — expanding a matched line now shows a read-only `MatchedEntrySummary` (date, description, Draft badge, reference, confidence) via `useAccountingEntryQuery`, instead of losing access to "which entry was this matched to" once resolved.
+- **Reconciliation-state filter on the main journal entries list.** New `bank_reconciliation_state` query param (`unreconciled`/`associated`/`reconciled`/`discrepancy`) on `GET /entries` and `/entries/count`, implemented as an `EXISTS`/`NOT EXISTS` correlated subquery against `bank_statement_lines`+`bank_statements` in `_apply_accounting_entry_filters` (mirrors the badge added above). New Select in `JournalEntriesScreen.tsx`'s filter panel. 6 new SQL-shape tests in `test_accounting_bank_match_status.py` (`BankReconciliationStateFilterTests`), asserting on `str(stmt)` rather than hitting a DB.
+
+### Not yet built
+
+Statement-level summary and the candidate-explanation endpoint are done; import preview, three-zone workbench layout, and bulk accept remain — the rest of this plan (as amended) still applies to these.
 
 ## Core Product Principle
 

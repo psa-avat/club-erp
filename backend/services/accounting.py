@@ -29,7 +29,7 @@ from uuid import UUID, uuid4
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, delete, exists, func, select, text
+from sqlalchemy import and_, delete, exists, func, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -41,6 +41,8 @@ from models import (
     AccountingFiscalYear,
     AccountingJournal,
     AccountingLine,
+    BankStatement,
+    BankStatementLine,
     CostProvisionRule,
     Member,
     PricingItem,
@@ -1355,6 +1357,39 @@ async def _enrich_lines_tiers(db: AsyncSession, lines: list) -> None:
             line.analytical_asset_name = a.name
 
 
+async def _enrich_bank_match_status(db: AsyncSession, entries: list) -> None:
+    """Attach transient bank-reconciliation status to each entry (bank_match_status,
+    bank_statement_status), for the "reconciled/associated" badge on the main journal
+    view — a single batched read against bank_statement_lines, independent of the
+    reconciliation module's own screens, so the two never need separate calls."""
+    keys = [(entry.uuid, entry.fiscal_year_uuid) for entry in entries]
+    if not keys:
+        return
+
+    result = await db.execute(
+        select(
+            BankStatementLine.matched_entry_uuid,
+            BankStatementLine.matched_fiscal_year_uuid,
+            BankStatementLine.match_status,
+            BankStatement.status,
+        )
+        .join(BankStatement, BankStatement.uuid == BankStatementLine.statement_uuid)
+        .where(
+            tuple_(BankStatementLine.matched_entry_uuid, BankStatementLine.matched_fiscal_year_uuid).in_(keys),
+            BankStatementLine.match_status.in_(("auto_matched", "manually_matched", "discrepancy")),
+        )
+    )
+    match_by_key = {
+        (entry_uuid, fiscal_year_uuid): (match_status, statement_status)
+        for entry_uuid, fiscal_year_uuid, match_status, statement_status in result
+    }
+
+    for entry in entries:
+        match_status, statement_status = match_by_key.get((entry.uuid, entry.fiscal_year_uuid), (None, None))
+        entry.bank_match_status = match_status
+        entry.bank_statement_status = statement_status
+
+
 def compute_entry_hash(entry: AccountingEntry) -> str:
     """Generate a deterministic SHA-256 digest for a posted entry and its lines."""
     header = [
@@ -1456,6 +1491,7 @@ async def list_accounting_entries(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
     null_tiers: bool | None = None,
+    bank_reconciliation_state: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[AccountingEntry]:
@@ -1487,14 +1523,16 @@ async def list_accounting_entries(
         amount_min=amount_min,
         amount_max=amount_max,
         null_tiers=null_tiers,
+        bank_reconciliation_state=bank_reconciliation_state,
     )
 
     result = await db.scalars(stmt)
     entries = result.unique().all()
-    
+
     # Batch-fetch tiers display data for all lines that carry a tiers_uuid.
     # account.require_id tells us whether it's a member/supplier (1,3) or an asset (2).
     await _enrich_lines_tiers(db, [line for entry in entries for line in entry.lines])
+    await _enrich_bank_match_status(db, entries)
 
     return entries
 
@@ -1514,6 +1552,7 @@ async def count_accounting_entries(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
     null_tiers: bool | None = None,
+    bank_reconciliation_state: str | None = None,
 ) -> int:
     """Return the total count of accounting entries matching the given filters."""
     stmt = select(func.count()).select_from(AccountingEntry)
@@ -1532,6 +1571,7 @@ async def count_accounting_entries(
         amount_min=amount_min,
         amount_max=amount_max,
         null_tiers=null_tiers,
+        bank_reconciliation_state=bank_reconciliation_state,
     )
     result = await db.scalar(stmt)
     return result or 0
@@ -1553,6 +1593,7 @@ def _apply_accounting_entry_filters(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
     null_tiers: bool | None = None,
+    bank_reconciliation_state: str | None = None,
 ):
     if fiscal_year_uuid is not None:
         stmt = stmt.where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
@@ -1664,6 +1705,45 @@ def _apply_accounting_entry_filters(
                 .correlate(AccountingEntry)
             )
         )
+
+    if bank_reconciliation_state:
+        # Mirrors the badge shown on this same list: unreconciled (no bank match at
+        # all) / associated (matched, statement still open) / reconciled (matched,
+        # statement closed) / discrepancy — see _enrich_bank_match_status.
+        bank_match = (
+            select(BankStatementLine.matched_entry_uuid)
+            .select_from(BankStatementLine)
+            .join(BankStatement, BankStatement.uuid == BankStatementLine.statement_uuid)
+            .where(
+                BankStatementLine.matched_entry_uuid == AccountingEntry.uuid,
+                BankStatementLine.matched_fiscal_year_uuid == AccountingEntry.fiscal_year_uuid,
+            )
+            .correlate(AccountingEntry)
+        )
+        if bank_reconciliation_state == "unreconciled":
+            stmt = stmt.where(
+                ~exists(bank_match.where(BankStatementLine.match_status.in_(("auto_matched", "manually_matched", "discrepancy"))))
+            )
+        elif bank_reconciliation_state == "associated":
+            stmt = stmt.where(
+                exists(
+                    bank_match.where(
+                        BankStatementLine.match_status.in_(("auto_matched", "manually_matched")),
+                        BankStatement.status != "reconciled",
+                    )
+                )
+            )
+        elif bank_reconciliation_state == "reconciled":
+            stmt = stmt.where(
+                exists(
+                    bank_match.where(
+                        BankStatementLine.match_status.in_(("auto_matched", "manually_matched")),
+                        BankStatement.status == "reconciled",
+                    )
+                )
+            )
+        elif bank_reconciliation_state == "discrepancy":
+            stmt = stmt.where(exists(bank_match.where(BankStatementLine.match_status == "discrepancy")))
 
     return stmt
 
@@ -1919,6 +1999,7 @@ async def get_accounting_entry(
         )
 
     await _enrich_lines_tiers(db, list(entry.lines))
+    await _enrich_bank_match_status(db, [entry])
     return entry
 
 

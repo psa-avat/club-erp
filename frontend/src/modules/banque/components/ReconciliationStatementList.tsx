@@ -21,6 +21,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileUp, Settings2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import Decimal from 'decimal.js'
 
 import { Button } from '@/components/ui/button'
 import { DataTable } from '@/components/ui/data-table'
@@ -40,7 +41,7 @@ import {
   useDeleteReconciliationStatementMutation,
   useJournalsQuery,
   useReconciliationStatementsQuery,
-  type BankStatement,
+  type BankStatementSummary,
 } from '../api'
 import { reconciliationStatusBadgeClass } from './journalShared'
 import { ReconciliationImportPanel } from './ReconciliationImportPanel'
@@ -56,7 +57,7 @@ export function ReconciliationStatementList({ onOpenStatement }: Props) {
 
   const [importOpen, setImportOpen] = useState(false)
   const [mappingsOpen, setMappingsOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<BankStatement | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BankStatementSummary | null>(null)
 
   const { data, isLoading } = useReconciliationStatementsQuery({ fiscal_year_uuid: fiscalYearUuid })
   const { data: journals } = useJournalsQuery()
@@ -95,7 +96,7 @@ export function ReconciliationStatementList({ onOpenStatement }: Props) {
         </div>
       </div>
 
-      <DataTable<BankStatement>
+      <DataTable<BankStatementSummary>
         columns={[
           {
             key: 'statement_date',
@@ -108,14 +109,31 @@ export function ReconciliationStatementList({ onOpenStatement }: Props) {
             cell: (row) => journalLabel(row.journal_uuid),
           },
           {
-            key: 'source_format',
-            header: t('reconciliation.list.columns.format', 'Format'),
-            cell: (row) => row.source_format.toUpperCase(),
-          },
-          {
             key: 'line_count',
             header: t('reconciliation.list.columns.lines', 'Lignes'),
             cell: (row) => row.line_count,
+          },
+          {
+            key: 'unresolved_count',
+            header: t('reconciliation.list.columns.toReview', 'À traiter'),
+            cell: (row) =>
+              row.unresolved_count > 0 ? (
+                <Badge className="badge-warning">{row.unresolved_count}</Badge>
+              ) : (
+                <span className="text-muted-foreground">0</span>
+              ),
+          },
+          {
+            key: 'live_balance_difference',
+            header: t('reconciliation.list.columns.balanceDifference', 'Écart'),
+            cell: (row) => {
+              const diff = new Decimal(row.live_balance_difference)
+              return (
+                <span className={diff.isZero() ? 'text-muted-foreground' : 'font-semibold text-destructive'}>
+                  {diff.toFixed(2)}
+                </span>
+              )
+            },
           },
           {
             key: 'closing_balance',

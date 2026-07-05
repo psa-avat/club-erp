@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict cKwqtZfxyvw3vZ0T5VIl5qFXVeF9tVRdRD4QTuM9yKTs0XnZ5grSdAqS2vafMFg
+\restrict GInA5VyYjAD4xxT9Zp0jYwM7SsBgPeAY6IlNFEctCUadit2ygg5BjzUstYUWKOz
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -760,26 +760,6 @@ CREATE TABLE public.asset_account_snapshots (
 
 
 --
--- Name: asset_categories; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.asset_categories (
-    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
-    code character varying(32) NOT NULL,
-    name character varying(100) NOT NULL,
-    description character varying(255),
-    is_active boolean DEFAULT true NOT NULL,
-    acquisition_account_uuid uuid,
-    depreciation_account_uuid uuid,
-    charge_account_uuid uuid,
-    revenue_account_uuid uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_by integer
-);
-
-
---
 -- Name: asset_depreciation_schedules; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -817,7 +797,11 @@ CREATE TABLE public.asset_families (
     updated_at timestamp with time zone DEFAULT now() CONSTRAINT asset_types_updated_at_not_null NOT NULL,
     created_by integer,
     updated_by integer,
-    category_uuid uuid NOT NULL,
+    acquisition_account_uuid uuid,
+    depreciation_account_uuid uuid,
+    charge_account_uuid uuid,
+    revenue_account_uuid uuid,
+    is_priced boolean DEFAULT true NOT NULL,
     CONSTRAINT chk_asset_families_pricing_strategy CHECK ((pricing_strategy = ANY (ARRAY[1, 2, 3, 4, 5, 6]))),
     CONSTRAINT chk_asset_types_depr_years CHECK (((standard_depreciation_years IS NULL) OR (standard_depreciation_years > 0)))
 );
@@ -951,8 +935,6 @@ CREATE TABLE public.assets (
     ownership smallint NOT NULL,
     purchase_date date,
     purchase_price numeric(10,4),
-    acquisition_account_uuid uuid,
-    accounting_account_code_snapshot character varying(32),
     status smallint DEFAULT 1 NOT NULL,
     depreciation_start_date date,
     depreciation_years smallint,
@@ -965,8 +947,11 @@ CREATE TABLE public.assets (
     created_by integer,
     updated_by integer,
     osrt_sync_enabled boolean DEFAULT false NOT NULL,
+    parent_asset_uuid uuid,
+    is_bookable boolean DEFAULT true NOT NULL,
     CONSTRAINT chk_asset_status CHECK ((status = ANY (ARRAY[1, 2, 3, 4, 5]))),
     CONSTRAINT chk_assets_depr_years CHECK (((depreciation_years IS NULL) OR (depreciation_years > 0))),
+    CONSTRAINT chk_assets_no_self_parent CHECK (((parent_asset_uuid IS NULL) OR (parent_asset_uuid <> uuid))),
     CONSTRAINT chk_assets_ownership CHECK ((ownership = ANY (ARRAY[1, 2]))),
     CONSTRAINT chk_assets_prices_positive CHECK (((purchase_price IS NULL) OR (purchase_price >= (0)::numeric))),
     CONSTRAINT chk_assets_residual_le_purchase CHECK (((residual_value IS NULL) OR (purchase_price IS NULL) OR (residual_value <= purchase_price))),
@@ -1015,6 +1000,84 @@ CREATE SEQUENCE public.auth_challenges_id_seq
 --
 
 ALTER SEQUENCE public.auth_challenges_id_seq OWNED BY public.auth_challenges.id;
+
+
+--
+-- Name: bank_csv_mappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.bank_csv_mappings (
+    uuid uuid NOT NULL,
+    name character varying(100) NOT NULL,
+    created_by integer NOT NULL,
+    column_mapping json NOT NULL,
+    separator character varying(4),
+    encoding character varying(16),
+    date_format character varying(16) NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: bank_statement_lines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.bank_statement_lines (
+    uuid uuid NOT NULL,
+    statement_uuid uuid NOT NULL,
+    line_index integer NOT NULL,
+    line_date date NOT NULL,
+    description text,
+    amount numeric(10,4) NOT NULL,
+    reference character varying(255),
+    counterparty character varying(255),
+    bank_raw_data json,
+    match_status character varying(20) NOT NULL,
+    matched_entry_uuid uuid,
+    matched_fiscal_year_uuid uuid,
+    match_confidence numeric(4,3),
+    discrepancy_type character varying(32),
+    discrepancy_notes text,
+    resolved_at timestamp with time zone,
+    resolved_by integer,
+    created_at timestamp with time zone NOT NULL,
+    CONSTRAINT chk_bank_lines_discrepancy_type CHECK (((discrepancy_type IS NULL) OR ((discrepancy_type)::text = ANY ((ARRAY['missing_entry'::character varying, 'amount_variance'::character varying, 'timing'::character varying, 'duplicate'::character varying])::text[])))),
+    CONSTRAINT chk_bank_lines_match_status CHECK (((match_status)::text = ANY ((ARRAY['unmatched'::character varying, 'auto_matched'::character varying, 'manually_matched'::character varying, 'excluded'::character varying, 'discrepancy'::character varying])::text[])))
+);
+
+
+--
+-- Name: bank_statements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.bank_statements (
+    uuid uuid NOT NULL,
+    fiscal_year_uuid uuid NOT NULL,
+    journal_uuid uuid NOT NULL,
+    account_uuid uuid NOT NULL,
+    import_date timestamp with time zone NOT NULL,
+    statement_date date NOT NULL,
+    statement_period_start date,
+    statement_period_end date,
+    source_format character varying(8) NOT NULL,
+    raw_filename character varying(255),
+    raw_content_hash character varying(64),
+    opening_balance numeric(10,4),
+    closing_balance numeric(10,4),
+    total_debits numeric(10,4),
+    total_credits numeric(10,4),
+    line_count integer,
+    status character varying(16) NOT NULL,
+    reconciled_balance numeric(10,4),
+    balance_difference numeric(10,4),
+    reconciled_at timestamp with time zone,
+    reconciled_by integer,
+    created_by integer NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    CONSTRAINT chk_bank_statement_source_format CHECK (((source_format)::text = ANY ((ARRAY['ofx'::character varying, 'qfx'::character varying, 'csv'::character varying, 'qif'::character varying, 'mt940'::character varying])::text[]))),
+    CONSTRAINT chk_bank_statement_status CHECK (((status)::text = ANY ((ARRAY['imported'::character varying, 'matching'::character varying, 'reconciled'::character varying, 'flagged'::character varying])::text[])))
+);
 
 
 --
@@ -2293,6 +2356,7 @@ CREATE TABLE public.vi_entitlements (
     conversion_entry_uuid uuid,
     is_generic boolean DEFAULT false NOT NULL,
     insurance_amount_override numeric(10,4),
+    planche_synced_at timestamp with time zone,
     CONSTRAINT chk_vi_entitlements_date_consistency CHECK (((realisation_date IS NULL) OR (scheduled_date IS NULL) OR (realisation_date >= scheduled_date))),
     CONSTRAINT chk_vi_entitlements_origin_type CHECK (((origin_type >= 1) AND (origin_type <= 5))),
     CONSTRAINT chk_vi_entitlements_status CHECK (((status >= 1) AND (status <= 6)))
@@ -2311,6 +2375,13 @@ COMMENT ON COLUMN public.vi_entitlements.is_generic IS 'When TRUE this voucher i
 --
 
 COMMENT ON COLUMN public.vi_entitlements.insurance_amount_override IS 'Per-entitlement insurance override. When set, supersedes vi_type.insurance_amount for realization.';
+
+
+--
+-- Name: COLUMN vi_entitlements.planche_synced_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.vi_entitlements.planche_synced_at IS 'Timestamp of the last successful push to Planche. Once set, code is locked (it is the Planche join key).';
 
 
 --
@@ -2655,14 +2726,6 @@ ALTER TABLE ONLY public.asset_account_snapshots
 
 
 --
--- Name: asset_categories asset_categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT asset_categories_pkey PRIMARY KEY (uuid);
-
-
---
 -- Name: asset_depreciation_schedules asset_depreciation_schedules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2772,6 +2835,30 @@ ALTER TABLE ONLY public.assets
 
 ALTER TABLE ONLY public.auth_challenges
     ADD CONSTRAINT auth_challenges_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bank_csv_mappings bank_csv_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_csv_mappings
+    ADD CONSTRAINT bank_csv_mappings_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: bank_statement_lines bank_statement_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statement_lines
+    ADD CONSTRAINT bank_statement_lines_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: bank_statements bank_statements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statements
+    ADD CONSTRAINT bank_statements_pkey PRIMARY KEY (uuid);
 
 
 --
@@ -3092,14 +3179,6 @@ ALTER TABLE ONLY public.trusted_devices
 
 ALTER TABLE ONLY public.trusted_devices
     ADD CONSTRAINT trusted_devices_token_hash_key UNIQUE (token_hash);
-
-
---
--- Name: asset_categories uq_asset_categories_code; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT uq_asset_categories_code UNIQUE (code);
 
 
 --
@@ -4119,13 +4198,6 @@ CREATE INDEX ix_asset_depr_status ON public.asset_depreciation_schedules USING b
 
 
 --
--- Name: ix_asset_families_category_uuid; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_asset_families_category_uuid ON public.asset_families USING btree (category_uuid);
-
-
---
 -- Name: ix_asset_flight_types_active; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4168,10 +4240,59 @@ CREATE INDEX ix_assets_asset_type ON public.assets USING btree (asset_family_uui
 
 
 --
+-- Name: ix_assets_parent_asset_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_assets_parent_asset_uuid ON public.assets USING btree (parent_asset_uuid);
+
+
+--
 -- Name: ix_assets_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_assets_status ON public.assets USING btree (status);
+
+
+--
+-- Name: ix_bank_statement_lines_matched_entry_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_bank_statement_lines_matched_entry_uuid ON public.bank_statement_lines USING btree (matched_entry_uuid);
+
+
+--
+-- Name: ix_bank_statement_lines_statement_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_bank_statement_lines_statement_uuid ON public.bank_statement_lines USING btree (statement_uuid);
+
+
+--
+-- Name: ix_bank_statements_account_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_bank_statements_account_uuid ON public.bank_statements USING btree (account_uuid);
+
+
+--
+-- Name: ix_bank_statements_fiscal_year_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_bank_statements_fiscal_year_uuid ON public.bank_statements USING btree (fiscal_year_uuid);
+
+
+--
+-- Name: ix_bank_statements_journal_uuid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_bank_statements_journal_uuid ON public.bank_statements USING btree (journal_uuid);
+
+
+--
+-- Name: ix_bank_statements_raw_content_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_bank_statements_raw_content_hash ON public.bank_statements USING btree (raw_content_hash);
 
 
 --
@@ -4902,46 +5023,6 @@ ALTER TABLE ONLY public.asset_account_snapshots
 
 
 --
--- Name: asset_categories asset_categories_acquisition_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT asset_categories_acquisition_account_uuid_fkey FOREIGN KEY (acquisition_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
-
-
---
--- Name: asset_categories asset_categories_charge_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT asset_categories_charge_account_uuid_fkey FOREIGN KEY (charge_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
-
-
---
--- Name: asset_categories asset_categories_depreciation_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT asset_categories_depreciation_account_uuid_fkey FOREIGN KEY (depreciation_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
-
-
---
--- Name: asset_categories asset_categories_revenue_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT asset_categories_revenue_account_uuid_fkey FOREIGN KEY (revenue_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
-
-
---
--- Name: asset_categories asset_categories_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT asset_categories_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL;
-
-
---
 -- Name: asset_depreciation_schedules asset_depreciation_schedules_asset_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4958,11 +5039,35 @@ ALTER TABLE ONLY public.asset_depreciation_schedules
 
 
 --
--- Name: asset_families asset_families_category_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: asset_families asset_families_acquisition_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.asset_families
-    ADD CONSTRAINT asset_families_category_uuid_fkey FOREIGN KEY (category_uuid) REFERENCES public.asset_categories(uuid);
+    ADD CONSTRAINT asset_families_acquisition_account_uuid_fkey FOREIGN KEY (acquisition_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_families asset_families_charge_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_families
+    ADD CONSTRAINT asset_families_charge_account_uuid_fkey FOREIGN KEY (charge_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_families asset_families_depreciation_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_families
+    ADD CONSTRAINT asset_families_depreciation_account_uuid_fkey FOREIGN KEY (depreciation_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: asset_families asset_families_revenue_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.asset_families
+    ADD CONSTRAINT asset_families_revenue_account_uuid_fkey FOREIGN KEY (revenue_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
 
 
 --
@@ -5030,14 +5135,6 @@ ALTER TABLE ONLY public.asset_stock_items
 
 
 --
--- Name: assets assets_acquisition_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT assets_acquisition_account_uuid_fkey FOREIGN KEY (acquisition_account_uuid) REFERENCES public.accounting_accounts(uuid);
-
-
---
 -- Name: assets assets_asset_type_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5046,11 +5143,83 @@ ALTER TABLE ONLY public.assets
 
 
 --
+-- Name: assets assets_parent_asset_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.assets
+    ADD CONSTRAINT assets_parent_asset_uuid_fkey FOREIGN KEY (parent_asset_uuid) REFERENCES public.assets(uuid);
+
+
+--
 -- Name: auth_challenges auth_challenges_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.auth_challenges
     ADD CONSTRAINT auth_challenges_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: bank_csv_mappings bank_csv_mappings_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_csv_mappings
+    ADD CONSTRAINT bank_csv_mappings_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: bank_statement_lines bank_statement_lines_resolved_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statement_lines
+    ADD CONSTRAINT bank_statement_lines_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: bank_statement_lines bank_statement_lines_statement_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statement_lines
+    ADD CONSTRAINT bank_statement_lines_statement_uuid_fkey FOREIGN KEY (statement_uuid) REFERENCES public.bank_statements(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: bank_statements bank_statements_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statements
+    ADD CONSTRAINT bank_statements_account_uuid_fkey FOREIGN KEY (account_uuid) REFERENCES public.accounting_accounts(uuid);
+
+
+--
+-- Name: bank_statements bank_statements_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statements
+    ADD CONSTRAINT bank_statements_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: bank_statements bank_statements_fiscal_year_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statements
+    ADD CONSTRAINT bank_statements_fiscal_year_uuid_fkey FOREIGN KEY (fiscal_year_uuid) REFERENCES public.accounting_fiscal_years(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: bank_statements bank_statements_journal_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statements
+    ADD CONSTRAINT bank_statements_journal_uuid_fkey FOREIGN KEY (journal_uuid) REFERENCES public.accounting_journals(uuid);
+
+
+--
+-- Name: bank_statements bank_statements_reconciled_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bank_statements
+    ADD CONSTRAINT bank_statements_reconciled_by_fkey FOREIGN KEY (reconciled_by) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -5681,5 +5850,5 @@ ALTER TABLE ONLY public.vi_type_catalog
 -- PostgreSQL database dump complete
 --
 
-\unrestrict cKwqtZfxyvw3vZ0T5VIl5qFXVeF9tVRdRD4QTuM9yKTs0XnZ5grSdAqS2vafMFg
+\unrestrict GInA5VyYjAD4xxT9Zp0jYwM7SsBgPeAY6IlNFEctCUadit2ygg5BjzUstYUWKOz
 

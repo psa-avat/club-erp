@@ -77,8 +77,18 @@ class BankStatementResponse(BaseModel):
         from_attributes = True
 
 
-class BankStatementListResponse(BaseModel):
-    items: list[BankStatementResponse]
+class BankStatementSummaryResponse(BankStatementResponse):
+    """BankStatementResponse plus lightweight, SQL-aggregated progress data for the
+    statement inbox — status_counts/unresolved_count/live_balance_difference are
+    computed from bank_statement_lines, not from a per-statement full report load."""
+
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    unresolved_count: int = 0
+    live_balance_difference: Decimal = Field(decimal_places=4)
+
+
+class BankStatementSummaryListResponse(BaseModel):
+    items: list[BankStatementSummaryResponse]
     total: int
 
 
@@ -91,6 +101,21 @@ class MatchResultResponse(BaseModel):
     auto_matched: int
     flagged_review: int
     unmatched: int
+
+
+class CandidateEntryResponse(BaseModel):
+    entry_uuid: UUID
+    fiscal_year_uuid: UUID
+    entry_date: date
+    description: Optional[str] = None
+    reference: Optional[str] = None
+    state: int
+    amount: Decimal = Field(decimal_places=4)
+    amount_diff: Decimal = Field(decimal_places=4)
+    date_diff: int
+    description_score: Decimal = Field(decimal_places=4)
+    score: Decimal = Field(decimal_places=3)
+    is_internal_transfer: bool
 
 
 class ManualMatchRequest(BaseModel):
@@ -148,6 +173,7 @@ class ReconciliationReportResponse(BaseModel):
     closing_balance: Decimal = Field(decimal_places=4)
     reconciled_balance: Optional[Decimal] = Field(default=None, decimal_places=4)
     balance_difference: Optional[Decimal] = Field(default=None, decimal_places=4)
+    live_balance_difference: Decimal = Field(decimal_places=4)
     status: str
     line_count: int
     status_counts: dict[str, int]

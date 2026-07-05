@@ -43,7 +43,7 @@ import {
 } from '../api'
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { entryStateLabel, totals, entryStateBadgeClass, useDebounce, decimalOrZero, normalizeAmountFilter, toErrorMessage } from './journalShared'
+import { entryStateLabel, totals, entryStateBadgeClass, bankMatchBadge, useDebounce, decimalOrZero, normalizeAmountFilter, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
 import type { AccountingEntry } from '../api'
 
@@ -61,6 +61,7 @@ type JournalFilters = {
   amount_min: string
   amount_max: string
   null_tiers: boolean
+  bank_reconciliation_state: '' | 'unreconciled' | 'associated' | 'reconciled' | 'discrepancy'
 }
 
 const DEFAULT_FILTERS: JournalFilters = {
@@ -75,6 +76,7 @@ const DEFAULT_FILTERS: JournalFilters = {
   amount_min: '',
   amount_max: '',
   null_tiers: false,
+  bank_reconciliation_state: '',
 }
 
 function formatDateFr(isoDate: string): string {
@@ -144,6 +146,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       amount_min: normalizeAmountFilter(filters.amount_min),
       amount_max: normalizeAmountFilter(filters.amount_max),
       null_tiers: filters.null_tiers || undefined,
+      bank_reconciliation_state: filters.bank_reconciliation_state || undefined,
     }),
     [
       activeFiscalYearUuid,
@@ -158,6 +161,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       filters.amount_min,
       filters.amount_max,
       filters.null_tiers,
+      filters.bank_reconciliation_state,
     ],
   )
 
@@ -461,6 +465,25 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
           </div>
           )}
           <div className="space-y-1">
+            <Label>{t('journal.entries.bankReconciliationState')}</Label>
+            <select
+              value={filters.bank_reconciliation_state}
+              onChange={(event) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  bank_reconciliation_state: event.target.value as JournalFilters['bank_reconciliation_state'],
+                }))
+              }
+              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="">{t('journal.entries.allBankReconciliationStates')}</option>
+              <option value="unreconciled">{t('journal.entries.bankUnreconciled')}</option>
+              <option value="associated">{t('journal.entries.bankAssociated')}</option>
+              <option value="reconciled">{t('journal.entries.bankReconciled')}</option>
+              <option value="discrepancy">{t('journal.entries.bankDiscrepancy')}</option>
+            </select>
+          </div>
+          <div className="space-y-1">
             <Label>{t('journal.entries.search')}</Label>
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
           </div>
@@ -683,6 +706,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                   {sortedEntriesView.map((row, index) => {
                     const { entry, journalCode, amount } = row
                     const isDraftEntry = entry.state === 1 || entry.state === 3
+                    const bankBadge = bankMatchBadge(entry.bank_match_status, entry.bank_statement_status, t)
                     const showGroupHeader = groupByJournal && (index === 0 || sortedEntriesView[index - 1].journalCode !== journalCode)
                     return (
                       <>
@@ -725,6 +749,11 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${entryStateBadgeClass(entry.state)}`}>
                               {entryStateLabel(entry.state, t)}
                             </span>
+                            {bankBadge && (
+                              <span className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${bankBadge.className}`}>
+                                {bankBadge.label}
+                              </span>
+                            )}
                           </td>
                           <td className="sticky right-0 z-10 bg-white px-2 text-right group-hover:bg-slate-50" onClick={(event) => event.stopPropagation()}>
                             <div className="inline-flex items-center justify-end gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">

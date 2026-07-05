@@ -255,6 +255,10 @@ export type AccountingEntry = {
   created_at: string
   created_by: number
   lines: AccountingEntryLine[]
+  // Bank reconciliation status, resolved server-side — null when the entry isn't
+  // referenced by any bank statement line.
+  bank_match_status: 'auto_matched' | 'manually_matched' | 'discrepancy' | null
+  bank_statement_status: 'imported' | 'matching' | 'reconciled' | 'flagged' | null
 }
 
 export type AccountingEntriesFilters = {
@@ -271,6 +275,7 @@ export type AccountingEntriesFilters = {
   amount_min?: string
   amount_max?: string
   null_tiers?: boolean
+  bank_reconciliation_state?: 'unreconciled' | 'associated' | 'reconciled' | 'discrepancy'
   limit?: number
   offset?: number
 }
@@ -1918,6 +1923,8 @@ export const reconciliationQueryKeys = {
   statement: (statementUuid: string) => ['banque', 'reconciliation', 'statement', statementUuid] as const,
   lines: (statementUuid: string, filters: Record<string, unknown>) =>
     ['banque', 'reconciliation', 'lines', statementUuid, filters] as const,
+  candidates: (lineUuid: string, includeDrafts: boolean) =>
+    ['banque', 'reconciliation', 'candidates', lineUuid, includeDrafts] as const,
   report: (statementUuid: string) => ['banque', 'reconciliation', 'report', statementUuid] as const,
   csvMappings: ['banque', 'reconciliation', 'csv-mappings'] as const,
 }
@@ -1968,6 +1975,12 @@ export type BankStatement = {
   updated_at: string
 }
 
+export type BankStatementSummary = BankStatement & {
+  status_counts: Record<string, number>
+  unresolved_count: number
+  live_balance_difference: string
+}
+
 export type MatchResult = {
   auto_matched: number
   flagged_review: number
@@ -2010,6 +2023,7 @@ export type ReconciliationReport = {
   closing_balance: string
   reconciled_balance: string | null
   balance_difference: string | null
+  live_balance_difference: string
   status: string
   line_count: number
   status_counts: Record<string, number>
@@ -2049,7 +2063,7 @@ export function useReconciliationStatementsQuery(filters: ReconciliationStatemen
     queryKey: reconciliationQueryKeys.statements(filters),
     enabled,
     queryFn: async () => {
-      const { data } = await apiClient.get<{ items: BankStatement[]; total: number }>(
+      const { data } = await apiClient.get<{ items: BankStatementSummary[]; total: number }>(
         '/api/v1/reconciliation/statements',
         { ...getAuthRequestConfig(), params: filters },
       )
@@ -2100,6 +2114,35 @@ export function useReconciliationLinesQuery(
       const { data } = await apiClient.get<BankStatementLineListResponse>(
         `/api/v1/reconciliation/statements/${statementUuid}/lines`,
         { ...getAuthRequestConfig(), params: filters },
+      )
+      return data
+    },
+  })
+}
+
+export type ReconciliationCandidate = {
+  entry_uuid: string
+  fiscal_year_uuid: string
+  entry_date: string
+  description: string | null
+  reference: string | null
+  state: number
+  amount: string
+  amount_diff: string
+  date_diff: number
+  description_score: string
+  score: string
+  is_internal_transfer: boolean
+}
+
+export function useReconciliationCandidatesQuery(lineUuid: string | null, includeDrafts: boolean, enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.candidates(lineUuid ?? 'none', includeDrafts),
+    enabled: enabled && Boolean(lineUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<ReconciliationCandidate[]>(
+        `/api/v1/reconciliation/lines/${lineUuid}/candidates`,
+        { ...getAuthRequestConfig(), params: { include_drafts: includeDrafts } },
       )
       return data
     },
@@ -2169,6 +2212,9 @@ export function useRunAutoMatchMutation() {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', statementUuid] })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
+      // A matched entry can never be a candidate for any other line — invalidate every
+      // open candidate list, not just this statement's.
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'candidates'] })
     },
   })
 }
@@ -2192,6 +2238,7 @@ export function useManualMatchMutation() {
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'candidates'] })
     },
   })
 }
@@ -2210,6 +2257,8 @@ export function useUnmatchLineMutation() {
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(data.statement_uuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', data.statement_uuid] })
+      // Unmatching frees the entry back up as a candidate for other lines.
+      await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'candidates'] })
     },
   })
 }

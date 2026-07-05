@@ -141,22 +141,6 @@
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
-    },
-    {
-        "code": "21821",
-        "name": "Flotte - Planeurs",
-        "type": 1,
-        "is_posting_allowed": true,
-        "is_reconcilable": false,
-        "require_id": 2
-    },
-    {
-        "code": "21822",
-        "name": "Flotte - Avions et Remorqueurs",
-        "type": 1,
-        "is_posting_allowed": true,
-        "is_reconcilable": false,
         "require_id": 2
     },
     {
@@ -165,7 +149,7 @@
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "2185",
@@ -173,7 +157,7 @@
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "2188",
@@ -181,7 +165,7 @@
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "272",
@@ -213,7 +197,7 @@
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "28154",
@@ -221,27 +205,11 @@
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "28182",
         "name": "Amortissement du matériel de transport (Remorques, véhicules)",
-        "type": 2,
-        "is_posting_allowed": true,
-        "is_reconcilable": false,
-        "require_id": 0
-    },
-    {
-        "code": "281821",
-        "name": "Amortissement de la flotte - Planeurs",
-        "type": 2,
-        "is_posting_allowed": true,
-        "is_reconcilable": false,
-        "require_id": 2
-    },
-    {
-        "code": "281822",
-        "name": "Amortissement de la flotte - Avions et Remorqueurs",
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
@@ -253,7 +221,7 @@
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "28185",
@@ -261,7 +229,7 @@
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "288",
@@ -269,7 +237,7 @@
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "3",

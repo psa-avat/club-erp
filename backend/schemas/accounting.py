@@ -189,6 +189,10 @@ class AccountingEntryResponse(AccountingEntryBase):
     created_at: datetime
     created_by: int
     lines: list[AccountingLineResponse] = []
+    # Bank reconciliation status, resolved by join — None when the entry isn't
+    # referenced by any bank_statement_lines.matched_entry_uuid.
+    bank_match_status: Optional[str] = None
+    bank_statement_status: Optional[str] = None
 
     class Config:
         from_attributes = True

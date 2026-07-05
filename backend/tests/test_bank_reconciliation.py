@@ -35,7 +35,10 @@ from services.bank_reconciliation import (
     _score_candidate,
     close_reconciliation,
     detect_discrepancies,
+    get_match_candidates,
+    get_reconciliation_report,
     list_statement_lines,
+    list_statement_summaries,
     manual_match,
     run_auto_match,
     unmatch,
@@ -116,6 +119,20 @@ class _FakeExecuteResult:
 
     def scalars(self):
         return _FakeScalarsResult(self._values)
+
+
+class _FakeRowsResult:
+    """Mimics a raw (non-ORM) SQLAlchemy execute() result: a sequence of row tuples,
+    iterable directly and via .all() (used by the GROUP BY aggregate queries)."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+    def all(self):
+        return self._rows
 
 
 def _bank_account(**overrides):
@@ -471,6 +488,103 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
         mock_load.assert_awaited_once_with(db, statement, include_drafts=True)
 
 
+class GetMatchCandidatesTests(IsolatedAsyncioTestCase):
+    async def test_ranks_candidates_by_score_and_excludes_out_of_tolerance_amounts(self):
+        account_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0,
+            line_date=date(2026, 6, 3), amount=Decimal("1000.00"), match_status="unmatched",
+        )
+        entry_exact = _entry_with_bank_line(
+            account_uuid, debit=Decimal("1000.00"), entry_date=date(2026, 6, 3), description="Perfect match",
+        )
+        entry_close = _entry_with_bank_line(
+            account_uuid, debit=Decimal("999.99"), entry_date=date(2026, 6, 5), description="Close match",
+        )
+        entry_out_of_tolerance = _entry_with_bank_line(
+            account_uuid, debit=Decimal("500.00"), entry_date=date(2026, 6, 3), description="Wrong amount",
+        )
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch(
+                 "services.bank_reconciliation._load_eligible_entries",
+                 new=AsyncMock(return_value=[entry_close, entry_exact, entry_out_of_tolerance]),
+             ), \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
+            candidates = await get_match_candidates(db, line.uuid)
+
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0]["entry_uuid"], entry_exact.uuid)
+        self.assertEqual(candidates[0]["amount_diff"], Decimal("0"))
+        self.assertEqual(candidates[1]["entry_uuid"], entry_close.uuid)
+        self.assertGreater(candidates[0]["score"], candidates[1]["score"])
+
+    async def test_already_matched_entries_never_appear_since_loader_excludes_them(self):
+        # get_match_candidates relies on _load_eligible_entries, whose real SQL query
+        # excludes entries already reconciled to another line (an entry can only be
+        # matched once). Simulating that exclusion here by simply not returning the
+        # already-matched entry from the (mocked) loader.
+        account_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0,
+            line_date=date(2026, 6, 3), amount=Decimal("60.00"), match_status="unmatched",
+        )
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load, \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
+            candidates = await get_match_candidates(db, line.uuid)
+
+        self.assertEqual(candidates, [])
+        mock_load.assert_awaited_once()
+
+    async def test_internal_transfer_score_capped_in_candidates(self):
+        account_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0,
+            line_date=date(2026, 6, 3), amount=Decimal("500.00"), match_status="unmatched",
+        )
+        caisse = _bank_account(code="531", is_reconcilable=True)
+        transfer_entry = _entry_with_bank_line(
+            account_uuid, debit=Decimal("500.00"), entry_date=date(2026, 6, 3), other_account=caisse,
+        )
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[transfer_entry])), \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
+            candidates = await get_match_candidates(db, line.uuid)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertTrue(candidates[0]["is_internal_transfer"])
+        self.assertEqual(candidates[0]["score"], Decimal(str(_DEFAULT_MATCHING_SETTINGS["internal_transfer_cap"])))
+
+    async def test_raises_404_when_line_not_found(self):
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=None)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await get_match_candidates(db, uuid4())
+        self.assertEqual(ctx.exception.status_code, 404)
+
+
 class ManualMatchTests(IsolatedAsyncioTestCase):
     async def test_rejects_already_locked_line(self):
         line = BankStatementLine(
@@ -484,7 +598,7 @@ class ManualMatchTests(IsolatedAsyncioTestCase):
             await manual_match(db, line.uuid, uuid4(), uuid4(), user_id=1)
         self.assertEqual(ctx.exception.status_code, 409)
 
-    async def test_rejects_entry_from_different_journal(self):
+    async def test_rejects_entry_from_different_fiscal_year(self):
         account_uuid = uuid4()
         statement = BankStatement(
             uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
@@ -494,7 +608,7 @@ class ManualMatchTests(IsolatedAsyncioTestCase):
             uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
             amount=Decimal("10"), match_status="unmatched",
         )
-        other_entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"))  # random journal_uuid != statement's
+        other_entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"))  # random fiscal_year_uuid != statement's
 
         db = AsyncMock()
         db.get = AsyncMock(return_value=line)
@@ -504,6 +618,33 @@ class ManualMatchTests(IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as ctx:
                 await manual_match(db, line.uuid, other_entry.uuid, other_entry.fiscal_year_uuid, user_id=1)
         self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_accepts_entry_from_a_different_journal_when_account_and_fiscal_year_match(self):
+        # Matching is scoped by account, not journal: an entry recorded in another
+        # journal (e.g. a correcting OD entry) can still have a line on the bank
+        # account and legitimately reconcile against this statement.
+        account_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1,
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="unmatched",
+        )
+        other_entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"), entry_date=date(2026, 6, 3))
+        other_entry.fiscal_year_uuid = fiscal_year_uuid  # same fiscal year, unrelated (random) journal_uuid
+
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+        db.scalar = AsyncMock(side_effect=[other_entry, None])
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
+            result = await manual_match(db, line.uuid, other_entry.uuid, fiscal_year_uuid, user_id=1)
+
+        self.assertEqual(result.match_status, "manually_matched")
+        self.assertEqual(result.matched_entry_uuid, other_entry.uuid)
 
     async def test_successful_manual_match_sets_fields(self):
         account_uuid = uuid4()
@@ -658,6 +799,44 @@ class DetectDiscrepanciesTests(IsolatedAsyncioTestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0]["type"], "missing_entry")
         self.assertEqual(statement.status, "flagged")
+
+
+class GetReconciliationReportTests(IsolatedAsyncioTestCase):
+    async def test_live_balance_difference_computed_for_open_statement(self):
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=uuid4(),
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+            opening_balance=Decimal("100.00"), closing_balance=Decimal("160.00"),
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("50.00"), match_status="auto_matched",
+        )
+        statement.lines = [line]
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=_FakeExecuteResult([]))
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
+            report = await get_reconciliation_report(db, statement.uuid)
+
+        # expected_closing = opening(100) + reconciled(50) = 150; closing=160 -> diff=10
+        self.assertEqual(report["live_balance_difference"], Decimal("10.00"))
+
+    async def test_live_balance_difference_uses_stored_value_when_reconciled(self):
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=uuid4(),
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="reconciled",
+            opening_balance=Decimal("100.00"), closing_balance=Decimal("160.00"),
+            balance_difference=Decimal("0.00"),
+        )
+        statement.lines = []
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=_FakeExecuteResult([]))
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
+            report = await get_reconciliation_report(db, statement.uuid)
+
+        self.assertEqual(report["live_balance_difference"], Decimal("0.00"))
 
 
 class CloseReconciliationTests(IsolatedAsyncioTestCase):
@@ -828,3 +1007,77 @@ class ListStatementLinesTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(items, [])
         self.assertEqual(total, 0)
+
+    async def test_comma_separated_match_status_filters_on_multiple_statuses(self):
+        # The default "unresolved" queue sends match_status="unmatched,discrepancy"
+        # as a single query param rather than requiring a separate list param.
+        statement_uuid = uuid4()
+        db = AsyncMock()
+        db.scalar = AsyncMock(return_value=2)
+        db.execute = AsyncMock(return_value=_FakeExecuteResult([]))
+
+        await list_statement_lines(db, statement_uuid, match_status="unmatched,discrepancy")
+
+        where_clause = str(db.execute.call_args[0][0])
+        self.assertIn("match_status IN", where_clause)
+
+
+class ListStatementSummariesTests(IsolatedAsyncioTestCase):
+    async def test_computes_counts_and_live_balance_difference_for_open_statement(self):
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=uuid4(),
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+            opening_balance=Decimal("100.00"), closing_balance=Decimal("160.00"),
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _FakeRowsResult(
+                    [
+                        (statement.uuid, "auto_matched", 3),
+                        (statement.uuid, "unmatched", 2),
+                        (statement.uuid, "discrepancy", 1),
+                    ]
+                ),
+                _FakeRowsResult([(statement.uuid, Decimal("50.00"))]),
+            ]
+        )
+
+        with patch("services.bank_reconciliation.list_statements", new=AsyncMock(return_value=[statement])):
+            summaries = await list_statement_summaries(db)
+
+        self.assertEqual(len(summaries), 1)
+        summary = summaries[0]
+        self.assertEqual(summary["status_counts"], {"auto_matched": 3, "unmatched": 2, "discrepancy": 1})
+        self.assertEqual(summary["unresolved_count"], 3)
+        # expected_closing = opening(100) + reconciled_sum(50) = 150; statement closing = 160 -> diff = 10
+        self.assertEqual(summary["live_balance_difference"], Decimal("10.00"))
+
+    async def test_reconciled_statement_uses_stored_balance_difference_not_live_computation(self):
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=uuid4(),
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="reconciled",
+            opening_balance=Decimal("100.00"), closing_balance=Decimal("160.00"),
+            balance_difference=Decimal("0.00"),
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _FakeRowsResult([(statement.uuid, "auto_matched", 5)]),
+                _FakeRowsResult([(statement.uuid, Decimal("60.00"))]),
+            ]
+        )
+
+        with patch("services.bank_reconciliation.list_statements", new=AsyncMock(return_value=[statement])):
+            summaries = await list_statement_summaries(db)
+
+        self.assertEqual(summaries[0]["live_balance_difference"], Decimal("0.00"))
+        self.assertEqual(summaries[0]["unresolved_count"], 0)
+
+    async def test_returns_empty_list_without_querying_aggregates_when_no_statements(self):
+        db = AsyncMock()
+        with patch("services.bank_reconciliation.list_statements", new=AsyncMock(return_value=[])):
+            summaries = await list_statement_summaries(db)
+
+        self.assertEqual(summaries, [])
+        db.execute.assert_not_called()

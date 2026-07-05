@@ -882,6 +882,7 @@ async def count_entries_endpoint(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
     null_tiers: bool | None = None,
+    bank_reconciliation_state: str | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
@@ -901,6 +902,7 @@ async def count_entries_endpoint(
         amount_min=amount_min,
         amount_max=amount_max,
         null_tiers=null_tiers,
+        bank_reconciliation_state=bank_reconciliation_state,
     )
     return {"total": total}
 
@@ -920,6 +922,7 @@ async def list_entries_endpoint(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
     null_tiers: bool | None = None,
+    bank_reconciliation_state: str | None = None,
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
@@ -941,6 +944,7 @@ async def list_entries_endpoint(
         amount_min=amount_min,
         amount_max=amount_max,
         null_tiers=null_tiers,
+        bank_reconciliation_state=bank_reconciliation_state,
         limit=limit,
         offset=offset,
     )

@@ -31,7 +31,6 @@ from sqlalchemy.orm import selectinload
 
 from models import (
     AccountingEntry,
-    AccountingJournal,
     AccountingLine,
     BankCsvMapping,
     BankStatement,
@@ -83,6 +82,90 @@ async def list_statements(
     return list(result.scalars().all())
 
 
+async def list_statement_summaries(
+    db: AsyncSession,
+    *,
+    fiscal_year_uuid: UUID | None = None,
+    journal_uuid: UUID | None = None,
+    status_filter: str | None = None,
+) -> list[dict]:
+    """Statement inbox listing enriched with per-statement status counts and a live
+    balance difference. Computed via two SQL aggregates over bank_statement_lines
+    (GROUP BY statement_uuid), not by loading every line of every statement into
+    Python — that per-statement full-report approach is exactly what made the
+    400+-line single-statement view slow before it was paginated, and would be worse
+    here since it would run once per statement in the list."""
+    statements = await list_statements(
+        db, fiscal_year_uuid=fiscal_year_uuid, journal_uuid=journal_uuid, status_filter=status_filter
+    )
+    if not statements:
+        return []
+
+    statement_uuids = [s.uuid for s in statements]
+
+    count_rows = await db.execute(
+        select(BankStatementLine.statement_uuid, BankStatementLine.match_status, func.count())
+        .where(BankStatementLine.statement_uuid.in_(statement_uuids))
+        .group_by(BankStatementLine.statement_uuid, BankStatementLine.match_status)
+    )
+    counts_by_statement: dict[UUID, dict[str, int]] = {}
+    for statement_uuid, match_status, count in count_rows:
+        counts_by_statement.setdefault(statement_uuid, {})[match_status] = count
+
+    reconciled_sum_rows = await db.execute(
+        select(BankStatementLine.statement_uuid, func.sum(BankStatementLine.amount))
+        .where(
+            BankStatementLine.statement_uuid.in_(statement_uuids),
+            BankStatementLine.match_status.in_((*_LOCKED_MATCH_STATUSES, "excluded")),
+        )
+        .group_by(BankStatementLine.statement_uuid)
+    )
+    reconciled_sum_by_statement: dict[UUID, Decimal] = dict(reconciled_sum_rows.all())
+
+    summaries: list[dict] = []
+    for statement in statements:
+        counts = counts_by_statement.get(statement.uuid, {})
+        unresolved_count = counts.get("unmatched", 0) + counts.get("discrepancy", 0)
+        if statement.status == "reconciled":
+            live_balance_difference = statement.balance_difference or Decimal("0")
+        else:
+            reconciled_sum = reconciled_sum_by_statement.get(statement.uuid, Decimal("0"))
+            expected_closing = statement.opening_balance + reconciled_sum
+            live_balance_difference = statement.closing_balance - expected_closing
+
+        summaries.append(
+            {
+                "uuid": statement.uuid,
+                "fiscal_year_uuid": statement.fiscal_year_uuid,
+                "journal_uuid": statement.journal_uuid,
+                "account_uuid": statement.account_uuid,
+                "import_date": statement.import_date,
+                "statement_date": statement.statement_date,
+                "statement_period_start": statement.statement_period_start,
+                "statement_period_end": statement.statement_period_end,
+                "source_format": statement.source_format,
+                "raw_filename": statement.raw_filename,
+                "opening_balance": statement.opening_balance,
+                "closing_balance": statement.closing_balance,
+                "total_debits": statement.total_debits,
+                "total_credits": statement.total_credits,
+                "line_count": statement.line_count,
+                "status": statement.status,
+                "reconciled_balance": statement.reconciled_balance,
+                "balance_difference": statement.balance_difference,
+                "reconciled_at": statement.reconciled_at,
+                "reconciled_by": statement.reconciled_by,
+                "created_by": statement.created_by,
+                "created_at": statement.created_at,
+                "updated_at": statement.updated_at,
+                "status_counts": counts,
+                "unresolved_count": unresolved_count,
+                "live_balance_difference": live_balance_difference,
+            }
+        )
+    return summaries
+
+
 async def delete_statement(db: AsyncSession, statement_uuid: UUID) -> None:
     statement = await get_statement(db, statement_uuid)
     if statement.status == "reconciled":
@@ -110,7 +193,13 @@ async def list_statement_lines(
     if description:
         conditions.append(BankStatementLine.description.ilike(f"%{description}%"))
     if match_status:
-        conditions.append(BankStatementLine.match_status == match_status)
+        # Accept a comma-separated list (e.g. "unmatched,discrepancy" for the default
+        # unresolved-first queue) alongside a single status, without a separate param.
+        statuses = [s.strip() for s in match_status.split(",") if s.strip()]
+        conditions.append(
+            BankStatementLine.match_status.in_(statuses) if len(statuses) > 1
+            else BankStatementLine.match_status == statuses[0]
+        )
     if date_from:
         conditions.append(BankStatementLine.line_date >= date_from)
     if date_to:
@@ -221,8 +310,14 @@ def _score_candidate(
 async def _load_eligible_entries(
     db: AsyncSession, statement: BankStatement, *, include_drafts: bool = True
 ) -> list[AccountingEntry]:
-    """Entries in the statement's journal/fiscal year with a line on the statement's
-    account, excluding entries already reconciled to another line.
+    """Entries in the statement's fiscal year with a line on the statement's account,
+    excluding entries already reconciled to another line.
+
+    Scoped by account, not by journal: what actually moves the bank/cash balance is a
+    line on statement.account_uuid, regardless of which journal recorded it (e.g. a
+    correcting OD entry, or another journal posting directly to the bank account, still
+    needs to reconcile against the statement). Restricting to the statement's own
+    journal would silently hide legitimate matches recorded elsewhere.
 
     Draft (state=1) entries are eligible by default alongside Posted (state=2) ones —
     clubs typically draft their bank-journal entries and only post them once reconciled;
@@ -246,11 +341,8 @@ async def _load_eligible_entries(
 
     stmt = (
         select(AccountingEntry)
-        .join(AccountingJournal, AccountingJournal.uuid == AccountingEntry.journal_uuid)
         .where(
             AccountingEntry.fiscal_year_uuid == statement.fiscal_year_uuid,
-            AccountingEntry.journal_uuid == statement.journal_uuid,
-            AccountingJournal.type.in_((3, 4)),
             AccountingEntry.state.in_(eligible_states),
             AccountingEntry.reversal_of_entry_uuid.is_(None),
             bank_line_exists,
@@ -369,6 +461,68 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
     }
 
 
+async def get_match_candidates(db: AsyncSession, line_uuid: UUID, *, include_drafts: bool = True) -> list[dict]:
+    """Ranked match candidates for a single unmatched/discrepancy line, reusing the
+    exact eligibility/scoring/internal-transfer-cap logic run_auto_match uses — a
+    single source of truth so the manual-match picker can never suggest something
+    auto-match itself would score or flag differently.
+
+    Entries already reconciled to another line are excluded by _load_eligible_entries
+    (an AccountingEntry can only ever be matched to one BankStatementLine at a time),
+    so a ledger entry that's already associated never appears here to be picked again.
+    """
+    line = await db.get(BankStatementLine, line_uuid)
+    if not line:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Statement line {line_uuid} not found")
+
+    statement = await get_statement(db, line.statement_uuid)
+    entries = await _load_eligible_entries(db, statement, include_drafts=include_drafts)
+    settings = await get_matching_settings(db)
+
+    amount_tolerance = Decimal(str(settings["amount_tolerance"]))
+    internal_transfer_cap = Decimal(str(settings["internal_transfer_cap"]))
+
+    candidates: list[dict] = []
+    for entry in entries:
+        bank_line = _entry_bank_line(entry, statement.account_uuid)
+        if bank_line is None:
+            continue
+
+        entry_signed_amount = bank_line.debit - bank_line.credit
+        amount_diff = abs(entry_signed_amount - line.amount)
+        if amount_diff > amount_tolerance:
+            continue
+
+        date_diff = abs((line.line_date - entry.entry_date).days)
+        description_score = _description_similarity(line, entry)
+        score = _score_candidate(
+            amount_diff=amount_diff, date_diff=date_diff, description_score=description_score, settings=settings,
+        )
+        is_internal_transfer = _is_internal_transfer_candidate(entry, bank_line)
+        if is_internal_transfer:
+            score = min(score, internal_transfer_cap)
+
+        candidates.append(
+            {
+                "entry_uuid": entry.uuid,
+                "fiscal_year_uuid": entry.fiscal_year_uuid,
+                "entry_date": entry.entry_date,
+                "description": entry.description,
+                "reference": entry.reference,
+                "state": entry.state,
+                "amount": entry_signed_amount,
+                "amount_diff": amount_diff,
+                "date_diff": date_diff,
+                "description_score": Decimal(str(round(description_score, 4))),
+                "score": score,
+                "is_internal_transfer": is_internal_transfer,
+            }
+        )
+
+    candidates.sort(key=lambda c: c["score"], reverse=True)
+    return candidates
+
+
 async def manual_match(
     db: AsyncSession,
     line_uuid: UUID,
@@ -389,20 +543,18 @@ async def manual_match(
     entry = await db.scalar(
         select(AccountingEntry)
         .where(AccountingEntry.uuid == entry_uuid, AccountingEntry.fiscal_year_uuid == fiscal_year_uuid)
-        .options(selectinload(AccountingEntry.journal), selectinload(AccountingEntry.lines))
+        .options(selectinload(AccountingEntry.lines))
     )
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Entry {entry_uuid} not found in fiscal year {fiscal_year_uuid}",
         )
-    if entry.journal_uuid != statement.journal_uuid or entry.fiscal_year_uuid != statement.fiscal_year_uuid:
+    if entry.fiscal_year_uuid != statement.fiscal_year_uuid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Entry must belong to the same journal and fiscal year as the statement",
+            detail="Entry must belong to the same fiscal year as the statement",
         )
-    if entry.journal.type not in (3, 4):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Entry's journal is not Banque/Caisse")
     if entry.state == 3:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled entries cannot be reconciled")
     if entry.state == 1 and not include_drafts:
@@ -702,6 +854,22 @@ async def resolve_discrepancy(
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown resolution action {action!r}")
 
 
+def _compute_live_balance_difference(statement: BankStatement, lines: list[BankStatementLine]) -> Decimal:
+    """Expected-vs-actual closing balance, computed the same way close_reconciliation
+    checks it — shared so the report/closure-proof panel can show the exact blocker
+    the user would otherwise only discover after a failed close attempt.
+
+    'excluded' lines represent real bank movements with no GL counterpart (e.g. bank
+    fees): they still affect the bank's closing balance, so they count toward it here
+    even though they carry no matched_entry_uuid."""
+    reconciled_sum = sum(
+        (l.amount for l in lines if l.match_status in _LOCKED_MATCH_STATUSES or l.match_status == "excluded"),
+        Decimal("0"),
+    )
+    expected_closing = statement.opening_balance + reconciled_sum
+    return statement.closing_balance - expected_closing
+
+
 async def close_reconciliation(db: AsyncSession, statement_uuid: UUID, user_id: int) -> BankStatement:
     statement = await get_statement(db, statement_uuid)
     lines = statement.lines
@@ -716,16 +884,9 @@ async def close_reconciliation(db: AsyncSession, statement_uuid: UUID, user_id: 
     matched_lines = [l for l in lines if l.match_status in _LOCKED_MATCH_STATUSES]
     await _post_draft_matched_entries(db, statement.fiscal_year_uuid, matched_lines)
 
-    # 'excluded' lines represent real bank movements with no GL counterpart (e.g. bank
-    # fees): they still affect the bank's closing balance, so they count toward it here
-    # even though they carry no matched_entry_uuid.
-    reconciled_sum = sum(
-        (l.amount for l in lines if l.match_status in _LOCKED_MATCH_STATUSES or l.match_status == "excluded"),
-        Decimal("0"),
-    )
-    expected_closing = statement.opening_balance + reconciled_sum
-    balance_difference = statement.closing_balance - expected_closing
+    balance_difference = _compute_live_balance_difference(statement, lines)
     if abs(balance_difference) > _BALANCE_TOLERANCE:
+        expected_closing = statement.closing_balance - balance_difference
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -783,6 +944,12 @@ async def get_reconciliation_report(db: AsyncSession, statement_uuid: UUID) -> d
                 }
             )
 
+    live_balance_difference = (
+        statement.balance_difference or Decimal("0")
+        if statement.status == "reconciled"
+        else _compute_live_balance_difference(statement, lines)
+    )
+
     return {
         "statement_uuid": statement.uuid,
         "fiscal_year_uuid": statement.fiscal_year_uuid,
@@ -795,6 +962,7 @@ async def get_reconciliation_report(db: AsyncSession, statement_uuid: UUID) -> d
         "closing_balance": statement.closing_balance,
         "reconciled_balance": statement.reconciled_balance,
         "balance_difference": statement.balance_difference,
+        "live_balance_difference": live_balance_difference,
         "status": statement.status,
         "line_count": statement.line_count,
         "status_counts": status_counts,

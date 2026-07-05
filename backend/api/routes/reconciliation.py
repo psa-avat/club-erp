@@ -35,10 +35,11 @@ from models import User
 from schemas.reconciliation import (
     BankCsvMappingCreateRequest,
     BankCsvMappingResponse,
-    BankStatementListResponse,
     BankStatementLineListResponse,
     BankStatementLineResponse,
     BankStatementResponse,
+    BankStatementSummaryListResponse,
+    CandidateEntryResponse,
     DiscrepancyResponse,
     ManualMatchRequest,
     MatchResultResponse,
@@ -53,11 +54,12 @@ from services.bank_reconciliation import (
     delete_csv_mapping,
     delete_statement,
     detect_discrepancies,
+    get_match_candidates,
     get_reconciliation_report,
     get_statement,
     list_csv_mappings,
     list_statement_lines,
-    list_statements,
+    list_statement_summaries,
     manual_match,
     resolve_discrepancy,
     run_auto_match,
@@ -100,7 +102,7 @@ async def import_statement_endpoint(
     )
 
 
-@router.get("/statements", response_model=BankStatementListResponse)
+@router.get("/statements", response_model=BankStatementSummaryListResponse)
 async def list_statements_endpoint(
     fiscal_year_uuid: UUID | None = Query(None),
     journal_uuid: UUID | None = Query(None),
@@ -108,10 +110,10 @@ async def list_statements_endpoint(
     db: AsyncSession = Depends(get_db),
     _: User = view_guard,
 ):
-    items = await list_statements(
+    items = await list_statement_summaries(
         db, fiscal_year_uuid=fiscal_year_uuid, journal_uuid=journal_uuid, status_filter=status_filter
     )
-    return BankStatementListResponse(items=items, total=len(items))
+    return BankStatementSummaryListResponse(items=items, total=len(items))
 
 
 @router.get("/statements/{statement_uuid}", response_model=BankStatementResponse)
@@ -173,6 +175,16 @@ async def run_auto_match_endpoint(
     _: User = post_guard,
 ):
     return await run_auto_match(db, statement_uuid, include_drafts=include_drafts)
+
+
+@router.get("/lines/{line_uuid}/candidates", response_model=list[CandidateEntryResponse])
+async def get_match_candidates_endpoint(
+    line_uuid: UUID,
+    include_drafts: bool = Query(True, description="Also consider Draft (unposted) entries as match candidates"),
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    return await get_match_candidates(db, line_uuid, include_drafts=include_drafts)
 
 
 @router.post("/manual-match", response_model=BankStatementLineResponse)

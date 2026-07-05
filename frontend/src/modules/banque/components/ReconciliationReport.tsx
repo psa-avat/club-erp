@@ -21,6 +21,7 @@ import { Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Lock } from 'lucide-react'
 import { toast } from 'sonner'
+import Decimal from 'decimal.js'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -34,13 +35,18 @@ interface Props {
   statement: BankStatement
 }
 
+// Mirrors backend _BALANCE_TOLERANCE in services/bank_reconciliation.py — keep in sync.
+const BALANCE_TOLERANCE = new Decimal('0.01')
+
 export function ReconciliationReport({ statement }: Props) {
   const { t } = useTranslation('banque')
   const { data: report } = useReconciliationReportQuery(statement.uuid)
   const closeMutation = useCloseReconciliationMutation()
 
   const unresolvedCount = report?.unresolved_lines.length ?? 0
-  const canClose = statement.status !== 'reconciled' && unresolvedCount === 0
+  const balanceDifference = new Decimal(report?.live_balance_difference ?? '0')
+  const hasBalanceMismatch = balanceDifference.abs().greaterThan(BALANCE_TOLERANCE)
+  const canClose = statement.status !== 'reconciled' && unresolvedCount === 0 && !hasBalanceMismatch
 
   async function handleClose() {
     try {
@@ -83,9 +89,16 @@ export function ReconciliationReport({ statement }: Props) {
         ))}
       </dl>
 
-      {!canClose && statement.status !== 'reconciled' && (
+      {statement.status !== 'reconciled' && unresolvedCount > 0 && (
         <p className="text-xs text-muted-foreground">
           {t('reconciliation.report.unresolvedHint', '{{count}} ligne(s) non résolue(s) avant clôture.', { count: unresolvedCount })}
+        </p>
+      )}
+      {statement.status !== 'reconciled' && unresolvedCount === 0 && hasBalanceMismatch && (
+        <p className="text-xs text-destructive">
+          {t('reconciliation.report.balanceMismatchHint', 'Écart de solde de {{amount}} € avant clôture.', {
+            amount: balanceDifference.toFixed(2),
+          })}
         </p>
       )}
 
@@ -94,7 +107,11 @@ export function ReconciliationReport({ statement }: Props) {
           <Lock className="mr-1 h-4 w-4" />
           {statement.status === 'reconciled'
             ? t('reconciliation.report.alreadyClosed', 'Clôturé')
-            : t('reconciliation.report.close', 'Clôturer')}
+            : unresolvedCount > 0
+              ? t('reconciliation.report.closeBlockedUnresolved', '{{count}} ligne(s) à résoudre', { count: unresolvedCount })
+              : hasBalanceMismatch
+                ? t('reconciliation.report.closeBlockedBalance', 'Écart de solde {{amount}} €', { amount: balanceDifference.toFixed(2) })
+                : t('reconciliation.report.close', 'Clôturer le rapprochement')}
         </Button>
         <Button size="sm" variant="outline" onClick={() => void handleDownload()}>
           <Download className="mr-1 h-4 w-4" />

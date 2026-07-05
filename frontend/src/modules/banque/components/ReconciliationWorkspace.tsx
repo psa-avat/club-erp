@@ -31,17 +31,16 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCapability } from '@/auth/hooks/useCapability'
 import {
-  useAccountingEntriesQuery,
+  useAccountingEntryQuery,
   useAccountsQuery,
-  useBanqueModuleSettingsQuery,
   useDetectDiscrepanciesMutation,
   useManualMatchMutation,
+  useReconciliationCandidatesQuery,
   useReconciliationLinesQuery,
   useReconciliationStatementQuery,
   useResolveDiscrepancyMutation,
   useRunAutoMatchMutation,
   useUnmatchLineMutation,
-  type AccountingEntry,
   type BankStatement,
   type BankStatementLine,
 } from '../api'
@@ -51,11 +50,6 @@ import { ReconciliationReport } from './ReconciliationReport'
 import { ReconciliationMatchingSettingsDialog } from './ReconciliationMatchingSettingsDialog'
 
 const PAGE_SIZE = 50
-// How far around the statement line's date to look for candidate entries. Wide
-// enough to catch normal posting lag without pulling in the whole fiscal year.
-const CANDIDATE_DATE_WINDOW_DAYS = 90
-const MATCHING_SETTINGS_MODULE = 'bank_reconciliation'
-const DEFAULT_AMOUNT_TOLERANCE = '0.05'
 
 export function ReconciliationWorkspace() {
   const [selectedStatementUuid, setSelectedStatementUuid] = useState<string | null>(null)
@@ -80,6 +74,11 @@ const LINE_STATUSES: BankStatementLine['match_status'][] = [
   'excluded',
 ]
 
+// The default queue: unresolved lines (unmatched + discrepancy) first, per the
+// UI system plan — opening a statement should land on actionable work, not a
+// full browse-everything table. Sent as a comma-separated match_status filter.
+const UNRESOLVED_STATUS_FILTER = 'unmatched,discrepancy'
+
 type AppliedLineFilters = {
   description?: string
   match_status?: string
@@ -100,34 +99,27 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
   const [settingsOpen, setSettingsOpen] = useState(false)
   const canManageSettings = useCapability('MANAGE_SYSTEM_SETTINGS')
 
-  // Filter inputs are local/instant; the query only reads from appliedFilters,
-  // updated explicitly via the Filtrer button (or Enter) — not on every keystroke.
+  // Only the free-text libellé filter needs an explicit apply step (to avoid firing a
+  // query per keystroke) — it has its own local draft state, committed via the Filtrer
+  // button or Enter. Status/date/amount are discrete one-shot picks (a Select choice,
+  // a date, a completed number), so they apply immediately on change.
   const [filterDescription, setFilterDescription] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo, setFilterDateTo] = useState('')
   const [filterAmountMin, setFilterAmountMin] = useState('')
   const [filterAmountMax, setFilterAmountMax] = useState('')
-  const [appliedFilters, setAppliedFilters] = useState<AppliedLineFilters>({})
+  const [appliedFilters, setAppliedFilters] = useState<AppliedLineFilters>({ match_status: UNRESOLVED_STATUS_FILTER })
   const [page, setPage] = useState(0)
 
-  function applyFilters() {
-    setAppliedFilters({
-      description: filterDescription.trim() || undefined,
-      match_status: filterStatus || undefined,
-      date_from: filterDateFrom || undefined,
-      date_to: filterDateTo || undefined,
-      amount_min: normalizeAmountFilter(filterAmountMin),
-      amount_max: normalizeAmountFilter(filterAmountMax),
-    })
+  function setFilter(patch: Partial<AppliedLineFilters>) {
+    setAppliedFilters((prev) => ({ ...prev, ...patch }))
     setPage(0)
+  }
+
+  function applyDescriptionFilter() {
+    setFilter({ description: filterDescription.trim() || undefined })
   }
 
   function clearFilters() {
     setFilterDescription('')
-    setFilterStatus('')
-    setFilterDateFrom('')
-    setFilterDateTo('')
     setFilterAmountMin('')
     setFilterAmountMax('')
     setAppliedFilters({})
@@ -217,7 +209,7 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          applyFilters()
+          applyDescriptionFilter()
         }}
         className="flex flex-wrap items-end gap-2 rounded-md border bg-card p-3"
       >
@@ -236,11 +228,17 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
           <Label className="text-xs text-muted-foreground">
             {t('reconciliation.workspace.filters.status', 'Statut')}
           </Label>
-          <Select value={filterStatus || 'all'} onValueChange={(v) => setFilterStatus(v === 'all' ? '' : v)}>
+          <Select
+            value={appliedFilters.match_status || 'all'}
+            onValueChange={(v) => setFilter({ match_status: v === 'all' ? undefined : v })}
+          >
             <SelectTrigger className="h-8 w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={UNRESOLVED_STATUS_FILTER}>
+                {t('reconciliation.workspace.filters.unresolved', 'À traiter')}
+              </SelectItem>
               <SelectItem value="all">{t('reconciliation.workspace.filters.all', 'Tous')}</SelectItem>
               {LINE_STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>{t(`reconciliation.lineStatus.${s}`, s)}</SelectItem>
@@ -250,11 +248,21 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">{t('reconciliation.workspace.filters.dateFrom', 'Du')}</Label>
-          <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="h-8 w-36" />
+          <Input
+            type="date"
+            value={appliedFilters.date_from ?? ''}
+            onChange={(e) => setFilter({ date_from: e.target.value || undefined })}
+            className="h-8 w-36"
+          />
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">{t('reconciliation.workspace.filters.dateTo', 'Au')}</Label>
-          <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="h-8 w-36" />
+          <Input
+            type="date"
+            value={appliedFilters.date_to ?? ''}
+            onChange={(e) => setFilter({ date_to: e.target.value || undefined })}
+            className="h-8 w-36"
+          />
         </div>
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">
@@ -264,7 +272,10 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
             type="number"
             step="0.01"
             value={filterAmountMin}
-            onChange={(e) => setFilterAmountMin(e.target.value)}
+            onChange={(e) => {
+              setFilterAmountMin(e.target.value)
+              setFilter({ amount_min: normalizeAmountFilter(e.target.value) })
+            }}
             className="h-8 w-28"
           />
         </div>
@@ -276,7 +287,10 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
             type="number"
             step="0.01"
             value={filterAmountMax}
-            onChange={(e) => setFilterAmountMax(e.target.value)}
+            onChange={(e) => {
+              setFilterAmountMax(e.target.value)
+              setFilter({ amount_max: normalizeAmountFilter(e.target.value) })
+            }}
             className="h-8 w-28"
           />
         </div>
@@ -303,12 +317,19 @@ function StatementDetail({ statementUuid, onBack }: { statementUuid: string; onB
                 header: '',
                 className: 'w-8',
                 cell: (row) =>
-                  row.match_status === 'unmatched' || row.match_status === 'discrepancy' ? (
+                  // 'excluded' lines have no candidate entry and nothing to visualize —
+                  // every other status (including already-matched) keeps the chevron so
+                  // the chosen entry can still be reviewed after matching.
+                  row.match_status !== 'excluded' ? (
                     <button
                       type="button"
                       onClick={() => setExpandedLineUuid(expandedLineUuid === row.uuid ? null : row.uuid)}
                       className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      aria-label={t('reconciliation.workspace.associate', 'Associer')}
+                      aria-label={
+                        row.match_status === 'auto_matched' || row.match_status === 'manually_matched'
+                          ? t('reconciliation.workspace.viewMatch', "Voir l'écriture associée")
+                          : t('reconciliation.workspace.associate', 'Associer')
+                      }
                     >
                       <ChevronDown className={`h-4 w-4 transition-transform ${expandedLineUuid === row.uuid ? '' : '-rotate-90'}`} />
                     </button>
@@ -419,10 +440,50 @@ function ExpandedLineContent({
   includeDrafts: boolean
   onResolved: () => void
 }) {
+  const isMatched = line.match_status === 'auto_matched' || line.match_status === 'manually_matched'
   return (
     <div className="space-y-3 border-y bg-muted/30 px-4 py-3">
       {line.match_status === 'discrepancy' && <DiscrepancyActions line={line} onResolved={onResolved} />}
-      <CandidateEntriesList statement={statement} line={line} includeDrafts={includeDrafts} onMatched={onResolved} />
+      {isMatched ? (
+        <MatchedEntrySummary line={line} />
+      ) : (
+        <CandidateEntriesList statement={statement} line={line} includeDrafts={includeDrafts} onMatched={onResolved} />
+      )}
+    </div>
+  )
+}
+
+/** Read-only view of the entry a matched line is associated with — the chevron stays
+ * available after matching precisely so this can be reviewed without dissociating first. */
+function MatchedEntrySummary({ line }: { line: BankStatementLine }) {
+  const { t } = useTranslation('banque')
+  const { data: entry, isLoading } = useAccountingEntryQuery(line.matched_entry_uuid, line.matched_fiscal_year_uuid)
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">
+        {t('reconciliation.workspace.matchedEntry', 'Écriture associée')}
+      </p>
+      {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading', 'Chargement…')}</p>}
+      {!isLoading && !entry && (
+        <p className="text-sm text-muted-foreground">
+          {t('reconciliation.workspace.matchedEntryNotFound', 'Écriture associée introuvable.')}
+        </p>
+      )}
+      {entry && (
+        <div className="flex items-center justify-between gap-2 rounded border bg-card px-3 py-2 text-sm">
+          <span className="min-w-0 truncate">
+            {entry.entry_date} · {entry.description}
+            {entry.state === 1 && (
+              <Badge className="ml-2 badge-warning">{t('reconciliation.workspace.draft', 'Brouillon')}</Badge>
+            )}
+            {entry.reference && <span className="ml-2 text-xs text-muted-foreground">{entry.reference}</span>}
+          </span>
+          {line.match_confidence && (
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">{line.match_confidence}</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -496,24 +557,6 @@ function DiscrepancyActions({ line, onResolved }: { line: BankStatementLine; onR
   )
 }
 
-function daysBetween(isoDate: string, other: string): number {
-  return Math.abs((new Date(isoDate).getTime() - new Date(other).getTime()) / 86_400_000)
-}
-
-function addDays(isoDate: string, days: number): string {
-  const d = new Date(isoDate)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
-/** Finds the entry's line on the reconciled bank/cash account and returns its
- * signed amount (debit − credit), matching the statement-line sign convention. */
-function bankLineAmount(entry: AccountingEntry, accountUuid: string): Decimal | null {
-  const bankLine = entry.lines.find((l) => l.account_uuid === accountUuid)
-  if (!bankLine) return null
-  return new Decimal(bankLine.debit).minus(bankLine.credit)
-}
-
 function CandidateEntriesList({
   statement,
   line,
@@ -526,43 +569,12 @@ function CandidateEntriesList({
   onMatched: () => void
 }) {
   const { t } = useTranslation('banque')
-  const { data: entries, isLoading } = useAccountingEntriesQuery({
-    fiscal_year_uuid: statement.fiscal_year_uuid,
-    journal_uuid: statement.journal_uuid,
-    // A date window keeps this scoped to plausible candidates instead of silently
-    // capping at the 100 most-recent entries fiscal-year-wide (which could exclude
-    // the real match entirely on an older-dated line).
-    entry_date_from: addDays(line.line_date, -CANDIDATE_DATE_WINDOW_DAYS),
-    entry_date_to: addDays(line.line_date, CANDIDATE_DATE_WINDOW_DAYS),
-    ...(includeDrafts ? {} : { state: 2 }),
-    limit: 300,
-  })
-  const { data: matchingSettings } = useBanqueModuleSettingsQuery(MATCHING_SETTINGS_MODULE, true)
+  // Backend-scored candidates: same eligibility/scoring/internal-transfer-cap logic
+  // run_auto_match uses, so this list can never show a candidate auto-match would
+  // rank or flag differently — and an already-matched entry never appears here,
+  // since an entry can only ever be reconciled to one line at a time.
+  const { data: candidates, isLoading } = useReconciliationCandidatesQuery(line.uuid, includeDrafts)
   const manualMatchMutation = useManualMatchMutation()
-
-  const targetAmount = useMemo(() => new Decimal(line.amount), [line.amount])
-  const amountTolerance = useMemo(() => {
-    const raw = (matchingSettings?.settings?.matching as { amount_tolerance?: unknown } | undefined)?.amount_tolerance
-    return new Decimal(String(raw ?? DEFAULT_AMOUNT_TOLERANCE))
-  }, [matchingSettings])
-
-  const scoredEntries = useMemo(() => {
-    const list: AccountingEntry[] = entries ?? []
-    return list
-      .map((entry) => {
-        const amount = bankLineAmount(entry, statement.account_uuid)
-        const amountDiff = amount ? amount.minus(targetAmount).abs() : null
-        return { entry, amount, amountDiff }
-      })
-      // Only entries within the configured amount tolerance are genuine candidates —
-      // matching the backend's hard candidacy gate (two different amounts are never
-      // "the same transaction"). Entries with no line on this account can't match at all.
-      .filter(({ amountDiff }) => amountDiff !== null && amountDiff.lessThanOrEqualTo(amountTolerance))
-      .sort((a, b) => {
-        const cmp = a.amountDiff!.comparedTo(b.amountDiff!)
-        return cmp !== 0 ? cmp : daysBetween(a.entry.entry_date, line.line_date) - daysBetween(b.entry.entry_date, line.line_date)
-      })
-  }, [entries, targetAmount, amountTolerance, line.line_date, statement.account_uuid])
 
   async function handlePick(entryUuid: string) {
     try {
@@ -589,30 +601,38 @@ function CandidateEntriesList({
       </p>
       <div className="max-h-64 space-y-1 overflow-y-auto">
         {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading', 'Chargement…')}</p>}
-        {!isLoading && scoredEntries.length === 0 && (
+        {!isLoading && (candidates ?? []).length === 0 && (
           <p className="text-sm text-muted-foreground">
             {t('reconciliation.workspace.noEntries', 'Aucune écriture dans le seuil de montant configuré.')}
           </p>
         )}
-        {scoredEntries.map(({ entry, amount }) => {
-          const isExactAmount = amount !== null && amount.equals(targetAmount)
+        {(candidates ?? []).map((candidate) => {
+          const isExactAmount = new Decimal(candidate.amount_diff).isZero()
           return (
             <button
-              key={entry.uuid}
+              key={candidate.entry_uuid}
               type="button"
-              onClick={() => void handlePick(entry.uuid)}
+              onClick={() => void handlePick(candidate.entry_uuid)}
               disabled={manualMatchMutation.isPending}
               className="flex w-full items-center justify-between gap-2 rounded border bg-card px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
             >
               <span className="min-w-0 truncate">
-                {entry.entry_date} · {entry.description}
-                {entry.state === 1 && (
+                {candidate.entry_date} · {candidate.description}
+                {candidate.state === 1 && (
                   <Badge className="ml-2 badge-warning">{t('reconciliation.workspace.draft', 'Brouillon')}</Badge>
                 )}
-                {entry.reference && <span className="ml-2 text-xs text-muted-foreground">{entry.reference}</span>}
+                {candidate.is_internal_transfer && (
+                  <Badge className="ml-2 badge-info">
+                    {t('reconciliation.workspace.internalTransfer', 'Virement interne')}
+                  </Badge>
+                )}
+                {candidate.reference && <span className="ml-2 text-xs text-muted-foreground">{candidate.reference}</span>}
               </span>
-              <span className={`shrink-0 font-mono text-xs ${isExactAmount ? 'font-semibold text-success' : 'text-muted-foreground'}`}>
-                {amount !== null ? amount.toFixed(2) : '—'}
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground">{candidate.score}</span>
+                <span className={`font-mono text-xs ${isExactAmount ? 'font-semibold text-success' : 'text-muted-foreground'}`}>
+                  {new Decimal(candidate.amount).toFixed(2)}
+                </span>
               </span>
             </button>
           )

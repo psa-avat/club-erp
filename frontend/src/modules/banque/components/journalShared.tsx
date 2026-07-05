@@ -110,6 +110,26 @@ export function reconciliationLineStatusBadgeClass(
   }
 }
 
+/** Badge for the main journal entries list: whether an entry is tied to a bank
+ * statement line, distinguishing "Rapproché" (parent statement closed) from
+ * "Associé" (matched but the statement isn't reconciled yet). Returns null when
+ * the entry has no bank match at all. */
+export function bankMatchBadge(
+  bankMatchStatus: 'auto_matched' | 'manually_matched' | 'discrepancy' | null | undefined,
+  bankStatementStatus: 'imported' | 'matching' | 'reconciled' | 'flagged' | null | undefined,
+  t: (key: string, fallback: string) => string,
+): { label: string; className: string } | null {
+  if (bankMatchStatus === 'auto_matched' || bankMatchStatus === 'manually_matched') {
+    return bankStatementStatus === 'reconciled'
+      ? { label: t('journal.entries.bankReconciled', 'Rapproché'), className: 'badge-success' }
+      : { label: t('journal.entries.bankAssociated', 'Associé'), className: 'badge-info' }
+  }
+  if (bankMatchStatus === 'discrepancy') {
+    return { label: t('journal.entries.bankDiscrepancy', 'Écart'), className: 'badge-warning' }
+  }
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Local form state shapes
 // ---------------------------------------------------------------------------
