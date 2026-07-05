@@ -7,6 +7,8 @@
 > **Convention de signe** (non explicite dans le plan v5) : `bank_statement_lines.amount` suit la convention du relevé (positif = dépôt/crédit reçu). Côté écriture GL, le compte banque/caisse étant un compte d'actif, un dépôt est un **débit** — le montant GL équivalent utilisé pour le matching est donc `debit - credit` (et non `credit - debit` comme suggéré par le commentaire SQL du plan). Documenté en tête de `services/bank_reconciliation.py`.
 >
 > **Décision d'intégration frontend** : sous-onglet `rapprochement` ajouté dans `ComptabiliteSection` de `FinanceWorkspacePage.tsx` (et non un onglet top-level), conformément à la Phase H du plan — les clés i18n `workspace.finance.tabs.reconciliation` / `workspace.banque.tabs.reconciliation` déjà présentes dans `fr.ts`/`en.ts` étaient des restes d'une ancienne maquette jamais câblée et n'ont pas été réutilisées ; les nouvelles clés vivent sous `banque.reconciliation.*`.
+>
+> **Évolution post-v1 (2026-07-05)** : le matching est désormais scopé par **compte** et non plus par journal (`_load_eligible_entries`/`manual_match` dans `bank_reconciliation.py`) — une écriture d'un autre journal (ex. correction OD) ayant une ligne sur le compte du relevé est un candidat valide. Voir aussi `docs/plans/plan-bankReconciliation-ui-system.md` pour les évolutions UI (résumés statement, filtres, badges de rapprochement sur le journal principal, candidate-explanation endpoint) et sa section "N:M Matching" pour la proposition de conception du cas non couvert : plusieurs écritures déjà postées séparément associées à une seule ligne bancaire, ou l'inverse.
 
 ## Suivi d'implémentation
 
@@ -37,28 +39,26 @@ Importation de relevés bancaires (**v1 : OFX/QFX + CSV**, puis QIF/MT940 en ext
 **Règles métier spécifiques au club :**
 
 - **Versements pilotes directs** : les pilotes versent directement sur leur compte de tiers (411) sans facture émise au runtime. Le matching 1-à-1 est suffisant — la ligne de relevé va chercher l'écriture correspondante déjà saisie au journal de banque.
-- **Paiements CE éclatés** : les versements globaux des Comités d'Entreprise sont saisis en une unique écriture multi-lignes (débit 512 global / crédits 411 individuels). Le rapprochement s'effectue 1-à-1 sur l'UUID de l'écriture globale.
+- **Paiements CE éclatés** : les versements globaux des Comités d'Entreprise sont saisis en une unique écriture multi-lignes (débit 512 global / crédits 411 individuels). Le rapprochement s'effectue 1-à-1 sur l'UUID de l'écriture globale — le matching se fait au niveau de l'**écriture**, pas de la ligne comptable individuelle, donc une écriture peut déjà regrouper autant de bénéficiaires que nécessaire tant qu'elle est saisie en une seule fois. Ce mécanisme ne couvre pas le cas où les écritures existent déjà séparément (déjà postées, donc immuables) et doivent être rapprochées ensemble après coup — voir la proposition n-à-m référencée ci-dessus.
 
 ---
 
 ## Périmètre des écritures rapprochables
 
-Seules les écritures des journaux de **type Banque (3) ou Caisse (4)** sont candidates au matching.
+> **Mise à jour (2026-07-05)** : le moteur de matching est désormais scopé par **compte**, pas par journal — voir la ligne "Périmètre matching" dans les Décisions architecturales. Le paragraphe et le snippet SQL ci-dessous reflètent le comportement **initial (v1)**, remplacé depuis ; conservés pour l'historique de la décision.
+>
+> ~~Seules les écritures des journaux de **type Banque (3) ou Caisse (4)** sont candidates au matching.~~ Une écriture de n'importe quel journal (par ex. une écriture corrective au journal OD) ayant une ligne sur le compte du relevé est désormais candidate — voir `_load_eligible_entries` dans `backend/services/bank_reconciliation.py`.
 
-- Le relevé sélectionne **un journal Banque/Caisse** (`journal_uuid`) et **un compte bancaire/caisse** (`account_uuid`).
-- Le compte ne "possède" pas de journal dans le schéma actuel. Validation applicative :
+- Le relevé sélectionne **un journal Banque/Caisse** (`journal_uuid`) et **un compte bancaire/caisse** (`account_uuid`) — cette sélection sert à l'import (validation du relevé lui-même) et à la génération des écritures correctives, pas au filtrage des candidats de matching.
+- Le compte ne "possède" pas de journal dans le schéma actuel. Validation applicative à l'import :
   - `accounting_journals.type IN (3, 4)`
   - `accounting_accounts.is_reconcilable = true`
   - si le journal a `default_account_uuid`, le compte sélectionné doit idéalement correspondre à ce compte par défaut, ou être explicitement autorisé par configuration future.
-- Le moteur de matching filtre sur `accounting_journals.type IN (3, 4)`, le `journal_uuid` du relevé, et surtout la **ligne comptable du compte sélectionné** (`accounting_lines.account_uuid = bank_statements.account_uuid`).
-- Journaux vente (1), achat (2), général (5), ouverture (6), vols (7) → **hors scope**.
+- Le moteur de matching filtre uniquement sur la **ligne comptable du compte sélectionné** (`accounting_lines.account_uuid = bank_statements.account_uuid`) et l'exercice fiscal — plus de restriction de journal.
 
 ```sql
--- Filtre appliqué dans run_auto_match()
-JOIN accounting_journals j ON ae.journal_uuid = j.uuid
-JOIN bank_statements bs ON bs.uuid = :statement_uuid
-WHERE j.type IN (3, 4)             -- Banque + Caisse uniquement
-  AND ae.journal_uuid = bs.journal_uuid
+-- Filtre appliqué dans _load_eligible_entries() (2026-07-05+)
+WHERE ae.fiscal_year_uuid = :statement_fiscal_year_uuid
   AND al.account_uuid = bs.account_uuid
 ```
 
@@ -686,8 +686,8 @@ chardet==5.2.0    # Détection encodage CSV v1
 
 | Décision | Choix | Raison |
 |---|---|---|
-| Périmètre matching | Journaux type IN (3, 4) uniquement | Seules les opérations Banque/Caisse sont rapprochables |
-| Cardinalité | 1-à-1 stricte en v1, index unique partiel | Adapté aux flux pilotes et CE ; n-à-m futur via table de jointure dédiée |
+| Périmètre matching | Compte du relevé uniquement (tout journal) depuis 2026-07-05 ; était journaux type IN (3, 4) + `journal_uuid` du relevé en v1 | Une écriture corrective ou toute autre écriture touchant le compte banque/caisse doit rester un candidat valide, quel que soit son journal d'origine |
+| Cardinalité | 1-à-1 stricte en v1, index unique partiel | Adapté aux flux pilotes et CE (une écriture multi-lignes = un mouvement bancaire) ; n-à-m demandé le 2026-07-05, design proposé (non implémenté) dans `docs/plans/plan-bankReconciliation-ui-system.md` § "N:M Matching" |
 | `date_format` sur `BankCsvMapping` | Colonne explicite `VARCHAR(16)` default `'DD/MM/YYYY'` | Élimine le risque d'inversion jour/mois — correctif du bug historique |
 | `accounting_lines` non modifiée | ✅ | Immutabilité des écritures postées, pas de duplication d'état |
 | État rapprochement | Porté par `bank_statement_lines` | Source unique de vérité |

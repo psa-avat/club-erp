@@ -41,6 +41,7 @@ import {
   useResolveDiscrepancyMutation,
   useRunAutoMatchMutation,
   useUnmatchLineMutation,
+  type AccountingEntry,
   type BankStatement,
   type BankStatementLine,
 } from '../api'
@@ -445,7 +446,7 @@ function ExpandedLineContent({
     <div className="space-y-3 border-y bg-muted/30 px-4 py-3">
       {line.match_status === 'discrepancy' && <DiscrepancyActions line={line} onResolved={onResolved} />}
       {isMatched ? (
-        <MatchedEntrySummary line={line} />
+        <MatchedEntrySummary line={line} accountUuid={statement.account_uuid} />
       ) : (
         <CandidateEntriesList statement={statement} line={line} includeDrafts={includeDrafts} onMatched={onResolved} />
       )}
@@ -455,9 +456,10 @@ function ExpandedLineContent({
 
 /** Read-only view of the entry a matched line is associated with — the chevron stays
  * available after matching precisely so this can be reviewed without dissociating first. */
-function MatchedEntrySummary({ line }: { line: BankStatementLine }) {
+function MatchedEntrySummary({ line, accountUuid }: { line: BankStatementLine; accountUuid: string }) {
   const { t } = useTranslation('banque')
   const { data: entry, isLoading } = useAccountingEntryQuery(line.matched_entry_uuid, line.matched_fiscal_year_uuid)
+  const amount = entry ? bankLineAmount(entry, accountUuid) : null
 
   return (
     <div className="space-y-2">
@@ -479,13 +481,24 @@ function MatchedEntrySummary({ line }: { line: BankStatementLine }) {
             )}
             {entry.reference && <span className="ml-2 text-xs text-muted-foreground">{entry.reference}</span>}
           </span>
-          {line.match_confidence && (
-            <span className="shrink-0 font-mono text-xs text-muted-foreground">{line.match_confidence}</span>
-          )}
+          <span className="flex shrink-0 items-center gap-2">
+            {line.match_confidence && (
+              <span className="font-mono text-xs text-muted-foreground">{line.match_confidence}</span>
+            )}
+            <span className="font-mono text-xs font-semibold">{amount !== null ? amount.toFixed(2) : '—'}</span>
+          </span>
         </div>
       )}
     </div>
   )
+}
+
+/** Finds the entry's line on the reconciled bank/cash account and returns its
+ * signed amount (debit − credit), matching the statement-line sign convention. */
+function bankLineAmount(entry: AccountingEntry, accountUuid: string): Decimal | null {
+  const bankLine = entry.lines.find((l) => l.account_uuid === accountUuid)
+  if (!bankLine) return null
+  return new Decimal(bankLine.debit).minus(bankLine.credit)
 }
 
 const DISCREPANCY_TYPE_BADGE: Record<string, string> = {

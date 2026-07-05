@@ -38,10 +38,96 @@ Built earlier than planned, as a correctness fix rather than a Phase 2 nicety: `
 - **Reconciliation filters: only the libellé field needs the Filtrer button.** Status/date/amount filters now apply immediately on change (`setFilter` merges straight into `appliedFilters`); only free-text description filtering is debounced-via-button, since it's the only field where per-keystroke queries would actually be wasteful — a Select/date pick/completed amount is already a single discrete action.
 - **Chevron stays after matching.** The expand chevron is no longer hidden once a line becomes `auto_matched`/`manually_matched` (only `excluded` hides it) — expanding a matched line now shows a read-only `MatchedEntrySummary` (date, description, Draft badge, reference, confidence) via `useAccountingEntryQuery`, instead of losing access to "which entry was this matched to" once resolved.
 - **Reconciliation-state filter on the main journal entries list.** New `bank_reconciliation_state` query param (`unreconciled`/`associated`/`reconciled`/`discrepancy`) on `GET /entries` and `/entries/count`, implemented as an `EXISTS`/`NOT EXISTS` correlated subquery against `bank_statement_lines`+`bank_statements` in `_apply_accounting_entry_filters` (mirrors the badge added above). New Select in `JournalEntriesScreen.tsx`'s filter panel. 6 new SQL-shape tests in `test_accounting_bank_match_status.py` (`BankReconciliationStateFilterTests`), asserting on `str(stmt)` rather than hitting a DB.
+- **Matched-entry summary now shows the amount.** `MatchedEntrySummary` (expanded row for an auto/manually matched line) computes the entry's bank-account line signed amount (`bankLineAmount`, same debit−credit convention used everywhere) and displays it next to the confidence score — previously it showed date/description/reference/Draft badge but not the amount, the one figure needed to actually verify the match at a glance.
+
+## N:M Matching — Bank Line ↔ GL Entries (Design Proposal, Not Yet Built)
+
+Raised 2026-07-05: v1 matching is strictly 1:1 (one `bank_statement_lines` row ↔ one `AccountingEntry`, enforced by `uq_bank_lines_one_match_per_entry`). Two real cases fall outside that:
+
+1. **One bank line, many entries.** A single incoming bank movement (e.g. one check, one transfer) settles several *already separate, already posted* accounting entries.
+2. **Many bank lines, one entry.** A single accounting entry (e.g. one invoice) is paid across several separate bank transactions (installments).
+
+### What already covers part of this today
+
+Matching is keyed at the **entry** level via its one bank/cash-account line, not per accounting-line — an entry can already have arbitrarily many lines. The existing "Paiements CE éclatés" pattern (one multi-line entry: one debit to 512 Banque, N credits to individual 411 member accounts) already solves case 1 completely **whenever the entries can be recorded as one multi-line entry at data-entry time**. That's the recommended default and needs no new code — reinforce it as guidance, not a limitation.
+
+The actual gap is narrower than it first looks: entries that are **already posted** (immutable — cannot be merged into one after the fact) and must be reconciled as a group. Auto-detecting which subset of N bank lines sums to which subset of M entries is a combinatorial subset-sum problem across every eligible entry — not something to guess silently with real money. **n:m matching should be manual-only by design**; there is no auto-match analog proposed here.
+
+### Proposed schema (hybrid — leaves the 1:1 fast path untouched)
+
+Keep `bank_statement_lines.matched_entry_uuid`/`matched_fiscal_year_uuid` exactly as today for the common 1:1 case — `run_auto_match` keeps producing only 1:1 matches. Add a parallel opt-in mechanism for the n:m case:
+
+```sql
+CREATE TABLE bank_reconciliation_match_groups (
+    uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    statement_uuid UUID NOT NULL REFERENCES bank_statements(uuid) ON DELETE CASCADE,
+    discrepancy_type VARCHAR(32),
+    discrepancy_notes TEXT,
+    resolved_at TIMESTAMPTZ,
+    resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    -- no match_confidence column: n:m groups are always manually confirmed, never scored
+);
+
+CREATE TABLE bank_reconciliation_match_group_lines (
+    group_uuid UUID NOT NULL REFERENCES bank_reconciliation_match_groups(uuid) ON DELETE CASCADE,
+    bank_statement_line_uuid UUID NOT NULL REFERENCES bank_statement_lines(uuid) ON DELETE CASCADE,
+    PRIMARY KEY (group_uuid, bank_statement_line_uuid)
+);
+-- a bank line belongs to at most one group (or the legacy scalar match — never both):
+CREATE UNIQUE INDEX uq_match_group_line_once ON bank_reconciliation_match_group_lines(bank_statement_line_uuid);
+
+CREATE TABLE bank_reconciliation_match_group_entries (
+    group_uuid UUID NOT NULL REFERENCES bank_reconciliation_match_groups(uuid) ON DELETE CASCADE,
+    entry_uuid UUID NOT NULL,
+    entry_fiscal_year_uuid UUID NOT NULL,
+    PRIMARY KEY (group_uuid, entry_uuid, entry_fiscal_year_uuid)
+);
+-- mirrors uq_bank_lines_one_match_per_entry: an entry belongs to at most one group (or the legacy scalar match):
+CREATE UNIQUE INDEX uq_match_group_entry_once ON bank_reconciliation_match_group_entries(entry_uuid, entry_fiscal_year_uuid);
+```
+
+`bank_statement_lines.match_status` gains a new value, `'grouped_matched'`, set on every line that's a group member (its scalar `matched_entry_uuid` stays NULL — the group tables are the source of truth for those lines). Mutual exclusivity between scalar match and group membership is enforced at the application layer (this module's existing convention — `HTTPException`-based validation, not DB triggers/constraints), same as the rest of the module.
+
+### Balance invariant
+
+A group is resolvable only when:
+
+```
+sum(bank_statement_lines.amount for lines in group)
+  == sum(entry's bank-account line signed amount, debit − credit, for entries in group)
+```
+
+within `_BALANCE_TOLERANCE` (0.01) — the same tolerance `close_reconciliation` already uses, just computed as a set-sum instead of a pairwise diff.
+
+### Engine / closure / report impact
+
+- `run_auto_match` unchanged — stays 1:1 only.
+- New service functions: `create_match_group(db, statement_uuid, bank_line_uuids, entries, user_id)` (validates the balance invariant, creates the group + rows, sets member lines' `match_status='grouped_matched'`) and `dissolve_match_group(db, group_uuid)` (inverse of `unmatch`).
+- `GET /lines/{line_uuid}/candidates` needs no change — it's reused as-is to pick individual entries one at a time while building a prospective group in the UI.
+- `'grouped_matched'` joins `_LOCKED_MATCH_STATUSES` — every existing status-driven check (unresolved counts, closure gating, the badges/filter added this week) already treats set membership generically, so most call sites need only that one addition.
+- What *does* need real work: every place that currently does a scalar `matched_entry_uuid` lookup — `_load_matched_entries`, `detect_discrepancies`, `get_reconciliation_report`, `_enrich_bank_match_status` — needs a second, group-aware lookup path returning *a list* of entries per line instead of one.
+
+### UI impact
+
+- The expand-chevron flow for an unmatched/discrepancy line gains a "Grouper avec d'autres lignes" mode: multi-select additional bank lines (checkboxes in the main table) + multi-select candidate entries (checkboxes in the existing candidate list) + a running balance indicator (Σ lines − Σ entries); confirm is only enabled once it nets to zero within tolerance.
+- `MatchedEntrySummary` (built this week, now showing amount — see above) becomes `MatchedEntriesSummary` for `match_status === 'grouped_matched'`: lists every entry in the group, each with its own amount, plus the group total vs. the anchor line(s)' total.
+- No badge/status vocabulary changes needed elsewhere — a grouped-matched line is still "resolved," same "Rapproché"/"Associé" semantics, just resolved via a group instead of a scalar FK.
+
+### Rollout
+
+Treat as its own feature slice, not interleaved with Phases 1–4 (touches the same files repeatedly) — sequence as **Phase 5**, after the workbench/import-wizard work:
+
+1. Migration `docs/migrations/07X_bank_reconciliation_match_groups.sql` (new tables + `'grouped_matched'` added to `chk_bank_lines_match_status`).
+2. Backend: models, schemas, `create_match_group`/`dissolve_match_group` + routes, group-aware lookups everywhere listed above, tests.
+3. Frontend: multi-select group-building UI, group summary display, i18n.
+
+**This changes a documented v1 invariant** (`uq_bank_lines_one_match_per_entry`, "a posted GL entry can be reconciled at most once") **and touches high-risk accounting code** (closure, discrepancy detection) — needs explicit sign-off before implementation starts, not a silent follow-on to this session's fixes.
 
 ### Not yet built
 
-Statement-level summary and the candidate-explanation endpoint are done; import preview, three-zone workbench layout, and bulk accept remain — the rest of this plan (as amended) still applies to these.
+Statement-level summary and the candidate-explanation endpoint are done; import preview, three-zone workbench layout, bulk accept, and n:m matching (design above, needs sign-off) remain — the rest of this plan (as amended) still applies to these.
 
 ## Core Product Principle
 
