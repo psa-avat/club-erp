@@ -25,10 +25,11 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from api.routes.helloasso import (
+    _HELLOASSO_TOKEN_CACHE,
     get_helloasso_item_details_endpoint,
     list_helloasso_purchases_endpoint,
     router,
-    test_helloasso_connection_endpoint,
+    test_helloasso_connection_endpoint as helloasso_connection_endpoint,
 )
 from schemas.helloasso import HelloAssoSettingsPayload
 
@@ -67,6 +68,11 @@ class HelloAssoRouteGuardTests(TestCase):
 
 
 class HelloAssoConnectionTests(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        _HELLOASSO_TOKEN_CACHE["access_token"] = None
+        _HELLOASSO_TOKEN_CACHE["expires_at"] = 0.0
+        _HELLOASSO_TOKEN_CACHE["client_id"] = None
+
     async def test_connection_returns_first_organization_slug(self):
         payload = HelloAssoSettingsPayload(
             client_id="abc",
@@ -84,7 +90,7 @@ class HelloAssoConnectionTests(IsolatedAsyncioTestCase):
                 ]
             ),
         ):
-            response = await test_helloasso_connection_endpoint(payload, None, user)
+            response = await helloasso_connection_endpoint(payload, None, user)
 
         self.assertTrue(response.success)
         self.assertEqual(response.organization_slug, "club-test")
@@ -103,12 +109,17 @@ class HelloAssoConnectionTests(IsolatedAsyncioTestCase):
             new=AsyncMock(return_value=(401, {"error": "invalid_client"})),
         ):
             with self.assertRaises(HTTPException) as context:
-                await test_helloasso_connection_endpoint(payload, None, user)
+                await helloasso_connection_endpoint(payload, None, user)
 
         self.assertEqual(context.exception.status_code, 502)
 
 
 class HelloAssoPurchasesTests(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        _HELLOASSO_TOKEN_CACHE["access_token"] = None
+        _HELLOASSO_TOKEN_CACHE["expires_at"] = 0.0
+        _HELLOASSO_TOKEN_CACHE["client_id"] = None
+
     async def test_purchases_items_active(self):
         db = AsyncMock()
         user = SimpleNamespace(id=99)
@@ -230,6 +241,11 @@ class HelloAssoPurchasesTests(IsolatedAsyncioTestCase):
 
 
 class HelloAssoItemDetailsTests(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        _HELLOASSO_TOKEN_CACHE["access_token"] = None
+        _HELLOASSO_TOKEN_CACHE["expires_at"] = 0.0
+        _HELLOASSO_TOKEN_CACHE["client_id"] = None
+
     async def test_item_details_returns_payload(self):
         db = AsyncMock()
         user = SimpleNamespace(id=14)

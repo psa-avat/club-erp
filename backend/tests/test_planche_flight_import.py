@@ -18,11 +18,13 @@ if "httpx" not in sys.modules:
     httpx_stub.TimeoutException = TimeoutError
     httpx_stub.NetworkError = OSError
     httpx_stub.RequestError = OSError
+    httpx_stub.Auth = object  # services.gesasso_client.WsseAuth subclasses this
     sys.modules["httpx"] = httpx_stub
 
 if "aioboto3" not in sys.modules:
     sys.modules["aioboto3"] = types.ModuleType("aioboto3")
 
+from api.routes.flights import router as flights_router
 from api.routes.planche import router
 from models import PlancheFlightSnapshot, ValidatedFlight
 from services.planche_integration import PlancheIntegrationService
@@ -114,8 +116,8 @@ class PlancheFlightImportTests(TestCase):
 
     def test_flights_pull_route_has_capability_guard(self):
         route = None
-        for candidate in router.routes:
-            if getattr(candidate, "path", None) == "/api/v1/planche/flights/pull" and "POST" in getattr(candidate, "methods", set()):
+        for candidate in flights_router.routes:
+            if getattr(candidate, "path", None) == "/api/v1/flights/fetch" and "POST" in getattr(candidate, "methods", set()):
                 route = candidate
                 break
 

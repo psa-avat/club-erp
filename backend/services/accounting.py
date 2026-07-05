@@ -682,8 +682,7 @@ async def update_pricing_version(
         version.name = request.name
     if request.from_date is not None:
         version.from_date = request.from_date
-    if request.to_date is not None:
-        version.to_date = request.to_date
+    version.to_date = next_to
     if request.status is not None:
         version.status = request.status
     if request.asset_family_uuid is not None:

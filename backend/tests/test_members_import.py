@@ -51,8 +51,8 @@ class MembersCsvImportTests(IsolatedAsyncioTestCase):
         )
         db = _FakeDb([existing])
         csv_content = (
-            "first_name,last_name,member_category,account_id\\n"
-            "Jean,Dupont,1,ME2026-0001\\n"
+            "first_name,last_name,member_category,account_id\n"
+            "Jean,Dupont,1,ME2026-0001\n"
         ).encode("utf-8")
 
         with (
@@ -76,8 +76,8 @@ class MembersCsvImportTests(IsolatedAsyncioTestCase):
     async def test_import_creates_member_when_update_option_disabled(self):
         db = _FakeDb([])
         csv_content = (
-            "first_name,last_name,member_category\\n"
-            "Marie,Martin,2\\n"
+            "first_name,last_name,member_category\n"
+            "Marie,Martin,2\n"
         ).encode("utf-8")
 
         with (

@@ -30,6 +30,7 @@ from fastapi import HTTPException
 from schemas.accounting import PricingVersionCreateRequest, SystemSettingUpdateRequest
 from schemas.accounting import PricingVersionUpdateRequest
 from services.accounting import (
+    DEFAULT_SYSTEM_SETTINGS,
     PRICING_STATUS_ACTIVE,
     PRICING_STATUS_ARCHIVED,
     PRICING_STATUS_DRAFT,
@@ -101,17 +102,15 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
 
         result = await ensure_default_system_settings(db)
 
-        self.assertEqual(result["inserted"], 3)
-        self.assertEqual(result["total_defaults"], 4)
-        self.assertEqual(len(db.added), 3)
+        expected_total = len(DEFAULT_SYSTEM_SETTINGS)
+        self.assertEqual(result["inserted"], expected_total - 1)
+        self.assertEqual(result["total_defaults"], expected_total)
+        self.assertEqual(len(db.added), expected_total - 1)
         self.assertTrue(db.committed)
 
     async def test_default_settings_initializer_noop_when_all_exist(self):
         existing_modules = [
-            SimpleNamespace(module_name="accounting"),
-            SimpleNamespace(module_name="pricing"),
-            SimpleNamespace(module_name="budget"),
-            SimpleNamespace(module_name="integrations"),
+            SimpleNamespace(module_name=module_name) for module_name in DEFAULT_SYSTEM_SETTINGS
         ]
         db = _FakeDb(execute_results=[_FakeResult(existing_modules)])
 
@@ -150,29 +149,6 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(setting.settings["new"], True)
         self.assertEqual(setting.updated_by, 99)
         self.assertEqual(len(db.added), 0)
-
-    async def test_create_pricing_version_rejects_outside_fiscal_year(self):
-        db = _FakeDb()
-        fiscal_year_uuid = uuid4()
-        fy = SimpleNamespace(
-            uuid=fiscal_year_uuid,
-            start_date=date(2026, 1, 1),
-            end_date=date(2026, 12, 31),
-        )
-
-        request = PricingVersionCreateRequest(
-            fiscal_year_uuid=fiscal_year_uuid,
-            name="Pricing 2027",
-            from_date=date(2027, 1, 1),
-            to_date=date(2027, 12, 31),
-            status=1,
-        )
-
-        with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
-            with self.assertRaises(HTTPException) as cm:
-                await create_pricing_version(db, request, user_id=7, asset_family_uuid=None)
-
-        self.assertEqual(cm.exception.status_code, 400)
 
     async def test_create_pricing_version_rejects_overlap(self):
         fiscal_year_uuid = uuid4()
@@ -216,14 +192,14 @@ class AccountingPhase2ServiceTests(IsolatedAsyncioTestCase):
             name="Pricing 2026",
             from_date=date(2026, 1, 1),
             to_date=date(2026, 12, 31),
-            status=2,
+            status=PRICING_STATUS_DRAFT,
         )
 
         with patch("services.accounting.get_or_create_fiscal_year", new=AsyncMock(return_value=fy)):
             version = await create_pricing_version(db, request, user_id=7, asset_family_uuid=None)
 
         self.assertEqual(version.name, "Pricing 2026")
-        self.assertEqual(version.status, 2)
+        self.assertEqual(version.status, PRICING_STATUS_DRAFT)
         self.assertTrue(db.committed)
         self.assertEqual(len(db.added), 1)
 

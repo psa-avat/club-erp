@@ -18,6 +18,7 @@ if "httpx" not in sys.modules:
     httpx_stub.TimeoutException = TimeoutError
     httpx_stub.NetworkError = OSError
     httpx_stub.RequestError = OSError
+    httpx_stub.Auth = object  # services.gesasso_client.WsseAuth subclasses this
     sys.modules["httpx"] = httpx_stub
 
 if "aioboto3" not in sys.modules:

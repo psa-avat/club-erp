@@ -43,7 +43,7 @@ class AccountingRouteGuardTests(TestCase):
             ("/pricing/versions", "POST"),
             ("/pricing/versions", "GET"),
             ("/pricing/versions/{version_uuid}", "GET"),
-            ("/pricing/versions/{version_uuid}", "PUT"),
+            ("/pricing/versions/{version_uuid}", "PATCH"),
             ("/pricing/versions/{version_uuid}", "DELETE"),
         ]
 

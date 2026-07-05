@@ -130,24 +130,31 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
         self.assertIsNone(preview.applied_lines[0].discount_reason)
 
     async def test_preview_splits_partial_pack_hours(self):
+        # Member has only 0.5h left in a "flight_hours" pack against a 1h flight: the
+        # first 0.5h is tagged as pack-consumed (for the later REM adjustment), the
+        # remaining 0.5h is unaffected. Pack usage never changes the billed amount —
+        # billing stays gross at the normal price; the discount is applied separately
+        # via the REM journal.
         member, asset, debit, _credit, version, item, flight = self._objects()
         service = FlightBillingPreviewService(AsyncMock())
         service._get_receivable_account = AsyncMock(return_value=debit)
         service._resolve_payers = AsyncMock(return_value=[_Payer(member, "pilot", Decimal("1"), "solo")])
         service._resolve_machine = AsyncMock(return_value=_PricedMachine("flight", asset, version, [item]))
-        pack_balances: dict[tuple[UUID, str], Decimal] = {}
-        item_packs: dict[UUID, list[tuple[str, Decimal, int]]] = {}
+        pack_balances: dict[tuple[UUID, str], Decimal] = {(member.uuid, "flight_hours"): Decimal("0.5")}
+        item_packs: dict[UUID, list[tuple[str, Decimal, int]]] = {
+            item.uuid: [("flight_hours", Decimal("50.0000"), 1)],
+        }
 
         preview = await service._preview_one(flight, pack_balances, item_packs)
 
         self.assertTrue(preview.can_apply)
-        self.assertEqual(preview.total_amount, Decimal("75.0000"))
+        self.assertEqual(preview.total_amount, Decimal("100.0000"))
         self.assertEqual(len(preview.applied_lines), 2)
-        self.assertEqual(preview.applied_lines[0].quantity, Decimal("0.50"))
+        self.assertEqual(preview.applied_lines[0].quantity, Decimal("0.5"))
         self.assertEqual(preview.applied_lines[0].discount_reason, "pack")
-        self.assertEqual(preview.applied_lines[1].quantity, Decimal("0.5000"))
+        self.assertEqual(preview.applied_lines[1].quantity, Decimal("0.5"))
         self.assertIsNone(preview.applied_lines[1].discount_reason)
-        self.assertEqual(pack_balances[(member.uuid, 2026)], Decimal("0.00"))
+        self.assertEqual(pack_balances[(member.uuid, "flight_hours")], Decimal("0"))
 
     async def test_progressive_shared_flight_uses_full_quantity_before_split(self):
         member, asset, debit, credit, version, item, flight = self._objects()
