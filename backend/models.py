@@ -1006,6 +1006,48 @@ class BankCsvMapping(Base):
         return f"<BankCsvMapping uuid={self.uuid} name={self.name}>"
 
 
+class ChequeRemittance(Base):
+    """A 'remise de chèque' — a batch deposit of previously-received cheques.
+
+    Mirrors BankStatement/BankStatementLine's approach of tracking external
+    matching state outside accounting_entries/accounting_lines to preserve
+    posted-entry immutability: which cheque-receipt entries were consumed by
+    a deposit is recorded here, not on the entries themselves.
+    """
+
+    __tablename__ = "cheque_remittances"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    fiscal_year_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    remittance_date = Column(Date, nullable=False)
+    deposit_entry_uuid = Column(UUID(as_uuid=True), nullable=False)  # no DB FK — accounting_entries has a composite PK
+    total_amount = Column(Numeric(10, 4), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    lines = relationship("ChequeRemittanceLine", back_populates="remittance", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<ChequeRemittance uuid={self.uuid} date={self.remittance_date} total={self.total_amount}>"
+
+
+class ChequeRemittanceLine(Base):
+    """One cheque-receipt entry consumed by a ChequeRemittance (entry-granularity, not line-granularity)."""
+
+    __tablename__ = "cheque_remittance_lines"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    remittance_uuid = Column(UUID(as_uuid=True), ForeignKey("cheque_remittances.uuid", ondelete="CASCADE"), nullable=False, index=True)
+    source_entry_uuid = Column(UUID(as_uuid=True), nullable=False, index=True)  # no DB FK, see ChequeRemittance
+    source_fiscal_year_uuid = Column(UUID(as_uuid=True), nullable=False)
+    amount = Column(Numeric(10, 4), nullable=False)
+
+    remittance = relationship("ChequeRemittance", back_populates="lines")
+
+    def __repr__(self):
+        return f"<ChequeRemittanceLine uuid={self.uuid} source_entry={self.source_entry_uuid}>"
+
+
 class AccountingEntryTemplate(Base):
     """Reusable journal entry model for recurring or manual prefills."""
 

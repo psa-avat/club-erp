@@ -25,9 +25,11 @@ import {
   BookOpen,
   Building2,
   CreditCard,
+  FileSignature,
   FileText,
   LayoutDashboard,
   List,
+  Landmark,
   Receipt,
   Repeat,
   Scale,
@@ -48,6 +50,9 @@ import { OpsSalesTab } from "./OpsSalesTab";
 import { SupplierInvoicePage } from "./SupplierInvoicePage";
 import { OpsSupplierTab } from "./OpsSupplierTab";
 import { ReconciliationWorkspace } from "./ReconciliationWorkspace";
+import { CreditCardSettlementPage } from "./CreditCardSettlementPage";
+import { ChequeReceiptPage } from "./ChequeReceiptPage";
+import { ChequeRemittancePage } from "./ChequeRemittancePage";
 
 // ---------------------------------------------------------------------------
 // Sub-sections (use ?subtab= to avoid conflicting with outer ?tab=)
@@ -136,6 +141,24 @@ function ComptabiliteSection() {
           label: t("workspace.accounting.tabs.journal", "Journal"),
           icon: List,
           content: <JournalEntriesScreen defaultState={0} />,
+        },
+        {
+          value: "encaissements-cb",
+          label: t("workspace.accounting.tabs.creditCard", "Encaissements CB"),
+          icon: CreditCard,
+          content: <CreditCardSettlementPage />,
+        },
+        {
+          value: "encaissement-cheque",
+          label: t("workspace.accounting.tabs.chequeReceipt", "Encaissement chèque"),
+          icon: FileSignature,
+          content: <ChequeReceiptPage />,
+        },
+        {
+          value: "remise-cheque",
+          label: t("workspace.accounting.tabs.chequeRemittance", "Remise de chèque"),
+          icon: Landmark,
+          content: <ChequeRemittancePage />,
         },
         {
           value: "modeles",

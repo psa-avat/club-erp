@@ -14,6 +14,8 @@ export const banqueQueryKeys = {
   entryModelPreview: (templateUuid: string) => ['banque', 'entry-models', templateUuid, 'preview'] as const,
   accountBalances: (fiscalYearUuid: string, postedOnly: boolean) =>
     ['banque', 'account-balances', fiscalYearUuid, postedOnly] as const,
+  chequeCandidates: (fiscalYearUuid: string, includeDrafts: boolean) =>
+    ['banque', 'cheque-candidates', fiscalYearUuid, includeDrafts] as const,
 }
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -2394,6 +2396,64 @@ export function useDeleteCsvMappingMutation() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.csvMappings })
+    },
+  })
+}
+
+// ── Cheque remittance ────────────────────────────────────────────────────────
+
+export type ChequeCandidate = {
+  entry_uuid: string
+  fiscal_year_uuid: string
+  entry_date: string
+  description: string
+  state: number
+  account_code: string
+  tiers_display_ref: string | null
+  tiers_display_name: string | null
+  amount: string
+}
+
+export type ChequeRemittance = {
+  uuid: string
+  fiscal_year_uuid: string
+  remittance_date: string
+  deposit_entry_uuid: string
+  total_amount: string
+  entry_count: number
+  created_at: string
+}
+
+export function useChequeCandidatesQuery(fiscalYearUuid: string, includeDrafts: boolean, enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.chequeCandidates(fiscalYearUuid, includeDrafts),
+    enabled: enabled && Boolean(fiscalYearUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<ChequeCandidate[]>(
+        '/api/v1/cheque-remittances/candidates',
+        {
+          ...getAuthRequestConfig(),
+          params: { fiscal_year_uuid: fiscalYearUuid, include_drafts: includeDrafts },
+        },
+      )
+      return data
+    },
+  })
+}
+
+export function useCreateChequeRemittanceMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { fiscal_year_uuid: string; remittance_date: string; entry_uuids: string[] }) => {
+      const { data } = await apiClient.post<ChequeRemittance>(
+        '/api/v1/cheque-remittances',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
     },
   })
 }

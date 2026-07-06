@@ -214,6 +214,15 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, dict] = {
             "internal_transfer_cap": 0.60,
         },
     },
+    "credit_card_payments": {
+        "fee_percentage": "0.5",
+        "bank_account_uuid": None,
+        "fees_account_uuid": None,
+    },
+    "cheque_payments": {
+        "pending_account_uuid": None,
+        "bank_account_uuid": None,
+    },
 }
 
 

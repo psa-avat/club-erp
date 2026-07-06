@@ -13,6 +13,8 @@ import {
   useUpsertBanqueModuleSettingsMutation,
 } from '../api'
 import { FlightBillingSettingsForm } from './FlightBillingSettingsForm'
+import { CreditCardSettingsForm } from './CreditCardSettingsForm'
+import { ChequeSettingsForm } from './ChequeSettingsForm'
 
 type SettingsSection = {
   moduleName: string
@@ -45,6 +47,16 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     moduleName: 'integrations',
     titleKey: 'settings.sections.integrations.title',
     descriptionKey: 'settings.sections.integrations.description',
+  },
+  {
+    moduleName: 'credit_card_payments',
+    titleKey: 'settings.sections.creditCard.title',
+    descriptionKey: 'settings.sections.creditCard.description',
+  },
+  {
+    moduleName: 'cheque_payments',
+    titleKey: 'settings.sections.cheque.title',
+    descriptionKey: 'settings.sections.cheque.description',
   },
 ]
 
@@ -126,6 +138,8 @@ export function BanqueSettingsPage() {
   }
 
   const isFlightBilling = activeSection.moduleName === 'flight_billing'
+  const isCreditCardPayments = activeSection.moduleName === 'credit_card_payments'
+  const isChequePayments = activeSection.moduleName === 'cheque_payments'
 
   return (
     <section className="space-y-4">
@@ -173,6 +187,22 @@ export function BanqueSettingsPage() {
                     </p>
                   </Alert>
                 )}
+              </div>
+            ) : isCreditCardPayments ? (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{t(activeSection.titleKey)}</h3>
+                  <p className="text-sm text-slate-600">{t(activeSection.descriptionKey)}</p>
+                </div>
+                <CreditCardSettingsForm />
+              </div>
+            ) : isChequePayments ? (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{t(activeSection.titleKey)}</h3>
+                  <p className="text-sm text-slate-600">{t(activeSection.descriptionKey)}</p>
+                </div>
+                <ChequeSettingsForm />
               </div>
             ) : (
               <form className="space-y-3" onSubmit={(event) => { void handleSave(event) }}>
