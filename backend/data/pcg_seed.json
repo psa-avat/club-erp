@@ -424,6 +424,22 @@
         "require_id": 0
     },
     {
+        "code": "5112",
+        "name": "Chèques à encaisser",
+        "type": 1,
+        "is_posting_allowed": true,
+        "is_reconcilable": true,
+        "require_id": 0
+    },
+    {
+        "code": "5115",
+        "name": "CB à encaisser",
+        "type": 1,
+        "is_posting_allowed": true,
+        "is_reconcilable": true,
+        "require_id": 0
+    },
+    {
         "code": "512",
         "name": "Banque",
         "type": 1,
@@ -626,6 +642,22 @@
     {
         "code": "627",
         "name": "Services bancaires et assimilés",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "6271",
+        "name": "Frais cartes bleues et virements",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "6272",
+        "name": "Frais de tenue de compte",
         "type": 4,
         "is_posting_allowed": true,
         "is_reconcilable": false,

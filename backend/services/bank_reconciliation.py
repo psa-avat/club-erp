@@ -732,7 +732,14 @@ async def detect_discrepancies(db: AsyncSession, statement_uuid: UUID) -> list[d
     lines_by_uuid = {l.uuid: l for l in lines}
     for line_uuid, discrepancy_type in finding_type_by_line.items():
         line = lines_by_uuid[line_uuid]
-        if line.match_status in _LOCKED_MATCH_STATUSES:
+        # A manual match is an explicit human confirmation — detect_discrepancies (run
+        # automatically right after every auto-match pass) must never silently downgrade
+        # it back to 'discrepancy'. Only an auto_matched line (never human-reviewed) can
+        # be flagged this way; the finding is still counted in `findings`/statement.status
+        # either way, but a manually_matched line's own status/type are left untouched.
+        if line.match_status == "manually_matched":
+            continue
+        if line.match_status == "auto_matched":
             line.match_status = "discrepancy"
         line.discrepancy_type = discrepancy_type
 

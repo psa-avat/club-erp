@@ -800,6 +800,61 @@ class DetectDiscrepanciesTests(IsolatedAsyncioTestCase):
         self.assertEqual(findings[0]["type"], "missing_entry")
         self.assertEqual(statement.status, "flagged")
 
+    async def test_manually_matched_line_with_timing_finding_is_not_downgraded(self):
+        # A manual match is an explicit human confirmation — running matching (which
+        # triggers detect_discrepancies right after) must not silently flip it back to
+        # 'discrepancy' just because, say, the entry date is a bit far from the line date.
+        account_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+        )
+        entry = _entry_with_bank_line(
+            account_uuid, debit=Decimal("10"), entry_date=date(2026, 5, 1),  # far from line_date -> timing finding
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="manually_matched",
+            matched_entry_uuid=entry.uuid, matched_fiscal_year_uuid=entry.fiscal_year_uuid,
+        )
+        statement.lines = [line]
+        db = AsyncMock()
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_matched_entries", new=AsyncMock(return_value={(entry.uuid, entry.fiscal_year_uuid): entry})):
+            findings = await detect_discrepancies(db, statement.uuid)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["type"], "timing")
+        # The finding is reported, but the line itself stays exactly as manually confirmed:
+        self.assertEqual(line.match_status, "manually_matched")
+        self.assertIsNone(line.discrepancy_type)
+
+    async def test_auto_matched_line_with_timing_finding_is_downgraded_to_discrepancy(self):
+        # Contrast case: an auto_matched line was never human-reviewed, so it's still
+        # fair game for detect_discrepancies to flag it for manual review.
+        account_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="matching",
+        )
+        entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"), entry_date=date(2026, 5, 1))
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="auto_matched",
+            matched_entry_uuid=entry.uuid, matched_fiscal_year_uuid=entry.fiscal_year_uuid,
+        )
+        statement.lines = [line]
+        db = AsyncMock()
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_matched_entries", new=AsyncMock(return_value={(entry.uuid, entry.fiscal_year_uuid): entry})):
+            findings = await detect_discrepancies(db, statement.uuid)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(line.match_status, "discrepancy")
+        self.assertEqual(line.discrepancy_type, "timing")
+
 
 class GetReconciliationReportTests(IsolatedAsyncioTestCase):
     async def test_live_balance_difference_computed_for_open_statement(self):
