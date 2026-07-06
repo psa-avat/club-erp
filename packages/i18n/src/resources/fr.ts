@@ -1336,7 +1336,6 @@ export const fr = {
         description: 'Journal, brouillons, modèles et plan comptable.',
         tabs: {
           journal: 'Journal',
-          brouillons: 'Brouillons',
           modeles: 'Modèles',
           recurrentes: 'Récurrentes',
           comptes: 'Plan comptable',

@@ -138,12 +138,6 @@ function ComptabiliteSection() {
           content: <JournalEntriesScreen defaultState={0} />,
         },
         {
-          value: "brouillons",
-          label: t("workspace.accounting.tabs.brouillons", "Brouillons"),
-          icon: FileText,
-          content: <JournalEntriesScreen lockState defaultState={1} />,
-        },
-        {
           value: "modeles",
           label: t("workspace.accounting.tabs.modeles", "Modèles"),
           icon: TableProperties,

@@ -1336,7 +1336,6 @@ export const en = {
         description: 'Journal, drafts, templates and chart of accounts.',
         tabs: {
           journal: 'Journal',
-          brouillons: 'Drafts',
           modeles: 'Templates',
           recurrentes: 'Recurring',
           comptes: 'Chart of accounts',
