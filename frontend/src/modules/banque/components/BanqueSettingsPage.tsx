@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 
 import { useCapability } from '../../../auth/hooks'
@@ -87,17 +87,25 @@ function toErrorMessage(error: unknown): string {
 export function BanqueSettingsPage() {
   const { t } = useTranslation('banque')
   const canManageSettings = useCapability('MANAGE_SYSTEM_SETTINGS')
-  const params = useParams<{ section: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sectionParam = searchParams.get('section')
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
   const { data: fiscalYears } = useFiscalYearsQuery(true)
   const selectedFy = fiscalYears?.find((fy) => fy.uuid === activeFiscalYearUuid)
 
   const activeSection = useMemo(
-    () => SETTINGS_SECTIONS.find((section) => section.moduleName === params.section) ?? SETTINGS_SECTIONS[0],
-    [params.section],
+    () => SETTINGS_SECTIONS.find((section) => section.moduleName === sectionParam) ?? SETTINGS_SECTIONS[0],
+    [sectionParam],
   )
-  const shouldRedirect = Boolean(params.section) && !SETTINGS_SECTIONS.some((section) => section.moduleName === params.section)
+
+  function selectSection(moduleName: string) {
+    setSearchParams((prev: URLSearchParams) => {
+      const next = new URLSearchParams(prev)
+      next.set('section', moduleName)
+      return next
+    }, { replace: true })
+  }
 
   const moduleSettingsQuery = useBanqueModuleSettingsQuery(activeSection.moduleName, canManageSettings)
   const upsertMutation = useUpsertBanqueModuleSettingsMutation(activeSection.moduleName)
@@ -133,10 +141,6 @@ export function BanqueSettingsPage() {
     }
   }, [jsonDraft])
 
-  if (shouldRedirect) {
-    return <Navigate replace to="/banque/settings/accounting" />
-  }
-
   const isFlightBilling = activeSection.moduleName === 'flight_billing'
   const isCreditCardPayments = activeSection.moduleName === 'credit_card_payments'
   const isChequePayments = activeSection.moduleName === 'cheque_payments'
@@ -156,18 +160,19 @@ export function BanqueSettingsPage() {
             <aside className="rounded-lg border border-slate-200 bg-slate-50 p-2">
               <div className="space-y-1">
                 {SETTINGS_SECTIONS.map((section) => (
-                  <Link
+                  <button
                     key={section.moduleName}
+                    type="button"
                     className={[
                       'block w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
                       activeSection.moduleName === section.moduleName
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-700 hover:bg-slate-200',
                     ].join(' ')}
-                    to={`/banque/settings/${section.moduleName}`}
+                    onClick={() => selectSection(section.moduleName)}
                   >
                     {t(section.titleKey)}
-                  </Link>
+                  </button>
                 ))}
               </div>
             </aside>
