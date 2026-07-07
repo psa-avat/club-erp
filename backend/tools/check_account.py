@@ -63,8 +63,8 @@ TOOLS_DIR = Path(__file__).parent.resolve()
 LEGACY_DIR = TOOLS_DIR / "legacy-data"
 OUTPUT_DIR = TOOLS_DIR / "output"
 
-CB_FILE = LEGACY_DIR / "CB 24062026.csv"
-CR_FILE = LEGACY_DIR / "CR 24062026.csv"
+CB_FILE = LEGACY_DIR / "CB-AVAT.csv"
+CR_FILE = LEGACY_DIR / "CR-AVAT.csv"
 
 # ---------------------------------------------------------------------------
 # DB connection (same pattern as import_legacy.py)
