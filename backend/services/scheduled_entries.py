@@ -23,7 +23,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -163,19 +163,14 @@ async def generate_entry(
     return entry, False
 
 
-async def generate_due_entries(
-    db: AsyncSession,
-    user_id: int,
-) -> AccountingEntryTemplateGenerateDueResponse:
-    """Generate entries for all due templates.
+def _due_template_conditions(today: date):
+    """Shared "is due" filter for recurring entry templates.
 
-    Returns a summary of generated, skipped, and errored entries.
-    Each template resolves its own fiscal year at runtime.
-    A failure on one template does not interrupt others.
+    Kept identical to the one in generate_due_entries() so the read-only count
+    used by the cockpit/close-readiness check never disagrees with what
+    generate-due would actually act on.
     """
-    today = date.today()
-
-    conditions = [
+    return [
         AccountingEntryTemplate.is_active == True,
         AccountingEntryTemplate.next_scheduled_date <= today,
         and_(
@@ -188,9 +183,36 @@ async def generate_due_entries(
         ),
     ]
 
+
+async def count_due_entry_templates(db: AsyncSession) -> int:
+    """Read-only count of templates currently due, with no side effects.
+
+    Unlike generate_due_entries(), this never generates entries — safe to call
+    repeatedly for a cockpit badge or a close-readiness check.
+    """
+    today = date.today()
+    stmt = select(func.count()).select_from(AccountingEntryTemplate).where(
+        and_(*_due_template_conditions(today))
+    )
+    result = await db.scalar(stmt)
+    return result or 0
+
+
+async def generate_due_entries(
+    db: AsyncSession,
+    user_id: int,
+) -> AccountingEntryTemplateGenerateDueResponse:
+    """Generate entries for all due templates.
+
+    Returns a summary of generated, skipped, and errored entries.
+    Each template resolves its own fiscal year at runtime.
+    A failure on one template does not interrupt others.
+    """
+    today = date.today()
+
     stmt = (
         select(AccountingEntryTemplate)
-        .where(and_(*conditions))
+        .where(and_(*_due_template_conditions(today)))
         .options(joinedload(AccountingEntryTemplate.lines))
         .order_by(AccountingEntryTemplate.next_scheduled_date.asc())
     )

@@ -16,6 +16,8 @@ export const banqueQueryKeys = {
     ['banque', 'account-balances', fiscalYearUuid, postedOnly] as const,
   chequeCandidates: (fiscalYearUuid: string, includeDrafts: boolean) =>
     ['banque', 'cheque-candidates', fiscalYearUuid, includeDrafts] as const,
+  accountingHealth: (fiscalYearUuid?: string) => ['banque', 'accounting-health', fiscalYearUuid ?? 'active'] as const,
+  generalLedger: (params: Record<string, unknown>) => ['banque', 'general-ledger', params] as const,
 }
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -195,6 +197,36 @@ export function useReopenFiscalYearMutation() {
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.fiscalYears() })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'fiscal-years', 'active'] as const })
       await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export type FiscalYearCloseReadiness = {
+  fiscal_year_uuid: string
+  has_unposted_entries: boolean
+  unposted_entries_count: number
+  has_unreconciled_bank_lines: boolean
+  unreconciled_bank_lines_count: number
+  has_reconciliation_discrepancies: boolean
+  discrepancy_count: number
+  has_missing_required_tiers: boolean
+  missing_required_tiers_count: number
+  has_due_recurring_entries: boolean
+  due_recurring_entries_count: number
+  reports_balanced: boolean
+  can_close: boolean
+}
+
+export function useFiscalYearCloseReadinessQuery(fiscalYearUuid?: string, enabled = true) {
+  return useQuery({
+    queryKey: ['banque', 'fiscal-year-close-readiness', fiscalYearUuid] as const,
+    enabled: enabled && Boolean(fiscalYearUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<FiscalYearCloseReadiness>(
+        `/api/v1/accounting/fiscal-years/${fiscalYearUuid}/close-readiness`,
+        getAuthRequestConfig(),
+      )
+      return data
     },
   })
 }
@@ -406,6 +438,63 @@ export function useAccountBalancesQuery(
   })
 }
 
+export type GeneralLedgerLine = {
+  entry_uuid: string
+  line_uuid: string
+  entry_date: string
+  journal_code: string
+  sequence_number: string | null
+  reference: string | null
+  state: number
+  entry_description: string
+  line_description: string | null
+  tiers_display_ref: string | null
+  tiers_display_name: string | null
+  debit: string
+  credit: string
+  running_balance: string
+}
+
+export type GeneralLedger = {
+  account_uuid: string
+  account_code: string
+  account_name: string
+  fiscal_year_uuid: string
+  opening_balance: string
+  total_debit: string
+  total_credit: string
+  closing_balance: string
+  total_lines: number
+  limit: number
+  offset: number
+  lines: GeneralLedgerLine[]
+}
+
+export type GeneralLedgerFilters = {
+  fiscal_year_uuid: string
+  account_uuid?: string
+  account_code?: string
+  date_from?: string
+  date_to?: string
+  posted_only?: boolean
+  limit?: number
+  offset?: number
+}
+
+export function useGeneralLedgerQuery(filters: GeneralLedgerFilters, enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.generalLedger(filters),
+    enabled: enabled && Boolean(filters.fiscal_year_uuid) && Boolean(filters.account_uuid || filters.account_code),
+    queryFn: async () => {
+      const { data } = await apiClient.get<GeneralLedger>('/api/v1/accounting/reports/general-ledger', {
+        ...getAuthRequestConfig(),
+        params: filters,
+      })
+      return data
+    },
+  })
+}
+
 export function useJournalsQuery(enabled = true) {
   return useQuery({
     queryKey: banqueQueryKeys.journals(),
@@ -471,6 +560,29 @@ export function useAccountingEntriesCountQuery(
         },
       )
       return data.total
+    },
+  })
+}
+
+export type AccountingHealth = {
+  fiscal_year: FiscalYear | null
+  draft_entries_count: number
+  unreconciled_bank_lines_count: number
+  reconciliation_discrepancies_count: number
+  missing_required_tiers_count: number
+  due_recurring_entries_count: number
+}
+
+export function useAccountingHealthQuery(fiscalYearUuid?: string, enabled = true) {
+  return useQuery({
+    queryKey: banqueQueryKeys.accountingHealth(fiscalYearUuid),
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<AccountingHealth>('/api/v1/accounting/health', {
+        ...getAuthRequestConfig(),
+        params: fiscalYearUuid ? { fiscal_year_uuid: fiscalYearUuid } : undefined,
+      })
+      return data
     },
   })
 }
@@ -991,8 +1103,10 @@ export type ImportPreviewLine = {
   account_code: string
   account_uuid: string | null
   description: string | null
-  member_account_id: string | null
-  member_uuid: string | null
+  // Raw CSV identifier (the member_account_id column), resolved to a member/supplier
+  // or an asset depending on the account's require_id.
+  tiers_id: string | null
+  tiers_uuid: string | null
   debit: string
   credit: string
   errors: string[]

@@ -442,7 +442,7 @@ export function FinancialReportsPage() {
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
   const [activeTab, setActiveTab] = useState<Tab>('income')
-  const [postedOnly, setPostedOnly] = useState(false)
+  const [postedOnly, setPostedOnly] = useState(true)
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
   const activeFiscalYearData = useFiscalYearStore((s) => s.activeFiscalYearData)
@@ -519,9 +519,13 @@ export function FinancialReportsPage() {
         {selectedFy && (
           <p className="mt-2 text-xs text-slate-400">
             {selectedFy.start_date} → {selectedFy.end_date}
-            {postedOnly && (
-              <span className="ml-2 rounded-full bg-success-container px-2 py-0.5 text-on-success-container">
+            {postedOnly ? (
+              <span className="badge-success ml-2 rounded-full px-2 py-0.5">
                 {t('reports.postedOnlyBadge')}
+              </span>
+            ) : (
+              <span className="badge-warning ml-2 rounded-full px-2 py-0.5">
+                {t('reports.draftsIncludedWarning')}
               </span>
             )}
           </p>

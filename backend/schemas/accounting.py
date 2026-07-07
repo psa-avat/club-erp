@@ -52,6 +52,35 @@ class FiscalYearResponse(FiscalYearBase):
         from_attributes = True
 
 
+class AccountingHealthResponse(BaseModel):
+    """Aggregate counts used by both the accounting cockpit and the fiscal-year
+    close-readiness check, so both consume the same counting logic."""
+    fiscal_year: Optional[FiscalYearResponse] = None
+    draft_entries_count: int = 0
+    unreconciled_bank_lines_count: int = 0
+    reconciliation_discrepancies_count: int = 0
+    missing_required_tiers_count: int = 0
+    due_recurring_entries_count: int = 0
+
+
+class FiscalYearCloseReadinessResponse(BaseModel):
+    """Whether a fiscal year can be closed, and why not if it can't — mirrors
+    the checks close_fiscal_year() enforces server-side."""
+    fiscal_year_uuid: UUID
+    has_unposted_entries: bool
+    unposted_entries_count: int
+    has_unreconciled_bank_lines: bool
+    unreconciled_bank_lines_count: int
+    has_reconciliation_discrepancies: bool
+    discrepancy_count: int
+    has_missing_required_tiers: bool
+    missing_required_tiers_count: int
+    has_due_recurring_entries: bool
+    due_recurring_entries_count: int
+    reports_balanced: bool
+    can_close: bool
+
+
 # Account schemas
 class AccountBase(BaseModel):
     """Shared account fields."""
@@ -386,6 +415,42 @@ class AccountBalanceResponse(BaseModel):
         from_attributes = True
 
 
+class GeneralLedgerLineResponse(BaseModel):
+    """One ledger line with its running balance, computed server-side."""
+    entry_uuid: UUID
+    line_uuid: UUID
+    entry_date: date
+    journal_code: str
+    sequence_number: Optional[str] = None
+    reference: Optional[str] = None
+    state: int  # 1=Draft, 2=Posted, 3=Cancelled
+    entry_description: str
+    line_description: Optional[str] = None
+    tiers_display_ref: Optional[str] = None
+    tiers_display_name: Optional[str] = None
+    debit: Decimal
+    credit: Decimal
+    running_balance: Decimal
+
+
+class GeneralLedgerResponse(BaseModel):
+    """Per-account ledger: real opening balance, paginated lines with running
+    balance, computed once server-side so pagination cannot change any line's
+    running balance."""
+    account_uuid: UUID
+    account_code: str
+    account_name: str
+    fiscal_year_uuid: UUID
+    opening_balance: Decimal = Decimal("0")
+    total_debit: Decimal = Decimal("0")
+    total_credit: Decimal = Decimal("0")
+    closing_balance: Decimal = Decimal("0")
+    total_lines: int = 0
+    limit: int
+    offset: int
+    lines: list[GeneralLedgerLineResponse] = Field(default_factory=list)
+
+
 class PcgSeedItem(BaseModel):
     """One entry in the PCG seed file."""
     code: str = Field(min_length=1, max_length=32)
@@ -592,12 +657,17 @@ class PricingItemResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class AccountingImportPreviewLineResponse(BaseModel):
-    """One line within a preview accounting entry from CSV import."""
+    """One line within a preview accounting entry from CSV import.
+
+    tiers_id is the raw CSV identifier (the ``member_account_id`` column),
+    resolved to a Member (require_id 1/3 — member or supplier) or an Asset
+    (require_id 2) depending on the line's account.
+    """
     account_code: str
     account_uuid: Optional[UUID] = None
     description: Optional[str] = None
-    member_account_id: Optional[str] = None
-    member_uuid: Optional[UUID] = None
+    tiers_id: Optional[str] = None
+    tiers_uuid: Optional[UUID] = None
     debit: Decimal
     credit: Decimal
     errors: list[str] = []

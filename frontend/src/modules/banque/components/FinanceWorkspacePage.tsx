@@ -19,30 +19,39 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router";
+import { Link } from "react-router-dom";
 import {
   Banknote,
   BookOpen,
   Building2,
+  ClipboardList,
   CreditCard,
   FileSignature,
   FileText,
   LayoutDashboard,
   List,
   Landmark,
+  PenLine,
   Receipt,
   Repeat,
-  Scale,
   ScanSearch,
+  Settings2,
   TableProperties,
 } from "lucide-react";
 
 import { WorkspaceShell, SubWorkspaceShell } from "@/components/ui/workspace-shell";
 import { PlaceholderPage } from "@/components/ui/PlaceholderPage";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useCapability } from "@/auth/hooks/useCapability";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
 
 import { BanqueCoaPage } from "./BanqueCoaPage";
 import { AccountTrialBalancePage } from "./AccountTrialBalancePage";
+import { FinanceAccountingCockpitPage } from "./FinanceAccountingCockpitPage";
 import { JournalEntriesScreen } from "./JournalEntriesScreen";
 import { JournalTemplatesScreen } from "./JournalTemplatesScreen";
 import { MemberBulkBillingPage } from "./MemberBulkBillingPage";
@@ -53,6 +62,21 @@ import { ReconciliationWorkspace } from "./ReconciliationWorkspace";
 import { CreditCardSettlementPage } from "./CreditCardSettlementPage";
 import { ChequeReceiptPage } from "./ChequeReceiptPage";
 import { ChequeRemittancePage } from "./ChequeRemittancePage";
+
+// Maps every leaf `?subtab=` value to the comptabilité group that owns it, so
+// old deep links (e.g. /banque/journal → subtab=journal) still land on the
+// right group tab even though the group itself is a new URL level (`?section=`).
+const SUBTAB_TO_GROUP: Record<string, string> = {
+  journal: "saisie",
+  "encaissements-cb": "saisie",
+  "encaissement-cheque": "saisie",
+  "remise-cheque": "saisie",
+  comptes: "parametres",
+  modeles: "parametres",
+  recurrentes: "parametres",
+  balance: "documents",
+  rapprochement: "rapprochement",
+};
 
 // ---------------------------------------------------------------------------
 // Sub-sections (use ?subtab= to avoid conflicting with outer ?tab=)
@@ -130,11 +154,12 @@ function AchatsSection() {
   );
 }
 
-function ComptabiliteSection() {
+function SaisieGroup() {
   const { t } = useTranslation("banque");
 
   return (
     <SubWorkspaceShell
+      tabParam="subtab"
       tabs={[
         {
           value: "journal",
@@ -160,6 +185,54 @@ function ComptabiliteSection() {
           icon: Landmark,
           content: <ChequeRemittancePage />,
         },
+      ]}
+    />
+  );
+}
+
+function DocumentsGroup() {
+  const { t } = useTranslation("banque");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <AccountTrialBalancePage />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">
+            {t("workspace.accounting.documents.moreTitle", "Bilan, compte de résultat et grand livre")}
+          </CardTitle>
+          <CardDescription>
+            {t(
+              "workspace.accounting.documents.moreDescription",
+              "Ces documents comptables complets sont disponibles dans l'espace Rapports financiers.",
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" asChild>
+            <Link to="/workspace/reports">
+              {t("workspace.accounting.documents.moreLink", "Ouvrir les rapports financiers")}
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ParametresGroup() {
+  const { t } = useTranslation("banque");
+
+  return (
+    <SubWorkspaceShell
+      tabParam="subtab"
+      tabs={[
+        {
+          value: "comptes",
+          label: t("workspace.accounting.tabs.comptes", "Plan comptable"),
+          icon: BookOpen,
+          content: <BanqueCoaPage />,
+        },
         {
           value: "modeles",
           label: t("workspace.accounting.tabs.modeles", "Modèles"),
@@ -172,27 +245,66 @@ function ComptabiliteSection() {
           icon: Repeat,
           content: <JournalTemplatesScreen recurrenceFilter={[2, 3, 4]} />,
         },
-        {
-          value: "comptes",
-          label: t("workspace.accounting.tabs.comptes", "Plan comptable"),
-          icon: BookOpen,
-          content: <BanqueCoaPage />,
-        },
-        {
-          value: "balance",
-          label: t("workspace.accounting.tabs.trialBalance", "Balance"),
-          icon: Scale,
-          content: <AccountTrialBalancePage />,
-        },
-        {
-          value: "rapprochement",
-          label: t("workspace.accounting.tabs.rapprochement", "Rapprochement"),
-          icon: ScanSearch,
-          content: <ReconciliationWorkspace />,
-        },
       ]}
     />
   );
+}
+
+function ComptabiliteSection() {
+  const { t } = useTranslation("banque");
+  const canManageSettings = useCapability("MANAGE_ACCOUNTING_SETTINGS");
+  const [searchParams] = useSearchParams();
+
+  const tabs = useMemo(() => {
+    const base = [
+      {
+        value: "a-faire",
+        label: t("workspace.accounting.tabs.aFaire", "À faire"),
+        icon: ClipboardList,
+        content: <FinanceAccountingCockpitPage />,
+      },
+      {
+        value: "saisie",
+        label: t("workspace.accounting.tabs.saisie", "Saisie"),
+        icon: PenLine,
+        content: <SaisieGroup />,
+      },
+      {
+        value: "rapprochement",
+        label: t("workspace.accounting.tabs.rapprochement", "Rapprochement"),
+        icon: ScanSearch,
+        content: <ReconciliationWorkspace />,
+      },
+      {
+        value: "documents",
+        label: t("workspace.accounting.tabs.documents", "Documents"),
+        icon: FileText,
+        content: <DocumentsGroup />,
+      },
+    ];
+
+    if (canManageSettings) {
+      base.push({
+        value: "parametres",
+        label: t("workspace.accounting.tabs.parametres", "Paramètres"),
+        icon: Settings2,
+        content: <ParametresGroup />,
+      });
+    }
+
+    return base;
+  }, [t, canManageSettings]);
+
+  // Old deep links (/banque/journal, /banque/accounts, …) set ?subtab=<leaf>
+  // without knowing about the new group level — resolve the right group from it.
+  const defaultSection = useMemo(() => {
+    const currentSubtab = searchParams.get("subtab");
+    const group = currentSubtab ? SUBTAB_TO_GROUP[currentSubtab] : undefined;
+    if (group && tabs.some((tab) => tab.value === group)) return group;
+    return "a-faire";
+  }, [searchParams, tabs]);
+
+  return <SubWorkspaceShell tabs={tabs} tabParam="section" defaultTab={defaultSection} />;
 }
 
 // ---------------------------------------------------------------------------

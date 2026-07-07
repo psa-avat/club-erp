@@ -17,7 +17,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -32,6 +32,7 @@ import {
   useFiscalYearsQuery,
   useReopenFiscalYearMutation,
 } from '../api'
+import { FiscalYearCloseChecklist } from './FiscalYearCloseChecklist'
 
 type FiscalYearFormState = {
   code: string
@@ -68,6 +69,11 @@ function toErrorMessage(error: unknown): string {
       }
     }
 
+    if (typeof detail === 'object' && detail !== null && 'message' in detail) {
+      const message = (detail as { message?: unknown }).message
+      if (typeof message === 'string' && message.length > 0) return message
+    }
+
     if (typeof response?.data?.message === 'string' && response.data.message.length > 0) {
       return response.data.message
     }
@@ -100,6 +106,7 @@ export function BanqueFiscalYearsPage() {
   const reopenMutation = useReopenFiscalYearMutation()
 
   const [form, setForm] = useState<FiscalYearFormState>(() => defaultFormState())
+  const [expandedFyUuid, setExpandedFyUuid] = useState<string | null>(null)
 
   const sortedFiscalYears = useMemo(
     () => [...(fiscalYearsQuery.data ?? [])].sort((a, b) => b.year - a.year),
@@ -255,45 +262,68 @@ export function BanqueFiscalYearsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {sortedFiscalYears.map((fiscalYear) => (
-                    <tr key={fiscalYear.uuid}>
-                      <td className="px-3 py-2 font-mono text-xs text-slate-700">{fiscalYear.code}</td>
-                      <td className="px-3 py-2 text-slate-800">{fiscalYear.label}</td>
-                      <td className="px-3 py-2 text-xs text-slate-600">
-                        {fiscalYear.start_date} → {fiscalYear.end_date}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stateBadgeClass(fiscalYear.state)}`}>
-                          {stateLabel(fiscalYear.state, t)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {canPost ? (
-                          fiscalYear.state === 1 ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={isBusy}
-                              onClick={() => { void handleCloseFiscalYear(fiscalYear.uuid) }}
-                            >
-                              {closeMutation.isPending ? t('fiscalYears.actions.closing') : t('fiscalYears.actions.close')}
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              disabled={isBusy}
-                              onClick={() => { void handleReopenFiscalYear(fiscalYear.uuid) }}
-                            >
-                              {reopenMutation.isPending ? t('fiscalYears.actions.reopening') : t('fiscalYears.actions.reopen')}
-                            </Button>
-                          )
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={fiscalYear.uuid}>
+                      <tr>
+                        <td className="px-3 py-2 font-mono text-xs text-slate-700">{fiscalYear.code}</td>
+                        <td className="px-3 py-2 text-slate-800">{fiscalYear.label}</td>
+                        <td className="px-3 py-2 text-xs text-slate-600">
+                          {fiscalYear.start_date} → {fiscalYear.end_date}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stateBadgeClass(fiscalYear.state)}`}>
+                            {stateLabel(fiscalYear.state, t)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {fiscalYear.state === 1 && (
+                              <Button
+                                type="button"
+                                variant="link"
+                                size="sm"
+                                onClick={() => setExpandedFyUuid((prev) => (prev === fiscalYear.uuid ? null : fiscalYear.uuid))}
+                              >
+                                {expandedFyUuid === fiscalYear.uuid
+                                  ? t('fiscalYears.closeChecklist.hide', 'Masquer')
+                                  : t('fiscalYears.closeChecklist.show', 'Vérifier la clôture')}
+                              </Button>
+                            )}
+                            {canPost ? (
+                              fiscalYear.state === 1 ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isBusy}
+                                  onClick={() => { void handleCloseFiscalYear(fiscalYear.uuid) }}
+                                >
+                                  {closeMutation.isPending ? t('fiscalYears.actions.closing') : t('fiscalYears.actions.close')}
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={isBusy}
+                                  onClick={() => { void handleReopenFiscalYear(fiscalYear.uuid) }}
+                                >
+                                  {reopenMutation.isPending ? t('fiscalYears.actions.reopening') : t('fiscalYears.actions.reopen')}
+                                </Button>
+                              )
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedFyUuid === fiscalYear.uuid && (
+                        <tr>
+                          <td colSpan={5} className="bg-slate-50 px-3 py-3">
+                            <FiscalYearCloseChecklist fiscalYearUuid={fiscalYear.uuid} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

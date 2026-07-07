@@ -17,64 +17,41 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import Decimal from 'decimal.js'
 
+import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { SearchableSelect } from '../../../components/ui/searchable-select'
 import { useCapability } from '../../../auth/hooks/useCapability'
-import {
-  useAccountsQuery,
-  useAccountingEntriesQuery,
-  useFiscalYearsQuery,
-  useJournalsQuery,
-  type AccountOption,
-} from '../api'
+import { useAccountsQuery, useFiscalYearsQuery, useGeneralLedgerQuery, type AccountOption } from '../api'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
-import { ENTRY_STATE_POSTED } from './journalShared'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type LedgerLine = {
-  entry_uuid: string
-  entry_date: string
-  journal_code: string
-  sequence_number: string | null
-  entry_description: string
-  line_description: string | null
-  tiers_display_name: string | null
-  debit: Decimal
-  credit: Decimal
-  balance: Decimal
-}
+const PAGE_SIZE = 100
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function d(v: string | null | undefined): Decimal {
-  if (!v) return new Decimal(0)
-  try { return new Decimal(v) } catch { return new Decimal(0) }
+function fmt(v: string): string {
+  const d = new Decimal(v || '0')
+  if (d.isZero()) return '—'
+  return d.abs().toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 }
 
-function fmt(v: Decimal): string {
-  if (v.isZero()) return '—'
-  return v.abs().toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+function fmtBalance(v: string): string {
+  return new Decimal(v || '0').toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 }
 
-function fmtBalance(v: Decimal): string {
-  return v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+function isNegative(v: string): boolean {
+  return new Decimal(v || '0').isNegative()
 }
 
 function formatDateFr(iso: string): string {
   const [y, m, day] = iso.split('-')
   if (!y || !m || !day) return iso
   return `${day}/${m}/${y}`
-}
-
-// credit-normal account types: Liability=2, Equity=3, Revenue=5
-function isCreditNormal(accountType: number): boolean {
-  return accountType === 2 || accountType === 3 || accountType === 5
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -85,89 +62,37 @@ export function GrandLivreScreen() {
 
   const fiscalYears = useFiscalYearsQuery(canView).data ?? []
   const accountsQuery = useAccountsQuery(canView)
-  const journalsQuery = useJournalsQuery(canView)
   const globalFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
 
   const accounts = accountsQuery.data ?? []
-  const journalMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const j of journalsQuery.data ?? []) map[j.uuid] = j.code
-    return map
-  }, [journalsQuery.data])
 
   const [selectedAccountUuid, setSelectedAccountUuid] = useState<string>('')
   const [fiscalYearUuid, setFiscalYearUuid] = useState<string>(globalFiscalYearUuid ?? '')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [postedOnly, setPostedOnly] = useState(false)
+  const [postedOnly, setPostedOnly] = useState(true)
+  const [page, setPage] = useState(0)
 
   const selectedAccount: AccountOption | undefined = accounts.find(
     (a) => a.uuid === selectedAccountUuid,
   )
 
-  const entriesQuery = useAccountingEntriesQuery(
+  const ledgerQuery = useGeneralLedgerQuery(
     {
-      fiscal_year_uuid: fiscalYearUuid || undefined,
-      account_code: selectedAccount?.code,
-      state: postedOnly ? ENTRY_STATE_POSTED : undefined,
-      entry_date_from: dateFrom || undefined,
-      entry_date_to: dateTo || undefined,
-      limit: 500,
+      fiscal_year_uuid: fiscalYearUuid,
+      account_uuid: selectedAccountUuid || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      posted_only: postedOnly,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     },
-    canView && Boolean(selectedAccountUuid),
+    canView && Boolean(selectedAccountUuid) && Boolean(fiscalYearUuid),
   )
-
-  // Build ledger lines: extract matching lines from each entry, sort by date asc, compute running balance
-  const { lines, openingBalance } = useMemo(() => {
-    if (!selectedAccount || !entriesQuery.data) return { lines: [], openingBalance: new Decimal(0) }
-
-    const creditNormal = isCreditNormal(selectedAccount.type)
-
-    const rawLines: Omit<LedgerLine, 'balance'>[] = []
-    const entries = [...entriesQuery.data].sort((a, b) =>
-      a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0,
-    )
-
-    for (const entry of entries) {
-      const journalCode = journalMap[entry.journal_uuid] ?? '—'
-      for (const line of entry.lines) {
-        if (line.account_uuid !== selectedAccountUuid) continue
-        rawLines.push({
-          entry_uuid: entry.uuid,
-          entry_date: entry.entry_date,
-          journal_code: journalCode,
-          sequence_number: entry.sequence_number,
-          entry_description: entry.description,
-          line_description: line.description ?? null,
-          tiers_display_name: line.tiers_display_name ?? null,
-          debit: d(line.debit),
-          credit: d(line.credit),
-        })
-      }
-    }
-
-    // Running balance: debit-normal = debit - credit; credit-normal = credit - debit
-    let running = new Decimal(0)
-    const ledgerLines: LedgerLine[] = rawLines.map((row) => {
-      const movement = creditNormal
-        ? row.credit.minus(row.debit)
-        : row.debit.minus(row.credit)
-      running = running.plus(movement)
-      return { ...row, balance: running }
-    })
-
-    return { lines: ledgerLines, openingBalance: new Decimal(0) }
-  }, [selectedAccount, entriesQuery.data, journalMap, selectedAccountUuid])
-
-  const totals = useMemo(() => {
-    let totalDebit = new Decimal(0)
-    let totalCredit = new Decimal(0)
-    for (const line of lines) {
-      totalDebit = totalDebit.plus(line.debit)
-      totalCredit = totalCredit.plus(line.credit)
-    }
-    return { debit: totalDebit, credit: totalCredit }
-  }, [lines])
+  const ledger = ledgerQuery.data
+  const lines = ledger?.lines ?? []
+  const totalLines = ledger?.total_lines ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalLines / PAGE_SIZE))
 
   const accountOptions = accounts.map((a) => ({
     value: a.uuid,
@@ -195,7 +120,7 @@ export function GrandLivreScreen() {
             <SearchableSelect
               options={accountOptions}
               value={selectedAccountUuid}
-              onChange={(v) => setSelectedAccountUuid(v ?? '')}
+              onChange={(v) => { setSelectedAccountUuid(v ?? ''); setPage(0) }}
               placeholder={t('grandLivre.selectAccount', 'Sélectionner un compte…')}
             />
           </div>
@@ -203,10 +128,10 @@ export function GrandLivreScreen() {
             <Label>{t('journal.entries.fiscalYear', 'Exercice')}</Label>
             <select
               value={fiscalYearUuid}
-              onChange={(e) => setFiscalYearUuid(e.target.value)}
+              onChange={(e) => { setFiscalYearUuid(e.target.value); setPage(0) }}
               className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
             >
-              <option value="">{t('grandLivre.allYears', 'Tous les exercices')}</option>
+              <option value="">{t('grandLivre.selectFiscalYear', 'Sélectionnez un exercice')}</option>
               {fiscalYears.map((fy) => (
                 <option key={fy.uuid} value={fy.uuid}>{fy.label ?? fy.code}</option>
               ))}
@@ -214,43 +139,52 @@ export function GrandLivreScreen() {
           </div>
           <div className="space-y-1">
             <Label>{t('journal.entries.dateFrom', 'Date de')}</Label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(0) }} />
           </div>
           <div className="space-y-1">
             <Label>{t('journal.entries.dateTo', 'Date à')}</Label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0) }} />
           </div>
           <div className="flex items-end pb-1">
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={postedOnly}
-                onChange={(e) => setPostedOnly(e.target.checked)}
+                onChange={(e) => { setPostedOnly(e.target.checked); setPage(0) }}
                 className="h-4 w-4 rounded border-slate-300"
               />
               {t('grandLivre.postedOnly', 'Validées seulement')}
             </label>
           </div>
         </div>
+        {postedOnly ? (
+          <span className="badge-success mt-2 inline-flex rounded-full px-2 py-0.5 text-xs">
+            {t('reports.postedOnlyBadge')}
+          </span>
+        ) : (
+          <span className="badge-warning mt-2 inline-flex rounded-full px-2 py-0.5 text-xs">
+            {t('reports.draftsIncludedWarning')}
+          </span>
+        )}
       </div>
 
       {/* Ledger table */}
-      {selectedAccountUuid && (
+      {selectedAccountUuid && fiscalYearUuid && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
           {/* Account header */}
-          <div className="border-b border-slate-200 px-6 py-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-200 px-6 py-4">
             <p className="text-sm font-semibold text-slate-900">
-              {selectedAccount?.code} · {selectedAccount?.name}
+              {ledger?.account_code ?? selectedAccount?.code} · {ledger?.account_name ?? selectedAccount?.name}
             </p>
-            {openingBalance && !openingBalance.isZero() && (
-              <p className="mt-1 text-sm text-slate-500">
-                {t('grandLivre.openingBalance', 'Solde à l\'ouverture')} :{' '}
-                <span className="font-mono font-semibold">{fmtBalance(openingBalance)}</span>
+            {ledger && !new Decimal(ledger.opening_balance).isZero() && (
+              <p className="text-sm text-slate-500">
+                {t('grandLivre.openingBalance', "Solde à l'ouverture")} :{' '}
+                <span className="font-mono font-semibold">{fmtBalance(ledger.opening_balance)}</span>
               </p>
             )}
           </div>
 
-          {entriesQuery.isLoading ? (
+          {ledgerQuery.isLoading ? (
             <div className="p-6 text-sm text-slate-500">{t('settings.loading', 'Chargement…')}</div>
           ) : lines.length === 0 ? (
             <div className="p-6 text-sm text-slate-500">
@@ -272,8 +206,8 @@ export function GrandLivreScreen() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {lines.map((line, idx) => (
-                    <tr key={`${line.entry_uuid}-${idx}`} className="hover:bg-slate-50">
+                  {lines.map((line) => (
+                    <tr key={line.line_uuid} className="hover:bg-slate-50">
                       <td className="whitespace-nowrap px-4 py-2 text-slate-700">{formatDateFr(line.entry_date)}</td>
                       <td className="px-4 py-2 font-mono text-xs text-slate-500">{line.journal_code}</td>
                       <td className="px-4 py-2 font-mono text-xs text-slate-500">{line.sequence_number ?? '—'}</td>
@@ -281,14 +215,10 @@ export function GrandLivreScreen() {
                         {line.line_description || line.entry_description}
                       </td>
                       <td className="px-4 py-2 text-xs text-slate-500">{line.tiers_display_name ?? '—'}</td>
-                      <td className="px-4 py-2 text-right font-mono text-slate-700">
-                        {line.debit.isZero() ? '' : fmt(line.debit)}
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono text-slate-700">
-                        {line.credit.isZero() ? '' : fmt(line.credit)}
-                      </td>
-                      <td className={`px-4 py-2 text-right font-mono font-semibold ${line.balance.isNegative() ? 'text-red-600' : 'text-slate-900'}`}>
-                        {fmtBalance(line.balance)}
+                      <td className="px-4 py-2 text-right font-mono text-slate-700">{fmt(line.debit)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-slate-700">{fmt(line.credit)}</td>
+                      <td className={`px-4 py-2 text-right font-mono font-semibold ${isNegative(line.running_balance) ? 'text-red-600' : 'text-slate-900'}`}>
+                        {fmtBalance(line.running_balance)}
                       </td>
                     </tr>
                   ))}
@@ -299,25 +229,41 @@ export function GrandLivreScreen() {
                       {t('grandLivre.totals', 'Totaux')}
                     </td>
                     <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">
-                      {fmt(totals.debit)}
+                      {fmt(ledger?.total_debit ?? '0')}
                     </td>
                     <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">
-                      {fmt(totals.credit)}
+                      {fmt(ledger?.total_credit ?? '0')}
                     </td>
                     <td className="px-4 py-2 text-right font-mono font-semibold text-slate-900">
-                      {fmtBalance(lines[lines.length - 1]?.balance ?? new Decimal(0))}
+                      {fmtBalance(ledger?.closing_balance ?? '0')}
                     </td>
                   </tr>
                 </tfoot>
               </table>
             </div>
           )}
+
+          {totalLines > PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+              <span className="text-sm text-slate-500">
+                {t('journal.entries.page', { current: page + 1, total: totalPages })}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {!selectedAccountUuid && (
+      {(!selectedAccountUuid || !fiscalYearUuid) && (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-          <p className="text-sm text-slate-500">{t('grandLivre.selectAccountPrompt', 'Sélectionnez un compte pour afficher son grand livre.')}</p>
+          <p className="text-sm text-slate-500">{t('grandLivre.selectAccountPrompt', 'Sélectionnez un exercice et un compte pour afficher le grand livre.')}</p>
         </div>
       )}
     </section>

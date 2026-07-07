@@ -1,3 +1,5 @@
+**Status (2026-07-07): Implemented, Phases 0–8.** See `docs/README.md` / module history for follow-ups: PDF export for financial reports, "cancelled entries" anomaly semantics (deferred — see Risks), and CSV export on `AccountTrialBalancePage`. `/api/v1/accounting/health` and `/reports/general-ledger` take `fiscal_year_uuid` as a query param rather than the originally sketched path param, to let the cockpit omit it and default to the active fiscal year.
+
 Below is a detailed implementation plan a coding agent can execute incrementally.
 
 **Goal**

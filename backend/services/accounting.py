@@ -1242,18 +1242,59 @@ async def create_fiscal_year(
     return fy
 
 
+async def accounting_reports_are_balanced(db: AsyncSession, fiscal_year_uuid: UUID) -> bool:
+    """Sanity check: total debit equals total credit across posted entries in
+    a fiscal year. Should always hold given that individual entries must
+    balance to be posted — this is a defense-in-depth check, not an expected
+    failure mode."""
+    stmt = (
+        select(
+            func.coalesce(func.sum(AccountingLine.debit), Decimal("0")),
+            func.coalesce(func.sum(AccountingLine.credit), Decimal("0")),
+        )
+        .join(AccountingEntry, AccountingEntry.uuid == AccountingLine.entry_uuid)
+        .where(AccountingEntry.fiscal_year_uuid == fiscal_year_uuid, AccountingEntry.state == 2)
+    )
+    total_debit, total_credit = (await db.execute(stmt)).one()
+    return total_debit == total_credit
+
+
 async def close_fiscal_year(
     db: AsyncSession,
     fiscal_year_uuid: UUID,
     user_id: int,
 ) -> AccountingFiscalYear:
-    """Close a fiscal year: blocks posting operations."""
+    """Close a fiscal year: blocks posting operations.
+
+    Refuses to close while draft entries, unreconciled bank lines, or
+    reconciliation discrepancies remain — reconciliation must be complete
+    before a fiscal year can be closed.
+    """
+    from services.bank_reconciliation import get_accounting_health_counts  # deferred: avoids a module-level import cycle
+
     fy = await get_or_create_fiscal_year(db, fiscal_year_uuid)
 
     if fy.state == 2:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Fiscal year {fy.code} is already closed",
+        )
+
+    counts = await get_accounting_health_counts(db, fy)
+    reports_balanced = await accounting_reports_are_balanced(db, fy.uuid)
+    blockers = {
+        "unposted_entries_count": counts["draft_entries_count"],
+        "unreconciled_bank_lines_count": counts["unreconciled_bank_lines_count"],
+        "discrepancy_count": counts["reconciliation_discrepancies_count"],
+    }
+    if any(blockers.values()) or not reports_balanced:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": f"Fiscal year {fy.code} cannot be closed: unresolved items remain.",
+                "reports_balanced": reports_balanced,
+                **blockers,
+            },
         )
 
     fy.state = 2
@@ -1700,6 +1741,11 @@ def _apply_accounting_entry_filters(
             )
 
     if null_tiers:
+        # Scoped to the 411 (member receivable) line specifically — not every
+        # require_id-configured account. Some non-member accounts (e.g. 6066
+        # discount lines) are also flagged require_id=1 in the chart of accounts
+        # but never carry a tiers_uuid by design, which flooded this filter with
+        # entries whose actual 411 line was correctly set.
         stmt = stmt.where(
             exists(
                 select(AccountingLine.uuid)
@@ -2377,6 +2423,125 @@ async def get_account_balances(
     return result
 
 
+async def get_general_ledger(
+    db: AsyncSession,
+    *,
+    fiscal_year_uuid: UUID,
+    account_uuid: UUID | None = None,
+    account_code: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    posted_only: bool = True,
+    limit: int = 100,
+    offset: int = 0,
+) -> "GeneralLedgerResponse":
+    """Per-account ledger with a real opening balance and running balances that
+    do not depend on which page is requested.
+
+    The opening balance is the sum of movements strictly before ``date_from``
+    within the same fiscal year (0 if ``date_from`` is not given — the ledger
+    then starts at the true beginning of the fiscal year, including any
+    carry-forward/à-nouveau entry). Running balances are computed once over
+    every matching line before pagination is applied, so requesting page 2
+    never changes what page 1 already showed.
+    """
+    from schemas.accounting import GeneralLedgerLineResponse, GeneralLedgerResponse
+
+    if account_uuid is not None:
+        account = await get_account(db, account_uuid)
+    elif account_code is not None:
+        account = await db.scalar(select(AccountingAccount).where(AccountingAccount.code == account_code))
+        if account is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Account {account_code} not found")
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="account_uuid or account_code is required")
+
+    credit_normal = account.normal_balance == 2
+    movement_expr = (AccountingLine.credit - AccountingLine.debit) if credit_normal else (AccountingLine.debit - AccountingLine.credit)
+
+    base_conditions = [
+        AccountingLine.account_uuid == account.uuid,
+        AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+    ]
+    if posted_only:
+        base_conditions.append(AccountingEntry.state == 2)
+
+    opening_balance = Decimal("0")
+    if date_from is not None:
+        opening_stmt = (
+            select(func.coalesce(func.sum(movement_expr), Decimal("0")))
+            .join(AccountingEntry, AccountingEntry.uuid == AccountingLine.entry_uuid)
+            .where(and_(*base_conditions, AccountingEntry.entry_date < date_from))
+        )
+        opening_balance = await db.scalar(opening_stmt) or Decimal("0")
+
+    period_conditions = list(base_conditions)
+    if date_from is not None:
+        period_conditions.append(AccountingEntry.entry_date >= date_from)
+    if date_to is not None:
+        period_conditions.append(AccountingEntry.entry_date <= date_to)
+
+    lines_stmt = (
+        select(AccountingLine, AccountingEntry, movement_expr.label("movement"))
+        .join(AccountingEntry, AccountingEntry.uuid == AccountingLine.entry_uuid)
+        .options(joinedload(AccountingLine.account), joinedload(AccountingEntry.journal))
+        .where(and_(*period_conditions))
+        .order_by(AccountingEntry.entry_date.asc(), AccountingEntry.created_at.asc(), AccountingLine.uuid.asc())
+    )
+    rows = (await db.execute(lines_stmt)).all()
+
+    await _enrich_lines_tiers(db, [row.AccountingLine for row in rows])
+
+    total_debit = Decimal("0")
+    total_credit = Decimal("0")
+    running = opening_balance
+    all_lines: list[GeneralLedgerLineResponse] = []
+    for row in rows:
+        line = row.AccountingLine
+        entry = row.AccountingEntry
+        debit = line.debit or Decimal("0")
+        credit = line.credit or Decimal("0")
+        total_debit += debit
+        total_credit += credit
+        running = running + row.movement
+        all_lines.append(
+            GeneralLedgerLineResponse(
+                entry_uuid=entry.uuid,
+                line_uuid=line.uuid,
+                entry_date=entry.entry_date,
+                journal_code=entry.journal.code if entry.journal else "—",
+                sequence_number=entry.sequence_number,
+                reference=entry.reference,
+                state=entry.state,
+                entry_description=entry.description,
+                line_description=line.description,
+                tiers_display_ref=getattr(line, "tiers_display_ref", None),
+                tiers_display_name=getattr(line, "tiers_display_name", None),
+                debit=debit,
+                credit=credit,
+                running_balance=running,
+            )
+        )
+
+    closing_balance = running
+    page = all_lines[offset : offset + limit]
+
+    return GeneralLedgerResponse(
+        account_uuid=account.uuid,
+        account_code=account.code,
+        account_name=account.name,
+        fiscal_year_uuid=fiscal_year_uuid,
+        opening_balance=opening_balance,
+        total_debit=total_debit,
+        total_credit=total_credit,
+        closing_balance=closing_balance,
+        total_lines=len(all_lines),
+        limit=limit,
+        offset=offset,
+        lines=page,
+    )
+
+
 async def list_journals(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[AccountingJournal]:
     """List all journals."""
     stmt = select(AccountingJournal).offset(skip).limit(limit).order_by(AccountingJournal.code)
@@ -2389,7 +2554,6 @@ async def list_journals(db: AsyncSession, skip: int = 0, limit: int = 100) -> li
 # ---------------------------------------------------------------------------
 
 _IMPORT_SOURCE_SYSTEM = "legacy-accounting-csv"
-_MEMBER_ACCOUNT_PREFIX = "411"
 _IMPORT_ENTRY_REFERENCE_PATTERN = re.compile(r"N[°ºo]\s*([A-Za-z0-9-]+)", re.IGNORECASE)
 
 
@@ -2573,6 +2737,67 @@ def _resolve_group_journal_code(group: list[dict], fallback_journal_code: str | 
     return None, ["Journal code is missing from CSV and no fallback journal was provided"]
 
 
+def _resolve_import_tiers(
+    account: "AccountingAccount | None",
+    raw_tiers_id: str,
+    *,
+    members_by_account_id: dict,
+    members_by_legacy_id: dict,
+    assets_by_code: dict,
+    explicit_tiers_uuid: str = "",
+    member_uuids: frozenset = frozenset(),
+    asset_uuids: frozenset = frozenset(),
+):
+    """Resolve the CSV row's tiers link against the right table for this
+    account's require_id (1/3 -> Member, i.e. member or supplier; 2 -> Asset).
+
+    Some CSV exports (e.g. the Vulcain migration tool in backend/tools/) already
+    resolve the tiers link and provide it directly via a ``tiers_uuid`` column,
+    leaving ``member_account_id`` blank — that column is preferred when present
+    and non-empty, still validated against the table require_id points to
+    rather than trusted blindly. Otherwise falls back to resolving
+    ``raw_tiers_id`` (the member_account_id column) against member/asset codes.
+
+    Returns (tiers_uuid, error_message). error_message is set only when the
+    account requires a tiers link and none could be resolved.
+    """
+    require_id = account.require_id if account else 0
+    if require_id == 0:
+        return None, None
+
+    if explicit_tiers_uuid:
+        try:
+            parsed = UUID(explicit_tiers_uuid)
+        except ValueError:
+            return None, f"Invalid tiers_uuid {explicit_tiers_uuid!r}"
+        if require_id in (1, 3):
+            if parsed not in member_uuids:
+                return None, f"tiers_uuid {explicit_tiers_uuid!r} does not match any member/supplier"
+            return parsed, None
+        if require_id == 2:
+            if parsed not in asset_uuids:
+                return None, f"tiers_uuid {explicit_tiers_uuid!r} does not match any asset"
+            return parsed, None
+        return None, None
+
+    if not raw_tiers_id:
+        return None, None
+
+    if require_id in (1, 3):
+        member = members_by_account_id.get(raw_tiers_id) or members_by_legacy_id.get(raw_tiers_id)
+        if not member:
+            return None, f"Member/supplier {raw_tiers_id!r} not found (checked account_id and legacy_account_id)"
+        return member.uuid, None
+
+    if require_id == 2:
+        asset = assets_by_code.get(raw_tiers_id)
+        if not asset:
+            return None, f"Asset {raw_tiers_id!r} not found"
+        return asset.uuid, None
+
+    return None, None
+
+
 async def preview_accounting_import(
     db: AsyncSession,
     *,
@@ -2603,10 +2828,18 @@ async def preview_accounting_import(
     mem_result = await db.execute(select(Member))
     members_by_account_id: dict[str, Member] = {}
     members_by_legacy_id: dict[str, Member] = {}
+    member_uuids: frozenset = frozenset()
     for m in mem_result.scalars().all():
         members_by_account_id[m.account_id] = m
         if m.legacy_account_id:
             members_by_legacy_id[m.legacy_account_id] = m
+    member_uuids = frozenset(m.uuid for m in members_by_account_id.values())
+
+    from models import Asset
+
+    asset_result = await db.execute(select(Asset))
+    assets_by_code: dict[str, Asset] = {a.code: a for a in asset_result.scalars().all()}
+    asset_uuids: frozenset = frozenset(a.uuid for a in assets_by_code.values())
 
     existing_result = await db.execute(
         select(AccountingEntry.external_id).where(
@@ -2667,20 +2900,26 @@ async def preview_accounting_import(
         preview_lines: list[AccountingImportPreviewLineResponse] = []
         for r in group:
             code = r.get("account_code", "").strip()
-            raw_mid = r.get("member_account_id", "").strip()
+            raw_tiers_id = r.get("member_account_id", "").strip()
+            explicit_tiers_uuid = r.get("tiers_uuid", "").strip()
             line_errors: list[str] = []
 
             account = accounts_by_code.get(code)
             if not account:
                 line_errors.append(f"Account code {code!r} not found")
 
-            member: Member | None = None
-            if code.startswith(_MEMBER_ACCOUNT_PREFIX) and raw_mid:
-                member = members_by_account_id.get(raw_mid) or members_by_legacy_id.get(raw_mid)
-                if not member:
-                    line_errors.append(
-                        f"Member {raw_mid!r} not found (checked account_id and legacy_account_id)"
-                    )
+            tiers_uuid, tiers_error = _resolve_import_tiers(
+                account,
+                raw_tiers_id,
+                members_by_account_id=members_by_account_id,
+                members_by_legacy_id=members_by_legacy_id,
+                assets_by_code=assets_by_code,
+                explicit_tiers_uuid=explicit_tiers_uuid,
+                member_uuids=member_uuids,
+                asset_uuids=asset_uuids,
+            )
+            if tiers_error:
+                line_errors.append(tiers_error)
 
             try:
                 line_debit = Decimal(r.get("debit", "0") or "0")
@@ -2695,8 +2934,8 @@ async def preview_accounting_import(
                     account_code=code,
                     account_uuid=account.uuid if account else None,
                     description=r.get("label") or None,
-                    member_account_id=raw_mid or None,
-                    member_uuid=member.uuid if member else None,
+                    tiers_id=raw_tiers_id or None,
+                    tiers_uuid=tiers_uuid,
                     debit=line_debit,
                     credit=line_credit,
                     errors=line_errors,
@@ -2765,10 +3004,18 @@ async def apply_accounting_import(
     mem_result = await db.execute(select(Member))
     members_by_account_id: dict[str, Member] = {}
     members_by_legacy_id: dict[str, Member] = {}
+    member_uuids: frozenset = frozenset()
     for m in mem_result.scalars().all():
         members_by_account_id[m.account_id] = m
         if m.legacy_account_id:
             members_by_legacy_id[m.legacy_account_id] = m
+    member_uuids = frozenset(m.uuid for m in members_by_account_id.values())
+
+    from models import Asset
+
+    asset_result = await db.execute(select(Asset))
+    assets_by_code: dict[str, Asset] = {a.code: a for a in asset_result.scalars().all()}
+    asset_uuids: frozenset = frozenset(a.uuid for a in assets_by_code.values())
 
     existing_result = await db.execute(
         select(AccountingEntry.external_id).where(
@@ -2817,22 +3064,27 @@ async def apply_accounting_import(
 
         for r in group:
             code = r.get("account_code", "").strip()
-            raw_mid = r.get("member_account_id", "").strip()
+            raw_tiers_id = r.get("member_account_id", "").strip()
+            explicit_tiers_uuid = r.get("tiers_uuid", "").strip()
             account = accounts_by_code[code]
 
-            member: Member | None = None
-            if code.startswith(_MEMBER_ACCOUNT_PREFIX) and raw_mid:
-                member = (
-                    members_by_account_id.get(raw_mid)
-                    or members_by_legacy_id.get(raw_mid)
-                )
+            tiers_uuid, _tiers_error = _resolve_import_tiers(
+                account,
+                raw_tiers_id,
+                members_by_account_id=members_by_account_id,
+                members_by_legacy_id=members_by_legacy_id,
+                assets_by_code=assets_by_code,
+                explicit_tiers_uuid=explicit_tiers_uuid,
+                member_uuids=member_uuids,
+                asset_uuids=asset_uuids,
+            )
 
             line = AccountingLine(
                 uuid=uuid4(),
                 fiscal_year_uuid=fiscal_year_uuid,
                 entry_uuid=entry_uuid,
                 account_uuid=account.uuid,
-                tiers_uuid=member.uuid if member else None,
+                tiers_uuid=tiers_uuid,
                 debit=Decimal(r.get("debit", "0") or "0"),
                 credit=Decimal(r.get("credit", "0") or "0"),
                 description=r.get("label") or None,

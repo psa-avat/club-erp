@@ -67,9 +67,21 @@ import { ReversalDialog } from './ReversalDialog'
 type Props = {
   entryUuid?: string | null
   entryFiscalYearUuid?: string | null
+  /**
+   * When true (default, standalone page usage), reversing a posted entry
+   * navigates the browser to the new reversed draft's URL. When embedded in
+   * a Sheet (see JournalEntriesScreen), pass false — the reversed draft is
+   * still loaded via local state, but the underlying list/filters stay mounted
+   * and the URL is left untouched.
+   */
+  navigateOnReversal?: boolean
 }
 
-export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearUuid = null }: Props) {
+export function JournalEntryWorkspaceScreen({
+  entryUuid = null,
+  entryFiscalYearUuid = null,
+  navigateOnReversal = true,
+}: Props) {
   const navigate = useNavigate()
   const { t } = useTranslation('banque')
   const canView = useCapability('VIEW_FINANCIALS')
@@ -319,7 +331,9 @@ export function JournalEntryWorkspaceScreen({ entryUuid = null, entryFiscalYearU
       setReversalDialogOpen(false)
       setSelectedEntryUuid(reversedDraft.uuid)
       setEntryForm(mapEntryToForm(reversedDraft))
-      navigate(`/banque/journal/entry/${reversedDraft.uuid}`)
+      if (navigateOnReversal) {
+        navigate(`/banque/journal/entry/${reversedDraft.uuid}`)
+      }
     } catch (error) {
       setLocalError(toErrorMessage(error, t('journal.errors.generic')))
     }

@@ -18,17 +18,19 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronLeft, ChevronRight, Download, Pencil, Undo2, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Pencil, SlidersHorizontal, Undo2, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Banner } from '../../../components/ui/banner'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { Checkbox } from '../../../components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../../../components/ui/collapsible'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../../../components/ui/sheet'
 import { StickyActionBar } from '../../../components/ui/sticky-action-bar'
 import { useCapability } from '../../../auth/hooks/useCapability'
 import {
@@ -45,7 +47,11 @@ import { apiClient, getAuthRequestConfig } from '../../../api/client'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { entryStateLabel, totals, entryStateBadgeClass, bankMatchBadge, useDebounce, decimalOrZero, normalizeAmountFilter, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
+import { JournalEntryWorkspaceScreen } from './JournalEntryWorkspaceScreen'
+import { ReversalDialog } from './ReversalDialog'
 import type { AccountingEntry } from '../api'
+
+type JournalPreset = 'drafts' | 'posted' | 'unreconciled' | 'discrepancies' | 'missing-tiers' | 'current-year'
 
 type SortKey = 'entry_date' | 'journal' | 'description' | 'reference' | 'amount' | 'state'
 type SortDirection = 'asc' | 'desc'
@@ -98,9 +104,27 @@ type Props = {
   lockState?: boolean
 }
 
+/** Filter overrides for a named preset — used both for the initial `?preset=` deep link and the quick filter chips. */
+function presetFilterOverrides(preset: JournalPreset): Partial<JournalFilters> {
+  switch (preset) {
+    case 'drafts':
+      return { state: 1 }
+    case 'posted':
+      return { state: 2 }
+    case 'unreconciled':
+      return { bank_reconciliation_state: 'unreconciled' }
+    case 'discrepancies':
+      return { bank_reconciliation_state: 'discrepancy' }
+    case 'missing-tiers':
+      return { null_tiers: true }
+    case 'current-year':
+      return { entry_date_from: '', entry_date_to: '' }
+  }
+}
+
 export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   const { t } = useTranslation('banque')
-  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const canView = useCapability('VIEW_FINANCIALS')
   const canPost = useCapability('POST_ACCOUNTING_ENTRIES')
 
@@ -111,9 +135,11 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   const PAGE_SIZE = 25
 
   const activeFiscalYearUuid = useFiscalYearStore((s) => s.activeFiscalYearUuid)
+  const initialPreset = searchParams.get('preset') as JournalPreset | null
   const [filters, setFilters] = useState<JournalFilters>({
     ...DEFAULT_FILTERS,
     ...(defaultState !== undefined ? { state: defaultState } : {}),
+    ...(initialPreset ? presetFilterOverrides(initialPreset) : {}),
   })
   const [page, setPage] = useState(0)
   const [selectedEntryUuids, setSelectedEntryUuids] = useState<string[]>([])
@@ -127,6 +153,35 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   const [groupByJournal, setGroupByJournal] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey>('entry_date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
+  const [reversalTarget, setReversalTarget] = useState<AccountingEntry | null>(null)
+  // Entry editor Sheet — kept in-place over the list (rather than navigating to
+  // /banque/journal/entry/:uuid) so filters/page/sort/scroll never get lost.
+  const [entrySheet, setEntrySheet] = useState<{ open: boolean; entryUuid: string | null; fiscalYearUuid: string | null }>(
+    { open: false, entryUuid: null, fiscalYearUuid: null },
+  )
+
+  function openNewEntrySheet() {
+    setEntrySheet({ open: true, entryUuid: null, fiscalYearUuid: activeFiscalYearUuid ?? null })
+  }
+
+  function openEditEntrySheet(entry: AccountingEntry) {
+    setEntrySheet({ open: true, entryUuid: entry.uuid, fiscalYearUuid: entry.fiscal_year_uuid })
+  }
+
+  // Consume ?preset= once on load so it doesn't linger and fight manual filter edits.
+  useEffect(() => {
+    if (!searchParams.get('preset')) return
+    setSearchParams(
+      (prev: URLSearchParams) => {
+        const next = new URLSearchParams(prev)
+        next.delete('preset')
+        return next
+      },
+      { replace: true },
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fiscalYears = fiscalYearsQuery.data ?? []
   const journals = journalsQuery.data ?? []
@@ -390,21 +445,34 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
     }
   }
 
-  async function handleReverse(entryUuid: string) {
-    if (!activeFiscalYearUuid) return
-    const reversalReason = window.prompt(t('journal.entries.reversal.reasonPlaceholder'))
-    if (!reversalReason || reversalReason.trim() === '') return
+  async function confirmReversal(reason: string) {
+    if (!activeFiscalYearUuid || !reversalTarget) return
     setLocalError(null)
     try {
       await reverseEntryMutation.mutateAsync({
-        entryUuid,
+        entryUuid: reversalTarget.uuid,
         fiscal_year_uuid: activeFiscalYearUuid,
-        reversal_reason: reversalReason.trim(),
+        reversal_reason: reason,
       })
       setSuccessMessage(t('journal.entries.reversed'))
+      setReversalTarget(null)
     } catch (error) {
       setLocalError(toErrorMessage(error, t('journal.errors.generic')))
     }
+  }
+
+  function isPresetActive(preset: JournalPreset): boolean {
+    const overrides = presetFilterOverrides(preset)
+    return (Object.keys(overrides) as (keyof JournalFilters)[]).every((key) => filters[key] === overrides[key])
+  }
+
+  function togglePreset(preset: JournalPreset) {
+    if (isPresetActive(preset)) {
+      const resetKeys = Object.keys(presetFilterOverrides(preset)) as (keyof JournalFilters)[]
+      setFilters((prev) => ({ ...prev, ...Object.fromEntries(resetKeys.map((key) => [key, DEFAULT_FILTERS[key]])) }))
+      return
+    }
+    setFilters((prev) => ({ ...prev, ...presetFilterOverrides(preset) }))
   }
 
   if (!canView) {
@@ -435,6 +503,63 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
             {t('journal.entries.resetFilters')}
           </Button>
         </div>
+
+        {/* Quick filter presets */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {!lockState && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant={isPresetActive('drafts') ? 'secondary' : 'outline'}
+                onClick={() => togglePreset('drafts')}
+              >
+                {t('journal.entries.presets.drafts')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={isPresetActive('posted') ? 'secondary' : 'outline'}
+                onClick={() => togglePreset('posted')}
+              >
+                {t('journal.entries.presets.posted')}
+              </Button>
+            </>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant={isPresetActive('unreconciled') ? 'secondary' : 'outline'}
+            onClick={() => togglePreset('unreconciled')}
+          >
+            {t('journal.entries.presets.unreconciled')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={isPresetActive('discrepancies') ? 'secondary' : 'outline'}
+            onClick={() => togglePreset('discrepancies')}
+          >
+            {t('journal.entries.presets.discrepancies')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={isPresetActive('missing-tiers') ? 'secondary' : 'outline'}
+            onClick={() => togglePreset('missing-tiers')}
+          >
+            {t('journal.entries.presets.missingTiers')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={isPresetActive('current-year') ? 'secondary' : 'outline'}
+            onClick={() => togglePreset('current-year')}
+          >
+            {t('journal.entries.presets.currentYear')}
+          </Button>
+        </div>
+
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <div className="space-y-1">
             <Label>{t('journal.entries.journal')}</Label>
@@ -449,40 +574,6 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
               ))}
             </select>
           </div>
-          {!lockState && (
-          <div className="space-y-1">
-            <Label>{t('journal.entries.state')}</Label>
-            <select
-              value={filters.state}
-              onChange={(event) => setFilters((prev) => ({ ...prev, state: Number(event.target.value) }))}
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value={0}>{t('journal.entries.allStates')}</option>
-              <option value={1}>{t('journal.entries.states.draft')}</option>
-              <option value={2}>{t('journal.entries.states.posted')}</option>
-              <option value={3}>{t('journal.entries.states.cancelled')}</option>
-            </select>
-          </div>
-          )}
-          <div className="space-y-1">
-            <Label>{t('journal.entries.bankReconciliationState')}</Label>
-            <select
-              value={filters.bank_reconciliation_state}
-              onChange={(event) =>
-                setFilters((prev) => ({
-                  ...prev,
-                  bank_reconciliation_state: event.target.value as JournalFilters['bank_reconciliation_state'],
-                }))
-              }
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value="">{t('journal.entries.allBankReconciliationStates')}</option>
-              <option value="unreconciled">{t('journal.entries.bankUnreconciled')}</option>
-              <option value="associated">{t('journal.entries.bankAssociated')}</option>
-              <option value="reconciled">{t('journal.entries.bankReconciled')}</option>
-              <option value="discrepancy">{t('journal.entries.bankDiscrepancy')}</option>
-            </select>
-          </div>
           <div className="space-y-1">
             <Label>{t('journal.entries.search')}</Label>
             <Input value={filters.search} onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))} />
@@ -495,71 +586,119 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
               placeholder={t('journal.entries.memberPlaceholder')}
             />
           </div>
-          <div className="space-y-1">
-            <Label>{t('journal.entries.accountNumber')}</Label>
-            <Input
-              value={filters.account_code}
-              onChange={(event) => setFilters((prev) => ({ ...prev, account_code: event.target.value }))}
-              placeholder={t('journal.entries.accountNumberPlaceholder')}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('journal.entries.libelle')}</Label>
-            <Input
-              value={filters.description}
-              onChange={(event) => setFilters((prev) => ({ ...prev, description: event.target.value }))}
-              placeholder={t('journal.entries.libellePlaceholder')}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('journal.entries.dateFrom')}</Label>
-            <Input
-              type="date"
-              value={filters.entry_date_from}
-              onChange={(event) => setFilters((prev) => ({ ...prev, entry_date_from: event.target.value }))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('journal.entries.dateTo')}</Label>
-            <Input
-              type="date"
-              value={filters.entry_date_to}
-              onChange={(event) => setFilters((prev) => ({ ...prev, entry_date_to: event.target.value }))}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('journal.entries.amountMin')}</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              value={filters.amount_min}
-              onChange={(event) => setFilters((prev) => ({ ...prev, amount_min: event.target.value }))}
-              placeholder="0.00"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('journal.entries.amountMax')}</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              value={filters.amount_max}
-              onChange={(event) => setFilters((prev) => ({ ...prev, amount_max: event.target.value }))}
-              placeholder="99999.99"
-            />
-          </div>
-          <div className="flex items-center gap-2 self-end pb-2">
-            <Checkbox
-              id="null-tiers-filter"
-              checked={filters.null_tiers}
-              onCheckedChange={(checked) => setFilters((prev) => ({ ...prev, null_tiers: checked === true }))}
-            />
-            <Label htmlFor="null-tiers-filter" className="cursor-pointer">
-              {t('journal.entries.nullTiers')}
-            </Label>
-          </div>
         </div>
+
+        <Collapsible open={advancedFiltersOpen} onOpenChange={setAdvancedFiltersOpen} className="mt-4">
+          <CollapsibleTrigger asChild>
+            <Button type="button" size="sm" variant="ghost" className="gap-1.5">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {t('journal.entries.advancedFilters')}
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedFiltersOpen ? 'rotate-180' : ''}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              {!lockState && (
+                <div className="space-y-1">
+                  <Label>{t('journal.entries.state')}</Label>
+                  <select
+                    value={filters.state}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, state: Number(event.target.value) }))}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                  >
+                    <option value={0}>{t('journal.entries.allStates')}</option>
+                    <option value={1}>{t('journal.entries.states.draft')}</option>
+                    <option value={2}>{t('journal.entries.states.posted')}</option>
+                    <option value={3}>{t('journal.entries.states.cancelled')}</option>
+                  </select>
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label>{t('journal.entries.bankReconciliationState')}</Label>
+                <select
+                  value={filters.bank_reconciliation_state}
+                  onChange={(event) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      bank_reconciliation_state: event.target.value as JournalFilters['bank_reconciliation_state'],
+                    }))
+                  }
+                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="">{t('journal.entries.allBankReconciliationStates')}</option>
+                  <option value="unreconciled">{t('journal.entries.bankUnreconciled')}</option>
+                  <option value="associated">{t('journal.entries.bankAssociated')}</option>
+                  <option value="reconciled">{t('journal.entries.bankReconciled')}</option>
+                  <option value="discrepancy">{t('journal.entries.bankDiscrepancy')}</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.accountNumber')}</Label>
+                <Input
+                  value={filters.account_code}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, account_code: event.target.value }))}
+                  placeholder={t('journal.entries.accountNumberPlaceholder')}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.libelle')}</Label>
+                <Input
+                  value={filters.description}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, description: event.target.value }))}
+                  placeholder={t('journal.entries.libellePlaceholder')}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.dateFrom')}</Label>
+                <Input
+                  type="date"
+                  value={filters.entry_date_from}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, entry_date_from: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.dateTo')}</Label>
+                <Input
+                  type="date"
+                  value={filters.entry_date_to}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, entry_date_to: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.amountMin')}</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={filters.amount_min}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, amount_min: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.amountMax')}</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={filters.amount_max}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, amount_max: event.target.value }))}
+                  placeholder="99999.99"
+                />
+              </div>
+              <div className="flex items-center gap-2 self-end pb-2">
+                <Checkbox
+                  id="null-tiers-filter"
+                  checked={filters.null_tiers}
+                  onCheckedChange={(checked) => setFilters((prev) => ({ ...prev, null_tiers: checked === true }))}
+                />
+                <Label htmlFor="null-tiers-filter" className="cursor-pointer">
+                  {t('journal.entries.nullTiers')}
+                </Label>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
 
       {/* Entry list */}
@@ -625,9 +764,9 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                   {t('journal.import.openBtn')}
                 </Button>
               )}
-              <a href="/banque/journal/entry/new">
-                <Button type="button" size="sm">{t('journal.entries.newDraft')}</Button>
-              </a>
+              <Button type="button" size="sm" onClick={openNewEntrySheet}>
+                {t('journal.entries.newDraft')}
+              </Button>
             </div>
           )}
         </div>
@@ -764,7 +903,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                                     className="rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
                                     aria-label={t('journal.entries.editDraft')}
                                     title={t('journal.entries.editDraft')}
-                                    onClick={() => navigate(`/banque/journal/entry/${entry.uuid}`)}
+                                    onClick={() => openEditEntrySheet(entry)}
                                   >
                                     <Pencil className="h-3.5 w-3.5" />
                                   </button>
@@ -792,7 +931,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                                   className="rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
                                   aria-label={t('journal.entries.reverseAction')}
                                   title={t('journal.entries.reverseAction')}
-                                  onClick={() => void handleReverse(entry.uuid)}
+                                  onClick={() => setReversalTarget(entry)}
                                 >
                                   <Undo2 className="h-3.5 w-3.5" />
                                 </button>
@@ -930,6 +1069,51 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       journals={journals}
       defaultFiscalYearUuid={activeFiscalYearUuid || undefined}
     />
+
+    <ReversalDialog
+      open={reversalTarget !== null}
+      entry={reversalTarget}
+      accounts={accounts}
+      isSubmitting={reverseEntryMutation.isPending}
+      onClose={() => setReversalTarget(null)}
+      onConfirm={confirmReversal}
+      t={t}
+    />
+
+    <Sheet
+      open={entrySheet.open}
+      onOpenChange={(open) => setEntrySheet((prev) => ({ ...prev, open }))}
+    >
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-[min(90vw,80rem)]"
+        onInteractOutside={(event) => {
+          // Prevent sheet close when interacting with a portaled SearchableSelect dropdown
+          // (account/member/asset pickers inside the line editor)
+          const originalEvent = (event as unknown as CustomEvent<{ originalEvent: Event }>).detail?.originalEvent
+          const target = originalEvent?.target as HTMLElement | null
+          if (target?.closest?.('[data-searchable-select-portal]')) {
+            event.preventDefault()
+          }
+        }}
+      >
+        <SheetHeader className="border-b px-6 py-4">
+          <SheetTitle>
+            {entrySheet.entryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}
+          </SheetTitle>
+          <SheetDescription>{t('journal.entries.listDescription')}</SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 px-6 py-4">
+          {entrySheet.open && (
+            <JournalEntryWorkspaceScreen
+              entryUuid={entrySheet.entryUuid}
+              entryFiscalYearUuid={entrySheet.fiscalYearUuid}
+              navigateOnReversal={false}
+            />
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
 
     <ConfirmDialog
       open={confirmBulkPostOpen}

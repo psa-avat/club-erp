@@ -28,7 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import get_current_user, require_capability
-from constants import CAP_MANAGE_PRICES, CAP_MANAGE_SYSTEM_SETTINGS, CAP_POST_ACCOUNTING_ENTRIES, CAP_VIEW_FINANCIALS
+from constants import (
+    CAP_MANAGE_ACCOUNTING_SETTINGS,
+    CAP_MANAGE_PRICES,
+    CAP_MANAGE_SYSTEM_SETTINGS,
+    CAP_POST_ACCOUNTING_ENTRIES,
+    CAP_VIEW_FINANCIALS,
+)
 from models import AccountingAccount, AccountingEntry, AccountingFiscalYear, User, FlightBillingSettings
 from schemas.accounting import (
     AccountBalanceResponse,
@@ -46,6 +52,9 @@ from schemas.accounting import (
     AccountingEntryResponse,
     AccountingEntryUpdateRequest,
     AccountResponse,
+    AccountingHealthResponse,
+    FiscalYearCloseReadinessResponse,
+    GeneralLedgerResponse,
     CopyCostProvisionRulesRequest,
     CopyCostProvisionRulesResponse,
     FiscalYearCreateRequest,
@@ -71,7 +80,9 @@ from services.accounting import (
     close_fiscal_year,
     copy_cost_provision_rules_from_year,
     clone_pricing_version,
+    accounting_reports_are_balanced,
     get_account_balances,
+    get_general_ledger,
     create_accounting_entry,
     count_accounting_entries,
     delete_accounting_entry,
@@ -92,6 +103,7 @@ from services.accounting import (
     list_accounting_entries,
     list_accounting_entry_templates,
     get_active_fiscal_year,
+    get_or_create_fiscal_year,
     list_fiscal_years,
     list_journals,
     list_pricing_items,
@@ -118,6 +130,7 @@ from services.scheduled_entries import (
     generate_due_entries,
     preview_generation,
 )
+from services.bank_reconciliation import get_accounting_health_counts
 
 router = APIRouter(prefix="/api/v1/accounting", tags=["accounting"])
 logger = logging.getLogger(__name__)
@@ -125,6 +138,9 @@ logger = logging.getLogger(__name__)
 view_guard = Depends(require_capability(CAP_VIEW_FINANCIALS))
 post_guard = Depends(require_capability(CAP_POST_ACCOUNTING_ENTRIES))
 settings_guard = Depends(require_capability(CAP_MANAGE_SYSTEM_SETTINGS))
+# Accounting-domain settings (fiscal years, PCG seed, entry templates) — distinct
+# from generic module settings above, matches the frontend's MANAGE_ACCOUNTING_SETTINGS gating.
+accounting_settings_guard = Depends(require_capability(CAP_MANAGE_ACCOUNTING_SETTINGS))
 prices_guard = Depends(require_capability(CAP_MANAGE_PRICES))
 
 FISCAL_YEAR_VALIDATION_ERRORS = {
@@ -241,7 +257,7 @@ def _log_accounting_audit(action: str, user_id: int, **context) -> None:
 async def create_fiscal_year_endpoint(
     request: FiscalYearCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Create a new fiscal year."""
@@ -275,6 +291,74 @@ async def get_active_fiscal_year_endpoint(
 ):
     """Return the currently open fiscal year, or the most recent one if none is open."""
     return await get_active_fiscal_year(db)
+
+
+@router.get("/health", response_model=AccountingHealthResponse)
+async def get_accounting_health_endpoint(
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+    fiscal_year_uuid: UUID | None = None,
+):
+    """Aggregate accounting workload counts for the cockpit and the fiscal-year
+    close-readiness check — a single source of truth so both consume the same
+    counting logic instead of duplicating it."""
+    fiscal_year = None
+    if fiscal_year_uuid is not None:
+        fiscal_year = await get_or_create_fiscal_year(db, fiscal_year_uuid)
+    else:
+        try:
+            fiscal_year = await get_active_fiscal_year(db)
+        except HTTPException:
+            fiscal_year = None
+
+    if fiscal_year is None:
+        return AccountingHealthResponse()
+
+    counts = await get_accounting_health_counts(db, fiscal_year)
+    return AccountingHealthResponse(fiscal_year=fiscal_year, **counts)
+
+
+@router.get("/fiscal-years/{fiscal_year_uuid}/close-readiness", response_model=FiscalYearCloseReadinessResponse)
+async def get_fiscal_year_close_readiness_endpoint(
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Report whether a fiscal year can be closed, and why not if it can't —
+    the same checks close_fiscal_year() enforces, exposed for the UI to show
+    actionable blockers before the user attempts to close."""
+    fiscal_year = await get_or_create_fiscal_year(db, fiscal_year_uuid)
+    counts = await get_accounting_health_counts(db, fiscal_year)
+    reports_balanced = await accounting_reports_are_balanced(db, fiscal_year.uuid)
+
+    has_unposted_entries = counts["draft_entries_count"] > 0
+    has_unreconciled_bank_lines = counts["unreconciled_bank_lines_count"] > 0
+    has_reconciliation_discrepancies = counts["reconciliation_discrepancies_count"] > 0
+    has_missing_required_tiers = counts["missing_required_tiers_count"] > 0
+    has_due_recurring_entries = counts["due_recurring_entries_count"] > 0
+
+    can_close = (
+        not has_unposted_entries
+        and not has_unreconciled_bank_lines
+        and not has_reconciliation_discrepancies
+        and reports_balanced
+    )
+
+    return FiscalYearCloseReadinessResponse(
+        fiscal_year_uuid=fiscal_year.uuid,
+        has_unposted_entries=has_unposted_entries,
+        unposted_entries_count=counts["draft_entries_count"],
+        has_unreconciled_bank_lines=has_unreconciled_bank_lines,
+        unreconciled_bank_lines_count=counts["unreconciled_bank_lines_count"],
+        has_reconciliation_discrepancies=has_reconciliation_discrepancies,
+        discrepancy_count=counts["reconciliation_discrepancies_count"],
+        has_missing_required_tiers=has_missing_required_tiers,
+        missing_required_tiers_count=counts["missing_required_tiers_count"],
+        has_due_recurring_entries=has_due_recurring_entries,
+        due_recurring_entries_count=counts["due_recurring_entries_count"],
+        reports_balanced=reports_balanced,
+        can_close=can_close,
+    )
 
 
 @router.patch(
@@ -339,7 +423,7 @@ async def list_accounts_endpoint(
 @router.post("/accounts/seed-pcg", response_model=SeedPcgResponse)
 async def seed_pcg_accounts_endpoint(
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Seed/update the baseline French association PCG subset."""
@@ -356,7 +440,7 @@ async def seed_pcg_accounts_endpoint(
 
 @router.get("/accounts/pcg-seed", response_model=PcgSeedExportResponse)
 async def export_pcg_seed_endpoint(
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
 ):
     """Export the current PCG seed file as JSON."""
     items = export_pcg_seed()
@@ -366,7 +450,7 @@ async def export_pcg_seed_endpoint(
 @router.put("/accounts/pcg-seed", response_model=PcgSeedExportResponse)
 async def import_pcg_seed_endpoint(
     request: PcgSeedImportRequest,
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Replace the PCG seed file with the provided items."""
@@ -1091,7 +1175,7 @@ async def get_entry_model_endpoint(
 async def create_entry_model_endpoint(
     request: AccountingEntryTemplateCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Create a recurring entry model."""
@@ -1105,7 +1189,7 @@ async def update_entry_model_endpoint(
     template_uuid: UUID,
     request: AccountingEntryTemplateUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Update a recurring entry model."""
@@ -1118,7 +1202,7 @@ async def update_entry_model_endpoint(
 async def delete_entry_model_endpoint(
     template_uuid: UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = settings_guard,
+    _: User = accounting_settings_guard,
     current_user: User = Depends(get_current_user),
 ):
     """Delete a recurring entry model."""
@@ -1275,5 +1359,34 @@ async def get_account_balances_endpoint(
     Use ``posted_only=false`` to include draft entries as well.
     """
     return await get_account_balances(db, fiscal_year_uuid=fiscal_year_uuid, posted_only=posted_only)
+
+
+@router.get("/reports/general-ledger", response_model=GeneralLedgerResponse)
+async def get_general_ledger_endpoint(
+    fiscal_year_uuid: UUID,
+    account_uuid: UUID | None = None,
+    account_code: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    posted_only: bool = True,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    """Per-account general ledger with a real opening balance and running
+    balances computed server-side, so pagination cannot change a line's
+    running balance (unlike the previous frontend-only computation)."""
+    return await get_general_ledger(
+        db,
+        fiscal_year_uuid=fiscal_year_uuid,
+        account_uuid=account_uuid,
+        account_code=account_code,
+        date_from=date_from,
+        date_to=date_to,
+        posted_only=posted_only,
+        limit=limit,
+        offset=offset,
+    )
 
 

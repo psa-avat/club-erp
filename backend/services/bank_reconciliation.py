@@ -31,12 +31,19 @@ from sqlalchemy.orm import selectinload
 
 from models import (
     AccountingEntry,
+    AccountingFiscalYear,
     AccountingLine,
     BankCsvMapping,
     BankStatement,
     BankStatementLine,
 )
-from services.accounting import DEFAULT_SYSTEM_SETTINGS, get_system_setting, post_accounting_entries_batch
+from services.accounting import (
+    DEFAULT_SYSTEM_SETTINGS,
+    count_accounting_entries,
+    get_system_setting,
+    post_accounting_entries_batch,
+)
+from services.scheduled_entries import count_due_entry_templates
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +171,34 @@ async def list_statement_summaries(
             }
         )
     return summaries
+
+
+async def get_accounting_health_counts(db: AsyncSession, fiscal_year: AccountingFiscalYear) -> dict:
+    """Shared counting logic for the accounting cockpit and the fiscal-year
+    close-readiness check — computed once so the two can never disagree.
+
+    Lives here rather than in services.accounting because it needs
+    list_statement_summaries(); services.accounting.close_fiscal_year() imports
+    this function locally (not at module level) to avoid a circular import.
+    """
+    draft_entries_count = await count_accounting_entries(db, fiscal_year_uuid=fiscal_year.uuid, state=1)
+    missing_required_tiers_count = await count_accounting_entries(
+        db, fiscal_year_uuid=fiscal_year.uuid, null_tiers=True,
+    )
+
+    statement_summaries = await list_statement_summaries(db, fiscal_year_uuid=fiscal_year.uuid)
+    unreconciled_bank_lines_count = sum(s["status_counts"].get("unmatched", 0) for s in statement_summaries)
+    reconciliation_discrepancies_count = sum(s["status_counts"].get("discrepancy", 0) for s in statement_summaries)
+
+    due_recurring_entries_count = await count_due_entry_templates(db)
+
+    return {
+        "draft_entries_count": draft_entries_count,
+        "unreconciled_bank_lines_count": unreconciled_bank_lines_count,
+        "reconciliation_discrepancies_count": reconciliation_discrepancies_count,
+        "missing_required_tiers_count": missing_required_tiers_count,
+        "due_recurring_entries_count": due_recurring_entries_count,
+    }
 
 
 async def delete_statement(db: AsyncSession, statement_uuid: UUID) -> None:

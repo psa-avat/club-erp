@@ -512,6 +512,251 @@ class TestAccountingImportHelpers(unittest.TestCase):
             _parse_accounting_import_date("not-a-date")
 
 
+class TestResolveImportTiers(unittest.TestCase):
+    """_resolve_import_tiers: CSV import must resolve tiers for member,
+    supplier, AND asset-linked accounts (regression for the bug where
+    2xx/asset accounts silently imported with no tiers_uuid)."""
+
+    def setUp(self):
+        from services.accounting import _resolve_import_tiers
+        self.resolve = _resolve_import_tiers
+        self.member = SimpleNamespace(uuid=uuid4())
+        self.asset = SimpleNamespace(uuid=uuid4())
+        self.members_by_account_id = {"ME2026-0001": self.member}
+        self.members_by_legacy_id = {}
+        self.assets_by_code = {"PLANEUR-01": self.asset}
+
+    def test_member_account_resolves_via_member_table(self):
+        account = SimpleNamespace(require_id=1)
+        tiers_uuid, error = self.resolve(
+            account, "ME2026-0001",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertEqual(tiers_uuid, self.member.uuid)
+        self.assertIsNone(error)
+
+    def test_supplier_account_also_resolves_via_member_table(self):
+        account = SimpleNamespace(require_id=3)
+        tiers_uuid, error = self.resolve(
+            account, "ME2026-0001",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertEqual(tiers_uuid, self.member.uuid)
+        self.assertIsNone(error)
+
+    def test_asset_account_resolves_via_asset_table(self):
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "PLANEUR-01",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertEqual(tiers_uuid, self.asset.uuid)
+        self.assertIsNone(error)
+
+    def test_asset_account_with_unknown_code_errors(self):
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "UNKNOWN-99",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNotNone(error)
+
+    def test_asset_code_is_not_looked_up_in_member_table(self):
+        """An asset-linked account must not accidentally resolve against the
+        member map even if the identifier happens to collide."""
+        account = SimpleNamespace(require_id=2)
+        members_by_account_id = {"PLANEUR-01": self.member}  # collision on purpose
+        tiers_uuid, error = self.resolve(
+            account, "PLANEUR-01",
+            members_by_account_id=members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertEqual(tiers_uuid, self.asset.uuid)
+        self.assertIsNone(error)
+
+    def test_no_tiers_required_returns_none_without_error(self):
+        account = SimpleNamespace(require_id=0)
+        tiers_uuid, error = self.resolve(
+            account, "ANYTHING",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNone(error)
+
+    def test_empty_identifier_returns_none_without_error(self):
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNone(error)
+
+    def test_unknown_account_returns_none_without_error(self):
+        tiers_uuid, error = self.resolve(
+            None, "ME2026-0001",
+            members_by_account_id=self.members_by_account_id,
+            members_by_legacy_id=self.members_by_legacy_id,
+            assets_by_code=self.assets_by_code,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNone(error)
+
+
+class TestResolveImportTiersExplicitUuidColumn(unittest.TestCase):
+    """Some CSV exports (e.g. backend/tools/import_legacy.py) pre-resolve the
+    tiers link into a `tiers_uuid` column and leave member_account_id blank —
+    regression for the bug where those rows silently imported with no tiers
+    because only member_account_id was ever read."""
+
+    def setUp(self):
+        from services.accounting import _resolve_import_tiers
+        self.resolve = _resolve_import_tiers
+        self.member = SimpleNamespace(uuid=uuid4())
+        self.asset = SimpleNamespace(uuid=uuid4())
+        self.member_uuids = frozenset({self.member.uuid})
+        self.asset_uuids = frozenset({self.asset.uuid})
+
+    def test_explicit_uuid_resolves_for_asset_account_even_with_blank_member_account_id(self):
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "",  # member_account_id blank, as produced by the migration tool
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={},
+            explicit_tiers_uuid=str(self.asset.uuid),
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertEqual(tiers_uuid, self.asset.uuid)
+        self.assertIsNone(error)
+
+    def test_explicit_uuid_resolves_for_member_account(self):
+        account = SimpleNamespace(require_id=1)
+        tiers_uuid, error = self.resolve(
+            account, "",
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={},
+            explicit_tiers_uuid=str(self.member.uuid),
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertEqual(tiers_uuid, self.member.uuid)
+        self.assertIsNone(error)
+
+    def test_explicit_uuid_takes_priority_over_member_account_id_column(self):
+        """If both columns are populated (shouldn't normally happen), the
+        explicit tiers_uuid wins rather than being silently ignored."""
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "SOME-OTHER-CODE",
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={"SOME-OTHER-CODE": SimpleNamespace(uuid=uuid4())},
+            explicit_tiers_uuid=str(self.asset.uuid),
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertEqual(tiers_uuid, self.asset.uuid)
+        self.assertIsNone(error)
+
+    def test_explicit_uuid_for_asset_account_not_in_asset_set_errors(self):
+        """A tiers_uuid that doesn't belong to the table this account's
+        require_id points to must error, not silently succeed or cross-match."""
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "",
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={},
+            explicit_tiers_uuid=str(self.member.uuid),  # a member uuid, not an asset uuid
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNotNone(error)
+
+    def test_explicit_uuid_for_member_account_not_in_member_set_errors(self):
+        account = SimpleNamespace(require_id=1)
+        tiers_uuid, error = self.resolve(
+            account, "",
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={},
+            explicit_tiers_uuid=str(self.asset.uuid),  # an asset uuid, not a member uuid
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNotNone(error)
+
+    def test_malformed_explicit_uuid_errors(self):
+        account = SimpleNamespace(require_id=2)
+        tiers_uuid, error = self.resolve(
+            account, "",
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={},
+            explicit_tiers_uuid="not-a-uuid",
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNotNone(error)
+
+    def test_no_tiers_required_ignores_explicit_uuid(self):
+        account = SimpleNamespace(require_id=0)
+        tiers_uuid, error = self.resolve(
+            account, "",
+            members_by_account_id={},
+            members_by_legacy_id={},
+            assets_by_code={},
+            explicit_tiers_uuid=str(self.asset.uuid),
+            member_uuids=self.member_uuids,
+            asset_uuids=self.asset_uuids,
+        )
+        self.assertIsNone(tiers_uuid)
+        self.assertIsNone(error)
+
+
+class TestNullTiersFilterScope(unittest.TestCase):
+    """The `null_tiers` journal filter must check the 411 (member receivable)
+    line specifically, not every account configured with a require_id.
+
+    Regression: some non-member accounts (e.g. 6066 discount lines) are also
+    configured require_id=1 in the chart of accounts but never carry a
+    tiers_uuid by design — filtering on require_id instead of the account code
+    flooded "Sans tiers" with entries whose actual 411 line was correctly set.
+    """
+
+    def test_null_tiers_filter_scopes_to_411_accounts_only(self):
+        from sqlalchemy import select
+        from sqlalchemy.dialects import postgresql
+        from models import AccountingEntry
+        from services.accounting import _apply_accounting_entry_filters
+
+        stmt = _apply_accounting_entry_filters(select(AccountingEntry), null_tiers=True)
+        compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+        self.assertIn("411%", compiled)
+        self.assertNotIn("require_id", compiled)
+
+
 class TestGetActiveFiscalYear(IsolatedAsyncioTestCase):
     """Tests for get_active_fiscal_year service function."""
 
