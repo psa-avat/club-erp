@@ -59,9 +59,17 @@
         "code": "151",
         "name": "Provisions pour risques",
         "type": 2,
-        "is_posting_allowed": true,
+        "is_posting_allowed": false,
         "is_reconcilable": false,
         "require_id": 0
+    },
+    {
+        "code": "1518",
+        "name": "Provisions pour risques",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
     },
     {
         "code": "164",
@@ -120,12 +128,20 @@
         "require_id": 0
     },
     {
+        "code": "2151",
+        "name": "Matériel et outillage",
+        "type": 1,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
         "code": "2154",
         "name": "Matériel et outillage de piste (Treuil, Tracteur)",
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
-        "require_id": 0
+        "require_id": 2
     },
     {
         "code": "218",
@@ -136,6 +152,14 @@
         "require_id": 0
     },
     {
+        "code": "2181",
+        "name": "Installations générales",
+        "type": 1,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
         "code": "2182",
         "name": "Matériel de transport (Remorques, véhicules de piste)",
         "type": 1,
@@ -144,16 +168,16 @@
         "require_id": 2
     },
     {
-        "code": "2184",
-        "name": "Mobilier (Club-house et bureaux)",
+        "code": "2183",
+        "name": "Matériel informatique",
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
         "require_id": 2
     },
     {
-        "code": "2185",
-        "name": "Matériel informatique",
+        "code": "2184",
+        "name": "Mobilier (Club-house et bureaux)",
         "type": 1,
         "is_posting_allowed": true,
         "is_reconcilable": false,
@@ -200,8 +224,24 @@
         "require_id": 2
     },
     {
+        "code": "28151",
+        "name": "Amortissement Matériel et outillage",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
         "code": "28154",
-        "name": "Amortissement du matériel et outillage de piste",
+        "name": "Amortissement du Matériel et outillage de piste (Treuil, Tracteur",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
+        "code": "28181",
+        "name": "Amortissement Installations générales",
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
@@ -215,17 +255,17 @@
         "is_reconcilable": false,
         "require_id": 2
     },
-    {
-        "code": "28184",
-        "name": "Amortissement du mobilier",
+        {
+        "code": "28183",
+        "name": "Amortissement du matériel informatique",
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
         "require_id": 2
     },
     {
-        "code": "28185",
-        "name": "Amortissement du matériel informatique",
+        "code": "28188",
+        "name": "Amortissement Autres immobilisations corporelles diverses",
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
