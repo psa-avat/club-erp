@@ -64,13 +64,61 @@
         "require_id": 0
     },
     {
-        "code": "1518",
-        "name": "Provisions pour risques",
+        "code": "151801",
+        "name": "Provisions pour risques assets",
         "type": 2,
         "is_posting_allowed": true,
         "is_reconcilable": false,
         "require_id": 2
     },
+    {
+        "code": "151802",
+        "name": "Prov. entretien remorques",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
+        "code": "151803",
+        "name": "Prov. form. instructeurs",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "151804",
+        "name": "Prov. form. techn. atelier",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },   
+    {
+        "code": "151805",
+        "name": "Prov. form. bénévoles",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },      
+    {
+        "code": "151806",
+        "name": "Prov. form. salariés",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },  
+    {
+        "code": "151807",
+        "name": "Provisions pour casse",
+        "type": 2,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },  
     {
         "code": "164",
         "name": "Emprunts auprès des établissements de crédit",
@@ -762,6 +810,30 @@
     {
         "code": "681",
         "name": "Dotations aux amortissements",
+        "type": 4,
+        "is_posting_allowed": false,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "6811",
+        "name": "Dotations aux amortissements immobilisations corporelles",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "6815",
+        "name": "Dotations aux provisions risques et charges",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "6817",
+        "name": "Dotations aux dépréciations d'actifs",
         "type": 4,
         "is_posting_allowed": true,
         "is_reconcilable": false,
