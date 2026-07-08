@@ -199,8 +199,10 @@ def load_erp_lookups(conn) -> dict:
     )
     accounts_by_prefix: dict[str, str] = {}
     accounts_by_full_code: dict[str, str] = {}
+    accounts_code_by_uuid: dict[str, str] = {}
     for code, uuid in cur.fetchall():
         accounts_by_full_code[code] = uuid
+        accounts_code_by_uuid[uuid] = code
         prefix = code[:3]
         if prefix not in accounts_by_prefix:
             accounts_by_prefix[prefix] = uuid
@@ -251,28 +253,45 @@ def load_erp_lookups(conn) -> dict:
     )
     existing_references: set[str] = {r[0] for r in cur.fetchall()}
 
-    # 3. Content fingerprint (date, journal_code, total_debit, total_credit, line_count)
+    # 3. Content fingerprint (date, journal_code, sorted per-line (account_code, debit, credit))
     #    Catches entries imported via the backend CSV import endpoint (source_system='legacy-accounting-csv')
     #    which have no reference and a hash-based external_id we cannot reproduce.
+    #    Per-line account codes (not just aggregate totals) are required: two unrelated
+    #    entries can share the same date/journal/total/line-count by coincidence
+    #    (e.g. two distinct 171.20€ two-line entries on different accounts) — matching
+    #    on aggregate totals alone produces false-positive "already imported" skips.
     cur.execute(
         """
-        SELECT ae.entry_date::text,
+        SELECT ae.uuid::text,
+               ae.entry_date::text,
                aj.code,
-               ROUND(COALESCE(SUM(al.debit), 0), 2)::text,
-               ROUND(COALESCE(SUM(al.credit), 0), 2)::text,
-               COUNT(al.uuid)::text
+               aa.code,
+               al.debit,
+               al.credit
         FROM accounting_entries ae
         JOIN accounting_journals aj ON aj.uuid = ae.journal_uuid
         LEFT JOIN accounting_lines al
                ON al.entry_uuid = ae.uuid
               AND al.fiscal_year_uuid = ae.fiscal_year_uuid
+        LEFT JOIN accounting_accounts aa ON aa.uuid = al.account_uuid
         WHERE ae.fiscal_year_uuid = %s
-        GROUP BY ae.uuid, ae.entry_date, aj.code
         """,
         (fy_uuid,),
     )
+    _fp_entries: dict[tuple, list[tuple]] = {}
+    for entry_uuid, entry_date, journal_code, acc_code, debit, credit in cur.fetchall():
+        key = (entry_uuid, entry_date, journal_code)
+        if acc_code is None and debit is None and credit is None:
+            _fp_entries.setdefault(key, [])
+            continue
+        _fp_entries.setdefault(key, []).append((
+            acc_code or "",
+            str(Decimal(str(debit or 0)).quantize(Decimal("0.01"))),
+            str(Decimal(str(credit or 0)).quantize(Decimal("0.01"))),
+        ))
     existing_fingerprints: set[tuple] = {
-        (r[0], r[1], r[2], r[3], r[4]) for r in cur.fetchall()
+        (entry_date, journal_code, tuple(sorted(line_list)))
+        for (_entry_uuid, entry_date, journal_code), line_list in _fp_entries.items()
     }
 
     # Validated flights: build two lookup dicts.
@@ -360,6 +379,7 @@ def load_erp_lookups(conn) -> dict:
         "journals": journals,
         "accounts_by_prefix": accounts_by_prefix,
         "accounts_by_full_code": accounts_by_full_code,
+        "accounts_code_by_uuid": accounts_code_by_uuid,
         "members_by_ffvp": members_by_ffvp,
         "members_by_name": members_by_name,
         "existing_external_ids": existing_external_ids,
@@ -447,6 +467,24 @@ def _resolve_member(n_str: str, member_map: dict, context: str) -> dict:
 # Step 1 — Accounting entry import
 # ---------------------------------------------------------------------------
 
+def _resolve_fp_account_code(raw_compte: str, account_mapping: dict | None, lookups: dict) -> str:
+    """
+    Resolve a legacy account code to the same ERP account code the main
+    resolution loop below would produce, for fingerprint purposes only
+    (no warnings emitted here — the main loop re-resolves and warns).
+    """
+    prefix = raw_compte[:3]
+    if account_mapping and raw_compte in account_mapping:
+        erp_code = (account_mapping[raw_compte].get("erp_code") or "").strip() or prefix
+        account_uuid = (
+            lookups["accounts_by_full_code"].get(erp_code)
+            or lookups["accounts_by_prefix"].get(erp_code[:3])
+        )
+    else:
+        account_uuid = lookups["accounts_by_prefix"].get(prefix)
+    return lookups["accounts_code_by_uuid"].get(account_uuid, prefix)
+
+
 def build_accounting_entries(
     accounting_rows: list[dict],
     member_map: dict,
@@ -511,20 +549,23 @@ def build_accounting_entries(
         external_id = f"vulcain-{num_ecriture}"
 
         # Layer 3: content fingerprint — must be computed before processing lines
-        # so we can skip early. Use raw amounts from CSV (same precision as DB import).
+        # so we can skip early. Matches the DB-side fingerprint built in
+        # load_erp_lookups: (date, journal, sorted per-line (account_code, debit, credit)).
+        # Per-line account codes are required, not just aggregate totals — two unrelated
+        # entries can share the same date/journal/total/line-count by coincidence.
         try:
             raw_entry_date = _parse_date(lines[0].get(col_date) or "")
         except ValueError:
             raw_entry_date = ""
-        raw_total_d = sum(_clean_amount(r.get(col_debit) or "") for r in lines)
-        raw_total_c = sum(_clean_amount(r.get(col_credit) or "") for r in lines)
-        fingerprint = (
-            raw_entry_date,
-            erp_journal_code,
-            str(raw_total_d.quantize(Decimal("0.01"))),
-            str(raw_total_c.quantize(Decimal("0.01"))),
-            str(len(lines)),
-        )
+        line_fp = tuple(sorted(
+            (
+                _resolve_fp_account_code((r.get(col_compte) or "").strip(), account_mapping, lookups),
+                str(_clean_amount(r.get(col_debit) or "").quantize(Decimal("0.01"))),
+                str(_clean_amount(r.get(col_credit) or "").quantize(Decimal("0.01"))),
+            )
+            for r in lines
+        ))
+        fingerprint = (raw_entry_date, erp_journal_code, line_fp)
 
         if (external_id in existing_ids
                 or num_ecriture in existing_refs

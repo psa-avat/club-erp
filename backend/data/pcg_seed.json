@@ -240,6 +240,14 @@
         "require_id": 2
     },
     {
+        "code": "238",
+        "name": "Avances et acomptes versés sur commandes d'immobilisations corporelles",
+        "type": 1,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
         "code": "272",
         "name": "Titres immobilisés (droits de créance)",
         "type": 1,

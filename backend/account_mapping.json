@@ -1943,7 +1943,7 @@
     },
     {
       "vulcain_code": "706040000",
-      "erp_code": "706",
+      "erp_code": "7061",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -1953,7 +1953,7 @@
     },
     {
       "vulcain_code": "706040100",
-      "erp_code": "706",
+      "erp_code": "7061",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -1963,7 +1963,7 @@
     },
     {
       "vulcain_code": "706040300",
-      "erp_code": "706",
+      "erp_code": "7061",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -1973,7 +1973,7 @@
     },
     {
       "vulcain_code": "706100000",
-      "erp_code": "706",
+      "erp_code": "7062",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -1993,7 +1993,7 @@
     },
     {
       "vulcain_code": "706220000",
-      "erp_code": "706",
+      "erp_code": "7064",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -2003,7 +2003,7 @@
     },
     {
       "vulcain_code": "706300000",
-      "erp_code": "706",
+      "erp_code": "7064",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -2013,7 +2013,7 @@
     },
     {
       "vulcain_code": "706400000",
-      "erp_code": "706",
+      "erp_code": "7063",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -2023,7 +2023,7 @@
     },
     {
       "vulcain_code": "706400100",
-      "erp_code": "706",
+      "erp_code": "7063",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
