@@ -302,7 +302,7 @@ async def login(payload: LoginRequest, request: Request, db: AsyncSession = Depe
         # Email not configured: log the PIN to stdout so the admin can retrieve it via
         # `docker logs` or console during initial setup. Never log in production with email working.
         logger.warning(
-            "[SETUP] Email not configured. PIN for {} (expires in {} min): {}",
+            "[SETUP] Email not configured. PIN for {%s} (expires in {%d} min): {%s}",
             user.email,
             PIN_EXPIRATION_MINUTES,
             pin_code,
