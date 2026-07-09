@@ -176,7 +176,7 @@ BEGIN
     SET
         accounting_entry_uuid = NULL,
         billing_quote_state = 'pending',
-        has_discount = FALSE,
+        has_discount = NULL,
         erp_status = CASE
             WHEN erp_status = 1 THEN 2  -- was transferred → modified_after_transfer
             ELSE erp_status
@@ -1474,7 +1474,8 @@ CREATE TABLE public.member_pack_consumptions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     valid_from timestamp with time zone DEFAULT now() NOT NULL,
-    pack_definition_uuid uuid
+    pack_definition_uuid uuid,
+    purchase_entry_uuid uuid
 );
 
 
@@ -1518,6 +1519,13 @@ COMMENT ON COLUMN public.member_pack_consumptions.valid_from IS 'Pack is applica
 --
 
 COMMENT ON COLUMN public.member_pack_consumptions.pack_definition_uuid IS 'Which pack definition this consumption was applied to. NULL for legacy rows.';
+
+
+--
+-- Name: COLUMN member_pack_consumptions.purchase_entry_uuid; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.member_pack_consumptions.purchase_entry_uuid IS 'Which specific pack purchase (VT accounting entry) this consumption was drawn from — disambiguates consecutive purchases of the same pack_definition_uuid (e.g. 2x25h). NULL for legacy rows.';
 
 
 --
@@ -2299,7 +2307,7 @@ CREATE TABLE public.validated_flights (
     launch_machine_erp_id character varying,
     billing_quote_state character varying(32),
     charge_comment text,
-    has_discount boolean DEFAULT false NOT NULL,
+    has_discount boolean,
     CONSTRAINT chk_vf_erp_status CHECK ((erp_status = ANY (ARRAY[0, 1, 2]))),
     CONSTRAINT chk_vf_landing_count CHECK ((landing_count >= 1)),
     CONSTRAINT chk_vf_launch_method CHECK (((launch_method >= 0) AND (launch_method <= 3))),
@@ -2325,7 +2333,7 @@ COMMENT ON COLUMN public.validated_flights.billing_quote_state IS 'quoted | appl
 -- Name: COLUMN validated_flights.has_discount; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.validated_flights.has_discount IS 'True when pack discount has been applied to this flight';
+COMMENT ON COLUMN public.validated_flights.has_discount IS 'Pack discount review outcome: NULL=never reviewed, False=reviewed without discount, True=reviewed with discount';
 
 
 --
@@ -3796,6 +3804,13 @@ CREATE INDEX idx_mpc_flight ON public.member_pack_consumptions USING btree (flig
 --
 
 CREATE INDEX idx_mpc_pack_definition ON public.member_pack_consumptions USING btree (pack_definition_uuid);
+
+
+--
+-- Name: idx_mpc_purchase_entry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mpc_purchase_entry ON public.member_pack_consumptions USING btree (purchase_entry_uuid);
 
 
 --

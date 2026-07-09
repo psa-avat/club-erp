@@ -1557,7 +1557,13 @@ class ValidatedFlight(Base):
     # Accounting entry linkage
     accounting_entry_uuid = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)  # Link to GL entry
     billing_quote_state = Column(String(16), nullable=True, default="pending")
-    has_discount = Column(Boolean, nullable=False, default=False, comment="True when pack discount has been applied to this flight")
+    has_discount = Column(
+        Boolean, nullable=True, default=None,
+        comment="Pack discount review outcome for this flight: NULL=never reviewed, "
+                "False=reviewed without discount, True=reviewed with discount. "
+                "NULL vs False lets discount_review_for_member resume incrementally "
+                "instead of re-reviewing every billed flight.",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -2044,6 +2050,11 @@ class MemberPackConsumption(Base):
     pack_definition_uuid = Column(
         UUID(as_uuid=True), ForeignKey("pack_definitions.uuid", ondelete="SET NULL"), nullable=True, index=True,
         comment="Which pack definition this consumption was applied to (for multi-pack sequencing)",
+    )
+    purchase_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True, index=True,  # Link to the VT purchase entry (app-level integrity, no FK)
+        comment="Which specific pack purchase (VT accounting entry) this consumption was drawn from — "
+                "disambiguates consecutive purchases of the same pack_definition_uuid (e.g. 2x25h)",
     )
     valid_from = Column(DateTime(timezone=True), nullable=False, comment="Pack is applicable only to flights on or after this date")
     quantity_consumed = Column(Numeric(10, 2), nullable=False)
