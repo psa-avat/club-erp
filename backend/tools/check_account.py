@@ -11,8 +11,11 @@ Compare Vulcain CB (balance sheet) and CR (income statement) CSVs against
 the ERP's accounting ledger for fiscal year 2026.
 
 Input files (in legacy-data/):
-  CB 24062026.csv   Vulcain "Compte de Bilan" (balance sheet)
-  CR 24062026.csv   Vulcain "Compte de Résultat" (income statement)
+  CB 24062026.csv                     Vulcain "Compte de Bilan" (balance sheet)
+  CR 24062026.csv                     Vulcain "Compte de Résultat" (income statement)
+  V_comptabilité_validée_2026.csv     Vulcain raw ledger export (optional; used to
+                                       show Vulcain entry count/balance per journal
+                                       in the journal breakdown)
 
 Output files (in output/):
   check_account_report.txt      human-readable summary + per-account table
@@ -65,6 +68,25 @@ OUTPUT_DIR = TOOLS_DIR / "output"
 
 CB_FILE = LEGACY_DIR / "CB-AVAT.csv"
 CR_FILE = LEGACY_DIR / "CR-AVAT.csv"
+VULCAIN_ENTRIES_FILE = LEGACY_DIR / "V_comptabilité_validée_2026.csv"
+
+# Legacy Vulcain journal code -> ERP journal code (same mapping as
+# import_legacy.py). VVO (flight) entries are excluded: flight billing is
+# reconciled separately via the FL/REM journals, not the raw Vulcain ledger.
+JOURNAL_MAP: dict[str, str | None] = {
+    "VVO": None,
+    "RPT": "AN",
+    "VIN": "VT",
+    "VDI": "VT",
+    "AC":  "AC",
+    "BQ":  "BQ",
+    "CA":  "CA",
+    "EXP": "OD",
+    "INV": "OD",
+    "MEM": "OD",
+    "ORG": "OD",
+    "PER": "OD",
+}
 
 # ---------------------------------------------------------------------------
 # DB connection (same pattern as import_legacy.py)
@@ -379,6 +401,86 @@ def find_best_erp_match(vulcain_code: str, erp_codes_sorted: list[str]) -> str |
     return None
 
 
+def _find_entries_col(row: dict, candidates: list[str]) -> str:
+    """Find a column name in a legacy CSV row, tolerating accented headers."""
+    keys = list(row.keys())
+    for c in candidates:
+        if c in keys:
+            return c
+        for k in keys:
+            if len(c) >= 6 and k.startswith(c[:6]):
+                return k
+    return candidates[0]
+
+
+def load_vulcain_journal_breakdown(
+    path: Path,
+    erp_codes_sorted: list[str],
+    account_matching: dict[str, str | None] | None,
+) -> dict[str, dict[str, dict]]:
+    """
+    Read the raw Vulcain accounting ledger export and aggregate debit/credit/
+    entry counts per (ERP account code, ERP journal code), so the per-journal
+    breakdown can be cross-checked against the Vulcain ledger, not just the
+    ERP one.
+
+    Returns: erp_code -> erp_journal_code -> {"debit", "credit", "balance", "entries"}.
+    Returns {} if the source file is not present (feature degrades gracefully).
+    """
+    if not path.exists():
+        return {}
+
+    with open(path, encoding="latin-1", newline="") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        rows = list(reader)
+    if not rows:
+        return {}
+
+    sample = rows[0]
+    col_num = _find_entries_col(sample, ["num_écriture", "num_ecriture"])
+    col_compte = _find_entries_col(sample, ["compte"])
+    col_debit = _find_entries_col(sample, ["débit", "debit"])
+    col_credit = _find_entries_col(sample, ["crédit", "credit"])
+    col_journal = _find_entries_col(sample, ["journal"])
+
+    # (erp_code, erp_journal) -> {"debit", "credit", "entry_ids"}
+    agg: dict[tuple[str, str], dict] = {}
+
+    for row in rows:
+        vulcain_journal = (row.get(col_journal) or "").strip()
+        erp_journal = JOURNAL_MAP.get(vulcain_journal)
+        if erp_journal is None:
+            continue
+
+        vcode = (row.get(col_compte) or "").strip()
+        if not vcode:
+            continue
+        if account_matching is not None and vcode in account_matching:
+            erp_code = account_matching[vcode]
+        else:
+            erp_code = find_best_erp_match(vcode, erp_codes_sorted)
+        if erp_code is None:
+            continue
+
+        key = (erp_code, erp_journal)
+        bucket = agg.setdefault(key, {"debit": Decimal("0"), "credit": Decimal("0"), "entry_ids": set()})
+        bucket["debit"] += _clean_amount(row.get(col_debit))
+        bucket["credit"] += _clean_amount(row.get(col_credit))
+        num = (row.get(col_num) or "").strip()
+        if num:
+            bucket["entry_ids"].add(num)
+
+    result: dict[str, dict[str, dict]] = {}
+    for (erp_code, erp_journal), bucket in agg.items():
+        result.setdefault(erp_code, {})[erp_journal] = {
+            "debit": bucket["debit"],
+            "credit": bucket["credit"],
+            "balance": bucket["debit"] - bucket["credit"],
+            "entries": len(bucket["entry_ids"]),
+        }
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Account matching file — export and load
 # ---------------------------------------------------------------------------
@@ -486,11 +588,37 @@ def load_account_matching(path: Path) -> dict[str, str | None]:
 # Comparison logic
 # ---------------------------------------------------------------------------
 
+def _build_journal_detail(
+    erp_code: str,
+    erp_by_journal: dict[str, list[dict]],
+    vulcain_journal_by_account: dict[str, dict[str, dict]],
+) -> tuple[list[dict], str]:
+    """Attach Vulcain entry count / balance to each ERP per-journal line."""
+    vulcain_journals = vulcain_journal_by_account.get(erp_code, {})
+    detail: list[dict] = []
+    for j in erp_by_journal.get(erp_code, []):
+        v = vulcain_journals.get(j["journal"])
+        detail.append({
+            **j,
+            "vulcain_entries": v["entries"] if v else 0,
+            "vulcain_debit": v["debit"] if v else Decimal("0"),
+            "vulcain_credit": v["credit"] if v else Decimal("0"),
+            "vulcain_balance": v["balance"] if v else Decimal("0"),
+        })
+    breakdown_str = "  ".join(
+        f"{j['journal']}: D={j['debit']:.2f} C={j['credit']:.2f} ({j['entries']} entries, "
+        f"vulcain {j['vulcain_entries']} entries bal={j['vulcain_balance']:.2f})"
+        for j in detail
+    )
+    return detail, breakdown_str
+
+
 def compare(
     vulcain_accounts: list[dict],
     erp_data: dict,
     threshold: Decimal,
     account_matching: dict[str, str | None] | None = None,
+    vulcain_journal_by_account: dict[str, dict[str, dict]] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Map Vulcain accounts to ERP codes, aggregate, and compare.
@@ -503,6 +631,7 @@ def compare(
     erp_accounts = erp_data["erp_accounts"]
     erp_by_journal = erp_data["erp_by_journal"]
     erp_codes_sorted = _build_erp_code_list(erp_accounts)
+    vulcain_journal_by_account = vulcain_journal_by_account or {}
 
     # Group Vulcain accounts by their best-matching ERP code
     # Key: (erp_code, side)  Value: list of Vulcain account dicts
@@ -551,10 +680,8 @@ def compare(
         flagged = abs(diff) > threshold
 
         erp_name = erp_accounts.get(erp_code, {}).get("name", "")
-        journal_breakdown = erp_by_journal.get(erp_code, [])
-        breakdown_str = "  ".join(
-            f"{j['journal']}: D={j['debit']:.2f} C={j['credit']:.2f} ({j['entries']} entries)"
-            for j in journal_breakdown
+        journal_breakdown, breakdown_str = _build_journal_detail(
+            erp_code, erp_by_journal, vulcain_journal_by_account
         )
 
         comparison_rows.append({
@@ -584,10 +711,8 @@ def compare(
         if abs(bal["net"]) <= threshold:
             continue
         erp_name = erp_accounts.get(erp_code, {}).get("name", "")
-        journal_breakdown = erp_by_journal.get(erp_code, [])
-        breakdown_str = "  ".join(
-            f"{j['journal']}: D={j['debit']:.2f} C={j['credit']:.2f} ({j['entries']} entries)"
-            for j in journal_breakdown
+        journal_breakdown, breakdown_str = _build_journal_detail(
+            erp_code, erp_by_journal, vulcain_journal_by_account
         )
         comparison_rows.append({
             "erp_code": erp_code,
@@ -701,16 +826,27 @@ def build_report(
         if row["erp_missing"]:
             lines.append("  *** Account has no balance in ERP (no entries) ***")
         else:
+            erp_entries_total = sum(j["entries"] for j in row["_journal_detail"])
+            vulcain_entries_total = sum(j["vulcain_entries"] for j in row["_journal_detail"])
+            vulcain_debit_total = sum(j["vulcain_debit"] for j in row["_journal_detail"])
+            vulcain_credit_total = sum(j["vulcain_credit"] for j in row["_journal_detail"])
+            vulcain_balance_total = sum(j["vulcain_balance"] for j in row["_journal_detail"])
             lines.append(
-                f"  ERP total:  debit={row['erp_debit']:.2f}  "
-                f"credit={row['erp_credit']:.2f}  net={row['erp_net']:.2f}"
+                f"  ERP total:      entries={erp_entries_total:<4}  debit={row['erp_debit']:.2f}  "
+                f"credit={row['erp_credit']:.2f}  balance={row['erp_net']:.2f}"
+            )
+            lines.append(
+                f"  Vulcain total:  entries={vulcain_entries_total:<4}  debit={vulcain_debit_total:.2f}  "
+                f"credit={vulcain_credit_total:.2f}  balance={vulcain_balance_total:.2f}"
             )
         if row["_journal_detail"]:
             lines.append("  By journal:")
             for j in row["_journal_detail"]:
                 lines.append(
                     f"    {j['journal']:<6}  debit={j['debit']:>12.2f}  "
-                    f"credit={j['credit']:>12.2f}  ({j['entries']} entries)"
+                    f"credit={j['credit']:>12.2f}  ({j['entries']} entries)  "
+                    f"vulcain: {j['vulcain_entries']} entries  "
+                    f"balance={j['vulcain_balance']:>12.2f}"
                 )
 
     if unmatched:
@@ -920,9 +1056,21 @@ def main() -> None:
         exclusions = sum(1 for v in account_matching.values() if v is None)
         print(f"  {len(account_matching)} entries loaded ({overrides} mapped, {exclusions} excluded)")
 
+    # Load raw Vulcain ledger for the per-journal breakdown (entry count + balance)
+    erp_codes_sorted = _build_erp_code_list(erp_data["erp_accounts"])
+    vulcain_journal_by_account = load_vulcain_journal_breakdown(
+        VULCAIN_ENTRIES_FILE, erp_codes_sorted, account_matching
+    )
+    if vulcain_journal_by_account:
+        print(f"  Vulcain ledger loaded: {VULCAIN_ENTRIES_FILE.name}")
+    else:
+        print(f"  (no Vulcain ledger found at {VULCAIN_ENTRIES_FILE.name} — journal breakdown will show 0 vulcain entries)")
+
     # Compare
     print("\nComparing…")
-    comparison_rows, unmatched = compare(all_vulcain, erp_data, threshold, account_matching)
+    comparison_rows, unmatched = compare(
+        all_vulcain, erp_data, threshold, account_matching, vulcain_journal_by_account
+    )
     flagged = [r for r in comparison_rows if r["flagged"]]
     print(
         f"  {len(comparison_rows)} account groups  "
