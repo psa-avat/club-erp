@@ -101,17 +101,65 @@ class PlanIncrementalReviewTests(IsolatedAsyncioTestCase):
 
         self.assertIsNone(plan)
 
-    async def test_no_new_flights_returns_noop_plan_without_loading_pack_context(self):
+    async def test_no_new_flights_and_no_packs_returns_noop_plan(self):
         db = AsyncMock()
         db.execute.side_effect = [
             _FakeResult(one=(date(2026, 5, 1), False)),
             _FakeResult(rows=[]),
         ]
 
-        plan = await _plan_incremental_review(db, uuid4(), uuid4())
+        with patch(
+            "services.flight_packs._load_pack_context",
+            AsyncMock(return_value=([], {})),
+        ):
+            plan = await _plan_incremental_review(db, uuid4(), uuid4())
 
         self.assertEqual(plan, _IncrementalPlan(new_flights=[], pack_slots=[], pi_to_slots={}))
         self.assertEqual(db.execute.await_count, 2)
+
+    async def test_new_pack_purchase_with_no_new_flights_still_falls_back_to_full(self):
+        """Reproduces the reported bug: a member buys a pack but hasn't flown
+        since their last review. With zero new flights, the planner must still
+        notice the new, unconsumed pack (activated within the already-reviewed
+        window) and fall back to a full recompute — otherwise the pack would
+        silently never get consumed (units_remaining stuck at full, no flights
+        listed) until the member happens to fly again."""
+        boundary = date(2026, 5, 1)
+        new_pack_slot = _pack_slot(activated_at=date(2026, 1, 1))  # covers already-reviewed flights
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _FakeResult(one=(boundary, False)),
+            _FakeResult(rows=[]),  # no new flights
+            _FakeResult(rows=[]),  # known_purchases_result: this purchase was never consumed
+        ]
+
+        with patch(
+            "services.flight_packs._load_pack_context",
+            AsyncMock(return_value=([new_pack_slot], {})),
+        ):
+            plan = await _plan_incremental_review(db, uuid4(), uuid4())
+
+        self.assertIsNone(plan)
+
+    async def test_new_pack_purchase_activated_after_boundary_with_no_new_flights_is_a_true_noop(self):
+        """A pack activated after the reviewed boundary has nothing to cover
+        yet (no flight exists on or after its activation date) — that's a
+        legitimate noop, not a case requiring a fallback."""
+        boundary = date(2026, 5, 1)
+        future_pack_slot = _pack_slot(activated_at=date(2026, 6, 1))
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _FakeResult(one=(boundary, False)),
+            _FakeResult(rows=[]),  # no new flights
+        ]
+
+        with patch(
+            "services.flight_packs._load_pack_context",
+            AsyncMock(return_value=([future_pack_slot], {})),
+        ):
+            plan = await _plan_incremental_review(db, uuid4(), uuid4())
+
+        self.assertEqual(plan, _IncrementalPlan(new_flights=[], pack_slots=[], pi_to_slots={}))
 
     async def test_backdated_new_flight_falls_back_to_full(self):
         boundary = date(2026, 5, 10)
