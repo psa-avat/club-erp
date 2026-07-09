@@ -1051,38 +1051,49 @@ async def _plan_incremental_review(
     )
     new_flights = list(new_flights_result.unique().scalars().all())
 
-    if not new_flights:
-        return _IncrementalPlan(new_flights=[], pack_slots=[], pi_to_slots={})
-
     if any(f.jour <= boundary_jour for f in new_flights):
         return None
 
+    # Load pack context and check for a purchase that could retroactively cover
+    # already-reviewed flights UNCONDITIONALLY — even when there are no new
+    # flights at all. A member buying a pack without having flown since their
+    # last review is exactly the common case: with nothing "new" to trigger a
+    # recheck, an early return here would silently leave that pack unconsumed
+    # forever (units_remaining stuck at the full allowance, no flights listed).
     pack_slots, pi_to_slots = await _load_pack_context(db, member_uuid, fiscal_year_uuid)
+
+    slots_within_reviewed_window = [s for s in pack_slots if s.activated_at <= boundary_jour]
+    if slots_within_reviewed_window:
+        # purchase_entry_uuid identifies one specific purchase (VT accounting
+        # entry), so it disambiguates consecutive purchases of the same
+        # pack_definition — the common case (e.g. a member buying two 25h
+        # packs back to back) — with no need to treat them as ambiguous.
+        known_purchases_result = await db.execute(
+            select(MemberPackConsumption.purchase_entry_uuid)
+            .where(
+                MemberPackConsumption.tiers_uuid == member_uuid,
+                MemberPackConsumption.flight_uuid.isnot(None),
+                MemberPackConsumption.purchase_entry_uuid.isnot(None),
+            )
+            .distinct()
+        )
+        known_purchases = {row[0] for row in known_purchases_result.all()}
+        for slot in slots_within_reviewed_window:
+            if slot.purchase_entry_uuid not in known_purchases:
+                # Slot activated within the already-reviewed window but never
+                # consumed under its own purchase_entry_uuid — either a new
+                # purchase that can retroactively cover already-reviewed
+                # flights, one backdated after the fact, or legacy data from
+                # before purchase_entry_uuid was tracked. A full recompute is
+                # needed to settle it correctly and backfill the field going
+                # forward.
+                return None
+
+    if not new_flights:
+        return _IncrementalPlan(new_flights=[], pack_slots=[], pi_to_slots={})
+
     if not pack_slots:
         return None
-
-    # purchase_entry_uuid identifies one specific purchase (VT accounting entry),
-    # so it disambiguates consecutive purchases of the same pack_definition —
-    # the common case (e.g. a member buying two 25h packs back to back) — with
-    # no need to treat them as ambiguous.
-    known_purchases_result = await db.execute(
-        select(MemberPackConsumption.purchase_entry_uuid)
-        .where(
-            MemberPackConsumption.tiers_uuid == member_uuid,
-            MemberPackConsumption.flight_uuid.isnot(None),
-            MemberPackConsumption.purchase_entry_uuid.isnot(None),
-        )
-        .distinct()
-    )
-    known_purchases = {row[0] for row in known_purchases_result.all()}
-    for slot in pack_slots:
-        if slot.activated_at <= boundary_jour and slot.purchase_entry_uuid not in known_purchases:
-            # Slot activated within the already-reviewed window but never
-            # consumed under its own purchase_entry_uuid — either a purchase
-            # backdated after the fact, or legacy data from before
-            # purchase_entry_uuid was tracked. A full recompute is needed to
-            # settle it correctly and backfill the field going forward.
-            return None
 
     consumed_result = await db.execute(
         select(
