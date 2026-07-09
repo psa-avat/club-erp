@@ -1557,7 +1557,13 @@ class ValidatedFlight(Base):
     # Accounting entry linkage
     accounting_entry_uuid = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)  # Link to GL entry
     billing_quote_state = Column(String(16), nullable=True, default="pending")
-    has_discount = Column(Boolean, nullable=False, default=False, comment="True when pack discount has been applied to this flight")
+    has_discount = Column(
+        Boolean, nullable=True, default=None,
+        comment="Pack discount review outcome for this flight: NULL=never reviewed, "
+                "False=reviewed without discount, True=reviewed with discount. "
+                "NULL vs False lets discount_review_for_member resume incrementally "
+                "instead of re-reviewing every billed flight.",
+    )
 
     created_at = Column(
         DateTime(timezone=True),

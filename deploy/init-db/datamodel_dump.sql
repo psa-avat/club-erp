@@ -2132,7 +2132,7 @@ CREATE TABLE public.validated_flights (
     launch_machine_erp_id character varying,
     billing_quote_state character varying(32),
     charge_comment text,
-    has_discount boolean DEFAULT false NOT NULL,
+    has_discount boolean,
     CONSTRAINT chk_vf_erp_status CHECK ((erp_status = ANY (ARRAY[0, 1, 2]))),
     CONSTRAINT chk_vf_landing_count CHECK ((landing_count >= 1)),
     CONSTRAINT chk_vf_launch_method CHECK (((launch_method >= 0) AND (launch_method <= 3))),
@@ -2160,7 +2160,7 @@ COMMENT ON COLUMN public.validated_flights.billing_quote_state IS 'quoted | appl
 -- Name: COLUMN validated_flights.has_discount; Type: COMMENT; Schema: public; Owner: erpuser
 --
 
-COMMENT ON COLUMN public.validated_flights.has_discount IS 'True when pack discount has been applied to this flight';
+COMMENT ON COLUMN public.validated_flights.has_discount IS 'Pack discount review outcome: NULL=never reviewed, False=reviewed without discount, True=reviewed with discount';
 
 
 --

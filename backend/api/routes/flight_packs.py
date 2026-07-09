@@ -354,8 +354,11 @@ async def list_pack_purchases(
         # Get member from the debit side of this entry
         entry_member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
 
-        # Get consumptions for this member + pack_type
-        consumptions = await list_consumptions_for_member(db, entry_member_uuid, pack_def.pack_type)
+        # Get consumptions for this specific pack purchase (not just its pack_type,
+        # which two different purchases can share).
+        consumptions = await list_consumptions_for_member(
+            db, entry_member_uuid, pack_def.pack_type, pack_definition_uuid=pack_def.uuid,
+        )
         units_consumed = sum(c.quantity_consumed for c in consumptions)
         total_discount_eur = sum(c.total_discount_amount for c in consumptions)
 
@@ -529,6 +532,7 @@ async def discount_review_endpoint(
         db=db,
         fiscal_year_uuid=request.fiscal_year_uuid,
         user_id=current_user.id,
+        force_full=request.force_full,
     )
     return DiscountReviewResponse(
         members_affected=result["members_affected"],
@@ -559,6 +563,7 @@ async def discount_review_member_endpoint(
         member_uuid=member_uuid,
         fiscal_year_uuid=request.fiscal_year_uuid,
         user_id=current_user.id,
+        force_full=request.force_full,
     )
     return DiscountReviewResponse(
         members_affected=1 if result["flights_count"] > 0 else 0,

@@ -280,13 +280,24 @@ async def list_consumptions_for_member(
     db: AsyncSession,
     member_uuid: UUID,
     pack_type: str | None = None,
+    pack_definition_uuid: UUID | None = None,
 ) -> list[MemberPackConsumption]:
-    """List all pack consumptions for a given member, optionally filtered by type."""
+    """
+    List pack consumptions for a given member.
+
+    `pack_type` filters broadly (e.g. for a member-wide summary). Pass
+    `pack_definition_uuid` when the caller means "the flights consumed by
+    THIS specific pack purchase" — two purchases can share the same
+    pack_type (e.g. two different flight-hours packs), and pack_type alone
+    would mix their consumed flights together.
+    """
     stmt = select(MemberPackConsumption).where(
         MemberPackConsumption.tiers_uuid == member_uuid
     )
     if pack_type is not None:
         stmt = stmt.where(MemberPackConsumption.pack_type == pack_type)
+    if pack_definition_uuid is not None:
+        stmt = stmt.where(MemberPackConsumption.pack_definition_uuid == pack_definition_uuid)
     stmt = stmt.order_by(MemberPackConsumption.created_at.desc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -953,11 +964,220 @@ async def upsert_rem_entry(
 
 
 # ---------------------------------------------------------------------------
-# discount_review_for_member (v2 — purge vols uniquement, slots FIFO)
+# discount_review_for_member — dispatch vers un recalcul incrémental ou complet
 # ---------------------------------------------------------------------------
 
-async def discount_review_for_member(
+@dataclass
+class _IncrementalPlan:
+    """
+    Plan de reprise incrémentale : uniquement les vols jamais passés en revue
+    doivent traverser le FIFO — pack_slots.remaining est reconstruit à partir
+    des consommations déjà persistées plutôt que rejoué depuis zéro.
+    """
+    new_flights: list[ValidatedFlight]
+    pack_slots: list[_PackSlot]
+    pi_to_slots: dict[str, list[_PackSlot]]
+
+
+async def _plan_incremental_review(
     db: AsyncSession,
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+) -> "_IncrementalPlan | None":
+    """
+    Construit un plan pour reprendre la revue des remises là où elle s'est
+    arrêtée, ou renvoie None quand un recalcul complet est nécessaire.
+
+    Un vol est "passé en revue" dès que has_discount n'est plus NULL — ce
+    champ est renseigné pour CHAQUE vol qui traverse _apply_flight_consumptions,
+    qu'il obtienne une remise ou non (contrairement à member_pack_consumptions,
+    qui ne trace que les vols effectivement remisés et se fige donc dès qu'un
+    pack est épuisé).
+
+    Le mode incrémental n'est sûr que si rien n'a pu rebattre l'ordre FIFO ou
+    les soldes des vols déjà passés en revue. On retombe donc sur un recalcul
+    complet (retour None) si :
+      - le membre n'a jamais été passé en revue (pas de base à reprendre) ;
+      - un vol déjà revu a été modifié après transfert (erp_status=2) ;
+      - un vol "nouveau" est daté avant ou le jour même du dernier vol revu
+        (un vol rétrodaté devrait être inséré au milieu du FIFO déjà figé) ;
+      - le membre détient plusieurs slots actifs de la même pack_definition
+        (leur solde individuel n'est pas déductible de la seule somme agrégée) ;
+      - un slot de pack activé avant ou à la date pivot n'a aucune consommation
+        enregistrée — signe d'un achat rétrodaté après coup, jamais vu par la
+        revue précédente.
+    """
+    reviewed_result = await db.execute(
+        select(
+            func.max(ValidatedFlight.jour),
+            func.bool_or(ValidatedFlight.erp_status == 2),
+        )
+        .join(AccountingEntry, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
+        .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .where(
+            ValidatedFlight.accounting_entry_uuid.isnot(None),
+            ValidatedFlight.has_discount.isnot(None),
+            AccountingLine.tiers_uuid == member_uuid,
+            AccountingLine.debit > 0,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+        )
+    )
+    boundary_jour, any_modified_after_transfer = reviewed_result.one()
+    if boundary_jour is None or any_modified_after_transfer:
+        return None
+
+    new_flights_result = await db.execute(
+        select(ValidatedFlight)
+        .join(AccountingEntry, ValidatedFlight.accounting_entry_uuid == AccountingEntry.uuid)
+        .join(AccountingLine, AccountingLine.entry_uuid == AccountingEntry.uuid)
+        .where(
+            ValidatedFlight.accounting_entry_uuid.isnot(None),
+            ValidatedFlight.has_discount.is_(None),
+            AccountingLine.tiers_uuid == member_uuid,
+            AccountingLine.debit > 0,
+            AccountingEntry.fiscal_year_uuid == fiscal_year_uuid,
+        )
+        .order_by(ValidatedFlight.jour.asc(), ValidatedFlight.uuid.asc())
+    )
+    new_flights = list(new_flights_result.unique().scalars().all())
+
+    if not new_flights:
+        return _IncrementalPlan(new_flights=[], pack_slots=[], pi_to_slots={})
+
+    if any(f.jour <= boundary_jour for f in new_flights):
+        return None
+
+    pack_slots, pi_to_slots = await _load_pack_context(db, member_uuid, fiscal_year_uuid)
+    if not pack_slots:
+        return None
+
+    seen_defs: set[UUID] = set()
+    for slot in pack_slots:
+        if slot.pack_def.uuid in seen_defs:
+            return None
+        seen_defs.add(slot.pack_def.uuid)
+
+    known_defs_result = await db.execute(
+        select(MemberPackConsumption.pack_definition_uuid)
+        .where(
+            MemberPackConsumption.tiers_uuid == member_uuid,
+            MemberPackConsumption.flight_uuid.isnot(None),
+        )
+        .distinct()
+    )
+    known_defs = {row[0] for row in known_defs_result.all()}
+    for slot in pack_slots:
+        if slot.activated_at <= boundary_jour and slot.pack_def.uuid not in known_defs:
+            return None
+
+    consumed_result = await db.execute(
+        select(
+            MemberPackConsumption.pack_definition_uuid,
+            func.sum(MemberPackConsumption.quantity_consumed),
+        )
+        .where(
+            MemberPackConsumption.tiers_uuid == member_uuid,
+            MemberPackConsumption.flight_uuid.isnot(None),
+        )
+        .group_by(MemberPackConsumption.pack_definition_uuid)
+    )
+    consumed_by_def = {row[0]: row[1] for row in consumed_result.all()}
+    for slot in pack_slots:
+        slot.remaining -= consumed_by_def.get(slot.pack_def.uuid, Decimal("0"))
+
+    return _IncrementalPlan(new_flights=new_flights, pack_slots=pack_slots, pi_to_slots=pi_to_slots)
+
+
+async def _run_incremental_review(
+    db: AsyncSession,
+    member: Member,
+    settings: FlightBillingSettings,
+    fiscal_year_uuid: UUID,
+    user_id: int,
+    plan: "_IncrementalPlan",
+) -> dict:
+    """Traite uniquement les vols jamais revus, à partir de l'état FIFO reconstruit."""
+    for flight in plan.new_flights:
+        await _apply_flight_consumptions(
+            db=db,
+            flight=flight,
+            member=member,
+            pack_slots=plan.pack_slots,
+            pi_to_slots=plan.pi_to_slots,
+            fiscal_year_uuid=fiscal_year_uuid,
+        )
+    if plan.new_flights:
+        await db.flush()
+
+    total_result = await db.execute(
+        select(func.coalesce(func.sum(MemberPackConsumption.total_discount_amount), 0))
+        .where(
+            MemberPackConsumption.tiers_uuid == member.uuid,
+            MemberPackConsumption.flight_uuid.isnot(None),
+        )
+    )
+    total_discount = _dec(total_result.scalar_one())
+
+    flights_count_result = await db.execute(
+        select(func.count(func.distinct(MemberPackConsumption.flight_uuid)))
+        .where(
+            MemberPackConsumption.tiers_uuid == member.uuid,
+            MemberPackConsumption.flight_uuid.isnot(None),
+        )
+    )
+    flights_count = flights_count_result.scalar_one()
+
+    logger.info(
+        "discount_review_for_member[incremental]: %d nouveau(x) vol(s) traité(s), "
+        "total_discount=%s sur %d vols pour membre %s",
+        len(plan.new_flights), total_discount, flights_count, member.uuid,
+    )
+
+    rem_entry_uuid = None
+    if flights_count > 0:
+        try:
+            rem_entry = await upsert_rem_entry(
+                db=db,
+                member_uuid=member.uuid,
+                fiscal_year_uuid=fiscal_year_uuid,
+                rem_journal_uuid=settings.rem_journal_uuid,
+                discount_account_uuid=settings.default_pack_discount_expense_account_uuid,
+                total_discount=total_discount,
+                user_id=user_id,
+            )
+            rem_entry_uuid = str(rem_entry.uuid)
+
+            await db.execute(
+                update(MemberPackConsumption)
+                .where(
+                    MemberPackConsumption.tiers_uuid == member.uuid,
+                    MemberPackConsumption.flight_uuid.isnot(None),
+                )
+                .values(accounting_entry_uuid=rem_entry.uuid)
+            )
+        except ValueError as exc:
+            logger.error(
+                "discount_review_for_member[incremental]: upsert REM échoué pour membre %s : %s",
+                member.uuid, exc,
+            )
+
+    await db.commit()
+
+    return {
+        "member_uuid": str(member.uuid),
+        "member_name": f"{member.first_name} {member.last_name}",
+        "flights_count": flights_count,
+        "total_discount": str(total_discount),
+        "rem_entry_uuid": rem_entry_uuid,
+        "mode": "incremental",
+        "flights_processed": len(plan.new_flights),
+    }
+
+
+async def _run_full_review(
+    db: AsyncSession,
+    member: Member,
+    settings: FlightBillingSettings,
     member_uuid: UUID,
     fiscal_year_uuid: UUID,
     user_id: int,
@@ -973,33 +1193,6 @@ async def discount_review_for_member(
       - Liaison des consommations à l'écriture REM filtrée sur flight_uuid IS NOT NULL
       - Un seul commit() en fin
     """
-    logger.info(
-        "discount_review_for_member member=%s fiscal_year=%s",
-        member_uuid, fiscal_year_uuid,
-    )
-
-    settings_result = await db.execute(
-        select(FlightBillingSettings).where(
-            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
-        )
-    )
-    settings = settings_result.scalar_one_or_none()
-    if settings is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Flight billing settings not configured for this fiscal year.",
-        )
-    if settings.default_pack_discount_expense_account_uuid is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pack discount expense account not configured in flight billing settings.",
-        )
-
-    member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
-    member = member_result.scalar_one_or_none()
-    if member is None:
-        raise HTTPException(status_code=404, detail="Member not found")
-
     # -------------------------------------------------------------------
     # Passe 1 : purge des consommations de VOLS uniquement
     # flight_uuid IS NOT NULL → lignes de remise vol
@@ -1012,7 +1205,9 @@ async def discount_review_for_member(
         )
     )
     # Reset has_discount flag — clean slate avant recalcul, même pour les vols
-    # qui ne seraient plus dans le scope de facturation de l'exercice
+    # qui ne seraient plus dans le scope de facturation de l'exercice.
+    # NULL (et non False) pour que le prochain appel puisse repartir en mode
+    # incrémental dès que ce recalcul complet aura posé une nouvelle base.
     await db.execute(
         update(ValidatedFlight)
         .where(
@@ -1027,11 +1222,11 @@ async def discount_review_for_member(
                 )
             ),
         )
-        .values(has_discount=False)
+        .values(has_discount=None)
     )
     await db.flush()
     logger.info(
-        "discount_review_for_member: consommations vols purgées et has_discount reset pour membre %s",
+        "discount_review_for_member[full]: consommations vols purgées et has_discount reset pour membre %s",
         member_uuid,
     )
 
@@ -1053,7 +1248,7 @@ async def discount_review_for_member(
     flights = list(flights_result.unique().scalars().all())
 
     logger.info(
-        "discount_review_for_member: %d vols facturés pour membre %s",
+        "discount_review_for_member[full]: %d vols facturés pour membre %s",
         len(flights), member_uuid,
     )
 
@@ -1064,8 +1259,18 @@ async def discount_review_for_member(
 
     if not pack_slots:
         logger.warning(
-            "discount_review_for_member: aucun pack acheté pour membre %s exercice %s",
+            "discount_review_for_member[full]: aucun pack acheté pour membre %s exercice %s",
             member_uuid, fiscal_year_uuid,
+        )
+        # No pack at all for this member: every scoped flight is genuinely
+        # reviewed with zero discount. Mark them False (not left at the NULL
+        # reset above), so future calls recognize this member as reviewed
+        # and can go straight to incremental instead of retrying a full
+        # recompute on every call.
+        await db.execute(
+            update(ValidatedFlight)
+            .where(ValidatedFlight.uuid.in_([f.uuid for f in flights]))
+            .values(has_discount=False)
         )
         await db.commit()
         return {
@@ -1074,6 +1279,7 @@ async def discount_review_for_member(
             "flights_count": 0,
             "total_discount": "0",
             "rem_entry_uuid": None,
+            "mode": "full",
         }
 
     # -------------------------------------------------------------------
@@ -1097,7 +1303,7 @@ async def discount_review_for_member(
 
     await db.flush()
     logger.info(
-        "discount_review_for_member: total_discount=%s sur %d vols pour membre %s",
+        "discount_review_for_member[full]: total_discount=%s sur %d vols pour membre %s",
         total_discount, member_flights_count, member_uuid,
     )
 
@@ -1129,7 +1335,7 @@ async def discount_review_for_member(
             )
         except ValueError as exc:
             logger.error(
-                "discount_review_for_member: upsert REM échoué pour membre %s : %s",
+                "discount_review_for_member[full]: upsert REM échoué pour membre %s : %s",
                 member_uuid, exc,
             )
 
@@ -1141,7 +1347,58 @@ async def discount_review_for_member(
         "flights_count": member_flights_count,
         "total_discount": str(total_discount),
         "rem_entry_uuid": rem_entry_uuid,
+        "mode": "full",
     }
+
+
+async def discount_review_for_member(
+    db: AsyncSession,
+    member_uuid: UUID,
+    fiscal_year_uuid: UUID,
+    user_id: int,
+    *,
+    force_full: bool = False,
+) -> dict:
+    """
+    Recalcule les remises pack pour les vols facturés d'un membre.
+
+    Passe en mode incrémental (ne rejoue que les vols jamais passés en revue)
+    quand c'est prouvé sûr — voir _plan_incremental_review pour les conditions
+    de repli. Sinon, ou si force_full=True (bouton "recalcul complet"), fait
+    un recalcul FIFO complet sur tout l'exercice.
+    """
+    logger.info(
+        "discount_review_for_member member=%s fiscal_year=%s force_full=%s",
+        member_uuid, fiscal_year_uuid, force_full,
+    )
+
+    settings_result = await db.execute(
+        select(FlightBillingSettings).where(
+            FlightBillingSettings.fiscal_year_uuid == fiscal_year_uuid
+        )
+    )
+    settings = settings_result.scalar_one_or_none()
+    if settings is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Flight billing settings not configured for this fiscal year.",
+        )
+    if settings.default_pack_discount_expense_account_uuid is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pack discount expense account not configured in flight billing settings.",
+        )
+
+    member_result = await db.execute(select(Member).where(Member.uuid == member_uuid))
+    member = member_result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    plan = None if force_full else await _plan_incremental_review(db, member_uuid, fiscal_year_uuid)
+    if plan is not None:
+        return await _run_incremental_review(db, member, settings, fiscal_year_uuid, user_id, plan)
+
+    return await _run_full_review(db, member, settings, member_uuid, fiscal_year_uuid, user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1152,10 +1409,13 @@ async def discount_review(
     db: AsyncSession,
     fiscal_year_uuid: UUID,
     user_id: int,
+    *,
+    force_full: bool = False,
 ) -> dict:
     """
     Recalcule les remises pack pour TOUS les membres facturés dans l'exercice.
-    Délègue à discount_review_for_member pour chaque membre.
+    Délègue à discount_review_for_member pour chaque membre (mode incrémental
+    par défaut, recalcul complet si force_full=True).
     """
     settings_result = await db.execute(
         select(FlightBillingSettings).where(
@@ -1200,6 +1460,7 @@ async def discount_review(
                 member_uuid=member_uuid,
                 fiscal_year_uuid=fiscal_year_uuid,
                 user_id=user_id,
+                force_full=force_full,
             )
             if result["flights_count"] > 0:
                 members_affected += 1
@@ -1304,7 +1565,9 @@ async def list_pack_purchases_for_member(
 
         entry_member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
 
-        consumptions = await list_consumptions_for_member(db, entry_member_uuid, pack_def.pack_type)
+        consumptions = await list_consumptions_for_member(
+            db, entry_member_uuid, pack_def.pack_type, pack_definition_uuid=pack_def.uuid,
+        )
         units_consumed = sum(c.quantity_consumed for c in consumptions)
         total_discount_eur = sum(c.total_discount_amount for c in consumptions)
 

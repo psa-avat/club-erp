@@ -259,7 +259,11 @@ class FlightBillingApplyService:
 
         flight.accounting_entry_uuid = None
         flight.billing_quote_state = "pending"
-        flight.has_discount = False
+        # NULL (not False): the flight is leaving billing scope entirely and
+        # must be treated as never-reviewed if/when it gets re-billed, so the
+        # incremental discount review (flight_packs.discount_review_for_member)
+        # picks it up again instead of skipping it as already-settled.
+        flight.has_discount = None
         await self.db.flush()
 
         # Patch each affected member's REM discount entry.

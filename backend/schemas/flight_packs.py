@@ -218,6 +218,12 @@ class PackPurchaseUpdate(BaseModel):
 class DiscountReviewRequest(BaseModel):
     """Trigger a discount review for all billed flights."""
     fiscal_year_uuid: UUID
+    force_full: bool = Field(
+        default=False,
+        description="Force a full FIFO recompute instead of the default "
+                    "incremental review (which only replays flights never "
+                    "reviewed before).",
+    )
 
 
 class DiscountReviewResponse(BaseModel):

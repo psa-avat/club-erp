@@ -17,7 +17,7 @@ BEGIN
     SET
         accounting_entry_uuid = NULL,
         billing_quote_state = 'pending',
-        has_discount = FALSE,
+        has_discount = NULL,
         erp_status = CASE
             WHEN erp_status = 1 THEN 2  -- was transferred → modified_after_transfer
             ELSE erp_status
