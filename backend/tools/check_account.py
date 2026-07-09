@@ -80,7 +80,7 @@ JOURNAL_MAP: dict[str, str | None] = {
     "VDI": "VT",
     "AC":  "AC",
     "BQ":  "BQ",
-    "CA":  "CA",
+    "CA":  "CS",  # CA journal retired (merged into CS, see merge_journals.py)
     "EXP": "OD",
     "INV": "OD",
     "MEM": "OD",
@@ -607,7 +607,8 @@ def _build_journal_detail(
         })
     breakdown_str = "  ".join(
         f"{j['journal']}: D={j['debit']:.2f} C={j['credit']:.2f} ({j['entries']} entries, "
-        f"vulcain {j['vulcain_entries']} entries bal={j['vulcain_balance']:.2f})"
+        f"vulcain {j['vulcain_entries']} entries D={j['vulcain_debit']:.2f} C={j['vulcain_credit']:.2f} "
+        f"bal={j['vulcain_balance']:.2f})"
         for j in detail
     )
     return detail, breakdown_str
@@ -843,9 +844,12 @@ def build_report(
             lines.append("  By journal:")
             for j in row["_journal_detail"]:
                 lines.append(
-                    f"    {j['journal']:<6}  debit={j['debit']:>12.2f}  "
-                    f"credit={j['credit']:>12.2f}  ({j['entries']} entries)  "
-                    f"vulcain: {j['vulcain_entries']} entries  "
+                    f"    {j['journal']:<6}  ERP     debit={j['debit']:>12.2f}  "
+                    f"credit={j['credit']:>12.2f}  ({j['entries']} entries)"
+                )
+                lines.append(
+                    f"    {'':<6}  Vulcain debit={j['vulcain_debit']:>12.2f}  "
+                    f"credit={j['vulcain_credit']:>12.2f}  ({j['vulcain_entries']} entries)  "
                     f"balance={j['vulcain_balance']:>12.2f}"
                 )
 

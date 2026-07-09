@@ -50,9 +50,9 @@ JOURNAL_MAP: dict[str, str | None] = {
     "RPT": "AN",
     "VIN": "VT",
     "VDI": "VT",
-    "AC":  "AC",   # ERP has both AC and HA; previous CSV import used AC
+    "AC":  "AC",
     "BQ":  "BQ",
-    "CA":  "CA",   # ERP has both CA and CS; previous CSV import used CA
+    "CA":  "CS",   # CA journal retired (merged into CS, see merge_journals.py)
     "EXP": "OD",
     "INV": "OD",
     "MEM": "OD",

@@ -228,10 +228,12 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, dict] = {
 
 DEFAULT_ACCOUNTING_JOURNALS: tuple[dict[str, object], ...] = (
     {"code": "VT", "name": "Journal des ventes", "type": 1, "is_active": True},
-    {"code": "HA", "name": "Journal des achats", "type": 2, "is_active": True},
+    {"code": "AC", "name": "Journal des achats", "type": 2, "is_active": True},
     {"code": "BQ", "name": "Journal de banque", "type": 3, "is_active": True},
     {"code": "CS", "name": "Journal de caisse", "type": 4, "is_active": True},
     {"code": "OD", "name": "Opérations diverses", "type": 5, "is_active": True},
+    {"code": "AMO", "name": "Journal des amortissements", "type": 5, "is_active": True},
+    {"code": "PRO", "name": "Journal des provisions", "type": 5, "is_active": True},
     {"code": "AN", "name": "Journal à-nouveaux", "type": 6, "is_active": True},
     {"code": "FL", "name": "Journal des vols", "type": 7, "is_active": True},
 )
