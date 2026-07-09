@@ -2051,6 +2051,11 @@ class MemberPackConsumption(Base):
         UUID(as_uuid=True), ForeignKey("pack_definitions.uuid", ondelete="SET NULL"), nullable=True, index=True,
         comment="Which pack definition this consumption was applied to (for multi-pack sequencing)",
     )
+    purchase_entry_uuid = Column(
+        UUID(as_uuid=True), nullable=True, index=True,  # Link to the VT purchase entry (app-level integrity, no FK)
+        comment="Which specific pack purchase (VT accounting entry) this consumption was drawn from — "
+                "disambiguates consecutive purchases of the same pack_definition_uuid (e.g. 2x25h)",
+    )
     valid_from = Column(DateTime(timezone=True), nullable=False, comment="Pack is applicable only to flights on or after this date")
     quantity_consumed = Column(Numeric(10, 2), nullable=False)
     discount_unit_price = Column(Numeric(10, 2), nullable=False)

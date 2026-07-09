@@ -354,10 +354,12 @@ async def list_pack_purchases(
         # Get member from the debit side of this entry
         entry_member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
 
-        # Get consumptions for this specific pack purchase (not just its pack_type,
-        # which two different purchases can share).
+        # Get consumptions for this exact pack purchase — members routinely buy the
+        # same pack template several times in a row (e.g. two consecutive 25h packs),
+        # so filtering by pack_definition_uuid alone would still mix those purchases'
+        # consumed flights together.
         consumptions = await list_consumptions_for_member(
-            db, entry_member_uuid, pack_def.pack_type, pack_definition_uuid=pack_def.uuid,
+            db, entry_member_uuid, pack_def.pack_type, purchase_entry_uuid=entry.uuid,
         )
         units_consumed = sum(c.quantity_consumed for c in consumptions)
         total_discount_eur = sum(c.total_discount_amount for c in consumptions)
@@ -410,42 +412,6 @@ async def list_pack_purchases(
             total_discount=total_discount_eur,
             consumptions=consumption_detail,
         ))
-
-    # FIFO distribution: when a member has bought multiple slots of the same
-    # pack type, each slot's units_consumed/units_remaining must be computed
-    # by depleting slots in valid_from ASC order.
-    from collections import defaultdict
-
-    group_indices: dict[tuple, list[int]] = defaultdict(list)
-    for i, item in enumerate(items):
-        key = (str(item.member_uuid) if item.member_uuid else "", item.pack_type or "")
-        group_indices[key].append(i)
-
-    for indices in group_indices.values():
-        if len(indices) <= 1:
-            continue
-        indices_sorted = sorted(
-            indices,
-            key=lambda i: items[i].valid_from or date.min,
-        )
-        # Pre-FIFO totals (identical across all slots in the group)
-        total_units_all = items[indices_sorted[0]].units_consumed
-        total_discount_all = items[indices_sorted[0]].total_discount
-
-        remaining_to_distribute = total_units_all
-        for i in indices_sorted:
-            consumed_this = min(remaining_to_distribute, items[i].units_purchased)
-            discount_this = (
-                consumed_this / total_units_all * total_discount_all
-                if total_units_all > 0
-                else Decimal("0")
-            )
-            items[i] = items[i].model_copy(update={
-                "units_consumed": consumed_this,
-                "units_remaining": items[i].units_purchased - consumed_this,
-                "total_discount": discount_this,
-            })
-            remaining_to_distribute = max(Decimal("0"), remaining_to_distribute - consumed_this)
 
     # Sort by member name (case-insensitive) then by entry_date descending
     items.sort(key=lambda x: ((x.member_name or "").lower(), -(x.entry_date.toordinal())))

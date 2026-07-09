@@ -139,39 +139,18 @@ class PlanIncrementalReviewTests(IsolatedAsyncioTestCase):
 
         self.assertIsNone(plan)
 
-    async def test_duplicate_pack_definition_slots_fall_back_to_full(self):
-        boundary = date(2026, 5, 1)
-        new_flight = _flight(jour=date(2026, 6, 1))
-        shared_uuid = uuid4()
-        slots = [
-            _pack_slot(pack_def_uuid=shared_uuid, activated_at=date(2026, 1, 1)),
-            _pack_slot(pack_def_uuid=shared_uuid, activated_at=date(2026, 2, 1)),
-        ]
-        db = AsyncMock()
-        db.execute.side_effect = [
-            _FakeResult(one=(boundary, False)),
-            _FakeResult(rows=[new_flight]),
-        ]
-
-        with patch(
-            "services.flight_packs._load_pack_context",
-            AsyncMock(return_value=(slots, {})),
-        ):
-            plan = await _plan_incremental_review(db, uuid4(), uuid4())
-
-        self.assertIsNone(plan)
-
     async def test_pack_slot_activated_before_boundary_with_no_known_consumption_falls_back(self):
         boundary = date(2026, 5, 1)
         new_flight = _flight(jour=date(2026, 6, 1))
-        # Slot activated well before the reviewed boundary, but never consumed —
-        # looks like a purchase entered/backdated after the last review.
+        # Slot activated well before the reviewed boundary, but never consumed
+        # under its own purchase_entry_uuid — looks like a purchase entered or
+        # backdated after the last review (or unmigrated legacy data).
         suspicious_slot = _pack_slot(activated_at=date(2026, 1, 1))
         db = AsyncMock()
         db.execute.side_effect = [
             _FakeResult(one=(boundary, False)),
             _FakeResult(rows=[new_flight]),
-            _FakeResult(rows=[]),  # known_defs_result: no consumption known for this def
+            _FakeResult(rows=[]),  # known_purchases_result: no consumption known for this purchase
         ]
 
         with patch(
@@ -190,8 +169,8 @@ class PlanIncrementalReviewTests(IsolatedAsyncioTestCase):
         db.execute.side_effect = [
             _FakeResult(one=(boundary, False)),
             _FakeResult(rows=[new_flight]),
-            _FakeResult(rows=[(slot.pack_def.uuid,)]),  # known_defs_result: this def was already seen
-            _FakeResult(rows=[(slot.pack_def.uuid, Decimal("7.5"))]),  # consumed_result
+            _FakeResult(rows=[(slot.purchase_entry_uuid,)]),  # known_purchases_result
+            _FakeResult(rows=[(slot.purchase_entry_uuid, Decimal("7.5"))]),  # consumed_result
         ]
 
         with patch(
@@ -203,6 +182,37 @@ class PlanIncrementalReviewTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(plan)
         self.assertEqual(plan.new_flights, [new_flight])
         self.assertEqual(plan.pack_slots[0].remaining, Decimal("17.5"))  # 25 - 7.5
+
+    async def test_consecutive_purchases_of_same_pack_definition_are_handled_independently(self):
+        """The most common real-world case: a member buys the same pack
+        template twice in a row (e.g. two consecutive 25h packs). Each
+        purchase has its own purchase_entry_uuid, so its remaining balance
+        is reconstructed independently — no fallback to full recompute."""
+        boundary = date(2026, 5, 1)
+        new_flight = _flight(jour=date(2026, 6, 1))
+        shared_def_uuid = uuid4()
+        slot_1 = _pack_slot(pack_def_uuid=shared_def_uuid, activated_at=date(2026, 1, 1), remaining=Decimal("25"))
+        slot_2 = _pack_slot(pack_def_uuid=shared_def_uuid, activated_at=date(2026, 3, 1), remaining=Decimal("25"))
+        db = AsyncMock()
+        db.execute.side_effect = [
+            _FakeResult(one=(boundary, False)),
+            _FakeResult(rows=[new_flight]),
+            _FakeResult(rows=[(slot_1.purchase_entry_uuid,), (slot_2.purchase_entry_uuid,)]),
+            _FakeResult(rows=[
+                (slot_1.purchase_entry_uuid, Decimal("25")),  # slot 1 fully consumed
+                (slot_2.purchase_entry_uuid, Decimal("3")),   # slot 2 partially consumed
+            ]),
+        ]
+
+        with patch(
+            "services.flight_packs._load_pack_context",
+            AsyncMock(return_value=([slot_1, slot_2], {})),
+        ):
+            plan = await _plan_incremental_review(db, uuid4(), uuid4())
+
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.pack_slots[0].remaining, Decimal("0"))
+        self.assertEqual(plan.pack_slots[1].remaining, Decimal("22"))
 
 
 class ListConsumptionsForMemberTests(IsolatedAsyncioTestCase):
@@ -222,3 +232,22 @@ class ListConsumptionsForMemberTests(IsolatedAsyncioTestCase):
 
         compiled = str(captured_stmt["stmt"])
         self.assertIn("pack_definition_uuid", compiled)
+
+    async def test_filters_by_purchase_entry_uuid_when_provided(self):
+        member_uuid = uuid4()
+        purchase_entry_uuid = uuid4()
+        db = AsyncMock()
+        captured_stmt = {}
+
+        async def fake_execute(stmt):
+            captured_stmt["stmt"] = stmt
+            return _FakeResult(rows=[])
+
+        db.execute.side_effect = fake_execute
+
+        await list_consumptions_for_member(
+            db, member_uuid, "flight_hours", purchase_entry_uuid=purchase_entry_uuid,
+        )
+
+        compiled = str(captured_stmt["stmt"])
+        self.assertIn("purchase_entry_uuid", compiled)

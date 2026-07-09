@@ -1474,7 +1474,8 @@ CREATE TABLE public.member_pack_consumptions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     valid_from timestamp with time zone DEFAULT now() NOT NULL,
-    pack_definition_uuid uuid
+    pack_definition_uuid uuid,
+    purchase_entry_uuid uuid
 );
 
 
@@ -1518,6 +1519,13 @@ COMMENT ON COLUMN public.member_pack_consumptions.valid_from IS 'Pack is applica
 --
 
 COMMENT ON COLUMN public.member_pack_consumptions.pack_definition_uuid IS 'Which pack definition this consumption was applied to. NULL for legacy rows.';
+
+
+--
+-- Name: COLUMN member_pack_consumptions.purchase_entry_uuid; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.member_pack_consumptions.purchase_entry_uuid IS 'Which specific pack purchase (VT accounting entry) this consumption was drawn from — disambiguates consecutive purchases of the same pack_definition_uuid (e.g. 2x25h). NULL for legacy rows.';
 
 
 --
@@ -3796,6 +3804,13 @@ CREATE INDEX idx_mpc_flight ON public.member_pack_consumptions USING btree (flig
 --
 
 CREATE INDEX idx_mpc_pack_definition ON public.member_pack_consumptions USING btree (pack_definition_uuid);
+
+
+--
+-- Name: idx_mpc_purchase_entry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mpc_purchase_entry ON public.member_pack_consumptions USING btree (purchase_entry_uuid);
 
 
 --

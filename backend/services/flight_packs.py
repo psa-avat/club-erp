@@ -281,15 +281,18 @@ async def list_consumptions_for_member(
     member_uuid: UUID,
     pack_type: str | None = None,
     pack_definition_uuid: UUID | None = None,
+    purchase_entry_uuid: UUID | None = None,
 ) -> list[MemberPackConsumption]:
     """
     List pack consumptions for a given member.
 
-    `pack_type` filters broadly (e.g. for a member-wide summary). Pass
-    `pack_definition_uuid` when the caller means "the flights consumed by
-    THIS specific pack purchase" — two purchases can share the same
-    pack_type (e.g. two different flight-hours packs), and pack_type alone
-    would mix their consumed flights together.
+    `pack_type` filters broadly (e.g. for a member-wide summary).
+    `pack_definition_uuid` narrows to one pack template, but members
+    routinely buy the same pack template several times in a row (e.g. two
+    consecutive 25h packs) — pack_definition_uuid alone still mixes those
+    purchases' consumed flights together. Pass `purchase_entry_uuid` when
+    the caller means "the flights consumed by THIS specific purchase" —
+    it disambiguates down to the exact VT accounting entry.
     """
     stmt = select(MemberPackConsumption).where(
         MemberPackConsumption.tiers_uuid == member_uuid
@@ -298,6 +301,8 @@ async def list_consumptions_for_member(
         stmt = stmt.where(MemberPackConsumption.pack_type == pack_type)
     if pack_definition_uuid is not None:
         stmt = stmt.where(MemberPackConsumption.pack_definition_uuid == pack_definition_uuid)
+    if purchase_entry_uuid is not None:
+        stmt = stmt.where(MemberPackConsumption.purchase_entry_uuid == purchase_entry_uuid)
     stmt = stmt.order_by(MemberPackConsumption.created_at.desc())
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -836,6 +841,7 @@ async def _apply_flight_consumptions(
                 flight_uuid=flight.uuid,
                 pack_type=slot.pack_def.pack_type,
                 pack_definition_uuid=slot.pack_def.uuid,
+                purchase_entry_uuid=slot.purchase_entry_uuid,
                 valid_from=flight.jour or datetime.now(timezone.utc),
                 quantity_consumed=qty,
                 discount_unit_price=unit_discount,
@@ -994,6 +1000,11 @@ async def _plan_incremental_review(
     qui ne trace que les vols effectivement remisés et se fige donc dès qu'un
     pack est épuisé).
 
+    Chaque slot de pack (achat) est identifié par purchase_entry_uuid (l'écriture
+    VT correspondante), ce qui permet de reconstruire le solde de CHAQUE achat
+    individuellement même quand un membre a acheté le même pack plusieurs fois
+    d'affilée (le cas le plus courant : ex. deux forfaits 25h consécutifs).
+
     Le mode incrémental n'est sûr que si rien n'a pu rebattre l'ordre FIFO ou
     les soldes des vols déjà passés en revue. On retombe donc sur un recalcul
     complet (retour None) si :
@@ -1001,11 +1012,10 @@ async def _plan_incremental_review(
       - un vol déjà revu a été modifié après transfert (erp_status=2) ;
       - un vol "nouveau" est daté avant ou le jour même du dernier vol revu
         (un vol rétrodaté devrait être inséré au milieu du FIFO déjà figé) ;
-      - le membre détient plusieurs slots actifs de la même pack_definition
-        (leur solde individuel n'est pas déductible de la seule somme agrégée) ;
       - un slot de pack activé avant ou à la date pivot n'a aucune consommation
-        enregistrée — signe d'un achat rétrodaté après coup, jamais vu par la
-        revue précédente.
+        enregistrée sous son propre purchase_entry_uuid — signe d'un achat
+        rétrodaté après coup, ou de données historiques antérieures au suivi
+        par purchase_entry_uuid, jamais vues par la revue précédente.
     """
     reviewed_result = await db.execute(
         select(
@@ -1051,39 +1061,43 @@ async def _plan_incremental_review(
     if not pack_slots:
         return None
 
-    seen_defs: set[UUID] = set()
-    for slot in pack_slots:
-        if slot.pack_def.uuid in seen_defs:
-            return None
-        seen_defs.add(slot.pack_def.uuid)
-
-    known_defs_result = await db.execute(
-        select(MemberPackConsumption.pack_definition_uuid)
+    # purchase_entry_uuid identifies one specific purchase (VT accounting entry),
+    # so it disambiguates consecutive purchases of the same pack_definition —
+    # the common case (e.g. a member buying two 25h packs back to back) — with
+    # no need to treat them as ambiguous.
+    known_purchases_result = await db.execute(
+        select(MemberPackConsumption.purchase_entry_uuid)
         .where(
             MemberPackConsumption.tiers_uuid == member_uuid,
             MemberPackConsumption.flight_uuid.isnot(None),
+            MemberPackConsumption.purchase_entry_uuid.isnot(None),
         )
         .distinct()
     )
-    known_defs = {row[0] for row in known_defs_result.all()}
+    known_purchases = {row[0] for row in known_purchases_result.all()}
     for slot in pack_slots:
-        if slot.activated_at <= boundary_jour and slot.pack_def.uuid not in known_defs:
+        if slot.activated_at <= boundary_jour and slot.purchase_entry_uuid not in known_purchases:
+            # Slot activated within the already-reviewed window but never
+            # consumed under its own purchase_entry_uuid — either a purchase
+            # backdated after the fact, or legacy data from before
+            # purchase_entry_uuid was tracked. A full recompute is needed to
+            # settle it correctly and backfill the field going forward.
             return None
 
     consumed_result = await db.execute(
         select(
-            MemberPackConsumption.pack_definition_uuid,
+            MemberPackConsumption.purchase_entry_uuid,
             func.sum(MemberPackConsumption.quantity_consumed),
         )
         .where(
             MemberPackConsumption.tiers_uuid == member_uuid,
             MemberPackConsumption.flight_uuid.isnot(None),
         )
-        .group_by(MemberPackConsumption.pack_definition_uuid)
+        .group_by(MemberPackConsumption.purchase_entry_uuid)
     )
-    consumed_by_def = {row[0]: row[1] for row in consumed_result.all()}
+    consumed_by_purchase = {row[0]: row[1] for row in consumed_result.all()}
     for slot in pack_slots:
-        slot.remaining -= consumed_by_def.get(slot.pack_def.uuid, Decimal("0"))
+        slot.remaining -= consumed_by_purchase.get(slot.purchase_entry_uuid, Decimal("0"))
 
     return _IncrementalPlan(new_flights=new_flights, pack_slots=pack_slots, pi_to_slots=pi_to_slots)
 
@@ -1496,7 +1510,6 @@ async def list_pack_purchases_for_member(
     Used by both the admin route (with member_uuid filter) and the member portal.
     """
     import re
-    from collections import defaultdict
     from schemas.flight_packs import PackPurchaseListResponse, PackPurchaseLine
     from sqlalchemy.orm import joinedload
 
@@ -1565,8 +1578,11 @@ async def list_pack_purchases_for_member(
 
         entry_member_uuid, member_obj = member_by_entry.get(entry.uuid, (None, None))
 
+        # Filter down to this exact purchase — members routinely buy the same
+        # pack template several times in a row (e.g. two consecutive 25h packs),
+        # so pack_definition_uuid alone would still mix those purchases together.
         consumptions = await list_consumptions_for_member(
-            db, entry_member_uuid, pack_def.pack_type, pack_definition_uuid=pack_def.uuid,
+            db, entry_member_uuid, pack_def.pack_type, purchase_entry_uuid=entry.uuid,
         )
         units_consumed = sum(c.quantity_consumed for c in consumptions)
         total_discount_eur = sum(c.total_discount_amount for c in consumptions)
@@ -1617,33 +1633,6 @@ async def list_pack_purchases_for_member(
             total_discount=total_discount_eur,
             consumptions=consumption_detail,
         ))
-
-    # FIFO distribution across multiple slots of the same pack type
-    group_indices: dict[tuple, list[int]] = defaultdict(list)
-    for i, item in enumerate(items):
-        key = (str(item.member_uuid) if item.member_uuid else "", item.pack_type or "")
-        group_indices[key].append(i)
-
-    for indices in group_indices.values():
-        if len(indices) <= 1:
-            continue
-        indices_sorted = sorted(indices, key=lambda i: items[i].valid_from or date.min)
-        total_units_all = items[indices_sorted[0]].units_consumed
-        total_discount_all = items[indices_sorted[0]].total_discount
-        remaining_to_distribute = total_units_all
-        for i in indices_sorted:
-            consumed_this = min(remaining_to_distribute, items[i].units_purchased)
-            discount_this = (
-                consumed_this / total_units_all * total_discount_all
-                if total_units_all > 0
-                else Decimal("0")
-            )
-            items[i] = items[i].model_copy(update={
-                "units_consumed": consumed_this,
-                "units_remaining": items[i].units_purchased - consumed_this,
-                "total_discount": discount_this,
-            })
-            remaining_to_distribute = max(Decimal("0"), remaining_to_distribute - consumed_this)
 
     items.sort(key=lambda x: ((x.member_name or "").lower(), -(x.entry_date.toordinal())))
 
