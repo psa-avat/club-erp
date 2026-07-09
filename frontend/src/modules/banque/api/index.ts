@@ -1538,7 +1538,7 @@ export type DiscountReviewResult = {
 export function useDiscountReviewMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { fiscal_year_uuid: string }) => {
+    mutationFn: async (payload: { fiscal_year_uuid: string; force_full?: boolean }) => {
       const { data } = await apiClient.post<DiscountReviewResult>(
         '/api/v1/packs/discount-review', payload, getAuthRequestConfig(),
       )
@@ -1555,10 +1555,10 @@ export function useDiscountReviewMutation() {
 export function useMemberDiscountReviewMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { memberUuid: string; fiscal_year_uuid: string }) => {
+    mutationFn: async (payload: { memberUuid: string; fiscal_year_uuid: string; force_full?: boolean }) => {
       const { data } = await apiClient.post<DiscountReviewResult>(
         `/api/v1/packs/discount-review/${payload.memberUuid}`,
-        { fiscal_year_uuid: payload.fiscal_year_uuid },
+        { fiscal_year_uuid: payload.fiscal_year_uuid, force_full: payload.force_full },
         getAuthRequestConfig(),
       )
       return data

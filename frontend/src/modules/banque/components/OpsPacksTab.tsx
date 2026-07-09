@@ -6,9 +6,10 @@
 */
 import { useState, Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Plus, Loader2, RefreshCw, CheckCircle2, AlertTriangle, X, Pencil, Download } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, Loader2, RefreshCw, RotateCcw, CheckCircle2, AlertTriangle, X, Pencil, Download } from 'lucide-react'
 
 import { Button } from '../../../components/ui/button'
+import { Checkbox } from '../../../components/ui/checkbox'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
@@ -32,6 +33,7 @@ export function OpsPacksTab() {
   const [showPurchaseDialog, setShowPurchaseDialog] = useState(false)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [forceFullRecalc, setForceFullRecalc] = useState(false)
   const [reviewResult, setReviewResult] = useState<DiscountReviewResult | null>(null)
   const [memberRecalcState, setMemberRecalcState] = useState<Record<string, { status: 'idle' | 'running' | 'done'; result?: DiscountReviewResult }>>({})
   const [editDialog, setEditDialog] = useState<{ entryUuid: string; validFrom: string } | null>(null)
@@ -61,20 +63,24 @@ export function OpsPacksTab() {
     try {
       const result = await discountReviewMutation.mutateAsync({
         fiscal_year_uuid: activeFiscalYearUuid,
+        force_full: forceFullRecalc,
       })
       setReviewResult(result)
     } catch {
       // Error handled by the mutation
+    } finally {
+      setForceFullRecalc(false)
     }
   }
 
-  async function handleMemberRecalc(memberUuid: string) {
+  async function handleMemberRecalc(memberUuid: string, forceFull = false) {
     if (!activeFiscalYearUuid) return
     setMemberRecalcState((prev) => ({ ...prev, [memberUuid]: { status: 'running' } }))
     try {
       const result = await memberDiscountReviewMutation.mutateAsync({
         memberUuid,
         fiscal_year_uuid: activeFiscalYearUuid,
+        force_full: forceFull,
       })
       setMemberRecalcState((prev) => ({ ...prev, [memberUuid]: { status: 'done', result } }))
     } catch {
@@ -267,6 +273,20 @@ export function OpsPacksTab() {
                 </p>
               </div>
             </div>
+            <div className="mt-4 flex items-start gap-2">
+              <Checkbox
+                id="force-full-recalc"
+                checked={forceFullRecalc}
+                onCheckedChange={(checked) => setForceFullRecalc(checked === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="force-full-recalc" className="cursor-pointer text-sm font-normal text-slate-600">
+                {t('ops.packs.forceFullRecalc', 'Recalcul complet (ignorer le mode incrémental)')}
+                <span className="mt-0.5 block text-xs text-slate-400">
+                  {t('ops.packs.forceFullRecalcHint', "Rejoue tout l'historique des vols de l'exercice au lieu de ne traiter que les vols jamais passés en revue. Plus lent, utile en cas de doute sur un résultat.")}
+                </span>
+              </Label>
+            </div>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setShowConfirmDialog(false)}>
                 {t('common.cancel', 'Annuler')}
@@ -386,6 +406,17 @@ export function OpsPacksTab() {
                                 ) : (
                                   <RefreshCw className="h-3.5 w-3.5" />
                                 )}
+                              </Button>
+                            )}
+                            {canPostEntries && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleMemberRecalc(p.member_uuid, true)}
+                                disabled={recalcState?.status === 'running' || !activeFiscalYearUuid}
+                                title={t('ops.packs.recalcMemberFull', 'Recalcul complet forcé pour ce membre')}
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
                               </Button>
                             )}
                           </div>
