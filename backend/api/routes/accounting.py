@@ -486,6 +486,8 @@ from schemas.flight_billing import (
     FlightBillingSettingsDefaults,
     FlightBillingSettingsResponse,
     FlightBillingSettingsUpdate,
+    FlightTypeBillingAccountResponse,
+    FlightTypeBillingAccountsBulkUpsert,
     RemAdjustmentApplyRequest,
     RemAdjustmentApplyResponse,
     RemAdjustmentPreviewRequest,
@@ -496,7 +498,9 @@ from services.flight_billing_settings import (
     delete_flight_billing_settings,
     get_flight_billing_settings,
     get_flight_billing_settings_defaults,
+    list_flight_type_billing_accounts,
     upsert_flight_billing_settings,
+    upsert_flight_type_billing_accounts,
 )
 from services.flight_packs import (
     compute_rem_adjustment,
@@ -546,6 +550,27 @@ async def get_flight_billing_settings_defaults_endpoint(
 ):
     """Return sensible defaults for a new fiscal year (UI pre-fill)."""
     return await get_flight_billing_settings_defaults(db, fiscal_year_uuid)
+
+
+@router.get("/settings/flight-billing/type-accounts", response_model=list[FlightTypeBillingAccountResponse])
+async def list_flight_type_billing_accounts_endpoint(
+    fiscal_year_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = billing_settings_guard,
+):
+    """List per-flight-type club/essai billing account overrides for a fiscal year."""
+    return await list_flight_type_billing_accounts(db, fiscal_year_uuid)
+
+
+@router.put("/settings/flight-billing/type-accounts", response_model=list[FlightTypeBillingAccountResponse])
+async def upsert_flight_type_billing_accounts_endpoint(
+    payload: FlightTypeBillingAccountsBulkUpsert,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = billing_settings_guard,
+):
+    """Create/update/clear per-flight-type club/essai billing account overrides."""
+    return await upsert_flight_type_billing_accounts(db, payload, current_user.id)
 
 
 # ── REM Adjustments ────────────────────────────────────────────────────────

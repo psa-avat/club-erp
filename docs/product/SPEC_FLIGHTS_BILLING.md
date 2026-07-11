@@ -180,14 +180,14 @@ Payer allocation depends on flight type:
 
 Club billing is detected in two ways:
 
-1. **Explicit club billing**: `flight.charge_to_erp_id` matches the club member's `account_id` (configured in `flight_billing_settings.club_member_uuid`). Applies to any flight type.
-2. **Initiation fallback**: Flight type is `initiation` AND a charge account can be resolved (from `vi_type_catalog.charge_account_uuid` or `flight_billing_settings.default_initiation_charge_account_uuid`). Does NOT require the club member to be configured.
+1. **Explicit sentinel billing**: `flight.charge_to_erp_id` matches the sentinel member (`member_uuid`) of one of the `flight_type_billing_accounts` rows (§9.7) — club, entrainement, or essai. Each row is self-contained: its own sentinel member paired with its own analytical accounts. Applies to any flight type — **always analytical, no class-6 fallback**.
+2. **Initiation fallback**: Flight type is `initiation`, `charge_to_erp_id` is **not set**, and a charge account can be resolved (from `vi_type_catalog.charge_account_uuid`/analytical accounts or `flight_billing_settings.default_initiation_charge_account_uuid`). Does not require any sentinel member to be configured. If `charge_to_erp_id` is set to some other real member (matching no row's sentinel), the flight is billed to that member directly (`D 411`), not auto-routed here.
 
-Charge account resolution order:
-- **Initiation flights**: `vi_type_catalog.charge_account_uuid` (by `flight.vi_erp_id`) → `settings.default_initiation_charge_account_uuid`
-- **Explicit club billing**: `settings.club_charge_account_uuid` → `settings.default_initiation_charge_account_uuid` (fallback)
+**Billing category resolution** (Detection 1 only): a direct match — whichever `flight_type_billing_accounts` row's `member_uuid` resolves to a member whose `account_id` equals `flight.charge_to_erp_id` determines the category (there is no `type_of_flight`-based override; essai now has its own dedicated sentinel member just like club and entrainement). That row's `analytical_cost_account_uuid`/`analytical_reflection_account_uuid` (both required) drive the FL entry: `D <category cost account> tiers=asset / C <reflection account> tiers=None`. If the row is missing or incomplete, billing surfaces a `debit_account_missing` error — there is intentionally no class-6 fallback for these three categories, forcing the admin to finish configuring the row.
 
-Club-billed lines have no `member_uuid` dimension on any accounting line.
+**Initiation fallback resolution** (Detection 2 only): if the linked `vi_type_catalog` row (via `flight.vi_erp_id`) has both `analytical_cost_account_uuid` and `analytical_reflection_account_uuid` set, the whole FL entry is posted **analytically**: `D 921 (or the configured cost account) tiers=asset / C 902 (or the configured reflection account) tiers=None`. Otherwise falls back to `vi_type_catalog.charge_account_uuid`, then `flight_billing_settings.default_initiation_charge_account_uuid` (the only remaining class-6 fallback in this whole flow, and only for genuine initiation flights).
+
+Club-billed lines have no `member_uuid` dimension on any accounting line (the analytical debit line instead carries the asset's `tiers_uuid`, the credit reflection line carries none).
 
 ---
 
@@ -546,9 +546,7 @@ Not a table — a live SQL view crossing GL pack purchases with operational cons
 | `default_pack_sales_account_uuid` | UUID? | FK → accounting_accounts (class 7) |
 | `rem_journal_uuid` | UUID | FK → accounting_journals (REM journal for discounts) |
 | `default_pack_discount_expense_account_uuid` | UUID? | FK → accounting_accounts (class 6) |
-| `default_initiation_charge_account_uuid` | UUID? | FK → accounting_accounts (class 6, fallback for initiations) |
-| `club_charge_account_uuid` | UUID? | FK → accounting_accounts (class 6, for explicit club billing) |
-| `club_member_uuid` | UUID? | FK → members (club entity sentinel) |
+| `default_initiation_charge_account_uuid` | UUID? | FK → accounting_accounts (class 6, last-resort fallback for initiation flights only) |
 | `rem_period_days` | int | Default 30 |
 | `allow_post_purchase_recalculation` | boolean | Default true |
 | `max_days_for_post_purchase_discount` | int? | Default 30 |
@@ -557,13 +555,30 @@ Not a table — a live SQL view crossing GL pack purchases with operational cons
 | `updated_at` | timestamptz | |
 | `updated_by` | int? | FK → users |
 
-### 9.6 `vi_type_catalog` (charge_account_uuid)
+### 9.6 `vi_type_catalog` (billing columns)
 
 | Column | Type | Notes |
 |---|---|---|
-| `charge_account_uuid` | UUID? | FK → accounting_accounts. Each VI type (VI, JD, STAGE) can define its own charge account for club billing, overriding the settings default |
+| `charge_account_uuid` | UUID? | FK → accounting_accounts. Each VI type (VI, JD, STAGE) can define its own plain charge account for club billing, overriding the settings default |
+| `analytical_cost_account_uuid` | UUID? | FK → accounting_accounts (class 9, e.g. 921). When set together with `analytical_reflection_account_uuid`, replaces the plain charge account: the FL entry posts `D` here instead |
+| `analytical_reflection_account_uuid` | UUID? | FK → accounting_accounts (e.g. 902). Credit side of the analytical entry when analytical mode is active |
 
-### 9.7 Tolerance Parameters
+### 9.7 `flight_type_billing_accounts`
+
+Generalizes the VI analytical pattern (§9.6) to club-billed flights. One **self-contained** row per `(fiscal_year_uuid, billing_category)`: a sentinel member plus its own analytical accounts — `1 = club` (account `924`), `2 = entrainement` (account `922`), `3 = essai` (account `923`). A flight resolves its category by matching `charge_to_erp_id` against a row's `member_uuid` directly (see §4.4) — there is no `type_of_flight`-based override. Always analytical — there is no plain class-6 fallback column on this table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `uuid` | UUID | PK |
+| `fiscal_year_uuid` | UUID | FK → accounting_fiscal_years |
+| `billing_category` | smallint | `FlightBillingCategory` value (1/2/3, see above). `NOT NULL`, `CHECK (billing_category IN (1,2,3))`. Unique per fiscal year |
+| `member_uuid` | UUID? | FK → members. Sentinel for this category — flights charged to this member (`charge_to_erp_id` = member's `account_id`) resolve here |
+| `analytical_cost_account_uuid` | UUID? | FK → accounting_accounts (class 9: 924 club / 922 entrainement / 923 essai). Requires `analytical_reflection_account_uuid` too |
+| `analytical_reflection_account_uuid` | UUID? | FK → accounting_accounts (e.g. 902 — typically shared across rows) |
+| `created_at` / `updated_at` | timestamptz | |
+| `updated_by` | int? | FK → users |
+
+### 9.8 Tolerance Parameters
 
 Stored in `system_settings` (module `flight_billing`):
 

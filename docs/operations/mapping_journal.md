@@ -39,6 +39,7 @@ Used for the initial balance of the fiscal year.
 Specialized sales journal dedicated to automated flight billing.
 *   **Debit side:** `411` (Membres - Créances).
 *   **Credit side (Revenue):** `7062` (Activité vol - Heures cellule), `7063` (Produit des lancements).
+*   **Club/entrainement/essai/VI analytical exception:** flights billed to the club (or a VI voucher) can post entirely in class 9 instead — `D 924` (club) / `D 922` (entrainement) / `D 923` (essai) / `D 921` (VI/initiation) `/ C 902` (reflection), rather than `D 411 / C 706x`. Each category (club/entrainement/essai) is a self-contained row in `flight_type_billing_accounts` — its own sentinel member (`member_uuid`) paired with its own analytical accounts — resolved by matching the flight's `charge_to_erp_id` directly against that row's member. Always analytical, no class-6 fallback. Configured per fiscal year — see `docs/product/SPEC_FLIGHTS_BILLING.md` §4.4 and §9.5-9.7 (VI vouchers use the separate `vi_type_catalog` mechanism).
 
 ## 8. REM - Pack Discount Adjustments (Remises)
 Dedicated adjustment journal that settles member pack/discount consumption. Flights are always billed at gross price in the FL journal; REM entries are aggregated per pilot per period (one Draft entry, upserted as discounts accumulate) to apply the discount without polluting the gross flight revenue stream.

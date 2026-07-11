@@ -77,6 +77,11 @@ LAUNCH_METHOD_LABELS: dict[int, str] = {
     0: "exterieur", 1: "treuil", 2: "remorqueur", 3: "autonome",
 }
 
+# Flight billing categories (flight_type_billing_accounts.billing_category)
+FLIGHT_BILLING_CATEGORY_LABELS: dict[int, str] = {
+    1: "club", 2: "entrainement", 3: "essai",
+}
+
 CAPABILITY_SEEDS = (
     (CAP_EDIT_FLIGHTS, "Gestion des vols"),
     (CAP_MANAGE_PRICES, "Gestion des tarifs"),

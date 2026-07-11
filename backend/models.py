@@ -234,18 +234,12 @@ class FlightBillingSettings(Base):
     rem_journal_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_journals.uuid"), nullable=False)
     default_pack_discount_expense_account_uuid = Column(UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid"), nullable=True)
 
-    # Club billing
+    # Initiation fallback (VI/initiation flights only — see vi_type_catalog for the
+    # analytical VI mechanism). Club/entrainement/essai billing accounts and their
+    # sentinel members live on flight_type_billing_accounts instead.
     default_initiation_charge_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
         comment="Fallback charge account for initiation/VI flights when vi_type_catalog has no charge_account_uuid",
-    )
-    club_charge_account_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
-        comment="Charge account for flights explicitly billed to the club (charge_to_erp_id matches club member)",
-    )
-    club_member_uuid = Column(
-        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True,
-        comment="Member record representing the club for club-billed flights (detected via charge_to_erp_id)",
     )
 
     # Deposit settings
@@ -290,8 +284,6 @@ class FlightBillingSettings(Base):
     receivable_account = relationship("AccountingAccount", foreign_keys=[receivable_account_uuid])
     pack_sales_account = relationship("AccountingAccount", foreign_keys=[default_pack_sales_account_uuid])
     pack_discount_expense_account = relationship("AccountingAccount", foreign_keys=[default_pack_discount_expense_account_uuid])
-    club_member = relationship("Member", foreign_keys=[club_member_uuid])
-    club_charge_account = relationship("AccountingAccount", foreign_keys=[club_charge_account_uuid])
     deposit_journal = relationship("AccountingJournal", foreign_keys=[deposit_journal_uuid])
     deposit_bank_account = relationship("AccountingAccount", foreign_keys=[deposit_bank_account_uuid])
     deposit_receivable_account = relationship("AccountingAccount", foreign_keys=[deposit_receivable_account_uuid])
@@ -299,6 +291,72 @@ class FlightBillingSettings(Base):
 
     def __repr__(self):
         return f"<FlightBillingSettings fiscal_year={self.fiscal_year_uuid}>"
+
+
+class FlightTypeBillingAccount(Base):
+    """
+    Per-billing-category analytical accounting override for club-billed flights —
+    one row per (fiscal_year, billing_category). Each row is a self-contained
+    "frame": the sentinel member whose charge_to_erp_id triggers this category,
+    paired with its own analytical cost/reflection accounts. See
+    FlightBillingCategory. Always analytical — no plain class-6 fallback account.
+    """
+
+    __tablename__ = "flight_type_billing_accounts"
+    __table_args__ = (
+        UniqueConstraint("fiscal_year_uuid", "billing_category", name="uq_flight_type_billing_accounts_category"),
+        CheckConstraint("billing_category IN (1, 2, 3)", name="chk_flight_type_billing_accounts_category"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    fiscal_year_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_fiscal_years.uuid", ondelete="CASCADE"), nullable=False
+    )
+    billing_category = Column(
+        SmallInteger, nullable=False,
+        comment="FlightBillingCategory value: 1=club, 2=entrainement, 3=essai",
+    )
+    member_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("members.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Sentinel member for this category — flights with charge_to_erp_id matching this member's account_id resolve to this row",
+    )
+    analytical_cost_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Debit account for analytical cost entry (e.g. 924 club, 922 entrainement, 923 essai). Requires analytical_reflection_account_uuid too.",
+    )
+    analytical_reflection_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Credit account for analytical reflection entry (e.g. 902).",
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    fiscal_year = relationship("AccountingFiscalYear")
+    member = relationship("Member", foreign_keys=[member_uuid])
+    analytical_cost_account = relationship("AccountingAccount", foreign_keys=[analytical_cost_account_uuid])
+    analytical_reflection_account = relationship("AccountingAccount", foreign_keys=[analytical_reflection_account_uuid])
+    updated_by_user = relationship("User")
+
+    @property
+    def analytical_cost_account_code(self) -> str | None:
+        return self.analytical_cost_account.code if self.analytical_cost_account else None
+
+    @property
+    def analytical_reflection_account_code(self) -> str | None:
+        return self.analytical_reflection_account.code if self.analytical_reflection_account else None
+
+    def __repr__(self):
+        return f"<FlightTypeBillingAccount fiscal_year={self.fiscal_year_uuid} billing_category={self.billing_category}>"
 
 
 class AuthChallenge(Base):
@@ -1428,6 +1486,14 @@ class LaunchMethod(IntEnum):
     TREUIL = 1
     REMORQUEUR = 2
     AUTONOME = 3
+
+
+class FlightBillingCategory(IntEnum):
+    """Analytical billing category for club-billed flights (flight_type_billing_accounts)."""
+
+    CLUB = 1
+    ENTRAINEMENT = 2
+    ESSAI = 3
 
 
 class PlancheFlightSnapshot(Base):

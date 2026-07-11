@@ -1206,5 +1206,21 @@
         "is_posting_allowed": true,
         "is_reconcilable": false,
         "require_id": 2
+    },
+    {
+        "code": "924",
+        "name": "Coûts de revient des vols Club",
+        "type": 9,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
+        "code": "925",
+        "name": "Coûts de revient temps de chauffe",
+        "type": 9,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
     }
 ]

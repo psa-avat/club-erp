@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageHeader } from '@club-erp/ui'
 
-const SETTINGS_SECTIONS = ['accounting', 'pricing', 'budget', 'integrations'] as const
+const SETTINGS_SECTIONS = ['flight_billing', 'integrations'] as const
 
 export function BanquePage() {
   const { t } = useTranslation('banque')
@@ -121,7 +121,7 @@ export function BanquePage() {
         </div>
 
         <div className="mt-4 text-sm">
-          <Link className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4" to="/banque/settings/accounting">
+          <Link className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-4" to="/banque/settings/flight_billing">
             {t('settings.openDefaultSection')}
           </Link>
         </div>

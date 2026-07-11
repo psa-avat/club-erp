@@ -24,24 +24,9 @@ type SettingsSection = {
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
   {
-    moduleName: 'accounting',
-    titleKey: 'settings.sections.accounting.title',
-    descriptionKey: 'settings.sections.accounting.description',
-  },
-  {
     moduleName: 'flight_billing',
     titleKey: 'settings.sections.flightBilling.title',
     descriptionKey: 'settings.sections.flightBilling.description',
-  },
-  {
-    moduleName: 'pricing',
-    titleKey: 'settings.sections.pricing.title',
-    descriptionKey: 'settings.sections.pricing.description',
-  },
-  {
-    moduleName: 'budget',
-    titleKey: 'settings.sections.budget.title',
-    descriptionKey: 'settings.sections.budget.description',
   },
   {
     moduleName: 'integrations',

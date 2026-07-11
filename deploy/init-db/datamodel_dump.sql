@@ -1165,8 +1165,6 @@ CREATE TABLE public.flight_billing_settings (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by integer,
     default_initiation_charge_account_uuid uuid,
-    club_member_uuid uuid,
-    club_charge_account_uuid uuid,
     deposit_journal_uuid uuid,
     deposit_bank_account_uuid uuid,
     deposit_receivable_account_uuid uuid,
@@ -1181,13 +1179,6 @@ ALTER TABLE public.flight_billing_settings OWNER TO erpuser;
 --
 
 COMMENT ON TABLE public.flight_billing_settings IS 'Typed flight billing configuration per fiscal year — journals paired with accounts';
-
-
---
--- Name: COLUMN flight_billing_settings.club_charge_account_uuid; Type: COMMENT; Schema: public; Owner: erpuser
---
-
-COMMENT ON COLUMN public.flight_billing_settings.club_charge_account_uuid IS 'Charge account for flights explicitly billed to the club (charge_to_erp_id matches club member)';
 
 
 --
@@ -1209,6 +1200,61 @@ COMMENT ON COLUMN public.flight_billing_settings.deposit_bank_account_uuid IS 'B
 --
 
 COMMENT ON COLUMN public.flight_billing_settings.deposit_receivable_account_uuid IS 'Member receivable account credited on deposit (e.g. 411)';
+
+
+--
+-- Name: flight_type_billing_accounts; Type: TABLE; Schema: public; Owner: erpuser
+--
+
+CREATE TABLE public.flight_type_billing_accounts (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    fiscal_year_uuid uuid NOT NULL,
+    billing_category smallint NOT NULL,
+    member_uuid uuid,
+    analytical_cost_account_uuid uuid,
+    analytical_reflection_account_uuid uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by integer,
+    CONSTRAINT chk_flight_type_billing_accounts_category CHECK ((billing_category = ANY (ARRAY[1, 2, 3])))
+);
+
+
+ALTER TABLE public.flight_type_billing_accounts OWNER TO erpuser;
+
+--
+-- Name: TABLE flight_type_billing_accounts; Type: COMMENT; Schema: public; Owner: erpuser
+--
+
+COMMENT ON TABLE public.flight_type_billing_accounts IS 'Per-billing-category analytical accounting override for club-billed flights — one self-contained row per (fiscal_year, billing_category): sentinel member + analytical cost/reflection accounts. Always analytical, no class-6 fallback.';
+
+
+--
+-- Name: COLUMN flight_type_billing_accounts.billing_category; Type: COMMENT; Schema: public; Owner: erpuser
+--
+
+COMMENT ON COLUMN public.flight_type_billing_accounts.billing_category IS 'FlightBillingCategory value: 1=club, 2=entrainement, 3=essai';
+
+
+--
+-- Name: COLUMN flight_type_billing_accounts.member_uuid; Type: COMMENT; Schema: public; Owner: erpuser
+--
+
+COMMENT ON COLUMN public.flight_type_billing_accounts.member_uuid IS 'Sentinel member for this category — flights with charge_to_erp_id matching this member''s account_id resolve to this row';
+
+
+--
+-- Name: COLUMN flight_type_billing_accounts.analytical_cost_account_uuid; Type: COMMENT; Schema: public; Owner: erpuser
+--
+
+COMMENT ON COLUMN public.flight_type_billing_accounts.analytical_cost_account_uuid IS 'Debit account for analytical cost entry (e.g. 924 club, 922 entrainement, 923 essai). Requires analytical_reflection_account_uuid too.';
+
+
+--
+-- Name: COLUMN flight_type_billing_accounts.analytical_reflection_account_uuid; Type: COMMENT; Schema: public; Owner: erpuser
+--
+
+COMMENT ON COLUMN public.flight_type_billing_accounts.analytical_reflection_account_uuid IS 'Credit account for analytical reflection entry (e.g. 902).';
 
 
 --
@@ -2688,6 +2734,22 @@ ALTER TABLE ONLY public.flight_billing_settings
 
 
 --
+-- Name: flight_type_billing_accounts flight_type_billing_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT flight_type_billing_accounts_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: flight_type_billing_accounts uq_flight_type_billing_accounts_category; Type: CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT uq_flight_type_billing_accounts_category UNIQUE (fiscal_year_uuid, billing_category);
+
+
+--
 -- Name: helloasso_vi_staging helloasso_vi_staging_pkey; Type: CONSTRAINT; Schema: public; Owner: erpuser
 --
 
@@ -3338,6 +3400,13 @@ CREATE INDEX idx_committees_manager_member_uuid ON public.committees USING btree
 --
 
 CREATE INDEX idx_fbs_fiscal_year ON public.flight_billing_settings USING btree (fiscal_year_uuid);
+
+
+--
+-- Name: idx_flight_type_billing_accounts_fy; Type: INDEX; Schema: public; Owner: erpuser
+--
+
+CREATE INDEX idx_flight_type_billing_accounts_fy ON public.flight_type_billing_accounts USING btree (fiscal_year_uuid);
 
 
 --
@@ -4878,22 +4947,6 @@ ALTER TABLE public.accounting_lines
 
 
 --
--- Name: flight_billing_settings flight_billing_settings_club_charge_account_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
---
-
-ALTER TABLE ONLY public.flight_billing_settings
-    ADD CONSTRAINT flight_billing_settings_club_charge_account_uuid_fkey FOREIGN KEY (club_charge_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
-
-
---
--- Name: flight_billing_settings flight_billing_settings_club_member_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
---
-
-ALTER TABLE ONLY public.flight_billing_settings
-    ADD CONSTRAINT flight_billing_settings_club_member_uuid_fkey FOREIGN KEY (club_member_uuid) REFERENCES public.members(uuid) ON DELETE SET NULL;
-
-
---
 -- Name: flight_billing_settings flight_billing_settings_default_initiation_charge_account__fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
 --
 
@@ -4987,6 +5040,46 @@ ALTER TABLE ONLY public.flight_billing_settings
 
 ALTER TABLE ONLY public.flight_billing_settings
     ADD CONSTRAINT flight_billing_settings_vt_journal_uuid_fkey FOREIGN KEY (vt_journal_uuid) REFERENCES public.accounting_journals(uuid);
+
+
+--
+-- Name: flight_type_billing_accounts flight_type_billing_accounts_fiscal_year_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT flight_type_billing_accounts_fiscal_year_uuid_fkey FOREIGN KEY (fiscal_year_uuid) REFERENCES public.accounting_fiscal_years(uuid) ON DELETE CASCADE;
+
+
+--
+-- Name: flight_type_billing_accounts flight_type_billing_accounts_member_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT flight_type_billing_accounts_member_uuid_fkey FOREIGN KEY (member_uuid) REFERENCES public.members(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: flight_type_billing_accounts flight_type_billing_accounts_analytical_cost_account_uui_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT flight_type_billing_accounts_analytical_cost_account_uui_fkey FOREIGN KEY (analytical_cost_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: flight_type_billing_accounts flight_type_billing_accounts_analytical_reflection_accou_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT flight_type_billing_accounts_analytical_reflection_accou_fkey FOREIGN KEY (analytical_reflection_account_uuid) REFERENCES public.accounting_accounts(uuid) ON DELETE SET NULL;
+
+
+--
+-- Name: flight_type_billing_accounts flight_type_billing_accounts_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: erpuser
+--
+
+ALTER TABLE ONLY public.flight_type_billing_accounts
+    ADD CONSTRAINT flight_type_billing_accounts_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --

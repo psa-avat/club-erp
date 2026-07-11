@@ -108,10 +108,8 @@ class FlightBillingSettingsResponse(BaseModel):
     rem_journal_uuid: UUID
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
 
-    # Club billing
+    # Initiation fallback (club/entrainement/essai accounts live on flight_type_billing_accounts)
     default_initiation_charge_account_uuid: Optional[UUID] = None
-    club_charge_account_uuid: Optional[UUID] = None
-    club_member_uuid: Optional[UUID] = None
 
     # Operational settings
     rem_period_days: int = 30
@@ -141,10 +139,8 @@ class FlightBillingSettingsUpdate(BaseModel):
     rem_journal_uuid: UUID
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
 
-    # Club billing
+    # Initiation fallback (club/entrainement/essai accounts live on flight_type_billing_accounts)
     default_initiation_charge_account_uuid: Optional[UUID] = None
-    club_charge_account_uuid: Optional[UUID] = None
-    club_member_uuid: Optional[UUID] = None
 
     # Operational settings
     rem_period_days: int = Field(default=30, ge=1)
@@ -164,12 +160,47 @@ class FlightBillingSettingsDefaults(BaseModel):
     rem_journal_uuid: Optional[UUID] = None
     default_pack_discount_expense_account_uuid: Optional[UUID] = None
     default_initiation_charge_account_uuid: Optional[UUID] = None
-    club_charge_account_uuid: Optional[UUID] = None
-    club_member_uuid: Optional[UUID] = None
 
     rem_period_days: int = 30
     allow_post_purchase_recalculation: bool = True
     max_days_for_post_purchase_discount: int = 30
     require_approval_for_late_discount: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Flight type billing accounts (club/entrainement/essai analytical override)
+# ---------------------------------------------------------------------------
+
+class FlightTypeBillingAccountUpsert(BaseModel):
+    """One self-contained row to create/update. billing_category: 1=club, 2=entrainement, 3=essai."""
+
+    billing_category: int = Field(ge=1, le=3)
+    member_uuid: Optional[UUID] = None
+    analytical_cost_account_uuid: Optional[UUID] = None
+    analytical_reflection_account_uuid: Optional[UUID] = None
+
+
+class FlightTypeBillingAccountResponse(BaseModel):
+    """Flight-type billing account row, hydrated with account codes for display."""
+
+    uuid: UUID
+    fiscal_year_uuid: UUID
+    billing_category: int
+    billing_category_label: Optional[str] = None
+    member_uuid: Optional[UUID] = None
+    analytical_cost_account_uuid: Optional[UUID] = None
+    analytical_cost_account_code: Optional[str] = None
+    analytical_reflection_account_uuid: Optional[UUID] = None
+    analytical_reflection_account_code: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FlightTypeBillingAccountsBulkUpsert(BaseModel):
+    """Replace the set of flight-type billing account rows for a fiscal year."""
+
+    fiscal_year_uuid: UUID
+    accounts: list[FlightTypeBillingAccountUpsert] = []
 
 

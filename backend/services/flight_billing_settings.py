@@ -27,17 +27,21 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants import FLIGHT_BILLING_CATEGORY_LABELS
 from models import (
     AccountingAccount,
     AccountingFiscalYear,
     AccountingJournal,
     FlightBillingSettings,
+    FlightTypeBillingAccount,
     Member,
 )
 from schemas.flight_billing import (
     FlightBillingSettingsDefaults,
     FlightBillingSettingsResponse,
     FlightBillingSettingsUpdate,
+    FlightTypeBillingAccountResponse,
+    FlightTypeBillingAccountsBulkUpsert,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,10 +93,6 @@ async def upsert_flight_billing_settings(
         await _validate_fk(db, AccountingAccount, payload.default_pack_discount_expense_account_uuid, "Pack discount expense account")
     if payload.default_initiation_charge_account_uuid:
         await _validate_fk(db, AccountingAccount, payload.default_initiation_charge_account_uuid, "Initiation charge account")
-    if payload.club_charge_account_uuid:
-        await _validate_fk(db, AccountingAccount, payload.club_charge_account_uuid, "Club charge account")
-    if payload.club_member_uuid:
-        await _validate_fk(db, Member, payload.club_member_uuid, "Club member")
 
     # Upsert
     result = await db.execute(
@@ -112,8 +112,6 @@ async def upsert_flight_billing_settings(
             rem_journal_uuid=payload.rem_journal_uuid,
             default_pack_discount_expense_account_uuid=payload.default_pack_discount_expense_account_uuid,
             default_initiation_charge_account_uuid=payload.default_initiation_charge_account_uuid,
-            club_charge_account_uuid=payload.club_charge_account_uuid,
-            club_member_uuid=payload.club_member_uuid,
             rem_period_days=payload.rem_period_days,
             allow_post_purchase_recalculation=payload.allow_post_purchase_recalculation,
             max_days_for_post_purchase_discount=payload.max_days_for_post_purchase_discount,
@@ -129,8 +127,6 @@ async def upsert_flight_billing_settings(
         settings.rem_journal_uuid = payload.rem_journal_uuid
         settings.default_pack_discount_expense_account_uuid = payload.default_pack_discount_expense_account_uuid
         settings.default_initiation_charge_account_uuid = payload.default_initiation_charge_account_uuid
-        settings.club_charge_account_uuid = payload.club_charge_account_uuid
-        settings.club_member_uuid = payload.club_member_uuid
         settings.rem_period_days = payload.rem_period_days
         settings.allow_post_purchase_recalculation = payload.allow_post_purchase_recalculation
         settings.max_days_for_post_purchase_discount = payload.max_days_for_post_purchase_discount
@@ -167,8 +163,6 @@ async def get_flight_billing_settings_defaults(
         rem_journal_uuid=rem_journal.uuid if rem_journal else None,
         default_pack_discount_expense_account_uuid=discount_expense.uuid if discount_expense else None,
         default_initiation_charge_account_uuid=club_contra.uuid if club_contra else None,
-        club_charge_account_uuid=None,
-        club_member_uuid=None,
     )
 
 
@@ -190,6 +184,101 @@ async def delete_flight_billing_settings(
         )
     await db.delete(settings)
     await db.commit()
+
+
+# ── Flight type billing accounts (club/entrainement/essai analytical override) ──
+
+
+def _to_type_billing_account_response(row: FlightTypeBillingAccount) -> FlightTypeBillingAccountResponse:
+    return FlightTypeBillingAccountResponse(
+        uuid=row.uuid,
+        fiscal_year_uuid=row.fiscal_year_uuid,
+        billing_category=row.billing_category,
+        billing_category_label=FLIGHT_BILLING_CATEGORY_LABELS.get(row.billing_category),
+        member_uuid=row.member_uuid,
+        analytical_cost_account_uuid=row.analytical_cost_account_uuid,
+        analytical_cost_account_code=row.analytical_cost_account_code,
+        analytical_reflection_account_uuid=row.analytical_reflection_account_uuid,
+        analytical_reflection_account_code=row.analytical_reflection_account_code,
+    )
+
+
+async def list_flight_type_billing_accounts(
+    db: AsyncSession,
+    fiscal_year_uuid: UUID,
+) -> list[FlightTypeBillingAccountResponse]:
+    """List per-billing-category billing account rows for a fiscal year."""
+    result = await db.execute(
+        select(FlightTypeBillingAccount)
+        .where(FlightTypeBillingAccount.fiscal_year_uuid == fiscal_year_uuid)
+        .order_by(FlightTypeBillingAccount.billing_category.asc())
+    )
+    return [_to_type_billing_account_response(row) for row in result.scalars().all()]
+
+
+async def upsert_flight_type_billing_accounts(
+    db: AsyncSession,
+    payload: FlightTypeBillingAccountsBulkUpsert,
+    user_id: int,
+) -> list[FlightTypeBillingAccountResponse]:
+    """Create/update/clear the flight-type billing account rows for a fiscal year."""
+    fy_result = await db.execute(
+        select(AccountingFiscalYear).where(AccountingFiscalYear.uuid == payload.fiscal_year_uuid)
+    )
+    if fy_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Fiscal year {payload.fiscal_year_uuid} not found.",
+        )
+
+    result = await db.execute(
+        select(FlightTypeBillingAccount).where(
+            FlightTypeBillingAccount.fiscal_year_uuid == payload.fiscal_year_uuid
+        )
+    )
+    existing_by_category = {row.billing_category: row for row in result.scalars().all()}
+
+    member_categories: dict[UUID, int] = {}
+
+    for entry in payload.accounts:
+        if entry.member_uuid:
+            await _validate_fk(db, Member, entry.member_uuid, "Sentinel member")
+            other_category = member_categories.get(entry.member_uuid)
+            if other_category is not None and other_category != entry.billing_category:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This member is already assigned to another billing category.",
+                )
+            member_categories[entry.member_uuid] = entry.billing_category
+        if entry.analytical_cost_account_uuid:
+            await _validate_fk(db, AccountingAccount, entry.analytical_cost_account_uuid, "Analytical cost account")
+        if entry.analytical_reflection_account_uuid:
+            await _validate_fk(db, AccountingAccount, entry.analytical_reflection_account_uuid, "Analytical reflection account")
+
+        row = existing_by_category.pop(entry.billing_category, None)
+        is_empty = not (
+            entry.member_uuid
+            or entry.analytical_cost_account_uuid
+            or entry.analytical_reflection_account_uuid
+        )
+        if is_empty:
+            if row is not None:
+                await db.delete(row)
+            continue
+
+        if row is None:
+            row = FlightTypeBillingAccount(
+                fiscal_year_uuid=payload.fiscal_year_uuid,
+                billing_category=entry.billing_category,
+            )
+            db.add(row)
+        row.member_uuid = entry.member_uuid
+        row.analytical_cost_account_uuid = entry.analytical_cost_account_uuid
+        row.analytical_reflection_account_uuid = entry.analytical_reflection_account_uuid
+        row.updated_by = user_id
+
+    await db.commit()
+    return await list_flight_type_billing_accounts(db, payload.fiscal_year_uuid)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

@@ -26,8 +26,10 @@ if "aioboto3" not in sys.modules:
 
 
 from api.routes.flights import router
-from models import AccountingAccount, Asset, Member, PricingItem, PricingItemTier, PricingVersion, ValidatedFlight
+from models import AccountingAccount, Asset, FlightBillingCategory, FlightTypeBillingAccount, Member, PricingItem, PricingItemTier, PricingVersion, ValidatedFlight
 from services.flight_billing import FlightBillingPreviewService, _Payer, _PricedMachine
+
+TYPE_OF_FLIGHT_ESSAI = 7
 
 
 class _FakeScalarResult:
@@ -111,6 +113,124 @@ class FlightBillingPreviewServiceTests(IsolatedAsyncioTestCase):
             validated_by="test",
         )
         return member, asset, debit, credit, version, item, flight
+
+    def _club_billed_flight(self, type_of_flight: int, charge_to_erp_id: str | None = None) -> ValidatedFlight:
+        return ValidatedFlight(
+            uuid=uuid4(),
+            planche_uuid="planche-club",
+            jour=date(2026, 5, 1),
+            asset_code="F-CABC",
+            pilot_erp_id="M001",
+            charge_to_erp_id=charge_to_erp_id,
+            type_of_flight=type_of_flight,
+            launch_method=0,
+            takeoff_time="10:00",
+            landing_time="11:00",
+            landing_count=1,
+            validated_by="test",
+        )
+
+    def _category_row(
+        self, category: int, cost_code: str, reflection_code: str = "902", member: Member | None = None
+    ) -> FlightTypeBillingAccount:
+        cost_account = AccountingAccount(uuid=uuid4(), code=cost_code, name=f"Cout {cost_code}", type=9)
+        reflection_account = AccountingAccount(uuid=uuid4(), code=reflection_code, name="Reflet", type=9)
+        row = FlightTypeBillingAccount(
+            uuid=uuid4(),
+            billing_category=category,
+            member_uuid=member.uuid if member else None,
+            analytical_cost_account_uuid=cost_account.uuid,
+            analytical_reflection_account_uuid=reflection_account.uuid,
+        )
+        row.member = member
+        row.analytical_cost_account = cost_account
+        row.analytical_reflection_account = reflection_account
+        return row
+
+    async def test_resolve_club_billing_applies_essai_row_via_its_own_sentinel(self):
+        essai_member = Member(uuid=uuid4(), first_name="Essai", last_name="ERP", account_id="ESSAI", member_category=1)
+        essai_row = self._category_row(FlightBillingCategory.ESSAI, "923", member=essai_member)
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._type_billing_accounts = {FlightBillingCategory.ESSAI: essai_row}
+        service._billing_settings = types.SimpleNamespace(default_initiation_charge_account_uuid=None)
+        flight = self._club_billed_flight(TYPE_OF_FLIGHT_ESSAI, charge_to_erp_id="ESSAI")
+
+        club_info = await service._resolve_club_billing(flight)
+
+        self.assertTrue(club_info.is_club_billed)
+        self.assertEqual(club_info.charge_account_uuid, essai_row.analytical_cost_account_uuid)
+        self.assertIs(club_info.analytical_credit_account, essai_row.analytical_reflection_account)
+
+    async def test_resolve_club_billing_uses_entrainement_row_for_training_sentinel_non_essai(self):
+        training_member = Member(uuid=uuid4(), first_name="Entrainement", last_name="ERP", account_id="TRAIN", member_category=1)
+        entrainement_row = self._category_row(FlightBillingCategory.ENTRAINEMENT, "922", member=training_member)
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._type_billing_accounts = {FlightBillingCategory.ENTRAINEMENT: entrainement_row}
+        service._billing_settings = types.SimpleNamespace(default_initiation_charge_account_uuid=None)
+        flight = self._club_billed_flight(1, charge_to_erp_id="TRAIN")  # solo flight, billed to training sentinel
+
+        club_info = await service._resolve_club_billing(flight)
+
+        self.assertTrue(club_info.is_club_billed)
+        self.assertEqual(club_info.charge_account_uuid, entrainement_row.analytical_cost_account_uuid)
+        self.assertIs(club_info.analytical_credit_account, entrainement_row.analytical_reflection_account)
+
+    async def test_resolve_club_billing_uses_club_row_for_club_sentinel_non_essai(self):
+        club_member = Member(uuid=uuid4(), first_name="Club", last_name="ERP", account_id="CLUB", member_category=1)
+        club_row = self._category_row(FlightBillingCategory.CLUB, "924", member=club_member)
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._type_billing_accounts = {FlightBillingCategory.CLUB: club_row}
+        service._billing_settings = types.SimpleNamespace(default_initiation_charge_account_uuid=None)
+        flight = self._club_billed_flight(1, charge_to_erp_id="CLUB")
+
+        club_info = await service._resolve_club_billing(flight)
+
+        self.assertTrue(club_info.is_club_billed)
+        self.assertEqual(club_info.charge_account_uuid, club_row.analytical_cost_account_uuid)
+        self.assertIs(club_info.analytical_credit_account, club_row.analytical_reflection_account)
+
+    async def test_resolve_club_billing_has_no_class_6_fallback_when_row_not_fully_configured(self):
+        # No class-6 fallback for club/entrainement/essai: a row whose sentinel matches
+        # but whose analytical accounts aren't set must surface as a missing charge
+        # account, not silently post elsewhere.
+        club_member = Member(uuid=uuid4(), first_name="Club", last_name="ERP", account_id="CLUB", member_category=1)
+        incomplete_row = FlightTypeBillingAccount(
+            uuid=uuid4(),
+            billing_category=FlightBillingCategory.CLUB,
+            member_uuid=club_member.uuid,
+        )
+        incomplete_row.member = club_member
+        incomplete_row.analytical_cost_account = None
+        incomplete_row.analytical_reflection_account = None
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._type_billing_accounts = {FlightBillingCategory.CLUB: incomplete_row}
+        service._billing_settings = types.SimpleNamespace(
+            default_initiation_charge_account_uuid=uuid4()  # present, but must NOT be used here
+        )
+        flight = self._club_billed_flight(1, charge_to_erp_id="CLUB")
+
+        club_info = await service._resolve_club_billing(flight)
+
+        self.assertTrue(club_info.is_club_billed)
+        self.assertIsNone(club_info.charge_account_uuid)
+        self.assertIsNone(club_info.analytical_credit_account)
+
+    async def test_resolve_club_billing_not_club_billed_when_charge_to_matches_no_sentinel(self):
+        club_member = Member(uuid=uuid4(), first_name="Club", last_name="ERP", account_id="CLUB", member_category=1)
+        club_row = self._category_row(FlightBillingCategory.CLUB, "924", member=club_member)
+
+        service = FlightBillingPreviewService(AsyncMock())
+        service._type_billing_accounts = {FlightBillingCategory.CLUB: club_row}
+        service._billing_settings = types.SimpleNamespace(default_initiation_charge_account_uuid=None)
+        flight = self._club_billed_flight(1, charge_to_erp_id="M002")  # a real member, not a sentinel
+
+        club_info = await service._resolve_club_billing(flight)
+
+        self.assertFalse(club_info.is_club_billed)
 
     async def test_preview_uses_pack_price_without_persisting_pack_state(self):
         member, asset, debit, _credit, version, item, flight = self._objects()

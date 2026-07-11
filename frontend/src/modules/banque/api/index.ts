@@ -1941,8 +1941,6 @@ export type FlightBillingSettings = {
   rem_journal_uuid: string
   default_pack_discount_expense_account_uuid: string | null
   default_initiation_charge_account_uuid: string | null
-  club_charge_account_uuid: string | null
-  club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
   max_days_for_post_purchase_discount: number | null
@@ -1961,8 +1959,6 @@ export type FlightBillingSettingsUpdate = {
   rem_journal_uuid: string
   default_pack_discount_expense_account_uuid: string | null
   default_initiation_charge_account_uuid: string | null
-  club_charge_account_uuid: string | null
-  club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
   max_days_for_post_purchase_discount: number | null
@@ -1978,12 +1974,31 @@ export type FlightBillingSettingsDefaults = {
   rem_journal_uuid: string | null
   default_pack_discount_expense_account_uuid: string | null
   default_initiation_charge_account_uuid: string | null
-  club_charge_account_uuid: string | null
-  club_member_uuid: string | null
   rem_period_days: number
   allow_post_purchase_recalculation: boolean
   max_days_for_post_purchase_discount: number
   require_approval_for_late_discount: boolean
+}
+
+// ── Flight Type Billing Accounts (club/entrainement/essai analytical override) ──
+
+export type FlightTypeBillingAccount = {
+  uuid: string
+  fiscal_year_uuid: string
+  billing_category: number
+  billing_category_label: string | null
+  member_uuid: string | null
+  analytical_cost_account_uuid: string | null
+  analytical_cost_account_code: string | null
+  analytical_reflection_account_uuid: string | null
+  analytical_reflection_account_code: string | null
+}
+
+export type FlightTypeBillingAccountUpsert = {
+  billing_category: number
+  member_uuid: string | null
+  analytical_cost_account_uuid: string | null
+  analytical_reflection_account_uuid: string | null
 }
 
 export function useFlightBillingSettingsQuery(fiscalYearUuid: string | null, enabled = true) {
@@ -2028,6 +2043,37 @@ export function useUpsertFlightBillingSettingsMutation() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', data.fiscal_year_uuid] })
       queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', 'defaults', data.fiscal_year_uuid] })
+    },
+  })
+}
+
+export function useFlightTypeBillingAccountsQuery(fiscalYearUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['banque', 'settings', 'flight-billing', 'type-accounts', fiscalYearUuid],
+    enabled: enabled && !!fiscalYearUuid,
+    queryFn: async () => {
+      const { data } = await apiClient.get<FlightTypeBillingAccount[]>(
+        `/api/v1/accounting/settings/flight-billing/type-accounts?fiscal_year_uuid=${fiscalYearUuid}`,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useUpsertFlightTypeBillingAccountsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { fiscal_year_uuid: string; accounts: FlightTypeBillingAccountUpsert[] }) => {
+      const { data } = await apiClient.put<FlightTypeBillingAccount[]>(
+        '/api/v1/accounting/settings/flight-billing/type-accounts',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['banque', 'settings', 'flight-billing', 'type-accounts', variables.fiscal_year_uuid] })
     },
   })
 }
