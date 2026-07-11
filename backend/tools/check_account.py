@@ -593,13 +593,30 @@ def _build_journal_detail(
     erp_by_journal: dict[str, list[dict]],
     vulcain_journal_by_account: dict[str, dict[str, dict]],
 ) -> tuple[list[dict], str]:
-    """Attach Vulcain entry count / balance to each ERP per-journal line."""
+    """
+    Attach Vulcain entry count / balance to each ERP per-journal line, walking
+    the UNION of ERP and Vulcain journals for this account — not just the
+    ERP's own journal set. An account can have all its ERP entries consolidated
+    into one journal (e.g. everything moved to BQ) while Vulcain originally
+    recorded the same account across several different raw journals (AC, EXP,
+    RPT, ...). Iterating ERP journals only would silently drop those Vulcain
+    entries from the "Vulcain total", understating it — that's exactly what
+    happened for account 512: ERP has it all under BQ, but the raw Vulcain
+    ledger also has 512 lines under AC/EXP/MEM/ORG/PER/RPT/VDI, none of which
+    a ERP-journals-only loop would ever look up.
+    """
     vulcain_journals = vulcain_journal_by_account.get(erp_code, {})
+    erp_journals_here = {j["journal"]: j for j in erp_by_journal.get(erp_code, [])}
+
     detail: list[dict] = []
-    for j in erp_by_journal.get(erp_code, []):
-        v = vulcain_journals.get(j["journal"])
+    for journal_code in sorted(set(erp_journals_here) | set(vulcain_journals)):
+        j = erp_journals_here.get(journal_code)
+        v = vulcain_journals.get(journal_code)
         detail.append({
-            **j,
+            "journal": journal_code,
+            "debit": j["debit"] if j else Decimal("0"),
+            "credit": j["credit"] if j else Decimal("0"),
+            "entries": j["entries"] if j else 0,
             "vulcain_entries": v["entries"] if v else 0,
             "vulcain_debit": v["debit"] if v else Decimal("0"),
             "vulcain_credit": v["credit"] if v else Decimal("0"),
@@ -656,8 +673,7 @@ def compare(
     comparison_rows: list[dict] = []
 
     for (erp_code, side), accounts in sorted(grouped.items()):
-        # Sum Vulcain balances for all accounts in this group
-        vulcain_total = sum(a["solde"] for a in accounts)
+        # Sum Vulcain balances from CB/CR CSV for historical tracking
         vulcain_total_n1 = sum(a["solde_n1"] for a in accounts)
         vulcain_codes = ", ".join(sorted({a["vulcain_code"] for a in accounts}))
         vulcain_labels = " | ".join({a["label"] for a in accounts})
@@ -669,21 +685,22 @@ def compare(
         erp_credit = erp_bal["credit"] if erp_bal else Decimal("0")
         erp_missing = erp_bal is None
 
-        # Expected ERP net (debit − credit) based on accounting convention:
-        #   actif/charges → expected positive net  → expected = +vulcain_total
-        #   passif/produits → expected negative net → expected = −vulcain_total
-        if side in ("actif", "charges"):
-            expected_erp_net = vulcain_total
-        else:
-            expected_erp_net = -vulcain_total
-
-        diff = erp_net - expected_erp_net
-        flagged = abs(diff) > threshold
-
+        # Build journal breakdown (from raw Vulcain ledger, not CB/CR finalized totals)
         erp_name = erp_accounts.get(erp_code, {}).get("name", "")
         journal_breakdown, breakdown_str = _build_journal_detail(
             erp_code, erp_by_journal, vulcain_journal_by_account
         )
+
+        # Calculate Vulcain total from journal breakdown (raw ledger), not CB/CR.
+        # This ensures consistency with the detailed breakdown shown in the report.
+        vulcain_total = sum(j["vulcain_balance"] for j in journal_breakdown)
+
+        # Expected ERP net should equal Vulcain's calculated balance (both are debit − credit).
+        # No sign reversal needed since both sides use the same ledger-based calculation.
+        expected_erp_net = vulcain_total
+
+        diff = erp_net - expected_erp_net
+        flagged = abs(diff) > threshold
 
         comparison_rows.append({
             "erp_code": erp_code,

@@ -1285,7 +1285,7 @@
       "vulcain_code": "411100610",
       "erp_code": "419100",
       "asset_code": null,
-      "vulcain_label": "",
+      "vulcain_label": "VI",
       "vulcain_side": "",
       "erp_name": "",
       "count": 126,
@@ -1953,7 +1953,7 @@
     },
     {
       "vulcain_code": "706040000",
-      "erp_code": "7061",
+      "erp_code": "7065",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -2133,7 +2133,7 @@
     },
     {
       "vulcain_code": "756100000",
-      "erp_code": "756",
+      "erp_code": "7561",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",

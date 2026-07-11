@@ -19,15 +19,27 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ---
 
-Reassign every accounting entry that has a line on account 512 (Banque) to
-the BQ journal, and every entry that has a line on account 531 (Caisse) to
-the CS journal — regardless of which journal they were originally posted
-into (many were imported straight into AC/HA/VT/OD/... journals with the
-payment line combined into the same entry).
+Reassign every accounting entry that has a line on account 512 (Banque) or
+531 (Caisse), based on which side of that line is used — regardless of
+which journal the entry was originally posted into (many were imported
+straight into AC/HA/VT/OD/... journals with the payment line combined into
+the same entry):
+
+  512 (Banque) line is a DEBIT (money coming in)  -> BQ journal
+  512 (Banque) line is a CREDIT (money going out) -> AC journal (paying a
+                                                      supplier by bank transfer)
+  531 (Caisse) line is a DEBIT (money coming in)   -> CS journal
+  531 (Caisse) line is a CREDIT (money going out)  -> AC journal (paying a
+                                                      supplier in cash)
+
+Net debit/credit is used per entry, so multiple lines on the same account
+within one entry are summed before choosing a side.
 
 Entries with lines on BOTH 512 and 531 (e.g. internal transfers between
 bank and cash) are ambiguous and are always reported but never touched —
-they need a manual decision (split the entry, or pick a side).
+they need a manual decision (split the entry, or pick a side). Entries
+where the 512 or 531 net is exactly zero (offsetting lines within the same
+entry) are likewise reported as ambiguous and left untouched.
 
 For posted entries (state=2), the journal change also requires recomputing
 entry_hash so it stays consistent with services/accounting.py's
@@ -38,15 +50,16 @@ draft one.
 Usage:
   python fix_bank_cash_journals.py [--fiscal-year CODE] [--dry-run] [--include-posted]
                                    [--account-512 CODE] [--account-531 CODE]
-                                   [--journal-bq CODE] [--journal-cs CODE]
+                                   [--journal-bq CODE] [--journal-cs CODE] [--journal-ac CODE]
 
   --fiscal-year CODE   restrict to entries in this fiscal year (e.g. "2026")
   --dry-run            show what would change without modifying the database
   --include-posted     also fix posted entries (state=2), recomputing entry_hash
   --account-512 CODE   account code for "Banque" (default: "512")
   --account-531 CODE   account code for "Caisse" (default: "531")
-  --journal-bq CODE    target journal code for bank entries (default: "BQ")
-  --journal-cs CODE    target journal code for cash entries (default: "CS")
+  --journal-bq CODE    target journal code for 512 debit lines (default: "BQ")
+  --journal-cs CODE    target journal code for 531 debit lines (default: "CS")
+  --journal-ac CODE    target journal code for 512/531 credit lines (default: "AC")
 """
 
 import argparse
@@ -132,7 +145,7 @@ def load_candidate_entries(
     cur, account_512_code: str, account_531_code: str, fiscal_year_uuid: str | None
 ) -> list[dict]:
     where_clause = ""
-    params: list = [account_512_code, account_531_code]
+    params: list = [account_512_code, account_531_code, account_512_code, account_512_code, account_531_code, account_531_code]
     if fiscal_year_uuid:
         where_clause = "AND ae.fiscal_year_uuid = %s"
         params.append(fiscal_year_uuid)
@@ -142,7 +155,11 @@ def load_candidate_entries(
         SELECT ae.uuid, ae.fiscal_year_uuid, aj.code AS journal_code, ae.state,
                ae.entry_date, ae.reference, ae.description,
                bool_or(aa.code = %s) AS has_512,
-               bool_or(aa.code = %s) AS has_531
+               bool_or(aa.code = %s) AS has_531,
+               COALESCE(SUM(al.debit)  FILTER (WHERE aa.code = %s), 0) AS debit_512,
+               COALESCE(SUM(al.credit) FILTER (WHERE aa.code = %s), 0) AS credit_512,
+               COALESCE(SUM(al.debit)  FILTER (WHERE aa.code = %s), 0) AS debit_531,
+               COALESCE(SUM(al.credit) FILTER (WHERE aa.code = %s), 0) AS credit_531
         FROM accounting_entries ae
         JOIN accounting_journals aj ON aj.uuid = ae.journal_uuid
         JOIN accounting_lines al ON al.entry_uuid = ae.uuid AND al.fiscal_year_uuid = ae.fiscal_year_uuid
@@ -170,6 +187,36 @@ def load_entry_lines(cur, entry_uuid, fiscal_year_uuid) -> list[dict]:
     )
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Classification: which journal an entry belongs on
+# ---------------------------------------------------------------------------
+
+def classify_target_journal(entry: dict, journal_bq: dict, journal_cs: dict, journal_ac: dict) -> dict | None:
+    """
+    Return the target journal for this entry, or None if ambiguous:
+      - touches both 512 and 531 (e.g. an internal bank<->cash transfer), or
+      - the account's net (debit - credit) is exactly zero (offsetting lines
+        within the same entry) — no clear side to classify on.
+    """
+    if entry["has_512"] and entry["has_531"]:
+        return None
+
+    if entry["has_512"]:
+        net = Decimal(str(entry["debit_512"])) - Decimal(str(entry["credit_512"]))
+        if net > 0:
+            return journal_bq
+        if net < 0:
+            return journal_ac
+        return None
+
+    net = Decimal(str(entry["debit_531"])) - Decimal(str(entry["credit_531"]))
+    if net > 0:
+        return journal_cs
+    if net < 0:
+        return journal_ac
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -240,8 +287,8 @@ def apply_journal_change(cur, entry: dict, target_journal: dict, recompute_hash:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Move entries with a 512 (Banque) line to the BQ journal, "
-                    "and entries with a 531 (Caisse) line to the CS journal.",
+        description="Move entries with a 512 (Banque) or 531 (Caisse) line onto the "
+                    "journal implied by which side (debit/credit) that line is on.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--fiscal-year", metavar="CODE", help="Restrict to this fiscal year (e.g. 2026)")
@@ -249,8 +296,9 @@ def main() -> None:
     parser.add_argument("--include-posted", action="store_true", help="Also fix posted entries (state=2)")
     parser.add_argument("--account-512", metavar="CODE", default="512", help="Bank account code (default: 512)")
     parser.add_argument("--account-531", metavar="CODE", default="531", help="Cash account code (default: 531)")
-    parser.add_argument("--journal-bq", metavar="CODE", default="BQ", help="Target bank journal code (default: BQ)")
-    parser.add_argument("--journal-cs", metavar="CODE", default="CS", help="Target cash journal code (default: CS)")
+    parser.add_argument("--journal-bq", metavar="CODE", default="BQ", help="Target journal for 512 debit lines (default: BQ)")
+    parser.add_argument("--journal-cs", metavar="CODE", default="CS", help="Target journal for 531 debit lines (default: CS)")
+    parser.add_argument("--journal-ac", metavar="CODE", default="AC", help="Target journal for 512/531 credit lines (default: AC)")
     args = parser.parse_args()
 
     conn = _connect()
@@ -260,9 +308,10 @@ def main() -> None:
     account_531 = lookup_account(cur, args.account_531)
     journal_bq = lookup_journal(cur, args.journal_bq)
     journal_cs = lookup_journal(cur, args.journal_cs)
+    journal_ac = lookup_journal(cur, args.journal_ac)
 
-    print(f"Bank account   : {account_512['code']} — {account_512['name']}  → journal {journal_bq['code']}")
-    print(f"Cash account   : {account_531['code']} — {account_531['name']}  → journal {journal_cs['code']}")
+    print(f"Bank account   : {account_512['code']} — {account_512['name']}  → debit {journal_bq['code']} / credit {journal_ac['code']}")
+    print(f"Cash account   : {account_531['code']} — {account_531['name']}  → debit {journal_cs['code']} / credit {journal_ac['code']}")
 
     fy_uuid = None
     if args.fiscal_year:
@@ -279,7 +328,7 @@ def main() -> None:
     print()
 
     stats = {
-        "fixed_bq": 0, "fixed_cs": 0, "already_ok": 0,
+        "fixed_bq": 0, "fixed_cs": 0, "fixed_ac": 0, "already_ok": 0,
         "ambiguous": 0, "skipped_posted": 0, "skipped_cancelled": 0,
     }
     ambiguous_entries = []
@@ -289,12 +338,11 @@ def main() -> None:
         state_label = ENTRY_STATE_LABELS.get(state, str(state))
         label = f"{entry['entry_date']}  {entry['reference'] or '':<12}  {entry['description'][:50]}"
 
-        if entry["has_512"] and entry["has_531"]:
+        target_journal = classify_target_journal(entry, journal_bq, journal_cs, journal_ac)
+        if target_journal is None:
             stats["ambiguous"] += 1
             ambiguous_entries.append(entry)
             continue
-
-        target_journal = journal_bq if entry["has_512"] else journal_cs
 
         if entry["journal_code"] == target_journal["code"]:
             stats["already_ok"] += 1
@@ -314,15 +362,17 @@ def main() -> None:
         print(f"  FIX   [{state_label}]  {label}  {entry['journal_code']} → {target_journal['code']}")
         if target_journal["code"] == journal_bq["code"]:
             stats["fixed_bq"] += 1
-        else:
+        elif target_journal["code"] == journal_cs["code"]:
             stats["fixed_cs"] += 1
+        else:
+            stats["fixed_ac"] += 1
 
         if not args.dry_run:
             apply_journal_change(cur, entry, target_journal, recompute_hash=(state == 2))
 
     if ambiguous_entries:
         print()
-        print(f"--- Ambiguous entries (line on BOTH {account_512['code']} and {account_531['code']}) — not touched ---")
+        print(f"--- Ambiguous entries (both {account_512['code']}/{account_531['code']}, or a zero net) — not touched ---")
         for entry in ambiguous_entries:
             state_label = ENTRY_STATE_LABELS.get(entry["state"], str(entry["state"]))
             print(f"  {entry['entry_date']}  [{state_label}]  journal={entry['journal_code']:<4}  "
@@ -332,12 +382,13 @@ def main() -> None:
     print("Summary")
     print(f"  Moved to {journal_bq['code']:<4}   : {stats['fixed_bq']}")
     print(f"  Moved to {journal_cs['code']:<4}   : {stats['fixed_cs']}")
+    print(f"  Moved to {journal_ac['code']:<4}   : {stats['fixed_ac']}")
     print(f"  Already correct  : {stats['already_ok']}")
     print(f"  Ambiguous (skip) : {stats['ambiguous']}")
     print(f"  Skipped (posted) : {stats['skipped_posted']}")
     print(f"  Skipped (cancel) : {stats['skipped_cancelled']}")
 
-    total_fixed = stats["fixed_bq"] + stats["fixed_cs"]
+    total_fixed = stats["fixed_bq"] + stats["fixed_cs"] + stats["fixed_ac"]
     if args.dry_run:
         print()
         print("DRY RUN — no changes committed.")

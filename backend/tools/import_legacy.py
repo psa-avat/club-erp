@@ -485,6 +485,59 @@ def _resolve_fp_account_code(raw_compte: str, account_mapping: dict | None, look
     return lookups["accounts_code_by_uuid"].get(account_uuid, prefix)
 
 
+def resolve_bank_cash_journal_override(
+    lines: list[dict], col_compte: str, col_debit: str, col_credit: str,
+    account_mapping: dict | None, lookups: dict,
+) -> str | None:
+    """
+    Bank/cash rule (mirrors tools/fix_bank_cash_journals.py's
+    classify_target_journal(), which applies the same rule to entries already
+    in the ERP): a 512 (Banque) line belongs on BQ if it's a net DEBIT (money
+    coming in), or on AC if it's a net CREDIT (money going out — paying a
+    supplier by bank transfer). A 531 (Caisse) line follows the same pattern,
+    with CS instead of BQ for the debit side.
+
+    Returns None when both 512 and 531 are present (ambiguous, e.g. an
+    internal transfer between bank and cash) or when the relevant account's
+    net is exactly zero (offsetting lines within the same entry) — caller
+    should keep whatever journal it already had in mind.
+    """
+    net_512 = Decimal("0")
+    net_531 = Decimal("0")
+    has_512 = False
+    has_531 = False
+    for r in lines:
+        raw_compte = (r.get(col_compte) or "").strip()
+        if not raw_compte:
+            continue
+        code = _resolve_fp_account_code(raw_compte, account_mapping, lookups)
+        if code not in ("512", "531"):
+            continue
+        net = _clean_amount(r.get(col_debit) or "") - _clean_amount(r.get(col_credit) or "")
+        if code == "512":
+            has_512 = True
+            net_512 += net
+        else:
+            has_531 = True
+            net_531 += net
+
+    if has_512 and has_531:
+        return None
+    if has_512:
+        if net_512 > 0:
+            return "BQ"
+        if net_512 < 0:
+            return "AC"
+        return None
+    if has_531:
+        if net_531 > 0:
+            return "CS"
+        if net_531 < 0:
+            return "AC"
+        return None
+    return None
+
+
 def build_accounting_entries(
     accounting_rows: list[dict],
     member_map: dict,
@@ -544,6 +597,17 @@ def build_accounting_entries(
             warnings.append(f"Unknown journal {first_journal!r} for num_écriture={num_ecriture}, mapped to OD")
             erp_journal_code = "OD"
             stats["warnings"] += 1
+
+        # Bank/cash rule — see resolve_bank_cash_journal_override(). This must run
+        # before the fingerprint below: entries already corrected in the ERP (by
+        # fix_bank_cash_journals.py, or imported that way originally) now live on
+        # BQ/CS regardless of their raw legacy journal, so the fingerprint's journal
+        # code has to match that, or already-imported entries are mistaken for new ones.
+        override = resolve_bank_cash_journal_override(
+            lines, col_compte, col_debit, col_credit, account_mapping, lookups
+        )
+        if override:
+            erp_journal_code = override
 
         # Idempotency check — three layers (see load_erp_lookups for details)
         external_id = f"vulcain-{num_ecriture}"

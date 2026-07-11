@@ -1190,5 +1190,21 @@
         "is_posting_allowed": true,
         "is_reconcilable": false,
         "require_id": 2
+    },
+    {
+        "code": "922",
+        "name": "Coûts de revient des Vols d'entrainement ",
+        "type": 9,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
+    },
+    {
+        "code": "923",
+        "name": "Coûts de revient des Vols d'essais",
+        "type": 9,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 2
     }
 ]
