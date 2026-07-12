@@ -691,6 +691,38 @@
         "code": "616",
         "name": "Primes d'assurances",
         "type": 4,
+        "is_posting_allowed": false,
+        "is_reconcilable": false,
+        "require_id": 3
+    },
+    {
+        "code": "6161",
+        "name": "Primes d'assurances - Locaux et matériels",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 3
+    },
+    {
+        "code": "6162",
+        "name": "Primes d'assurances - Aéronefs",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 3
+    },
+    {
+        "code": "6163",
+        "name": "Licences assurances FFVP",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 3
+    },
+    {
+        "code": "6169",
+        "name": "Assurance VI/JD FFVP",
+        "type": 4,
         "is_posting_allowed": true,
         "is_reconcilable": false,
         "require_id": 3
@@ -938,6 +970,14 @@
     {
         "code": "7068",
         "name": "Stages",
+        "type": 5,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
+        "code": "7069",
+        "name": "Assurances VI/JD",
         "type": 5,
         "is_posting_allowed": true,
         "is_reconcilable": false,
