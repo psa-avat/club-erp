@@ -61,6 +61,7 @@ type JournalFilters = {
   search: string
   member: string
   account_code: string
+  account_sens: '' | 'debit' | 'credit'
   description: string
   entry_date_from: string
   entry_date_to: string
@@ -76,6 +77,7 @@ const DEFAULT_FILTERS: JournalFilters = {
   search: '',
   member: '',
   account_code: '',
+  account_sens: '',
   description: '',
   entry_date_from: '',
   entry_date_to: '',
@@ -195,6 +197,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       search: debouncedSearch.trim() || undefined,
       member: filters.member.trim() || undefined,
       account_code: filters.account_code.trim() || undefined,
+      account_sens: filters.account_sens || undefined,
       description: filters.description.trim() || undefined,
       entry_date_from: filters.entry_date_from || undefined,
       entry_date_to: filters.entry_date_to || undefined,
@@ -210,6 +213,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       debouncedSearch,
       filters.member,
       filters.account_code,
+      filters.account_sens,
       filters.description,
       filters.entry_date_from,
       filters.entry_date_to,
@@ -639,6 +643,23 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
                   onChange={(event) => setFilters((prev) => ({ ...prev, account_code: event.target.value }))}
                   placeholder={t('journal.entries.accountNumberPlaceholder')}
                 />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('journal.entries.accountSens')}</Label>
+                <select
+                  value={filters.account_sens}
+                  onChange={(event) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      account_sens: event.target.value as JournalFilters['account_sens'],
+                    }))
+                  }
+                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="">{t('journal.entries.sensAll')}</option>
+                  <option value="debit">{t('journal.entries.sensDebit')}</option>
+                  <option value="credit">{t('journal.entries.sensCredit')}</option>
+                </select>
               </div>
               <div className="space-y-1">
                 <Label>{t('journal.entries.libelle')}</Label>

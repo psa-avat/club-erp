@@ -303,6 +303,7 @@ export type AccountingEntriesFilters = {
   member_uuid?: string
   member?: string
   account_code?: string
+  account_sens?: 'debit' | 'credit'
   description?: string
   entry_date_from?: string
   entry_date_to?: string

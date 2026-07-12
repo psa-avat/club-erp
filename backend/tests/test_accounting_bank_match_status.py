@@ -122,3 +122,47 @@ class BankReconciliationStateFilterTests(IsolatedAsyncioTestCase):
     def test_unknown_value_is_ignored(self):
         sql = self._filtered_sql("not-a-real-state")
         self.assertNotIn("bank_statement_lines", sql)
+
+
+class AccountSensFilterTests(IsolatedAsyncioTestCase):
+    """account_sens (debit/credit/both) narrows the account_code EXISTS clause —
+    verify the SQL shape without needing a database, matching this file's
+    existing SQL-string-assertion style."""
+
+    def _filtered_sql(self, account_code=None, account_sens=None):
+        stmt = _apply_accounting_entry_filters(
+            select(AccountingEntry), account_code=account_code, account_sens=account_sens
+        )
+        return str(stmt)
+
+    def test_no_filter_when_both_are_none(self):
+        sql = self._filtered_sql()
+        self.assertNotIn("accounting_lines", sql)
+
+    def test_account_code_alone_has_no_debit_credit_condition(self):
+        sql = self._filtered_sql(account_code="512")
+        self.assertIn("EXISTS", sql)
+        self.assertIn("accounting_accounts.code", sql)
+        self.assertNotIn("accounting_lines.debit >", sql)
+        self.assertNotIn("accounting_lines.credit >", sql)
+
+    def test_debit_adds_debit_condition(self):
+        sql = self._filtered_sql(account_code="512", account_sens="debit")
+        self.assertIn("EXISTS", sql)
+        self.assertIn("accounting_lines.debit >", sql)
+        self.assertNotIn("accounting_lines.credit >", sql)
+
+    def test_credit_adds_credit_condition(self):
+        sql = self._filtered_sql(account_code="512", account_sens="credit")
+        self.assertIn("EXISTS", sql)
+        self.assertIn("accounting_lines.credit >", sql)
+        self.assertNotIn("accounting_lines.debit >", sql)
+
+    def test_sens_alone_without_account_code_still_filters(self):
+        sql = self._filtered_sql(account_sens="debit")
+        self.assertIn("EXISTS", sql)
+        self.assertIn("accounting_lines.debit >", sql)
+
+    def test_unknown_sens_value_is_ignored(self):
+        sql = self._filtered_sql(account_sens="sideways")
+        self.assertNotIn("accounting_lines", sql)

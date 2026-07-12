@@ -1536,6 +1536,7 @@ async def list_accounting_entries(
     member_uuid: UUID | None = None,
     member: str | None = None,
     account_code: str | None = None,
+    account_sens: str | None = None,
     description: str | None = None,
     entry_date_from: date | None = None,
     entry_date_to: date | None = None,
@@ -1568,6 +1569,7 @@ async def list_accounting_entries(
         member_uuid=member_uuid,
         member=member,
         account_code=account_code,
+        account_sens=account_sens,
         description=description,
         entry_date_from=entry_date_from,
         entry_date_to=entry_date_to,
@@ -1597,6 +1599,7 @@ async def count_accounting_entries(
     member_uuid: UUID | None = None,
     member: str | None = None,
     account_code: str | None = None,
+    account_sens: str | None = None,
     description: str | None = None,
     entry_date_from: date | None = None,
     entry_date_to: date | None = None,
@@ -1616,6 +1619,7 @@ async def count_accounting_entries(
         member_uuid=member_uuid,
         member=member,
         account_code=account_code,
+        account_sens=account_sens,
         description=description,
         entry_date_from=entry_date_from,
         entry_date_to=entry_date_to,
@@ -1638,6 +1642,7 @@ def _apply_accounting_entry_filters(
     member_uuid: UUID | None = None,
     member: str | None = None,
     account_code: str | None = None,
+    account_sens: str | None = None,
     description: str | None = None,
     entry_date_from: date | None = None,
     entry_date_to: date | None = None,
@@ -1684,21 +1689,29 @@ def _apply_accounting_entry_filters(
                 )
             )
 
+    account_code_term = None
     if account_code:
-        code_term = f"%{account_code.strip()}%"
-        if code_term != "%%":
-            stmt = stmt.where(
-                exists(
-                    select(AccountingLine.uuid)
-                    .select_from(AccountingLine)
-                    .join(AccountingAccount, AccountingAccount.uuid == AccountingLine.account_uuid)
-                    .where(
-                        AccountingLine.entry_uuid == AccountingEntry.uuid,
-                        AccountingAccount.code.ilike(code_term),
-                    )
-                    .correlate(AccountingEntry)
-                )
+        stripped = f"%{account_code.strip()}%"
+        if stripped != "%%":
+            account_code_term = stripped
+
+    if account_code_term is not None or account_sens in ("debit", "credit"):
+        line_conditions = [AccountingLine.entry_uuid == AccountingEntry.uuid]
+        if account_code_term is not None:
+            line_conditions.append(AccountingAccount.code.ilike(account_code_term))
+        if account_sens == "debit":
+            line_conditions.append(AccountingLine.debit > 0)
+        elif account_sens == "credit":
+            line_conditions.append(AccountingLine.credit > 0)
+        stmt = stmt.where(
+            exists(
+                select(AccountingLine.uuid)
+                .select_from(AccountingLine)
+                .join(AccountingAccount, AccountingAccount.uuid == AccountingLine.account_uuid)
+                .where(*line_conditions)
+                .correlate(AccountingEntry)
             )
+        )
 
     if description:
         description_term = f"%{description.strip()}%"
