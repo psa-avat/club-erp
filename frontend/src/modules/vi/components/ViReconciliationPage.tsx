@@ -10,7 +10,8 @@
 */
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Link2, Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { AlertCircle, CheckCircle2, Download, Link2, Loader2 } from 'lucide-react'
 
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
@@ -22,6 +23,7 @@ import {
   DialogFooter,
 } from '../../../components/ui/dialog'
 import { Input } from '../../../components/ui/input'
+import { exportRowsToCsv } from '../../../lib/exportCsv'
 import { useFlightListQuery, type ValidatedFlightItem } from '../../flights/api'
 import {
   type ViEntitlement,
@@ -225,6 +227,7 @@ function VoucherPickerDialog({
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export function ViReconciliationPage() {
+  const { t } = useTranslation('vi')
   const [showAll, setShowAll] = useState(false)
   const [page, setPage] = useState(1)
   const [selectedFlight, setSelectedFlight] = useState<ValidatedFlightItem | null>(null)
@@ -249,6 +252,19 @@ export function ViReconciliationPage() {
     void flightsQuery.refetch()
   }
 
+  function exportCsv() {
+    const headers = ['Date', 'Pilote', 'Machine', 'Bon VI (Planche)', 'Observations', 'Durée']
+    const rows = flights.map((f) => [
+      f.jour ?? '',
+      f.pilot_name ?? '',
+      f.asset_code ?? '',
+      f.vi_erp_id ?? '',
+      f.observations ?? '',
+      parseDuration(f.takeoff_time, f.landing_time),
+    ])
+    exportRowsToCsv('vi-vols.csv', headers, rows)
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -261,14 +277,25 @@ export function ViReconciliationPage() {
             )}
           </p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showAll}
-            onChange={(e) => { setShowAll(e.target.checked); setPage(1) }}
-          />
-          Afficher tous les vols d'initiation
-        </label>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={(e) => { setShowAll(e.target.checked); setPage(1) }}
+            />
+            Afficher tous les vols d'initiation
+          </label>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportCsv}
+            disabled={flights.length === 0}
+          >
+            <Download className="h-3.5 w-3.5 mr-1" />
+            {t('reconciliation.exportCsv')}
+          </Button>
+        </div>
       </div>
 
       {flightsQuery.isLoading && (

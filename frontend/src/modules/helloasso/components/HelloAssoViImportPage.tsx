@@ -7,10 +7,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Download } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { exportRowsToCsv } from '../../../lib/exportCsv'
 import { useHelloAssoItemDetailsMutation } from '../api'
 import { useDiscardViStagingMutation, useHelloassoViImportMutation, useHelloassoViPreviewMutation, usePromoteViStagingMutation, useViStagingQuery, useViTypesQuery } from '../../vi/api'
 
@@ -149,6 +151,32 @@ export function HelloAssoViImportPage() {
     await stagingQuery.refetch()
   }
 
+  function exportCsv() {
+    const headers = [
+      t('viImport.table.item'),
+      t('viImport.table.event'),
+      t('viImport.table.amount'),
+      t('viImport.table.name'),
+      t('viImport.table.email'),
+      t('viImport.table.purchaseDate'),
+      t('viImport.table.status'),
+    ]
+    const rows = filteredRows.map((row) => [
+      row.item_id,
+      row.form_slug ?? '',
+      formatAmount(row.amount_cents),
+      row.full_name ?? '',
+      row.email ?? '',
+      formatDateOnly(row.purchased_at),
+      row.status === 2
+        ? t('viImport.table.statusPromoted')
+        : row.status === 3
+          ? t('viImport.table.statusDiscarded')
+          : t('viImport.table.statusStaging'),
+    ])
+    exportRowsToCsv('helloasso-staging.csv', headers, rows)
+  }
+
   async function getItemDetails(itemId: number) {
     setLoadingDetailsItemId(itemId)
     try {
@@ -259,6 +287,14 @@ export function HelloAssoViImportPage() {
           </select>
           <Button disabled={selectedIds.length === 0 || promoteMutation.isPending} onClick={() => { void promoteSelected() }}>
             {t('viImport.staging.promote')} ({selectedIds.length})
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportCsv}
+            disabled={filteredRows.length === 0}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            {t('viImport.staging.exportCsv')}
           </Button>
         </div>
         <div className="overflow-x-auto">

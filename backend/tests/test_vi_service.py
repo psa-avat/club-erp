@@ -25,7 +25,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from schemas.vi import ViEntitlementUpdateRequest
-from services.vi import patch_vi_scheduled_date, update_vi_entitlement
+from services.vi import patch_vi_realisation_date, patch_vi_scheduled_date, update_vi_entitlement
 
 
 class _FakeResult:
@@ -50,7 +50,15 @@ class _FakeDb:
         pass
 
 
-def _fake_entitlement(*, code="VI2026-0001", planche_synced_at=None, status=2, scheduled_date=None):
+def _fake_entitlement(
+    *,
+    code="VI2026-0001",
+    planche_synced_at=None,
+    status=2,
+    scheduled_date=None,
+    realisation_date=None,
+    validity_date=None,
+):
     return SimpleNamespace(
         uuid=uuid4(),
         code=code,
@@ -58,7 +66,8 @@ def _fake_entitlement(*, code="VI2026-0001", planche_synced_at=None, status=2, s
         vi_type=None,
         description=None,
         scheduled_date=scheduled_date,
-        realisation_date=None,
+        realisation_date=realisation_date,
+        validity_date=validity_date,
         planche_synced_at=planche_synced_at,
         status=status,
     )
@@ -126,3 +135,41 @@ class ViEntitlementRescheduleLockTests(IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as ctx:
             await patch_vi_scheduled_date(db, row.uuid, date(2026, 7, 20), user_id=None)
         self.assertEqual(ctx.exception.status_code, 409)
+
+
+class ViEntitlementArchiveValidityDateTests(IsolatedAsyncioTestCase):
+    async def test_archiving_uses_linked_flight_date_not_archiving_date(self):
+        # Archived today (2026-07-01, the date passed by the "Archiver le bon" button)
+        # but the actual flight took place on 2026-06-15 — validity_date must follow the flight.
+        row = _fake_entitlement(status=2, scheduled_date=date(2026, 5, 1))
+        db = _FakeDb(execute_results=[_FakeResult(row), _FakeResult(date(2026, 6, 15))])
+
+        result = await patch_vi_realisation_date(db, row.uuid, date(2026, 7, 1), user_id=None)
+        self.assertEqual(result.status, 3)
+        self.assertEqual(result.realisation_date, date(2026, 7, 1))
+        self.assertEqual(result.validity_date, date(2026, 6, 15))
+
+    async def test_archiving_without_flight_link_falls_back_to_realisation_date(self):
+        row = _fake_entitlement(
+            status=2,
+            scheduled_date=date(2026, 7, 1),
+            validity_date=date(2027, 1, 1),
+        )
+        db = _FakeDb(execute_results=[_FakeResult(row), _FakeResult(None)])
+
+        result = await patch_vi_realisation_date(db, row.uuid, date(2026, 7, 1), user_id=None)
+        self.assertEqual(result.status, 3)
+        self.assertEqual(result.validity_date, date(2026, 7, 1))
+
+    async def test_clearing_realisation_date_leaves_validity_date_untouched(self):
+        row = _fake_entitlement(
+            status=3,
+            scheduled_date=date(2026, 7, 1),
+            realisation_date=date(2026, 7, 1),
+            validity_date=date(2026, 6, 15),
+        )
+        db = _FakeDb(execute_results=[_FakeResult(row)])
+
+        result = await patch_vi_realisation_date(db, row.uuid, None, user_id=None)
+        self.assertEqual(result.status, 2)
+        self.assertEqual(result.validity_date, date(2026, 6, 15))

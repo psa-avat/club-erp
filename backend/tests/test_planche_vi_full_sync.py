@@ -5,6 +5,7 @@
 
 import sys
 import types
+from datetime import date
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock
 
@@ -208,3 +209,45 @@ class PlancheViPushRegressionTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(result["failure"], 1)
         self.assertTrue(any("Chunk exception" in err for err in result["error_details"]))
+
+
+class PlancheViReconcileValidityDateTests(IsolatedAsyncioTestCase):
+    async def _run_reconcile(self, flights):
+        service = _service()
+        db = AsyncMock()
+        db.add = Mock()
+
+        entitlement = types.SimpleNamespace(
+            uuid="ent-1",
+            code="VI2026-0001",
+            status=2,  # SCHEDULED
+            realisation_date=None,
+            validity_date=None,
+        )
+
+        async def fake_execute(stmt):
+            if "validated_flights" in str(stmt).lower():
+                return types.SimpleNamespace(scalars=lambda: types.SimpleNamespace(all=lambda: flights))
+            return types.SimpleNamespace(scalars=lambda: types.SimpleNamespace(all=lambda: [entitlement]))
+
+        db.execute = fake_execute
+
+        result = await service.reconcile_vi_realisation_from_validated_flights(db, triggered_by="tester")
+        return entitlement, result
+
+    async def test_reconcile_keeps_latest_flight_date_regardless_of_processing_order(self):
+        early = types.SimpleNamespace(vi_erp_id="VI2026-0001", jour=date(2026, 5, 1))
+        late = types.SimpleNamespace(vi_erp_id="VI2026-0001", jour=date(2026, 6, 20))
+
+        entitlement, result = await self._run_reconcile([early, late])
+        self.assertEqual(result["updated"], 2)
+        self.assertEqual(entitlement.status, 3)
+        self.assertEqual(entitlement.validity_date, date(2026, 6, 20))
+
+    async def test_reconcile_does_not_regress_validity_date_when_late_flight_processed_first(self):
+        early = types.SimpleNamespace(vi_erp_id="VI2026-0001", jour=date(2026, 5, 1))
+        late = types.SimpleNamespace(vi_erp_id="VI2026-0001", jour=date(2026, 6, 20))
+
+        entitlement, result = await self._run_reconcile([late, early])
+        self.assertEqual(result["updated"], 2)
+        self.assertEqual(entitlement.validity_date, date(2026, 6, 20))

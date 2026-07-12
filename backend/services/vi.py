@@ -325,6 +325,17 @@ async def patch_vi_scheduled_date(
     return row
 
 
+async def _max_linked_flight_date(db: AsyncSession, entitlement_uuid: UUID) -> date | None:
+    """Latest flight date among this entitlement's linked flights (None if none linked)."""
+    result = await db.execute(
+        select(func.max(ValidatedFlight.jour))
+        .select_from(ViFlightLink)
+        .join(ValidatedFlight, ViFlightLink.flight_uuid == ValidatedFlight.uuid)
+        .where(ViFlightLink.entitlement_uuid == entitlement_uuid, ViFlightLink.flight_uuid.isnot(None))
+    )
+    return result.scalar_one_or_none()
+
+
 async def patch_vi_realisation_date(
     db: AsyncSession,
     entitlement_uuid: UUID,
@@ -336,6 +347,10 @@ async def patch_vi_realisation_date(
     row.realisation_date = realisation_date
     if realisation_date is not None:
         row.status = int(ViEntitlementStatus.REALIZED)
+        # validity_date must reflect the actual flight date, not the archiving
+        # date passed here — take the latest linked flight when there are several.
+        max_flight_date = await _max_linked_flight_date(db, entitlement_uuid)
+        row.validity_date = max_flight_date or realisation_date
     elif row.scheduled_date is not None:
         row.status = int(ViEntitlementStatus.SCHEDULED)
     else:

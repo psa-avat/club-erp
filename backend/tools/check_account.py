@@ -7,15 +7,11 @@ it under the terms of the GNU Affero General Public License as published
 by the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
-Compare Vulcain CB (balance sheet) and CR (income statement) CSVs against
-the ERP's accounting ledger for fiscal year 2026.
+Compare Vulcain raw ledger against the ERP's accounting ledger for fiscal year 2026.
 
 Input files (in legacy-data/):
-  CB 24062026.csv                     Vulcain "Compte de Bilan" (balance sheet)
-  CR 24062026.csv                     Vulcain "Compte de Résultat" (income statement)
-  V_comptabilité_validée_2026.csv     Vulcain raw ledger export (optional; used to
-                                       show Vulcain entry count/balance per journal
-                                       in the journal breakdown)
+  V_comptabilité_validée_2026.csv     Vulcain raw ledger export (source of truth for
+                                       account balances and per-journal breakdown)
 
 Output files (in output/):
   check_account_report.txt      human-readable summary + per-account table
@@ -66,15 +62,15 @@ TOOLS_DIR = Path(__file__).parent.resolve()
 LEGACY_DIR = TOOLS_DIR / "legacy-data"
 OUTPUT_DIR = TOOLS_DIR / "output"
 
-CB_FILE = LEGACY_DIR / "CB-AVAT.csv"
-CR_FILE = LEGACY_DIR / "CR-AVAT.csv"
 VULCAIN_ENTRIES_FILE = LEGACY_DIR / "V_comptabilité_validée_2026.csv"
 
 # Legacy Vulcain journal code -> ERP journal code (same mapping as
-# import_legacy.py). VVO (flight) entries are excluded: flight billing is
-# reconciled separately via the FL/REM journals, not the raw Vulcain ledger.
+# import_legacy.py). VVO (Vulcain flight journal) maps to FL (ERP flight journal).
+# Note: Vulcain includes discounts directly in flight prices (7061),
+# while ERP records full price in 7061 and discount offset in 6066.
+# For accurate reconciliation, compare Vulcain 7061 against ERP (7061 + 6066).
 JOURNAL_MAP: dict[str, str | None] = {
-    "VVO": None,
+    "VVO": "FL",  # Vulcain flights → ERP flight journal
     "RPT": "AN",
     "VIN": "VT",
     "VDI": "VT",
@@ -135,111 +131,117 @@ def _clean_amount(val: str) -> Decimal:
 
 
 # ---------------------------------------------------------------------------
-# Parse Vulcain CB / CR CSVs
+# Load Vulcain accounts from raw ledger
 # ---------------------------------------------------------------------------
-# Each row in these files repeats the full header info and totals, with actual
-# account data at fixed column positions:
-#   [16] left account code (9 digits)
-#   [17] left label
-#   [18] left solde (current year)
-#   [19] left solde N-1
-#   [20] right account code (9 digits)
-#   [21] right label
-#   [22] right solde (current year)
-#   [23] right solde N-1
-# Column [6] distinguishes the report type: "Actif"/"Passif" or "Charges"/"Produits".
+# Instead of parsing CB/CR summary files (which are derived/may be stale),
+# load account balances directly from the raw ledger V_comptabilité_validée_2026.csv.
+# This ensures we use the single source of truth.
 
-def parse_vulcain_report(path: Path) -> tuple[list[dict], dict]:
+def load_vulcain_accounts_from_ledger(path: Path) -> tuple[list[dict], dict]:
     """
-    Parse a Vulcain CB or CR CSV.
+    Load Vulcain account balances from raw ledger (source of truth).
+    Computes balances from debit/credit entries, avoiding summary file staleness.
 
     Returns:
       accounts: list of {
-        'side': 'actif'|'passif'|'charges'|'produits',
+        'side': 'actif'|'passif'|'charges'|'produits' (inferred from account code range),
         'vulcain_code': str (9-digit),
-        'label': str,
-        'solde': Decimal,
-        'solde_n1': Decimal,
+        'label': str (from CSV libellé),
+        'solde': Decimal (debit - credit, signed per account type),
+        'solde_n1': Decimal (always 0 for now; raw ledger only has current year),
       }
       totals: {
-        'left_label': str, 'right_label': str,
-        'total_left': Decimal, 'total_right': Decimal,
-        'total_left_n1': Decimal, 'total_right_n1': Decimal,
-        'result': Decimal, 'result_qualifier': str,
+        'result': Decimal (total balance),
+        'result_qualifier': str (empty placeholder),
       }
     """
-    accounts: list[dict] = []
-    totals: dict = {}
+    from datetime import datetime
 
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if len(row) < 24:
-                continue
+    accounts_dict: dict[str, dict] = {}  # keyed by (code, label) for dedup
+    totals = {"result": Decimal("0"), "result_qualifier": ""}
 
-            left_header = row[6].strip()   # "Actif" or "Charges"
-            right_header = row[7].strip()  # "Passif" or "Produits"
-            left_side = left_header.lower()
-            right_side = right_header.lower()
+    if not path.exists():
+        return [], totals
 
-            left_code = row[16].strip()
-            left_label = row[17].strip()
-            left_solde_raw = row[18].strip()
-            left_solde_n1_raw = row[19].strip()
+    # Account code to side mapping (French PCG ranges)
+    def code_to_side(code: str) -> str:
+        if not code or not code[0].isdigit():
+            return "unknown"
+        first_digit = code[0]
+        if first_digit in "12":  # 1xx, 2xx = Actif
+            return "actif"
+        elif first_digit in "34":  # 3xx, 4xx = Passif
+            return "passif"
+        elif first_digit in "56":  # 5xx, 6xx = Charges
+            return "charges"
+        elif first_digit in "7":   # 7xx = Produits
+            return "produits"
+        return "unknown"
 
-            right_code = row[20].strip()
-            right_label = row[21].strip()
-            right_solde_raw = row[22].strip()
-            right_solde_n1_raw = row[23].strip()
+    try:
+        with open(path, encoding="latin-1", newline="") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            if not reader.fieldnames:
+                return [], totals
 
-            # Collect totals from the recurring footer fields (consistent across all rows)
-            if not totals and len(row) >= 30:
-                totals = {
-                    "left_label": left_header,
-                    "right_label": right_header,
-                    "total_left": _clean_amount(row[25]) if len(row) > 25 else Decimal("0"),
-                    "total_left_n1": _clean_amount(row[26]) if len(row) > 26 else Decimal("0"),
-                    "total_right": _clean_amount(row[28]) if len(row) > 28 else Decimal("0"),
-                    "total_right_n1": _clean_amount(row[29]) if len(row) > 29 else Decimal("0"),
-                }
-                # Result qualifier: CB uses row[32], CR uses row[33]
-                if left_header == "Actif":
-                    totals["result_qualifier"] = row[32].strip() if len(row) > 32 else ""
-                else:
-                    totals["result_qualifier"] = row[33].strip() if len(row) > 33 else ""
-                # Result value: computed from totals (avoids CB/CR layout divergence).
-                # CB: Actifs − Passifs = excédent (positive) or déficit (negative)
-                # CR: Produits − Charges = excédent (positive) or déficit (negative)
-                # Set after totals are populated (see below).
+            for row in reader:
+                try:
+                    date_str = (row.get("date_de_valeur") or "").strip()
+                    if not date_str:
+                        continue
+                    # Dates are in format DD/MM/YY, so check for year "26" (2026)
+                    parts = date_str.split("/")
+                    if len(parts) < 3 or parts[2].strip() != "26":
+                        continue
+                except (ValueError, KeyError, IndexError):
+                    continue
 
-            if left_code and left_code[0].isdigit():
-                accounts.append({
-                    "side": left_side,
-                    "vulcain_code": left_code,
-                    "label": left_label,
-                    "solde": _clean_amount(left_solde_raw),
-                    "solde_n1": _clean_amount(left_solde_n1_raw),
-                })
+                compte = (row.get("compte") or "").strip()
+                if not compte or not compte[0].isdigit():
+                    continue
 
-            if right_code and right_code[0].isdigit():
-                accounts.append({
-                    "side": right_side,
-                    "vulcain_code": right_code,
-                    "label": right_label,
-                    "solde": _clean_amount(right_solde_raw),
-                    "solde_n1": _clean_amount(right_solde_n1_raw),
-                })
+                # Use first 9 digits as Vulcain account code
+                vulcain_code = compte[:9]
+                libelle = (row.get("libellé") or "").strip()
 
-    # Compute result from totals (sign: positive = excédent)
-    if totals:
-        left_h = totals.get("left_label", "")
-        if left_h == "Actif":
-            # CB: Actifs − Passifs
-            totals["result"] = totals["total_left"] - totals["total_right"]
-        else:
-            # CR: Produits − Charges
-            totals["result"] = totals["total_right"] - totals["total_left"]
+                debit_raw = row.get("débit") or "0"
+                credit_raw = row.get("crédit") or "0"
 
+                debit = _clean_amount(debit_raw)
+                credit = _clean_amount(credit_raw)
+
+                key = (vulcain_code, libelle)
+                if key not in accounts_dict:
+                    accounts_dict[key] = {
+                        "vulcain_code": vulcain_code,
+                        "label": libelle,
+                        "side": code_to_side(vulcain_code),
+                        "debit_total": Decimal("0"),
+                        "credit_total": Decimal("0"),
+                    }
+
+                accounts_dict[key]["debit_total"] += debit
+                accounts_dict[key]["credit_total"] += credit
+    except Exception as e:
+        print(f"WARNING: Error reading Vulcain ledger: {e}")
+        return [], totals
+
+    # Convert to output format (debit - credit as solde)
+    accounts = []
+    total_balance = Decimal("0")
+
+    for key, acct in accounts_dict.items():
+        solde = acct["debit_total"] - acct["credit_total"]
+        accounts.append({
+            "side": acct["side"],
+            "vulcain_code": acct["vulcain_code"],
+            "label": acct["label"],
+            "solde": solde,
+            "solde_n1": Decimal("0"),
+        })
+        total_balance += solde
+
+    totals["result"] = total_balance
     return accounts, totals
 
 
@@ -584,6 +586,105 @@ def load_account_matching(path: Path) -> dict[str, str | None]:
     return result
 
 
+def load_consolidations(path: Path) -> list[dict]:
+    """
+    Load account consolidation rules from the mapping file.
+    Returns list of consolidation configs (for combining multiple accounts in comparison).
+    """
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    consolidations = data.get("consolidations", [])
+    return [c for c in consolidations if c.get("enabled", True)]
+
+
+def _apply_consolidations(
+    comparison_rows: list[dict], consolidations: list[dict]
+) -> list[dict]:
+    """
+    Apply account consolidations: combine multiple ERP accounts into single rows
+    when they represent a split of a single Vulcain account.
+    """
+    if not consolidations:
+        return comparison_rows
+
+    # Build a map of erp_code -> row for fast lookup
+    rows_by_code = {r["erp_code"]: r for r in comparison_rows}
+    consolidated_codes = set()
+    new_rows = []
+
+    for consolidation in consolidations:
+        erp_accounts = consolidation.get("erp_accounts", [])
+        discount_account = consolidation.get("discount_account")
+        reconcile_as = consolidation.get("reconcile_as", "sum")
+
+        if not erp_accounts:
+            continue
+
+        # Check if all accounts are present in comparison_rows
+        matching_rows = [rows_by_code.get(code) for code in erp_accounts]
+        if not all(matching_rows):
+            continue
+
+        # Combine the accounts
+        vulcain_total = Decimal("0")
+        erp_debit_total = Decimal("0")
+        erp_credit_total = Decimal("0")
+        erp_codes_str = ", ".join(erp_accounts)
+
+        for row in matching_rows:
+            vulcain_total += row["vulcain_solde"]
+            erp_debit_total += row["erp_debit"]
+            erp_credit_total += row["erp_credit"]
+
+        # Apply discount if specified
+        if discount_account and discount_account in rows_by_code:
+            discount_row = rows_by_code[discount_account]
+            if reconcile_as == "sum_with_discount":
+                # Discount account credit reduces total revenue (add credit amount to credit_total)
+                erp_credit_total += discount_row["erp_credit"]
+
+        erp_net = erp_debit_total - erp_credit_total
+        diff = erp_net - vulcain_total
+        threshold = Decimal("0.10")
+        flagged = abs(diff) > threshold
+
+        # Create consolidated row
+        consolidated_row = {
+            "erp_code": erp_codes_str,
+            "erp_name": consolidation.get("name", f"Consolidated: {erp_codes_str}"),
+            "side": matching_rows[0]["side"],
+            "vulcain_codes": ",".join([r["vulcain_codes"] for r in matching_rows]),
+            "vulcain_labels": matching_rows[0]["vulcain_labels"],
+            "vulcain_solde": vulcain_total,
+            "vulcain_solde_n1": Decimal("0"),
+            "erp_debit": erp_debit_total,
+            "erp_credit": erp_credit_total,
+            "erp_net": erp_net,
+            "expected_erp_net": vulcain_total,
+            "diff": diff,
+            "flagged": flagged,
+            "erp_missing": False,
+            "journal_breakdown": f"[Consolidated: {erp_codes_str}]",
+            "_journal_detail": [],
+            "_consolidated_accounts": erp_accounts,
+            "_consolidation_note": consolidation.get("description", ""),
+        }
+
+        new_rows.append(consolidated_row)
+        for code in erp_accounts:
+            consolidated_codes.add(code)
+        if discount_account:
+            consolidated_codes.add(discount_account)
+
+    # Remove consolidated accounts from the original rows and add the new consolidated rows
+    result = [r for r in comparison_rows if r["erp_code"] not in consolidated_codes]
+    result.extend(new_rows)
+    result.sort(key=lambda r: r["erp_code"])
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Comparison logic
 # ---------------------------------------------------------------------------
@@ -637,6 +738,7 @@ def compare(
     threshold: Decimal,
     account_matching: dict[str, str | None] | None = None,
     vulcain_journal_by_account: dict[str, dict[str, dict]] | None = None,
+    consolidations: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Map Vulcain accounts to ERP codes, aggregate, and compare.
@@ -753,6 +855,7 @@ def compare(
 
     # Sort by erp_code
     comparison_rows.sort(key=lambda r: r["erp_code"])
+
     return comparison_rows, unmatched
 
 
@@ -777,31 +880,27 @@ def _flag(row: dict) -> str:
 def build_report(
     comparison_rows: list[dict],
     unmatched: list[dict],
-    cb_totals: dict,
-    cr_totals: dict,
+    vulcain_totals: dict,
     erp_data: dict,
     threshold: Decimal,
+    title: str | None = None,
 ) -> str:
+    if title is None:
+        title = "=== ERP Account Balance Check Report ==="
+
     lines = [
-        "=== ERP Account Balance Check Report ===",
+        title,
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Vulcain report date: 24/06/2026",
+        f"Vulcain ledger: V_comptabilité_validée_2026.csv (raw ledger, single source of truth)",
         f"ERP fiscal year: {erp_data['fy_year']} ({erp_data['fy_start']} → {erp_data['fy_end']})",
         f"Mismatch threshold: {threshold:.2f}",
         "",
     ]
 
-    # Vulcain reference totals
+    # Vulcain reference totals (from raw ledger)
     lines += [
-        "--- Vulcain Reference Totals ---",
-        f"  Balance sheet (CB):",
-        f"    Total Actifs:    {cb_totals.get('total_left',  Decimal(0)):>14.2f}",
-        f"    Total Passifs:   {cb_totals.get('total_right', Decimal(0)):>14.2f}",
-        f"    Bilan ({cb_totals.get('result_qualifier','').strip()}): {cb_totals.get('result', Decimal(0)):>10.2f}",
-        f"  Income statement (CR):",
-        f"    Total Charges:   {cr_totals.get('total_left',  Decimal(0)):>14.2f}",
-        f"    Total Produits:  {cr_totals.get('total_right', Decimal(0)):>14.2f}",
-        f"    Résultat ({cr_totals.get('result_qualifier','').strip()}): {cr_totals.get('result', Decimal(0)):>9.2f}",
+        "--- Vulcain Reference Totals (Raw Ledger) ---",
+        f"  Total balance: {vulcain_totals.get('result', Decimal(0)):>14.2f}",
         "",
     ]
 
@@ -1001,8 +1100,7 @@ def main() -> None:
             i += 1
 
     print("=== ERP Account Balance Check ===")
-    print(f"  CB file: {CB_FILE.name}")
-    print(f"  CR file: {CR_FILE.name}")
+    print(f"  Vulcain ledger file: {VULCAIN_ENTRIES_FILE.name}")
     print(f"  Threshold: {threshold}")
     if account_file:
         print(f"  Account mapping file: {account_file}")
@@ -1012,30 +1110,20 @@ def main() -> None:
         print("  [DRY RUN — no output files written]")
     print()
 
-    # Parse Vulcain reports
-    print("Parsing Vulcain reports…")
-    cb_accounts, cb_totals = parse_vulcain_report(CB_FILE)
-    cr_accounts, cr_totals = parse_vulcain_report(CR_FILE)
-    all_vulcain = cb_accounts + cr_accounts
+    # Load Vulcain accounts from raw ledger (single source of truth)
+    print("Loading Vulcain account balances from raw ledger…")
+    all_vulcain, vulcain_totals = load_vulcain_accounts_from_ledger(VULCAIN_ENTRIES_FILE)
+    actif_count = sum(1 for a in all_vulcain if a['side']=='actif')
+    passif_count = sum(1 for a in all_vulcain if a['side']=='passif')
+    charges_count = sum(1 for a in all_vulcain if a['side']=='charges')
+    produits_count = sum(1 for a in all_vulcain if a['side']=='produits')
     print(
-        f"  CB: {len(cb_accounts)} accounts  "
-        f"(actifs={sum(1 for a in cb_accounts if a['side']=='actif')}, "
-        f"passifs={sum(1 for a in cb_accounts if a['side']=='passif')})"
+        f"  Total: {len(all_vulcain)} accounts  "
+        f"(actifs={actif_count}, passifs={passif_count}, "
+        f"charges={charges_count}, produits={produits_count})"
     )
     print(
-        f"  CR: {len(cr_accounts)} accounts  "
-        f"(charges={sum(1 for a in cr_accounts if a['side']=='charges')}, "
-        f"produits={sum(1 for a in cr_accounts if a['side']=='produits')})"
-    )
-    print(
-        f"  CB totals — Actifs: {cb_totals.get('total_left', 0):.2f}  "
-        f"Passifs: {cb_totals.get('total_right', 0):.2f}  "
-        f"Result: {cb_totals.get('result', 0):.2f}"
-    )
-    print(
-        f"  CR totals — Charges: {cr_totals.get('total_left', 0):.2f}  "
-        f"Produits: {cr_totals.get('total_right', 0):.2f}  "
-        f"Result: {cr_totals.get('result', 0):.2f}"
+        f"  Result: {vulcain_totals.get('result', 0):.2f}"
     )
 
     # Connect and load ERP data
@@ -1070,12 +1158,16 @@ def main() -> None:
 
     # Load account matching file if provided
     account_matching: dict[str, str | None] | None = None
+    consolidations: list[dict] = []
     if account_file:
         print(f"\nLoading account mapping from {account_file}…")
         account_matching = load_account_matching(account_file)
         overrides = sum(1 for v in account_matching.values() if v is not None)
         exclusions = sum(1 for v in account_matching.values() if v is None)
         print(f"  {len(account_matching)} entries loaded ({overrides} mapped, {exclusions} excluded)")
+        consolidations = load_consolidations(account_file)
+        if consolidations:
+            print(f"  {len(consolidations)} account consolidation rule(s) loaded")
 
     # Load raw Vulcain ledger for the per-journal breakdown (entry count + balance)
     erp_codes_sorted = _build_erp_code_list(erp_data["erp_accounts"])
@@ -1089,21 +1181,38 @@ def main() -> None:
 
     # Compare
     print("\nComparing…")
-    comparison_rows, unmatched = compare(
+    comparison_rows_raw, unmatched = compare(
         all_vulcain, erp_data, threshold, account_matching, vulcain_journal_by_account
     )
-    flagged = [r for r in comparison_rows if r["flagged"]]
+
+    # Generate both raw and consolidated versions
+    comparison_rows_consolidated = comparison_rows_raw.copy()
+    if consolidations:
+        comparison_rows_consolidated = _apply_consolidations(comparison_rows_consolidated, consolidations)
+
+    flagged_raw = [r for r in comparison_rows_raw if r["flagged"]]
+    flagged_consolidated = [r for r in comparison_rows_consolidated if r["flagged"]]
+
     print(
-        f"  {len(comparison_rows)} account groups  "
-        f"| {len(flagged)} flagged  "
-        f"| {len(unmatched)} Vulcain codes with no ERP match"
+        f"  Raw:          {len(comparison_rows_raw)} account groups, {len(flagged_raw)} flagged"
+    )
+    print(
+        f"  Consolidated: {len(comparison_rows_consolidated)} account groups, {len(flagged_consolidated)} flagged"
+    )
+    print(f"  Unmatched Vulcain codes: {len(unmatched)}")
+
+    # Build text reports
+    report_raw = build_report(
+        comparison_rows_raw, unmatched, vulcain_totals, erp_data, threshold,
+        title="=== ERP Account Balance Check — RAW (Before Consolidation) ==="
+    )
+    report_consolidated = build_report(
+        comparison_rows_consolidated, unmatched, vulcain_totals, erp_data, threshold,
+        title="=== ERP Account Balance Check — CONSOLIDATED (After Consolidation) ==="
     )
 
-    # Build text report
-    report_text = build_report(
-        comparison_rows, unmatched, cb_totals, cr_totals, erp_data, threshold
-    )
-    print("\n" + report_text)
+    # Show consolidated report by default
+    print("\n" + report_consolidated)
 
     if dry_run:
         conn.close()
@@ -1113,23 +1222,28 @@ def main() -> None:
     # Write outputs
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    report_path = OUTPUT_DIR / "check_account_report.txt"
-    report_path.write_text(report_text, encoding="utf-8")
-    print(f"  Written → {report_path.name}")
+    # Write both reports
+    report_raw_path = OUTPUT_DIR / "check_account_report_raw.txt"
+    report_raw_path.write_text(report_raw, encoding="utf-8")
+    print(f"  Written → {report_raw_path.name}")
+
+    report_consolidated_path = OUTPUT_DIR / "check_account_report.txt"
+    report_consolidated_path.write_text(report_consolidated, encoding="utf-8")
+    print(f"  Written → {report_consolidated_path.name} (main report)")
 
     detail_path = OUTPUT_DIR / "check_account_detail.csv"
-    write_detail_csv(comparison_rows, detail_path)
+    write_detail_csv(comparison_rows_consolidated, detail_path)
     print(f"  Written → {detail_path.name}")
 
     entries_path = OUTPUT_DIR / "check_account_entries.csv"
-    n_entry_lines = write_entries_csv(flagged, conn, erp_data["fy_uuid"], entries_path, threshold)
+    n_entry_lines = write_entries_csv(flagged_consolidated, conn, erp_data["fy_uuid"], entries_path, threshold)
     print(f"  Written {n_entry_lines} entry lines → {entries_path.name}")
 
     conn.close()
     print(f"\nDone. Review {OUTPUT_DIR}/check_account_report.txt")
-    if flagged:
+    if flagged_consolidated:
         print(
-            f"  {len(flagged)} flagged accounts — "
+            f"  {len(flagged_consolidated)} flagged accounts — "
             f"use --account <code> to drill into individual ERP entries."
         )
 

@@ -19,7 +19,8 @@
 */
 
 import { useState, useEffect } from 'react'
-import { Settings2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Settings2, CheckCircle2, AlertCircle, Download } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
@@ -32,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../components/ui/dialog'
+import { exportRowsToCsv } from '../../../lib/exportCsv'
 import { useAccountsQuery } from '../../banque/api'
 import { useMemberOptionsQuery } from '../../members/api'
 import { type ViType, type ViTypeAccountingPatch, useCreateViTypeMutation, useUpdateViTypeMutation, useViTypesQuery } from '../api'
@@ -318,6 +320,7 @@ function ViTypeAccountingDialog({
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export function ViTypesPage() {
+  const { t } = useTranslation('vi')
   const typesQuery = useViTypesQuery()
   const createTypeMutation = useCreateViTypeMutation()
   const updateTypeMutation = useUpdateViTypeMutation()
@@ -347,6 +350,17 @@ export function ViTypesPage() {
     })
   }
 
+  function exportCsv() {
+    const headers = ['Code', 'Nom', 'Description', 'Actif']
+    const rows = (typesQuery.data ?? []).map((row) => [
+      row.code,
+      row.name,
+      row.description ?? '',
+      row.is_active ? 'Oui' : 'Non',
+    ])
+    exportRowsToCsv('types-vi.csv', headers, rows)
+  }
+
   return (
     <section className="space-y-4">
       <form className="grid gap-4 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-3" onSubmit={handleCreate}>
@@ -370,6 +384,18 @@ export function ViTypesPage() {
       {typesQuery.error ? <Alert>{toErrorMessage(typesQuery.error)}</Alert> : null}
       {createTypeMutation.error ? <Alert>{toErrorMessage(createTypeMutation.error)}</Alert> : null}
       {updateTypeMutation.error ? <Alert>{toErrorMessage(updateTypeMutation.error)}</Alert> : null}
+
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={exportCsv}
+          disabled={(typesQuery.data ?? []).length === 0}
+        >
+          <Download className="h-3.5 w-3.5 mr-1" />
+          {t('types.exportCsv')}
+        </Button>
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
         <table className="min-w-full divide-y divide-slate-200 text-sm">

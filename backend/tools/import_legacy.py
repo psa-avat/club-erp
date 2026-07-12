@@ -1255,6 +1255,24 @@ def load_account_mapping(path: str) -> dict[str, dict]:
     return result
 
 
+def load_consolidations(path: str | Path) -> list[dict]:
+    """
+    Load account consolidation rules from the mapping file.
+    Returns list of consolidation configs (for combining multiple accounts in comparison).
+    """
+    p = Path(path) if isinstance(path, str) else path
+    if not p.exists():
+        return []
+    try:
+        import json
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+        consolidations = data.get("consolidations", [])
+        return [c for c in consolidations if c.get("enabled", True)]
+    except (json.JSONDecodeError, KeyError, IOError):
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------

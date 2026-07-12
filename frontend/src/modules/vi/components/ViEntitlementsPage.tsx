@@ -21,7 +21,9 @@
 import { useMemo, useState } from 'react'
 import Decimal from 'decimal.js'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, Lock, Pencil, Plus, UserCheck, XCircle } from 'lucide-react'
+import { BookOpen, Download, Lock, Pencil, Plus, UserCheck, XCircle } from 'lucide-react'
+
+import { exportRowsToCsv } from '../../../lib/exportCsv'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
@@ -846,6 +848,26 @@ export function ViEntitlementsPage() {
     status === 6 ? 'badge badge-success' :
     'badge'
 
+  function exportCsv() {
+    const headers = [
+      t('viEntitlements.table.code'),
+      t('viEntitlements.table.type'),
+      t('viEntitlements.table.description'),
+      'Montant TTC',
+      t('viEntitlements.table.status'),
+      t('viEntitlements.table.validityDate'),
+    ]
+    const rows = filteredAndSortedRows.map((row) => [
+      row.code,
+      row.vi_type_code ?? '',
+      row.description ?? '',
+      fmtAmount(row.amount_ttc),
+      STATUS_LABELS[row.status] ?? String(row.status),
+      row.validity_date ?? '',
+    ])
+    exportRowsToCsv('bons-vi.csv', headers, rows)
+  }
+
   return (
     <section className="space-y-4">
       {/* Header */}
@@ -854,10 +876,20 @@ export function ViEntitlementsPage() {
           <h2 className="text-base font-semibold">Bons VI</h2>
           <p className="text-sm text-muted-foreground">Créez et gérez les droits de vol initiation.</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-1" />
-          Nouveau bon
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={exportCsv}
+            disabled={filteredAndSortedRows.length === 0}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            {t('viEntitlements.table.exportCsv')}
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nouveau bon
+          </Button>
+        </div>
       </div>
 
       {entitlementsQuery.error && (

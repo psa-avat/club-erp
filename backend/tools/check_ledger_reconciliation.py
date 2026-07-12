@@ -26,10 +26,12 @@ And conversely, does every ERP entry (outside the modules the ERP itself
 computes) trace back to a Vulcain entry?
 
 Flight (FL), pack discount (REM), and VI voucher (VI) journal entries are
-calculated by the ERP itself from flight/VI data — they were never meant to
-have a 1:1 Vulcain counterpart, so they're excluded from the "extra in ERP"
-side by default (see --exclude-journals). Vulcain VVO (flight) rows are
-always excluded from the Vulcain side for the same reason.
+calculated by the ERP itself from flight/VI data. FL and REM are excluded from
+the "extra in ERP" side by default since they're never meant to have a 1:1 Vulcain
+counterpart (see --exclude-journals). However, VI is included by default to verify
+that the ERP's VI revenue calculation matches Vulcain's recorded VI revenue
+(Vulcain 411100610 realized flights vs ERP 7067). Vulcain VVO (flight) rows are
+always excluded from the Vulcain side.
 
 Matching keys primarily on CONTENT (entry date + per-line account/debit/credit),
 not journal: journal placement has already drifted from content more than once
@@ -88,8 +90,9 @@ Usage:
                              backend/account_mapping.json — the curated, git-tracked
                              file — falling back to output/account_mapping.json)
   --exclude-journals CODES   comma-separated ERP journal codes excluded from
-                             the "extra in ERP" side (default: FL,REM,VI,AMO,PRO
-                             — modules the ERP computes itself)
+                             the "extra in ERP" side (default: FL,REM,AMO,PRO
+                             — auto-computed modules. VI is included by default
+                             for verification against Vulcain.)
   --pack-account CODE        ERP account for the pack-by-member check (default: 7066)
   --check-account CODE       focus on one ERP account (e.g. 512) — prints and writes
                              only the missing/extra/mismatched/journal-differs rows
@@ -137,7 +140,7 @@ from import_legacy import (  # noqa: E402
 # generic ERP account distinct from the curated "7066").
 CANONICAL_MAPPING_FILE = TOOLS_DIR.parent / "account_mapping.json"
 FALLBACK_MAPPING_FILE = OUTPUT_DIR / "account_mapping.json"
-DEFAULT_EXCLUDED_JOURNALS = {"FL", "REM", "VI"}
+DEFAULT_EXCLUDED_JOURNALS = {"FL", "REM"}
 DEFAULT_PACK_ACCOUNT = "7066"
 
 ENTRY_STATE_LABELS = {1: "Draft", 2: "Posted", 3: "Cancelled"}
@@ -1371,7 +1374,7 @@ def main() -> None:
     parser.add_argument(
         "--exclude-journals", metavar="CODES",
         help="Comma-separated ERP journal codes excluded from the 'extra in ERP' side "
-             "(default: FL,REM,VI,AMO,PRO)",
+             "(default: FL,REM,AMO,PRO — VI is included by default for verification)",
     )
     parser.add_argument(
         "--pack-account", metavar="CODE", default=DEFAULT_PACK_ACCOUNT,

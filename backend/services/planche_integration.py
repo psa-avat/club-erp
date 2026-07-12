@@ -1307,6 +1307,10 @@ class PlancheIntegrationService:
             if entitlement.realisation_date is None:
                 entitlement.realisation_date = flight.jour
             entitlement.status = int(ViEntitlementStatus.REALIZED)
+            # validity_date tracks the flight date, not realisation_date — an
+            # entitlement can cover several flights, so keep the latest one.
+            if entitlement.validity_date is None or flight.jour > entitlement.validity_date:
+                entitlement.validity_date = flight.jour
             updated += 1
 
         await db.commit()

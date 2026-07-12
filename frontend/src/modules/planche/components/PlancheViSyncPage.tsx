@@ -20,12 +20,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, ArrowUpFromLine, CheckCircle2, Loader2, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
+import { AlertCircle, ArrowUpFromLine, CheckCircle2, Download, Loader2, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
+import { exportRowsToCsv } from '../../../lib/exportCsv'
 import { useViEntitlementsQuery } from '../../vi/api'
 import { usePlancheViFullSyncMutation, usePlancheViListQuery, usePlancheViPushMutation } from '../api'
 
@@ -145,6 +146,25 @@ export function PlancheViSyncPage() {
   const countLoaded    = rows.filter((r) => !r.is_generic && r.status === 1).length
   const countScheduled = rows.filter((r) => !r.is_generic && r.status === 2).length
 
+  function exportCsv() {
+    const headers = ['Type', 'Code', 'Description', 'Montant TTC', 'Date planifiée', 'Catégorie', 'Sur Planche', 'Notes']
+    const rowsCsv = visibleRows.map((row) => {
+      const onPlanche = plancheCodes.has(row.code)
+      const category = row.is_generic ? 'Générique' : row.status === 1 ? 'Chargé' : 'Planifié'
+      return [
+        row.vi_type_code ?? '',
+        row.code,
+        row.description ?? '',
+        fmtAmount(row.amount_ttc),
+        row.scheduled_date ?? '',
+        category,
+        onPlanche ? 'Présent' : '',
+        row.notes ?? '',
+      ]
+    })
+    exportRowsToCsv('vi-sync-planche.csv', headers, rowsCsv)
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -159,16 +179,27 @@ export function PlancheViSyncPage() {
             )}
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={plancheListQuery.isFetching}
-          onClick={() => void plancheListQuery.refetch()}
-          title="Rafraîchir la liste Planche"
-        >
-          <RefreshCw className={['h-3.5 w-3.5 mr-1', plancheListQuery.isFetching ? 'animate-spin' : ''].join(' ')} />
-          Vérifier Planche
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={exportCsv}
+            disabled={visibleRows.length === 0}
+          >
+            <Download className="h-3.5 w-3.5 mr-1" />
+            {t('viSync.exportCsv')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={plancheListQuery.isFetching}
+            onClick={() => void plancheListQuery.refetch()}
+            title="Rafraîchir la liste Planche"
+          >
+            <RefreshCw className={['h-3.5 w-3.5 mr-1', plancheListQuery.isFetching ? 'animate-spin' : ''].join(' ')} />
+            Vérifier Planche
+          </Button>
+        </div>
       </div>
 
       {/* Action bar */}

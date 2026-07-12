@@ -934,6 +934,7 @@ export const en = {
         typeDefault: 'VI type (default: VI)',
         promote: 'Promote',
         showPromoted: 'Show promoted',
+        exportCsv: 'Export CSV',
       },
       table: {
         select: 'Sel',
@@ -980,6 +981,7 @@ export const en = {
         validityDate: 'Valid until',
         notes: 'Notes',
         actions: 'Actions',
+        exportCsv: 'Export CSV',
       },
     },
   },
@@ -1262,6 +1264,7 @@ export const en = {
       },
     },
     viSync: {
+      exportCsv: 'Export CSV',
       fullSync: {
         action: 'Full resync',
         actionRunning: 'Resyncing...',
@@ -3141,6 +3144,12 @@ export const en = {
         sentToPlanche: 'Sent to Planche',
         realized: 'Realized (locked)',
       },
+    },
+    reconciliation: {
+      exportCsv: 'Export CSV',
+    },
+    types: {
+      exportCsv: 'Export CSV',
     },
   },
   rh: {

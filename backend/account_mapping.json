@@ -1,5 +1,5 @@
 {
-  "_note": "Shared account mapping file — used by import_legacy.py (--import-mapping) and check_account.py (--account-file). Each entry maps a Vulcain code to an ERP account. Fields: vulcain_code (required), erp_code (override auto-matching; null = exclude), asset_code (import_legacy only: ERP asset code to attach as tiers_uuid), vulcain_label / vulcain_side / erp_name (informational, set by check_account export), count (set by import_legacy export), note (free text).",
+  "_note": "Shared account mapping file — used by import_legacy.py (--import-mapping) and check_account.py (--account-file). Each entry maps a Vulcain code to an ERP account. Fields: vulcain_code (required), erp_code (override auto-matching; null = exclude), asset_code (import_legacy only: ERP asset code to attach as tiers_uuid), vulcain_label / vulcain_side / erp_name (informational, set by check_account export), count (set by import_legacy export), note (free text). KNOWN DESIGN DIFFERENCES: (1) Flight revenues: Vulcain records net (discounts included), ERP records gross (discount in account 6066). (2) Member contributions: Vulcain 7561 (consolidated 50,975€) splits automatically in ERP → 7561 + 7065 (51,150€, diff ~175€). (3) Cost allocation: ERP uses accounts 902, 921-923 (no Vulcain equivalents).",
   "mappings": [
     {
       "vulcain_code": "100000000",
@@ -1283,13 +1283,13 @@
     },
     {
       "vulcain_code": "411100610",
-      "erp_code": "419100",
+      "erp_code": "7067",
       "asset_code": null,
-      "vulcain_label": "VI",
+      "vulcain_label": "VI réalisé",
       "vulcain_side": "",
-      "erp_name": "",
+      "erp_name": "VI revenue",
       "count": 126,
-      "note": ""
+      "note": "VI realized flights → revenue account"
     },
     {
       "vulcain_code": "411200000",
@@ -1955,11 +1955,11 @@
       "vulcain_code": "706040000",
       "erp_code": "7065",
       "asset_code": null,
-      "vulcain_label": "",
-      "vulcain_side": "",
-      "erp_name": "",
+      "vulcain_label": "Frais de fonctionnement",
+      "vulcain_side": "produits",
+      "erp_name": "Operating fees",
       "count": 1,
-      "note": ""
+      "note": "Flight operating/participation fees. ERP splits this into 7065 + participation accounts; Vulcain uses 7561 for combined contributions. Expected diff when comparing against Vulcain 756100000."
     },
     {
       "vulcain_code": "706040100",
@@ -1985,11 +1985,11 @@
       "vulcain_code": "706100000",
       "erp_code": "7062",
       "asset_code": null,
-      "vulcain_label": "",
-      "vulcain_side": "",
-      "erp_name": "",
+      "vulcain_label": "Facturation vol cellule",
+      "vulcain_side": "produits",
+      "erp_name": "Flight hours (cell)",
       "count": 1027,
-      "note": ""
+      "note": "Flight cell hours. Vulcain records net price (discounts included). ERP records gross price in 7062 + separate discount offset in 6066. Reconcile as: Vulcain 7061 (all flight types) ≈ ERP (7062+7063+7064+7065+7066 - 6066)."
     },
     {
       "vulcain_code": "706210000",
@@ -2135,11 +2135,11 @@
       "vulcain_code": "756100000",
       "erp_code": "7561",
       "asset_code": null,
-      "vulcain_label": "",
-      "vulcain_side": "",
-      "erp_name": "",
+      "vulcain_label": "Cotisations et adhésions (membres)",
+      "vulcain_side": "produits",
+      "erp_name": "Member contributions",
       "count": 228,
-      "note": ""
+      "note": "Member contributions split automatically in ERP: ≤50€ → 7561 (10,950€), >50€ → 7065 (40,200€). Reconciles correctly: Vulcain 50,975€ ≈ ERP 7561+7065 51,150€ (diff 175€, <0.4%)."
     },
     {
       "vulcain_code": "771400000",
@@ -2170,6 +2170,25 @@
       "erp_name": "",
       "count": 6,
       "note": ""
+    }
+  ],
+  "consolidations": [
+    {
+      "name": "Member contributions split",
+      "description": "Vulcain 7561 (consolidated) is automatically split in ERP: ≤50€ → 7561, >50€ → 7065",
+      "vulcain_accounts": ["756100000"],
+      "erp_accounts": ["7561", "7065"],
+      "reconcile_as": "sum",
+      "enabled": true
+    },
+    {
+      "name": "Flight revenues with discount",
+      "description": "Flight revenues (7062-7066) are net of discount. ERP records gross + discount offset in 6066. Reconcile: Vulcain flight revenues ≈ ERP (7062+7063+7064+7065+7066) - 6066",
+      "vulcain_accounts": ["706100000", "706210000", "706040100", "706400000", "706400100", "706220000", "706300000", "706040000"],
+      "erp_accounts": ["7062", "7063", "7064", "7065", "7066"],
+      "discount_account": "6066",
+      "reconcile_as": "sum_with_discount",
+      "enabled": true
     }
   ]
 }
