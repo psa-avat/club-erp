@@ -342,11 +342,26 @@ def _score_candidate(
     return score.quantize(Decimal("0.001"))
 
 
+async def _load_matched_line_uuids(db: AsyncSession) -> set[UUID]:
+    """UUIDs of AccountingLine already claimed by a locked (auto/manually matched)
+    statement line, anywhere. Matching operates per AccountingLine, not per whole
+    AccountingEntry, so an entry with several lines on the reconciled account (e.g. a
+    payroll entry with multiple distinct 512 withdrawals) can satisfy several statement
+    lines — only the specific lines already claimed are excluded."""
+    result = await db.execute(
+        select(BankStatementLine.matched_line_uuid).where(
+            BankStatementLine.match_status.in_(_LOCKED_MATCH_STATUSES),
+            BankStatementLine.matched_line_uuid.isnot(None),
+        )
+    )
+    return set(result.scalars().all())
+
+
 async def _load_eligible_entries(
     db: AsyncSession, statement: BankStatement, *, include_drafts: bool = True
 ) -> list[AccountingEntry]:
-    """Entries in the statement's fiscal year with a line on the statement's account,
-    excluding entries already reconciled to another line.
+    """Entries in the statement's fiscal year with at least one still-unclaimed line on
+    the statement's account.
 
     Scoped by account, not by journal: what actually moves the bank/cash balance is a
     line on statement.account_uuid, regardless of which journal recorded it (e.g. a
@@ -359,18 +374,19 @@ async def _load_eligible_entries(
     close_reconciliation posts any still-Draft matched entries automatically. Pass
     include_drafts=False to restrict matching to already-Posted entries only.
     """
-    bank_line_exists = (
+    matched_line_uuids = select(BankStatementLine.matched_line_uuid).where(
+        BankStatementLine.match_status.in_(_LOCKED_MATCH_STATUSES),
+        BankStatementLine.matched_line_uuid.isnot(None),
+    )
+    unclaimed_bank_line_exists = (
         select(AccountingLine.uuid)
         .where(
             AccountingLine.entry_uuid == AccountingEntry.uuid,
             AccountingLine.fiscal_year_uuid == AccountingEntry.fiscal_year_uuid,
             AccountingLine.account_uuid == statement.account_uuid,
+            AccountingLine.uuid.notin_(matched_line_uuids),
         )
         .exists()
-    )
-    matched_entry_uuids = select(BankStatementLine.matched_entry_uuid).where(
-        BankStatementLine.match_status.in_(_LOCKED_MATCH_STATUSES),
-        BankStatementLine.matched_entry_uuid.isnot(None),
     )
     eligible_states = (1, 2) if include_drafts else (2,)
 
@@ -380,8 +396,7 @@ async def _load_eligible_entries(
             AccountingEntry.fiscal_year_uuid == statement.fiscal_year_uuid,
             AccountingEntry.state.in_(eligible_states),
             AccountingEntry.reversal_of_entry_uuid.is_(None),
-            bank_line_exists,
-            AccountingEntry.uuid.notin_(matched_entry_uuids),
+            unclaimed_bank_line_exists,
         )
         .options(selectinload(AccountingEntry.lines).joinedload(AccountingLine.account))
     )
@@ -391,6 +406,21 @@ async def _load_eligible_entries(
 
 def _entry_bank_line(entry: AccountingEntry, account_uuid: UUID) -> AccountingLine | None:
     return next((l for l in entry.lines if l.account_uuid == account_uuid), None)
+
+
+def _entry_bank_lines(
+    entry: AccountingEntry, account_uuid: UUID, *, exclude_uuids: set[UUID] = frozenset()
+) -> list[AccountingLine]:
+    """All of the entry's lines on account_uuid, minus any already claimed by another
+    locked statement line — the per-line counterpart of _entry_bank_line, used by the
+    matching engine so every distinct 512 line of a multi-line entry can be matched."""
+    return [l for l in entry.lines if l.account_uuid == account_uuid and l.uuid not in exclude_uuids]
+
+
+def _find_line_by_uuid(entry: AccountingEntry, line_uuid: UUID | None) -> AccountingLine | None:
+    if line_uuid is None:
+        return None
+    return next((l for l in entry.lines if l.uuid == line_uuid), None)
 
 
 def _is_treasury_account(account) -> bool:
@@ -403,11 +433,18 @@ def _is_treasury_account(account) -> bool:
 
 
 def _is_internal_transfer_candidate(entry: AccountingEntry, bank_line: AccountingLine) -> bool:
-    """An entry whose other line also sits on a treasury account is a transfer
+    """An entry whose other line sits on a *different* treasury account is a transfer
     between two of the club's own bank/cash accounts — cap its score to avoid a
     false-positive auto-accept (either leg could plausibly match the same statement
-    line, so this always needs human judgment regardless of textual score)."""
-    return any(line.uuid != bank_line.uuid and _is_treasury_account(line.account) for line in entry.lines)
+    line, so this always needs human judgment regardless of textual score).
+
+    Compares by account_uuid, not line uuid: an entry can have several lines on the
+    SAME treasury account (e.g. a payroll entry with multiple distinct 512
+    withdrawals) — those must not be mistaken for a transfer to another account.
+    """
+    return any(
+        line.account_uuid != bank_line.account_uuid and _is_treasury_account(line.account) for line in entry.lines
+    )
 
 
 async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_drafts: bool = True) -> dict:
@@ -420,6 +457,7 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
     statement = await get_statement(db, statement_uuid)
     lines = [l for l in statement.lines if l.match_status in _REMATCHABLE_STATUSES]
     entries = await _load_eligible_entries(db, statement, include_drafts=include_drafts)
+    matched_line_uuids = await _load_matched_line_uuids(db)
     settings = await get_matching_settings(db)
 
     amount_tolerance = Decimal(str(settings["amount_tolerance"]))
@@ -427,47 +465,49 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
     review_threshold = Decimal(str(settings["review_threshold"]))
     internal_transfer_cap = Decimal(str(settings["internal_transfer_cap"]))
 
-    candidates: list[tuple[Decimal, BankStatementLine, AccountingEntry]] = []
+    candidates: list[tuple[Decimal, BankStatementLine, AccountingEntry, AccountingLine]] = []
     for entry in entries:
-        bank_line = _entry_bank_line(entry, statement.account_uuid)
-        if bank_line is None:
-            continue
-        entry_signed_amount = bank_line.debit - bank_line.credit
-        is_internal_transfer = _is_internal_transfer_candidate(entry, bank_line)
+        # An entry may carry several lines on the reconciled account (e.g. a payroll
+        # entry with multiple distinct 512 withdrawals) — each unclaimed one is scored
+        # as an independent candidate.
+        for bank_line in _entry_bank_lines(entry, statement.account_uuid, exclude_uuids=matched_line_uuids):
+            entry_signed_amount = bank_line.debit - bank_line.credit
+            is_internal_transfer = _is_internal_transfer_candidate(entry, bank_line)
 
-        for line in lines:
-            amount_diff = abs(entry_signed_amount - line.amount)
-            if amount_diff > amount_tolerance:
-                continue
+            for line in lines:
+                amount_diff = abs(entry_signed_amount - line.amount)
+                if amount_diff > amount_tolerance:
+                    continue
 
-            date_diff = abs((line.line_date - entry.entry_date).days)
-            description_score = _description_similarity(line, entry)
-            score = _score_candidate(
-                amount_diff=amount_diff,
-                date_diff=date_diff,
-                description_score=description_score,
-                settings=settings,
-            )
-            if is_internal_transfer:
-                score = min(score, internal_transfer_cap)
+                date_diff = abs((line.line_date - entry.entry_date).days)
+                description_score = _description_similarity(line, entry)
+                score = _score_candidate(
+                    amount_diff=amount_diff,
+                    date_diff=date_diff,
+                    description_score=description_score,
+                    settings=settings,
+                )
+                if is_internal_transfer:
+                    score = min(score, internal_transfer_cap)
 
-            if score < review_threshold:
-                continue
+                if score < review_threshold:
+                    continue
 
-            candidates.append((score, line, entry))
+                candidates.append((score, line, entry, bank_line))
 
     candidates.sort(key=lambda c: c[0], reverse=True)
 
     assigned_lines: set[UUID] = set()
-    assigned_entries: set[UUID] = set()
-    for score, line, entry in candidates:
-        if line.uuid in assigned_lines or entry.uuid in assigned_entries:
+    assigned_bank_lines: set[UUID] = set()
+    for score, line, entry, bank_line in candidates:
+        if line.uuid in assigned_lines or bank_line.uuid in assigned_bank_lines:
             continue
         assigned_lines.add(line.uuid)
-        assigned_entries.add(entry.uuid)
+        assigned_bank_lines.add(bank_line.uuid)
 
         line.match_confidence = score
         line.matched_entry_uuid = entry.uuid
+        line.matched_line_uuid = bank_line.uuid
         line.matched_fiscal_year_uuid = entry.fiscal_year_uuid
         if score >= auto_accept_threshold:
             line.match_status = "auto_matched"
@@ -480,6 +520,7 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
         if line.uuid not in assigned_lines:
             line.match_status = "unmatched"
             line.matched_entry_uuid = None
+            line.matched_line_uuid = None
             line.matched_fiscal_year_uuid = None
             line.match_confidence = None
             line.discrepancy_type = None
@@ -502,9 +543,10 @@ async def get_match_candidates(db: AsyncSession, line_uuid: UUID, *, include_dra
     single source of truth so the manual-match picker can never suggest something
     auto-match itself would score or flag differently.
 
-    Entries already reconciled to another line are excluded by _load_eligible_entries
-    (an AccountingEntry can only ever be matched to one BankStatementLine at a time),
-    so a ledger entry that's already associated never appears here to be picked again.
+    Already-claimed accounting lines are excluded by _load_eligible_entries /
+    _entry_bank_lines (each AccountingLine can only ever be matched to one
+    BankStatementLine at a time), so a line that's already associated never appears here
+    to be picked again — other unclaimed lines of the same entry still can.
     """
     line = await db.get(BankStatementLine, line_uuid)
     if not line:
@@ -512,6 +554,7 @@ async def get_match_candidates(db: AsyncSession, line_uuid: UUID, *, include_dra
 
     statement = await get_statement(db, line.statement_uuid)
     entries = await _load_eligible_entries(db, statement, include_drafts=include_drafts)
+    matched_line_uuids = await _load_matched_line_uuids(db)
     settings = await get_matching_settings(db)
 
     amount_tolerance = Decimal(str(settings["amount_tolerance"]))
@@ -519,40 +562,41 @@ async def get_match_candidates(db: AsyncSession, line_uuid: UUID, *, include_dra
 
     candidates: list[dict] = []
     for entry in entries:
-        bank_line = _entry_bank_line(entry, statement.account_uuid)
-        if bank_line is None:
-            continue
+        # Every unclaimed line of the entry on the reconciled account is its own
+        # candidate — a multi-line entry (e.g. payroll with several 512 withdrawals)
+        # can surface more than one candidate here, one per still-available line.
+        for bank_line in _entry_bank_lines(entry, statement.account_uuid, exclude_uuids=matched_line_uuids):
+            entry_signed_amount = bank_line.debit - bank_line.credit
+            amount_diff = abs(entry_signed_amount - line.amount)
+            if amount_diff > amount_tolerance:
+                continue
 
-        entry_signed_amount = bank_line.debit - bank_line.credit
-        amount_diff = abs(entry_signed_amount - line.amount)
-        if amount_diff > amount_tolerance:
-            continue
+            date_diff = abs((line.line_date - entry.entry_date).days)
+            description_score = _description_similarity(line, entry)
+            score = _score_candidate(
+                amount_diff=amount_diff, date_diff=date_diff, description_score=description_score, settings=settings,
+            )
+            is_internal_transfer = _is_internal_transfer_candidate(entry, bank_line)
+            if is_internal_transfer:
+                score = min(score, internal_transfer_cap)
 
-        date_diff = abs((line.line_date - entry.entry_date).days)
-        description_score = _description_similarity(line, entry)
-        score = _score_candidate(
-            amount_diff=amount_diff, date_diff=date_diff, description_score=description_score, settings=settings,
-        )
-        is_internal_transfer = _is_internal_transfer_candidate(entry, bank_line)
-        if is_internal_transfer:
-            score = min(score, internal_transfer_cap)
-
-        candidates.append(
-            {
-                "entry_uuid": entry.uuid,
-                "fiscal_year_uuid": entry.fiscal_year_uuid,
-                "entry_date": entry.entry_date,
-                "description": entry.description,
-                "reference": entry.reference,
-                "state": entry.state,
-                "amount": entry_signed_amount,
-                "amount_diff": amount_diff,
-                "date_diff": date_diff,
-                "description_score": Decimal(str(round(description_score, 4))),
-                "score": score,
-                "is_internal_transfer": is_internal_transfer,
-            }
-        )
+            candidates.append(
+                {
+                    "entry_uuid": entry.uuid,
+                    "entry_line_uuid": bank_line.uuid,
+                    "fiscal_year_uuid": entry.fiscal_year_uuid,
+                    "entry_date": entry.entry_date,
+                    "description": entry.description,
+                    "reference": entry.reference,
+                    "state": entry.state,
+                    "amount": entry_signed_amount,
+                    "amount_diff": amount_diff,
+                    "date_diff": date_diff,
+                    "description_score": Decimal(str(round(description_score, 4))),
+                    "score": score,
+                    "is_internal_transfer": is_internal_transfer,
+                }
+            )
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
     return candidates
@@ -565,8 +609,13 @@ async def manual_match(
     fiscal_year_uuid: UUID,
     user_id: int,
     *,
+    entry_line_uuid: UUID | None = None,
     include_drafts: bool = True,
 ) -> BankStatementLine:
+    """Manually associate a statement line with a specific line of entry_uuid on the
+    statement's account. entry_line_uuid disambiguates which line when the entry has
+    several (e.g. a payroll entry with multiple distinct 512 withdrawals); when omitted,
+    the unclaimed line whose amount is closest to the statement line's is picked."""
     line = await db.get(BankStatementLine, line_uuid)
     if not line:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Statement line {line_uuid} not found")
@@ -597,17 +646,28 @@ async def manual_match(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only posted entries can be reconciled (enable 'include drafts' to match against Draft entries)",
         )
-    if _entry_bank_line(entry, statement.account_uuid) is None:
+
+    bank_lines = _entry_bank_lines(entry, statement.account_uuid)
+    if not bank_lines:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Entry has no line on account {statement.account_uuid}",
         )
 
+    if entry_line_uuid is not None:
+        bank_line = next((l for l in bank_lines if l.uuid == entry_line_uuid), None)
+        if bank_line is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Line {entry_line_uuid} is not a line of entry {entry_uuid} on account {statement.account_uuid}",
+            )
+    else:
+        bank_line = min(bank_lines, key=lambda l: abs((l.debit - l.credit) - line.amount))
+
     already_matched = await db.scalar(
         select(BankStatementLine.uuid)
         .where(
-            BankStatementLine.matched_entry_uuid == entry.uuid,
-            BankStatementLine.matched_fiscal_year_uuid == entry.fiscal_year_uuid,
+            BankStatementLine.matched_line_uuid == bank_line.uuid,
             BankStatementLine.match_status.in_(_LOCKED_MATCH_STATUSES),
         )
         .limit(1)
@@ -615,11 +675,12 @@ async def manual_match(
     if already_matched:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Entry {entry_uuid} is already reconciled against another statement line",
+            detail=f"Line {bank_line.uuid} of entry {entry_uuid} is already reconciled against another statement line",
         )
 
     line.match_status = "manually_matched"
     line.matched_entry_uuid = entry.uuid
+    line.matched_line_uuid = bank_line.uuid
     line.matched_fiscal_year_uuid = entry.fiscal_year_uuid
     line.match_confidence = None
     line.discrepancy_type = None
@@ -638,6 +699,7 @@ async def unmatch(db: AsyncSession, line_uuid: UUID, reason: str) -> BankStateme
 
     line.match_status = "unmatched"
     line.matched_entry_uuid = None
+    line.matched_line_uuid = None
     line.matched_fiscal_year_uuid = None
     line.match_confidence = None
     line.discrepancy_type = None
@@ -706,7 +768,7 @@ async def detect_discrepancies(db: AsyncSession, statement_uuid: UUID) -> list[d
     entries_by_key = await _load_matched_entries(db, lines, with_lines=True, exclude_excluded=True)
 
     findings: list[dict] = []
-    seen_entry_keys: dict[tuple, UUID] = {}
+    seen_match_keys: dict[tuple, UUID] = {}
 
     for line in lines:
         if line.match_status == "excluded":
@@ -727,18 +789,24 @@ async def detect_discrepancies(db: AsyncSession, statement_uuid: UUID) -> list[d
         if entry is None:
             continue
 
-        if key in seen_entry_keys:
+        # Keyed by the specific matched line, not just the entry: an entry with several
+        # lines on the reconciled account can legitimately be matched to several distinct
+        # statement lines (one per line) without that being a duplicate.
+        match_key = (*key, line.matched_line_uuid)
+        if match_key in seen_match_keys:
             findings.append(
                 {
                     "line_uuid": line.uuid,
                     "type": "duplicate",
-                    "description": f"Entry {entry.uuid} already matched to line {seen_entry_keys[key]}",
+                    "description": f"Entry {entry.uuid} already matched to line {seen_match_keys[match_key]}",
                 }
             )
         else:
-            seen_entry_keys[key] = line.uuid
+            seen_match_keys[match_key] = line.uuid
 
-        bank_line = _entry_bank_line(entry, statement.account_uuid)
+        # Fall back to the first 512 line on the account for pre-migration matches that
+        # predate matched_line_uuid (matched_line_uuid is None for those).
+        bank_line = _find_line_by_uuid(entry, line.matched_line_uuid) or _entry_bank_line(entry, statement.account_uuid)
         if bank_line is not None:
             entry_signed_amount = bank_line.debit - bank_line.credit
             if entry_signed_amount != line.amount:
@@ -824,9 +892,11 @@ async def create_correcting_entry(
         source_system="bank_reconciliation",
     )
     entry = await create_accounting_entry(db, request, user_id)
+    bank_line = next((l for l in entry.lines if l.account_uuid == statement.account_uuid), None)
 
     line.match_status = "manually_matched"
     line.matched_entry_uuid = entry.uuid
+    line.matched_line_uuid = bank_line.uuid if bank_line is not None else None
     line.matched_fiscal_year_uuid = entry.fiscal_year_uuid
     line.match_confidence = None
     line.discrepancy_type = None
@@ -872,6 +942,7 @@ async def resolve_discrepancy(
     if action == "exclude":
         line.match_status = "excluded"
         line.matched_entry_uuid = None
+        line.matched_line_uuid = None
         line.matched_fiscal_year_uuid = None
         line.match_confidence = None
         line.discrepancy_type = None

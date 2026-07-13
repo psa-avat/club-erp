@@ -22,6 +22,7 @@ import csv
 import hashlib
 import io
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -86,6 +87,36 @@ def detect_format(filename: str, content: bytes) -> str:
     )
 
 
+def _normalize_ofx_encoding(content: bytes) -> bytes:
+    """Correct OFX 1.x (SGML) header/body encoding mismatches before handing the file
+    to ofxparse.
+
+    Many bank exports declare `ENCODING:USASCII` / `CHARSET:1252` while the body is
+    actually UTF-8 (a common real-world export bug). ofxparse trusts the header
+    literally, so accented text like "émis" comes out as "Ã©mis". We detect the body's
+    real encoding independently (chardet, same approach as CsvParser below) and
+    re-encode the whole file as UTF-8 with a matching header, so ofxparse's own
+    header-driven decode always lands on the correct bytes.
+
+    OFX 2.x (XML) files have no SGML header block for ofxparse to misread this way —
+    left untouched.
+    """
+    header_end = content.find(b"<")
+    header = content[:header_end] if header_end != -1 else content
+    if not re.search(rb"(?im)^ENCODING:", header):
+        return content
+
+    detected = chardet.detect(content)
+    encoding = detected.get("encoding") or "utf-8"
+    try:
+        text = content.decode(encoding)
+    except (LookupError, UnicodeDecodeError):
+        text = content.decode("utf-8", errors="replace")
+
+    text = re.sub(r"(?im)^ENCODING:.*$", "ENCODING:UTF-8", text, count=1)
+    return text.encode("utf-8")
+
+
 class OfxParser:
     """Parses OFX 1.x (SGML) and 2.x (XML) bank/credit-card statements via ofxparse.
 
@@ -96,6 +127,7 @@ class OfxParser:
 
     @staticmethod
     def parse(content: bytes) -> ParsedStatement:
+        content = _normalize_ofx_encoding(content)
         try:
             ofx = _OfxParser.parse(io.BytesIO(content), fail_fast=False)
         except OfxParserException as exc:

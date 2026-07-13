@@ -335,6 +335,15 @@ export type AccountingEntryUpdatePayload = {
   lines?: AccountingEntryLinePayload[]
 }
 
+export type AccountingEntryMergePayload = {
+  fiscal_year_uuid: string
+  entry_date: string
+  description: string
+  reference?: string | null
+  consolidation_account_uuid: string
+  entry_uuids: string[]
+}
+
 export type AccountingEntryModelLinePayload = {
   account_uuid: string
   debit: string
@@ -687,6 +696,23 @@ export function useReverseAccountingEntryMutation() {
       const { data } = await apiClient.post<AccountingEntry>(
         `/api/v1/accounting/entries/${entryUuid}/reverse`,
         { fiscal_year_uuid, reversal_reason, entry_date },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: banqueQueryKeys.root })
+    },
+  })
+}
+
+export function useMergeAccountingEntriesMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: AccountingEntryMergePayload) => {
+      const { data } = await apiClient.post<AccountingEntry>(
+        '/api/v1/accounting/entries/merge',
+        payload,
         getAuthRequestConfig(),
       )
       return data
@@ -2103,6 +2129,7 @@ export type BankStatementLine = {
   counterparty: string | null
   match_status: 'unmatched' | 'auto_matched' | 'manually_matched' | 'excluded' | 'discrepancy'
   matched_entry_uuid: string | null
+  matched_line_uuid: string | null
   matched_fiscal_year_uuid: string | null
   match_confidence: string | null
   discrepancy_type: 'missing_entry' | 'amount_variance' | 'timing' | 'duplicate' | null
@@ -2285,6 +2312,7 @@ export function useReconciliationLinesQuery(
 
 export type ReconciliationCandidate = {
   entry_uuid: string
+  entry_line_uuid: string
   fiscal_year_uuid: string
   entry_date: string
   description: string | null
@@ -2375,8 +2403,8 @@ export function useRunAutoMatchMutation() {
       await queryClient.invalidateQueries({ queryKey: reconciliationQueryKeys.statement(statementUuid) })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'lines', statementUuid] })
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'statements'] })
-      // A matched entry can never be a candidate for any other line — invalidate every
-      // open candidate list, not just this statement's.
+      // A matched accounting line can never be a candidate for any other statement line —
+      // invalidate every open candidate list, not just this statement's.
       await queryClient.invalidateQueries({ queryKey: ['banque', 'reconciliation', 'candidates'] })
     },
   })
@@ -2388,6 +2416,7 @@ export function useManualMatchMutation() {
     mutationFn: async (payload: {
       line_uuid: string
       entry_uuid: string
+      entry_line_uuid?: string
       fiscal_year_uuid: string
       include_drafts?: boolean
     }) => {

@@ -499,7 +499,7 @@ async def create_vi_conversion_entry_endpoint(
     """
     Step 4 – Convert VI buyer to member.
 
-    Creates an OD entry (D 7067 + D 401 / C 411-member), sets the entitlement status
+    Creates an OD entry (D 7067 [+ D 7069] + D 401 / C 411-member), sets the entitlement status
     to CONVERTED, then for each linked flight: unbills it (if in Draft/applied state)
     and sets charge_to_erp_id to the registered member's account_id so it can be
     re-billed manually from the flights module.

@@ -17,9 +17,12 @@ Vulcain VI structure:
 ERP VI structure:
   419100     Avances reçues — Vols d'initiation (VI advance, money received)
   7067       VI / JD (VI revenue when flight is realized)
-  616        Primes d'assurances (insurance expense)
+  6169       Assurance VI/JD FFVP (insurance expense sub-account of 616)
   401        Fournisseurs (insurance payable, FFVP tiers)
   512/531    Bank/cash (payments in/out)
+
+Note: 616 (Primes d'assurances) is a non-postable header account in the PCG
+(is_posting_allowed=false) — actual VI insurance postings go to sub-account 6169.
 
 Flow comparison:
   Purchase:
@@ -28,7 +31,7 @@ Flow comparison:
 
   Realization:
     Vulcain: 411100601 → 411100610 (mark as realized)
-    ERP:     419100 → 7067 (revenue) + 616 → 401 (insurance tracking)
+    ERP:     419100 → 7067 (revenue) + 6169 → 401 (insurance tracking)
 
   Refund:
     Both:    VI advance → 512/531 (refund customer)
@@ -135,7 +138,7 @@ def load_erp_vi_data(conn) -> dict:
 
     # Get VI-related account UUIDs
     cur.execute(
-        "SELECT uuid, code FROM accounting_accounts WHERE code IN ('419100', '7067', '616', '401')"
+        "SELECT uuid, code FROM accounting_accounts WHERE code IN ('419100', '7067', '6169', '401')"
     )
     accounts = {row[1]: row[0] for row in cur.fetchall()}
 
@@ -289,7 +292,7 @@ def build_report(erp_data: dict, vulcain_data: dict) -> str:
     lines.append("")
     lines.append("⚠️  INTERPRETATION:")
     lines.append("  In Vulcain, same-day VI likely went: 512/531 → 411100610 directly (bypassing 411100601)")
-    lines.append("  In ERP, same path likely went:      512/531 → 419100 → 7067 (with 616→401 insurance tracking)")
+    lines.append("  In ERP, same path likely went:      512/531 → 419100 → 7067 (with 6169→401 insurance tracking)")
     lines.append("")
     lines.append("  Expected: 411100601 (unrealized) + 411100610 (realized + same-day) ≈ 419100 net balance")
 
@@ -297,17 +300,17 @@ def build_report(erp_data: dict, vulcain_data: dict) -> str:
         "",
         "--- Insurance Tracking (ERP only, not in Vulcain) ---",
         "",
-        "ERP 616 (Primes d'assurances / Insurance expense):",
+        "ERP 6169 (Assurance VI/JD FFVP / Insurance expense):",
     ])
 
-    # ERP 616
-    erp_616 = erp_data.get("616", {})
-    erp_616_total_d = sum(j["debit"] for j in erp_616.values())
-    erp_616_total_c = sum(j["credit"] for j in erp_616.values())
-    erp_616_net = erp_616_total_d - erp_616_total_c
-    lines.append(f"  Total:   entries={sum(j['entries'] for j in erp_616.values())}  D={erp_616_total_d:.2f}  C={erp_616_total_c:.2f}  net={erp_616_net:.2f}")
-    for journal in sorted(erp_616.keys()):
-        j = erp_616[journal]
+    # ERP 6169
+    erp_6169 = erp_data.get("6169", {})
+    erp_6169_total_d = sum(j["debit"] for j in erp_6169.values())
+    erp_6169_total_c = sum(j["credit"] for j in erp_6169.values())
+    erp_6169_net = erp_6169_total_d - erp_6169_total_c
+    lines.append(f"  Total:   entries={sum(j['entries'] for j in erp_6169.values())}  D={erp_6169_total_d:.2f}  C={erp_6169_total_c:.2f}  net={erp_6169_net:.2f}")
+    for journal in sorted(erp_6169.keys()):
+        j = erp_6169[journal]
         lines.append(f"    {journal}: entries={j['entries']:>3}  D={j['debit']:>10.2f}  C={j['credit']:>10.2f}")
 
     lines.extend([
@@ -345,7 +348,7 @@ def build_report(erp_data: dict, vulcain_data: dict) -> str:
         f"  Delta (411100610 likely empty):  {(erp_7067_net - vulcain_610_net):>10.2f}",
         "",
         f"Insurance Tracking (ERP only):",
-        f"  ERP 616 (insurance expense):     {erp_616_net:>10.2f}",
+        f"  ERP 6169 (insurance expense):    {erp_6169_net:>10.2f}",
         f"  ERP 401 (insurance payable):     {erp_401_net:>10.2f}",
         "",
         "✓ HYPOTHESIS TO VERIFY:",

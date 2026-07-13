@@ -66,6 +66,7 @@ type AccountingState = {
   insurance_tiers_uuid: string | null
   insurance_amount: string
   insurance_expense_account_uuid: string | null
+  insurance_revenue_account_uuid: string | null
   max_flights: string
 }
 
@@ -79,6 +80,7 @@ function fromViType(vt: ViType): AccountingState {
     insurance_tiers_uuid: vt.insurance_tiers_uuid,
     insurance_amount: vt.insurance_amount != null ? String(vt.insurance_amount) : '',
     insurance_expense_account_uuid: vt.insurance_expense_account_uuid,
+    insurance_revenue_account_uuid: vt.insurance_revenue_account_uuid,
     max_flights: String(vt.max_flights ?? 1),
   }
 }
@@ -132,6 +134,7 @@ function ViTypeAccountingDialog({
       insurance_tiers_uuid: state.insurance_tiers_uuid,
       insurance_amount: state.insurance_amount !== '' ? Number(state.insurance_amount) : null,
       insurance_expense_account_uuid: state.insurance_expense_account_uuid,
+      insurance_revenue_account_uuid: state.insurance_revenue_account_uuid,
       max_flights: state.max_flights !== '' ? Number(state.max_flights) : 1,
     }
     await updateMutation.mutateAsync({ typeUuid: viType.uuid, payload: patch })
@@ -222,6 +225,23 @@ function ViTypeAccountingDialog({
                   onChange={(val) => set('revenue_account_uuid', val ?? null)}
                   placeholder="Ex: 7067"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>
+                  Compte produit assurance (crédit step 2a)
+                  {viType.insurance_revenue_account_code && (
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">{viType.insurance_revenue_account_code}</span>
+                  )}
+                </Label>
+                <SearchableSelect
+                  options={revenueOpts}
+                  value={state.insurance_revenue_account_uuid ?? undefined}
+                  onChange={(val) => set('insurance_revenue_account_uuid', val ?? null)}
+                  placeholder="Ex: 7069"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si renseigné, le crédit produit vol est limité à la part vol — la part assurance est créditée sur ce compte (ex: 7069).
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>

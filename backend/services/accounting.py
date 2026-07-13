@@ -53,6 +53,7 @@ from models import (
 )
 from schemas.accounting import (
     AccountingEntryCreateRequest,
+    AccountingEntryMergeRequest,
     AccountingEntryTemplateCreateRequest,
     AccountingEntryTemplateLineCreateRequest,
     AccountingEntryTemplateUpdateRequest,
@@ -2268,6 +2269,133 @@ async def post_accounting_entries_batch(
         )
 
     return posted_entries
+
+
+async def merge_accounting_entries(
+    db: AsyncSession,
+    request: AccountingEntryMergeRequest,
+    user_id: int,
+) -> AccountingEntry:
+    """Merge several Draft entries sharing a common account into one new Draft entry.
+
+    The lines on `consolidation_account_uuid` (one per source entry, all on the same
+    side) are summed into a single line; every other line from every source is carried
+    over unchanged. Source entries are deleted once the merged entry is created — this
+    is a bookkeeping consolidation (e.g. grouping same-day card payments the way the
+    bank settles them), not a document with its own identity worth preserving.
+    """
+    requested_uuids = list(dict.fromkeys(request.entry_uuids))
+    if len(requested_uuids) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least two distinct entries are required to merge.",
+        )
+
+    # Re-fetch fresh from DB rather than trusting the client's cached list.
+    stmt = (
+        select(AccountingEntry)
+        .where(
+            AccountingEntry.uuid.in_(requested_uuids),
+            AccountingEntry.fiscal_year_uuid == request.fiscal_year_uuid,
+        )
+        .options(joinedload(AccountingEntry.lines))
+    )
+    result = await db.scalars(stmt)
+    entries = list(result.unique().all())
+    entries_by_uuid = {entry.uuid: entry for entry in entries}
+
+    missing = [str(entry_uuid) for entry_uuid in requested_uuids if entry_uuid not in entries_by_uuid]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Entries not found in fiscal year {request.fiscal_year_uuid}: {', '.join(missing)}",
+        )
+
+    non_draft = [entry for entry in entries if entry.state != 1]
+    if non_draft:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only Draft entries can be merged; "
+                f"not Draft: {', '.join(str(entry.uuid) for entry in non_draft)}"
+            ),
+        )
+
+    journal_uuids = {entry.journal_uuid for entry in entries}
+    if len(journal_uuids) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="All merged entries must belong to the same journal.",
+        )
+    journal_uuid = journal_uuids.pop()
+
+    other_lines: list[AccountingLineCreateRequest] = []
+    total_debit = Decimal("0")
+    total_credit = Decimal("0")
+    side: str | None = None
+
+    for entry in entries:
+        consolidation_lines = [line for line in entry.lines if line.account_uuid == request.consolidation_account_uuid]
+        if len(consolidation_lines) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Entry {entry.sequence_number or entry.uuid} must have exactly one line on the "
+                    f"consolidation account (found {len(consolidation_lines)})."
+                ),
+            )
+        consolidation_line = consolidation_lines[0]
+        entry_side = "debit" if Decimal(consolidation_line.debit) > 0 else "credit"
+        if side is None:
+            side = entry_side
+        elif side != entry_side:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The consolidation account line must be on the same side (debit or credit) across all entries.",
+            )
+        total_debit += Decimal(consolidation_line.debit)
+        total_credit += Decimal(consolidation_line.credit)
+
+        for line in entry.lines:
+            if line.uuid == consolidation_line.uuid:
+                continue
+            other_lines.append(
+                AccountingLineCreateRequest(
+                    account_uuid=line.account_uuid,
+                    debit=line.debit,
+                    credit=line.credit,
+                    description=line.description,
+                    tiers_uuid=line.tiers_uuid,
+                    tax_code=line.tax_code,
+                    tax_rate=line.tax_rate,
+                    tax_base=line.tax_base,
+                    tax_amount=line.tax_amount,
+                )
+            )
+
+    consolidated_line = AccountingLineCreateRequest(
+        account_uuid=request.consolidation_account_uuid,
+        debit=total_debit,
+        credit=total_credit,
+    )
+
+    merged_entry = await create_accounting_entry(
+        db,
+        AccountingEntryCreateRequest(
+            fiscal_year_uuid=request.fiscal_year_uuid,
+            journal_uuid=journal_uuid,
+            entry_date=request.entry_date,
+            description=request.description,
+            reference=request.reference,
+            lines=[consolidated_line, *other_lines],
+        ),
+        user_id,
+    )
+
+    for entry in entries:
+        await delete_accounting_entry(db, entry.uuid, entry.fiscal_year_uuid)
+
+    return merged_entry
 
 
 async def list_fiscal_years(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[AccountingFiscalYear]:

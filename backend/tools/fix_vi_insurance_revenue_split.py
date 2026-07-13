@@ -1,7 +1,8 @@
 """
 ERP-CLUB - ERP pour Club de vol a voile
 - Logiciel libre de gestion d'un club de vol a voile
-- fix_vi_entries: Correct VI realization entry lines.
+- fix_vi_insurance_revenue_split: split the 7067 VI/JD revenue credit into a
+  flight-portion (7067) and an insurance-portion (7069) credit line.
 Copyright (C) 2026  SAFORCADA Patrick
 
 This program is free software: you can redistribute it and/or modify
@@ -19,39 +20,44 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ---
 
-Fix VI realization entries that were created with the insurance amount
-deducted from the revenue account (7067) instead of being recognized
-as a full-amount revenue offset by an FFVP receivable.
+Fix VI realization entries that credit the full amount_ttc (flight + insurance)
+to the revenue account (e.g. 7067), instead of splitting the insurance portion
+out to a dedicated insurance-revenue account (e.g. 7069).
 
-Current (broken) realization entry structure:
+Current (pre-split) realization entry structure:
   D 419100  amount_ttc
-  C 7067    amount_ttc - insurance_amount   ← flight portion only
-  C 401     insurance_amount                ← insurance payable
+  D 6169    insurance_amount                  ← [if insurance was expensed]
+  C 7067    amount_ttc                        ← flight + insurance combined
+  C 401     insurance_amount                  ← insurance payable
 
-Target structure after fix:
-  D 419100  amount_ttc                      ← unchanged
-  C 7067    amount_ttc                      ← increased by insurance_amount
-  C 401     insurance_amount                ← unchanged
-  D 6169    insurance_amount                ← new balancing line (FFVP receivable)
+Target structure after this fix:
+  D 419100  amount_ttc                        ← unchanged
+  D 6169    insurance_amount                  ← unchanged
+  C 7067    amount_ttc - insurance_amount     ← reduced by insurance_amount
+  C 7069    insurance_amount                  ← new balancing line (insurance revenue)
+  C 401     insurance_amount                  ← unchanged
 
 The fix:
-  1. Increases the 7067 CREDIT by the insurance_amount (from the 401 line).
-  2. Inserts a new DEBIT line on account --debit-account (default: first account
-     with code starting with "6169") for the same amount and tiers as the 401 line.
+  1. Decreases the 7067 CREDIT by the insurance_amount (from the 401 line).
+  2. Inserts a new CREDIT line on --insurance-revenue-account (default: first
+     account with code starting with "7069") for the same amount as the 401 line.
 
 Only realization entries that:
   - have a 401 line (insurance was booked), AND
-  - do NOT already have a 6169 line (not yet fixed)
+  - have a 7067 (or --revenue-account) credit line, AND
+  - do NOT already have an insurance-revenue credit line (not yet fixed)
 are modified. All others are reported but skipped.
 
 Usage:
-  python fix_vi_entries.py [--fiscal-year CODE] [--debit-account CODE]
+  python fix_vi_insurance_revenue_split.py [--fiscal-year CODE]
+                           [--revenue-account CODE] [--insurance-revenue-account CODE]
                            [--dry-run] [--include-posted]
 
-  --fiscal-year CODE    restrict to entries in this fiscal year (e.g. "2026")
-  --debit-account CODE  account code for the new debit line (default: "6169")
-  --dry-run             show what would change without modifying the database
-  --include-posted      also fix posted entries (state=2); default skips them
+  --fiscal-year CODE               restrict to entries in this fiscal year (e.g. "2026")
+  --revenue-account CODE           account code for the existing revenue line (default: "7067")
+  --insurance-revenue-account CODE account code for the new insurance-revenue line (default: "7069")
+  --dry-run                        show what would change without modifying the database
+  --include-posted                 also fix posted entries (state=2); default skips them
 """
 
 import argparse
@@ -103,7 +109,7 @@ def _connect() -> psycopg2.extensions.connection:
 # Lookups
 # ---------------------------------------------------------------------------
 
-def lookup_debit_account(cur, code_prefix: str) -> dict:
+def lookup_account(cur, code_prefix: str) -> dict:
     """Return the first accounting account whose code starts with code_prefix."""
     cur.execute(
         "SELECT uuid, code, name FROM accounting_accounts WHERE code LIKE %s ORDER BY code LIMIT 1",
@@ -113,7 +119,7 @@ def lookup_debit_account(cur, code_prefix: str) -> dict:
     if row is None:
         raise SystemExit(
             f"ERROR: No account found with code starting with '{code_prefix}'.\n"
-            "Create the account in the chart of accounts or use --debit-account to specify a different code."
+            "Create the account in the chart of accounts (or import the PCG seed) first."
         )
     return {"uuid": row[0], "code": row[1], "name": row[2]}
 
@@ -187,49 +193,46 @@ def load_entry_lines(cur, entry_uuid, fiscal_year_uuid) -> list[dict]:
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-def classify_entry(lines: list[dict], debit_account_code: str) -> dict:
+def classify_entry(lines: list[dict], revenue_account_code: str, insurance_revenue_account_code: str) -> dict:
     """
     Classify the lines of a realization entry.
 
     Returns a dict with:
-      line_419  — the 419xxx DEBIT line (or None)
-      line_7067 — the 7067 CREDIT line (or None)
-      line_401  — the 401xxx CREDIT line with the insurance amount (or None)
-      line_expense  — an existing debit-account line (already fixed, or None)
+      line_revenue          — the revenue CREDIT line (e.g. 7067) (or None)
+      line_401               — the 401xxx CREDIT line with the insurance amount (or None)
+      line_insurance_revenue — an existing insurance-revenue CREDIT line (already fixed, or None)
     """
-    result = {"line_419": None, "line_7067": None, "line_401": None, "line_expense": None}
+    result = {"line_revenue": None, "line_401": None, "line_insurance_revenue": None}
     for line in lines:
         code = line["account_code"]
-        if code.startswith("419") and Decimal(str(line["debit"])) > 0:
-            result["line_419"] = line
-        elif code.startswith("7067") and Decimal(str(line["credit"])) > 0:
-            result["line_7067"] = line
+        if code.startswith(insurance_revenue_account_code) and Decimal(str(line["credit"])) > 0:
+            result["line_insurance_revenue"] = line
+        elif code.startswith(revenue_account_code) and Decimal(str(line["credit"])) > 0:
+            result["line_revenue"] = line
         elif code.startswith("401") and Decimal(str(line["credit"])) > 0:
             result["line_401"] = line
-        elif code.startswith(debit_account_code) and Decimal(str(line["debit"])) > 0:
-            result["line_expense"] = line
     return result
 
 
-def apply_fix(cur, entry: dict, classification: dict, debit_account: dict) -> None:
+def apply_fix(cur, entry: dict, classification: dict, insurance_revenue_account: dict) -> None:
     """
     Apply the fix to one realization entry:
-      1. Increase the 7067 line credit by the 401 line credit (insurance_amount).
-      2. Insert a new debit line on debit_account for insurance_amount.
+      1. Decrease the revenue line credit by the 401 line credit (insurance_amount).
+      2. Insert a new credit line on insurance_revenue_account for insurance_amount.
     """
-    line_7067 = classification["line_7067"]
+    line_revenue = classification["line_revenue"]
     line_401 = classification["line_401"]
     insurance_amount = Decimal(str(line_401["credit"]))
-    new_credit = Decimal(str(line_7067["credit"])) + insurance_amount
-    line_description = line_401["description"] or f"Assurance VI"
+    new_credit = Decimal(str(line_revenue["credit"])) - insurance_amount
+    line_description = f"Assurance VI {entry['entitlement_code']}"
 
-    # 1. Increase 7067 credit
+    # 1. Decrease revenue credit
     cur.execute(
         "UPDATE accounting_lines SET credit = %s WHERE uuid = %s AND fiscal_year_uuid = %s",
-        (new_credit, str(line_7067["uuid"]), str(entry["fiscal_year_uuid"])),
+        (new_credit, str(line_revenue["uuid"]), str(entry["fiscal_year_uuid"])),
     )
 
-    # 2. Insert new debit line on debit_account (same tiers as 401)
+    # 2. Insert new credit line on insurance_revenue_account (no tiers, like the revenue line)
     new_uuid = str(uuid.uuid4())
     cur.execute(
         """
@@ -242,10 +245,10 @@ def apply_fix(cur, entry: dict, classification: dict, debit_account: dict) -> No
             new_uuid,
             str(entry["fiscal_year_uuid"]),
             str(entry["realization_entry_uuid"]),
-            str(debit_account["uuid"]),
-            str(line_401["tiers_uuid"]) if line_401["tiers_uuid"] else None,
-            insurance_amount,
+            str(insurance_revenue_account["uuid"]),
+            None,
             Decimal("0"),
+            insurance_amount,
             line_description,
         ),
     )
@@ -257,12 +260,14 @@ def apply_fix(cur, entry: dict, classification: dict, debit_account: dict) -> No
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Fix VI realization entries: increase 7067 by insurance amount and add a debit line.",
+        description="Fix VI realization entries: split the revenue credit into flight (7067) and insurance (7069) portions.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--fiscal-year", metavar="CODE", help="Restrict to this fiscal year (e.g. 2026)")
-    parser.add_argument("--debit-account", metavar="CODE", default="6169",
-                        help="Account code for the new debit line (default: 6169)")
+    parser.add_argument("--revenue-account", metavar="CODE", default="7067",
+                        help="Account code for the existing revenue line (default: 7067)")
+    parser.add_argument("--insurance-revenue-account", metavar="CODE", default="7069",
+                        help="Account code for the new insurance-revenue line (default: 7069)")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying the database")
     parser.add_argument("--include-posted", action="store_true", help="Also fix posted entries (state=2)")
     args = parser.parse_args()
@@ -270,19 +275,19 @@ def main() -> None:
     conn = _connect()
     cur = conn.cursor()
 
-    # Resolve debit account
-    debit_account = lookup_debit_account(cur, args.debit_account)
-    print(f"Debit account  : {debit_account['code']} — {debit_account['name']}")
+    # Resolve insurance-revenue account
+    insurance_revenue_account = lookup_account(cur, args.insurance_revenue_account)
+    print(f"Insurance revenue account : {insurance_revenue_account['code']} — {insurance_revenue_account['name']}")
 
     # Resolve fiscal year filter
     fy_uuid = None
     if args.fiscal_year:
         fy = lookup_fiscal_year(cur, args.fiscal_year)
         fy_uuid = fy["uuid"]
-        print(f"Fiscal year    : {fy['code']} ({fy['label']})")
+        print(f"Fiscal year               : {fy['code']} ({fy['label']})")
 
-    print(f"Mode           : {'DRY RUN — no changes will be written' if args.dry_run else 'LIVE — changes will be committed'}")
-    print(f"Posted entries : {'included' if args.include_posted else 'skipped'}")
+    print(f"Mode                      : {'DRY RUN — no changes will be written' if args.dry_run else 'LIVE — changes will be committed'}")
+    print(f"Posted entries            : {'included' if args.include_posted else 'skipped'}")
     print()
 
     entries = load_realization_entries(cur, fy_uuid)
@@ -307,10 +312,10 @@ def main() -> None:
             continue
 
         lines = load_entry_lines(cur, entry["realization_entry_uuid"], entry["fiscal_year_uuid"])
-        cl = classify_entry(lines, args.debit_account)
+        cl = classify_entry(lines, args.revenue_account, args.insurance_revenue_account)
 
-        if cl["line_7067"] is None:
-            print(f"  WARN  {code:30s}  [{state_label}]  no 7067 line found — skipping")
+        if cl["line_revenue"] is None:
+            print(f"  WARN  {code:30s}  [{state_label}]  no {args.revenue_account} line found — skipping")
             continue
 
         if cl["line_401"] is None:
@@ -318,27 +323,35 @@ def main() -> None:
             stats["no_insurance"] += 1
             continue
 
-        if cl["line_expense"] is not None:
+        if cl["line_insurance_revenue"] is not None:
             insurance_amount = Decimal(str(cl["line_401"]["credit"]))
             print(
                 f"  OK    {code:30s}  [{state_label}]  "
-                f"already has {debit_account['code']} line (ins={insurance_amount}) — skipping"
+                f"already has {insurance_revenue_account['code']} line (ins={insurance_amount}) — skipping"
             )
             stats["already_ok"] += 1
             continue
 
         insurance_amount = Decimal(str(cl["line_401"]["credit"]))
-        old_7067 = Decimal(str(cl["line_7067"]["credit"]))
-        new_7067 = old_7067 + insurance_amount
+        old_revenue = Decimal(str(cl["line_revenue"]["credit"]))
+        new_revenue = old_revenue - insurance_amount
+
+        if new_revenue < Decimal("0"):
+            print(
+                f"  WARN  {code:30s}  [{state_label}]  "
+                f"insurance ({insurance_amount}) exceeds {args.revenue_account} credit ({old_revenue}) — skipping"
+            )
+            continue
 
         print(
             f"  FIX   {code:30s}  [{state_label}]  "
-            f"7067: {old_7067} → {new_7067}  +D {debit_account['code']} {insurance_amount}"
+            f"{args.revenue_account}: {old_revenue} → {new_revenue}  "
+            f"+C {insurance_revenue_account['code']} {insurance_amount}"
         )
         stats["fixed"] += 1
 
         if not args.dry_run:
-            apply_fix(cur, entry, cl, debit_account)
+            apply_fix(cur, entry, cl, insurance_revenue_account)
 
     print()
     print("Summary")

@@ -1033,6 +1033,11 @@ class BankStatementLine(Base):
     match_status = Column(String(20), nullable=False, default="unmatched")
     matched_entry_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)  # no DB FK
     matched_fiscal_year_uuid = Column(UUID(as_uuid=True), nullable=True)
+    # Which specific AccountingLine of the matched entry this statement line reconciles
+    # against — an entry can have several lines on the reconciled account (e.g. a payroll
+    # entry with multiple distinct 512 withdrawals), each matchable to a different
+    # statement line. No DB FK for the same reason as matched_entry_uuid.
+    matched_line_uuid = Column(UUID(as_uuid=True), nullable=True, index=True)
     match_confidence = Column(Numeric(4, 3), nullable=True)
     discrepancy_type = Column(String(32), nullable=True)
     discrepancy_notes = Column(Text, nullable=True)
@@ -1781,6 +1786,10 @@ class ViTypeCatalog(Base):
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
         comment="Expense account for insurance cost (e.g. 616). D in Step 2b alongside C insurance_account. When set, D 419xxx is reduced to flight_portion only.",
     )
+    insurance_revenue_account_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,
+        comment="Revenue account for the insurance portion of the voucher (e.g. 7069). C in Step 2a alongside C revenue_account, which is reduced to flight_portion only.",
+    )
     max_flights = Column(
         SmallInteger, nullable=False, default=1,
         comment="Maximum number of flights allowed under one entitlement (VI=2, JD=2, future types=N).",
@@ -1813,6 +1822,7 @@ class ViTypeCatalog(Base):
     revenue_account = relationship("AccountingAccount", foreign_keys=[revenue_account_uuid])
     insurance_account = relationship("AccountingAccount", foreign_keys=[insurance_account_uuid])
     insurance_expense_account = relationship("AccountingAccount", foreign_keys=[insurance_expense_account_uuid])
+    insurance_revenue_account = relationship("AccountingAccount", foreign_keys=[insurance_revenue_account_uuid])
     analytical_cost_account = relationship("AccountingAccount", foreign_keys=[analytical_cost_account_uuid])
     analytical_reflection_account = relationship("AccountingAccount", foreign_keys=[analytical_reflection_account_uuid])
 
@@ -1835,6 +1845,10 @@ class ViTypeCatalog(Base):
     @property
     def insurance_expense_account_code(self) -> str | None:
         return self.insurance_expense_account.code if self.insurance_expense_account else None
+
+    @property
+    def insurance_revenue_account_code(self) -> str | None:
+        return self.insurance_revenue_account.code if self.insurance_revenue_account else None
 
     @property
     def analytical_cost_account_code(self) -> str | None:

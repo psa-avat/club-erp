@@ -384,7 +384,7 @@ def build_report(matched: list, orphaned_v: list, orphaned_e: list) -> str:
         "1. Review orphaned Vulcain entries — are they refunds, duplicates, or missing in ERP?",
         "2. Review orphaned ERP entries — are they ERP-only or failed imports from Vulcain?",
         "3. Cross-check descriptions for partial matches (typos, abbreviations).",
-        "4. Verify insurance entries (616/401) are tracked consistently in both systems.",
+        "4. Verify insurance entries (6169/401) are tracked consistently in both systems.",
     ])
 
     return "\n".join(lines) + "\n"

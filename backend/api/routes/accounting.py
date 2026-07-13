@@ -47,6 +47,7 @@ from schemas.accounting import (
     AccountingEntryTemplatePreviewResponse,
     AccountingEntryTemplateResponse,
     AccountingEntryTemplateUpdateRequest,
+    AccountingEntryMergeRequest,
     AccountingEntryPostRequest,
     AccountingEntryReverseRequest,
     AccountingEntryResponse,
@@ -109,6 +110,7 @@ from services.accounting import (
     list_pricing_items,
     list_pricing_versions,
     list_system_settings,
+    merge_accounting_entries,
     post_accounting_entry,
     post_accounting_entries_batch,
     reopen_fiscal_year,
@@ -1177,6 +1179,26 @@ async def reverse_entry_endpoint(
         reversal_of_entry_uuid=reversal_entry.reversal_of_entry_uuid,
     )
     return reversal_entry
+
+
+@router.post("/entries/merge", response_model=AccountingEntryResponse, responses=ENTRY_VALIDATION_ERRORS)
+async def merge_entries_endpoint(
+    request: AccountingEntryMergeRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = post_guard,
+    current_user: User = Depends(get_current_user),
+):
+    """Merge several Draft entries sharing a common account into one new Draft entry,
+    deleting the sources."""
+    merged_entry = await merge_accounting_entries(db, request, current_user.id)
+    _log_accounting_audit(
+        action="merge_entries",
+        user_id=current_user.id,
+        entry_uuid=merged_entry.uuid,
+        fiscal_year_uuid=merged_entry.fiscal_year_uuid,
+        source_count=len(request.entry_uuids),
+    )
+    return merged_entry
 
 
 @router.get("/entry-models", response_model=list[AccountingEntryTemplateResponse])

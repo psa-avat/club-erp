@@ -245,6 +245,18 @@ class AccountingEntryReverseRequest(BaseModel):
     entry_date: Optional[date] = None
 
 
+class AccountingEntryMergeRequest(BaseModel):
+    """Request to merge several Draft entries sharing a common account into one new
+    Draft entry. The consolidation account's lines are summed into a single line;
+    all other lines are carried over unchanged. Source entries are deleted."""
+    fiscal_year_uuid: UUID
+    entry_date: date
+    description: str = Field(min_length=1, max_length=255)
+    reference: Optional[str] = Field(default=None, max_length=255)
+    consolidation_account_uuid: UUID
+    entry_uuids: list[UUID] = Field(min_length=2)
+
+
 class AccountingEntryTemplateLineBase(BaseModel):
     """Shared line fields for reusable entry templates."""
     account_uuid: UUID

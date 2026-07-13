@@ -239,6 +239,7 @@ async def _load_entitlement_for_accounting(db: AsyncSession, entitlement_uuid: U
                 joinedload(ViTypeCatalog.revenue_account),
                 joinedload(ViTypeCatalog.insurance_account),
                 joinedload(ViTypeCatalog.insurance_expense_account),
+                joinedload(ViTypeCatalog.insurance_revenue_account),
             )
         )
         .where(ViEntitlement.uuid == entitlement_uuid)
@@ -261,7 +262,8 @@ async def create_vi_realization_entry(
 
     D client_advance (amount_ttc)       tiers=buyer_member
     D insurance_expense (insurance_amount)                  [if insurance_expense_account configured]
-      C revenue         (amount_ttc)
+      C revenue          (flight_portion = amount_ttc - insurance_amount)
+      C insurance_revenue (insurance_amount)                [if insurance_revenue_account configured]
       C insurance       (insurance_amount)  tiers=insurance_tiers  [if insurance configured]
 
     Sets entitlement.realization_entry_uuid on success.
@@ -360,7 +362,12 @@ async def create_vi_realization_entry(
             description=f"Charge assurance VI {entitlement.code}",
         ))
 
-    # C revenue (amount_ttc) — full price; insurance is offset by the D expense line
+    # C revenue — reduced to flight_portion only when insurance_revenue_account is
+    # configured (its credit line below then carries the insurance_amount); otherwise
+    # falls back to crediting the full amount_ttc, same as before this account existed.
+    insurance_revenue_acc = vi_type.insurance_revenue_account
+    use_insurance_revenue_line = insurance_amount > Decimal("0") and insurance_revenue_acc is not None
+    revenue_credit = flight_portion if use_insurance_revenue_line else amount_ttc
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
@@ -368,9 +375,22 @@ async def create_vi_realization_entry(
         account_uuid=revenue_acc.uuid,
         tiers_uuid=None,
         debit=Decimal("0"),
-        credit=amount_ttc,
+        credit=revenue_credit,
         description=f"Prestations VI {entitlement.code}",
     ))
+
+    # C insurance_revenue_account (insurance_amount) — only when configured
+    if use_insurance_revenue_line:
+        db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=entry_uuid,
+            account_uuid=insurance_revenue_acc.uuid,
+            tiers_uuid=None,
+            debit=Decimal("0"),
+            credit=insurance_amount,
+            description=f"Assurance VI {entitlement.code}",
+        ))
 
     # C insurance (insurance_amount) — only if configured and non-zero
     if insurance_amount > Decimal("0") and vi_type.insurance_account is not None:
@@ -683,10 +703,11 @@ async def create_vi_conversion_entry(
 
     Creates a Draft OD entry that nullifies the realization revenue recognition
     and establishes the member receivable:
-      D revenue_account   (amount_ttc)        — reverses C 7067 from realization
-      D insurance_account (insurance_amount)  — reverses C 401 from realization [if any]
-      C insurance_expense (insurance_amount)  — reverses D 616 from realization [if any]
-      C 411               (amount_ttc)  tiers=registered_member
+      D revenue_account    (flight_portion)   — reverses C 7067 from realization
+      D insurance_revenue  (insurance_amount) — reverses C 7069 from realization [if any]
+      D insurance_account  (insurance_amount) — reverses C 401 from realization [if any]
+      C insurance_expense  (insurance_amount) — reverses D 616 from realization [if any]
+      C 411                (amount_ttc)  tiers=registered_member
 
     Returns (entry, flights_to_rebill) where flights_to_rebill is the list of
     flight UUIDs from vi_flight_links that are currently in 'applied' state.
@@ -706,6 +727,7 @@ async def create_vi_conversion_entry(
                 joinedload(ViTypeCatalog.revenue_account),
                 joinedload(ViTypeCatalog.insurance_account),
                 joinedload(ViTypeCatalog.insurance_expense_account),
+                joinedload(ViTypeCatalog.insurance_revenue_account),
             ),
             selectinload(ViEntitlement.flight_links).joinedload(ViFlightLink.flight),
         )
@@ -781,17 +803,36 @@ async def create_vi_conversion_entry(
     db.add(entry)
     await db.flush()
 
-    # D revenue_account (7067) — nullifies C 7067 credit from realization (full amount_ttc)
+    # D revenue_account — nullifies the C revenue_account credit from realization.
+    # Mirrors the same insurance_revenue_account condition used at realization time:
+    # flight_portion only when insurance_revenue_account is configured, else full amount_ttc.
+    insurance_revenue_acc = vi_type.insurance_revenue_account
+    use_insurance_revenue_line = insurance_amount > Decimal("0") and insurance_revenue_acc is not None
+    revenue_debit = flight_portion if use_insurance_revenue_line else amount_ttc
     db.add(AccountingLine(
         uuid=uuid4(),
         fiscal_year_uuid=fiscal_year_uuid,
         entry_uuid=entry_uuid,
         account_uuid=revenue_acc.uuid,
         tiers_uuid=None,
-        debit=amount_ttc,
+        debit=revenue_debit,
         credit=Decimal("0"),
         description=f"Annulation produit VI {entitlement.code}",
     ))
+
+    # D insurance_revenue_account — nullifies the C insurance_revenue_account credit
+    # from realization [if configured]
+    if use_insurance_revenue_line:
+        db.add(AccountingLine(
+            uuid=uuid4(),
+            fiscal_year_uuid=fiscal_year_uuid,
+            entry_uuid=entry_uuid,
+            account_uuid=insurance_revenue_acc.uuid,
+            tiers_uuid=None,
+            debit=insurance_amount,
+            credit=Decimal("0"),
+            description=f"Annulation assurance VI {entitlement.code}",
+        ))
 
     # D insurance_account (401) — nullifies C 401 credit from realization [if any]
     if insurance_amount > Decimal("0") and vi_type.insurance_account is not None:

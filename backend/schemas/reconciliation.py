@@ -36,6 +36,7 @@ class BankStatementLineResponse(BaseModel):
     counterparty: Optional[str] = None
     match_status: str
     matched_entry_uuid: Optional[UUID] = None
+    matched_line_uuid: Optional[UUID] = None
     matched_fiscal_year_uuid: Optional[UUID] = None
     match_confidence: Optional[Decimal] = Field(default=None, decimal_places=3)
     discrepancy_type: Optional[str] = None
@@ -105,6 +106,7 @@ class MatchResultResponse(BaseModel):
 
 class CandidateEntryResponse(BaseModel):
     entry_uuid: UUID
+    entry_line_uuid: UUID
     fiscal_year_uuid: UUID
     entry_date: date
     description: Optional[str] = None
@@ -121,6 +123,7 @@ class CandidateEntryResponse(BaseModel):
 class ManualMatchRequest(BaseModel):
     line_uuid: UUID
     entry_uuid: UUID
+    entry_line_uuid: Optional[UUID] = None
     fiscal_year_uuid: UUID
     include_drafts: bool = True
 

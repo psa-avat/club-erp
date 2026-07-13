@@ -196,6 +196,7 @@ async def manual_match_endpoint(
 ):
     return await manual_match(
         db, payload.line_uuid, payload.entry_uuid, payload.fiscal_year_uuid, current_user.id,
+        entry_line_uuid=payload.entry_line_uuid,
         include_drafts=payload.include_drafts,
     )
 

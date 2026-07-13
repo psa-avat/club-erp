@@ -62,6 +62,8 @@ class ViTypeCatalogResponse(BaseModel):
     insurance_amount: float | None = None
     insurance_expense_account_uuid: UUID | None = None
     insurance_expense_account_code: str | None = None
+    insurance_revenue_account_uuid: UUID | None = None
+    insurance_revenue_account_code: str | None = None
     max_flights: int = 1
     analytical_cost_account_uuid: UUID | None = None
     analytical_cost_account_code: str | None = None
@@ -155,6 +157,7 @@ class ViTypeCatalogUpdateRequest(BaseModel):
     insurance_tiers_uuid: UUID | None = None
     insurance_amount: float | None = None
     insurance_expense_account_uuid: UUID | None = None
+    insurance_revenue_account_uuid: UUID | None = None
     max_flights: int | None = Field(default=None, ge=1, le=99)
     analytical_cost_account_uuid: UUID | None = None
     analytical_reflection_account_uuid: UUID | None = None

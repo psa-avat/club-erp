@@ -584,16 +584,19 @@ function CandidateEntriesList({
   const { t } = useTranslation('banque')
   // Backend-scored candidates: same eligibility/scoring/internal-transfer-cap logic
   // run_auto_match uses, so this list can never show a candidate auto-match would
-  // rank or flag differently — and an already-matched entry never appears here,
-  // since an entry can only ever be reconciled to one line at a time.
+  // rank or flag differently. Matching is per accounting line, not per whole entry, so
+  // an entry with several lines on the reconciled account (e.g. a payroll entry with
+  // multiple 512 withdrawals) can surface more than one candidate here — one per
+  // still-unclaimed line — each carrying its own entry_line_uuid.
   const { data: candidates, isLoading } = useReconciliationCandidatesQuery(line.uuid, includeDrafts)
   const manualMatchMutation = useManualMatchMutation()
 
-  async function handlePick(entryUuid: string) {
+  async function handlePick(entryUuid: string, entryLineUuid: string) {
     try {
       await manualMatchMutation.mutateAsync({
         line_uuid: line.uuid,
         entry_uuid: entryUuid,
+        entry_line_uuid: entryLineUuid,
         fiscal_year_uuid: statement.fiscal_year_uuid,
         include_drafts: includeDrafts,
       })
@@ -623,9 +626,9 @@ function CandidateEntriesList({
           const isExactAmount = new Decimal(candidate.amount_diff).isZero()
           return (
             <button
-              key={candidate.entry_uuid}
+              key={`${candidate.entry_uuid}-${candidate.entry_line_uuid}`}
               type="button"
-              onClick={() => void handlePick(candidate.entry_uuid)}
+              onClick={() => void handlePick(candidate.entry_uuid, candidate.entry_line_uuid)}
               disabled={manualMatchMutation.isPending}
               className="flex w-full items-center justify-between gap-2 rounded border bg-card px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
             >

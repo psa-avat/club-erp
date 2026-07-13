@@ -211,6 +211,25 @@ class OfxParserTests(IsolatedAsyncioTestCase):
         self.assertEqual(second.amount, Decimal("-52.30"))
         self.assertEqual(second.counterparty, "Frais bancaires")
 
+    def test_decodes_utf8_body_mislabeled_as_usascii_1252(self):
+        # Common real-world bank export bug: header declares ENCODING:USASCII /
+        # CHARSET:1252 but the body bytes are actually UTF-8. Without correction,
+        # ofxparse decodes "émis" (0xC3 0xA9) as cp1252, producing "Ã©mis".
+        sample = _OFX_SAMPLE.replace("Cotisation", "Virement émis").encode("utf-8")
+
+        parsed = OfxParser.parse(sample)
+
+        self.assertEqual(parsed.lines[0].description, "Virement émis")
+
+    def test_decodes_genuinely_cp1252_body_correctly(self):
+        # A file whose header accurately declares CHARSET:1252 and whose body really
+        # is cp1252-encoded should still decode correctly after normalization.
+        sample = _OFX_SAMPLE.replace("Cotisation", "Virement émis").encode("cp1252")
+
+        parsed = OfxParser.parse(sample)
+
+        self.assertEqual(parsed.lines[0].description, "Virement émis")
+
 
 class CsvParserTests(IsolatedAsyncioTestCase):
     def _mapping(self, date_format="DD/MM/YYYY", separator=";"):
@@ -420,6 +439,7 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
              patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[entry_exact])), \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             result = await run_auto_match(db, statement.uuid)
 
@@ -429,6 +449,62 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
         self.assertEqual(line_no_match.match_status, "unmatched")
         self.assertIsNone(line_no_match.matched_entry_uuid)
         self.assertEqual(statement.status, "matching")
+
+    async def test_multi_line_entry_matches_each_line_to_a_different_statement_line(self):
+        # Regression for the bug this migration fixes: a single journal entry with
+        # several distinct lines on account 512 (e.g. a payroll entry posting multiple
+        # acomptes) must be able to satisfy multiple statement lines, one per 512 line —
+        # not just the first one found.
+        account_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        entry_uuid = uuid4()
+        entry = AccountingEntry(
+            uuid=entry_uuid, fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(),
+            entry_date=date(2026, 1, 5), description="Salaire Brut PS Janvier", state=2,
+        )
+        bank_line_1 = AccountingLine(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, entry_uuid=entry_uuid,
+            account_uuid=account_uuid, debit=Decimal("0"), credit=Decimal("360.00"),
+        )
+        bank_line_1.account = _bank_account(uuid=account_uuid)
+        bank_line_2 = AccountingLine(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, entry_uuid=entry_uuid,
+            account_uuid=account_uuid, debit=Decimal("0"), credit=Decimal("500.00"),
+        )
+        bank_line_2.account = _bank_account(uuid=account_uuid)
+        entry.lines = [bank_line_1, bank_line_2]
+
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 1, 31), source_format="ofx", created_by=1, status="imported",
+        )
+        stmt_line_1 = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0,
+            line_date=date(2026, 1, 5), amount=Decimal("-360.00"), match_status="unmatched",
+            description="Salaire Brut PS Janvier",
+        )
+        stmt_line_2 = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=1,
+            line_date=date(2026, 1, 5), amount=Decimal("-500.00"), match_status="unmatched",
+            description="Salaire Brut PS Janvier",
+        )
+        statement.lines = [stmt_line_1, stmt_line_2]
+
+        db = AsyncMock()
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[entry])), \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
+            result = await run_auto_match(db, statement.uuid)
+
+        self.assertEqual(result, {"auto_matched": 2, "flagged_review": 0, "unmatched": 0})
+        self.assertEqual(stmt_line_1.match_status, "auto_matched")
+        self.assertEqual(stmt_line_1.matched_entry_uuid, entry.uuid)
+        self.assertEqual(stmt_line_1.matched_line_uuid, bank_line_1.uuid)
+        self.assertEqual(stmt_line_2.match_status, "auto_matched")
+        self.assertEqual(stmt_line_2.matched_entry_uuid, entry.uuid)
+        self.assertEqual(stmt_line_2.matched_line_uuid, bank_line_2.uuid)
 
     async def test_internal_transfer_capped_below_auto_accept(self):
         account_uuid = uuid4()
@@ -450,6 +526,7 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
              patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[transfer_entry])), \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             result = await run_auto_match(db, statement.uuid)
 
@@ -467,6 +544,7 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
              patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load, \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             await run_auto_match(db, statement.uuid, include_drafts=True)
 
@@ -482,6 +560,7 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
              patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load, \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             await run_auto_match(db, statement.uuid)
 
@@ -516,6 +595,7 @@ class GetMatchCandidatesTests(IsolatedAsyncioTestCase):
                  "services.bank_reconciliation._load_eligible_entries",
                  new=AsyncMock(return_value=[entry_close, entry_exact, entry_out_of_tolerance]),
              ), \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             candidates = await get_match_candidates(db, line.uuid)
 
@@ -544,6 +624,7 @@ class GetMatchCandidatesTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
              patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[])) as mock_load, \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             candidates = await get_match_candidates(db, line.uuid)
 
@@ -569,6 +650,7 @@ class GetMatchCandidatesTests(IsolatedAsyncioTestCase):
 
         with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
              patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[transfer_entry])), \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
              patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
             candidates = await get_match_candidates(db, line.uuid)
 
@@ -761,6 +843,105 @@ class ManualMatchTests(IsolatedAsyncioTestCase):
                 )
         self.assertEqual(ctx.exception.status_code, 400)
 
+    async def test_multi_line_entry_picks_specific_line_via_entry_line_uuid(self):
+        # Regression: matching must operate per accounting line, not per whole entry, so
+        # a second statement line can be matched to a different 512 line of an entry
+        # that's already partially matched.
+        account_uuid = uuid4()
+        journal_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        entry_uuid = uuid4()
+        entry = AccountingEntry(
+            uuid=entry_uuid, fiscal_year_uuid=fiscal_year_uuid, journal_uuid=journal_uuid,
+            entry_date=date(2026, 1, 20), description="Salaire Brut PS Janvier", state=2,
+        )
+        bank_line_1 = AccountingLine(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, entry_uuid=entry_uuid,
+            account_uuid=account_uuid, debit=Decimal("0"), credit=Decimal("360.00"),
+        )
+        bank_line_2 = AccountingLine(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, entry_uuid=entry_uuid,
+            account_uuid=account_uuid, debit=Decimal("0"), credit=Decimal("500.00"),
+        )
+        entry.lines = [bank_line_1, bank_line_2]
+
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=journal_uuid, account_uuid=account_uuid,
+            statement_date=date(2026, 1, 31), source_format="ofx", created_by=1,
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=1, line_date=date(2026, 1, 12),
+            amount=Decimal("-500.00"), match_status="unmatched",
+        )
+
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+        # First db.scalar call resolves the entry; second checks the specific line isn't
+        # already claimed (bank_line_1 was already matched to another statement line).
+        db.scalar = AsyncMock(side_effect=[entry, None])
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
+            result = await manual_match(
+                db, line.uuid, entry.uuid, fiscal_year_uuid, user_id=1, entry_line_uuid=bank_line_2.uuid,
+            )
+
+        self.assertEqual(result.match_status, "manually_matched")
+        self.assertEqual(result.matched_entry_uuid, entry.uuid)
+        self.assertEqual(result.matched_line_uuid, bank_line_2.uuid)
+
+    async def test_rejects_entry_line_uuid_not_belonging_to_entry(self):
+        account_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1,
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="unmatched",
+        )
+        entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"), entry_date=date(2026, 6, 3))
+        entry.fiscal_year_uuid = fiscal_year_uuid
+
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+        db.scalar = AsyncMock(return_value=entry)
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
+            with self.assertRaises(HTTPException) as ctx:
+                await manual_match(
+                    db, line.uuid, entry.uuid, fiscal_year_uuid, user_id=1, entry_line_uuid=uuid4(),
+                )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_rejects_already_claimed_specific_line(self):
+        account_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1,
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 6, 3),
+            amount=Decimal("10"), match_status="unmatched",
+        )
+        entry = _entry_with_bank_line(account_uuid, debit=Decimal("10"), entry_date=date(2026, 6, 3))
+        entry.fiscal_year_uuid = fiscal_year_uuid
+        bank_line = entry.lines[0]
+
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=line)
+        # First db.scalar resolves the entry; second (already_matched check) reports the
+        # line is already claimed by another statement line.
+        db.scalar = AsyncMock(side_effect=[entry, uuid4()])
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)):
+            with self.assertRaises(HTTPException) as ctx:
+                await manual_match(
+                    db, line.uuid, entry.uuid, fiscal_year_uuid, user_id=1, entry_line_uuid=bank_line.uuid,
+                )
+        self.assertEqual(ctx.exception.status_code, 409)
+
 
 class UnmatchTests(IsolatedAsyncioTestCase):
     async def test_clears_match_fields(self):
@@ -799,6 +980,54 @@ class DetectDiscrepanciesTests(IsolatedAsyncioTestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0]["type"], "missing_entry")
         self.assertEqual(statement.status, "flagged")
+
+    async def test_two_lines_matched_to_different_lines_of_same_entry_is_not_a_duplicate(self):
+        # Regression: two statement lines legitimately matched to two distinct 512 lines
+        # of the same multi-line entry must not be flagged as a duplicate match.
+        account_uuid = uuid4()
+        fiscal_year_uuid = uuid4()
+        entry_uuid = uuid4()
+        entry = AccountingEntry(
+            uuid=entry_uuid, fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(),
+            entry_date=date(2026, 1, 5), description="Salaire Brut PS Janvier", state=2,
+        )
+        bank_line_1 = AccountingLine(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, entry_uuid=entry_uuid,
+            account_uuid=account_uuid, debit=Decimal("0"), credit=Decimal("360.00"),
+        )
+        bank_line_2 = AccountingLine(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, entry_uuid=entry_uuid,
+            account_uuid=account_uuid, debit=Decimal("0"), credit=Decimal("500.00"),
+        )
+        entry.lines = [bank_line_1, bank_line_2]
+
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=fiscal_year_uuid, journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 1, 31), source_format="ofx", created_by=1, status="matching",
+        )
+        stmt_line_1 = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0, line_date=date(2026, 1, 5),
+            amount=Decimal("-360.00"), match_status="auto_matched",
+            matched_entry_uuid=entry.uuid, matched_fiscal_year_uuid=fiscal_year_uuid, matched_line_uuid=bank_line_1.uuid,
+        )
+        stmt_line_2 = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=1, line_date=date(2026, 1, 12),
+            amount=Decimal("-500.00"), match_status="auto_matched",
+            matched_entry_uuid=entry.uuid, matched_fiscal_year_uuid=fiscal_year_uuid, matched_line_uuid=bank_line_2.uuid,
+        )
+        statement.lines = [stmt_line_1, stmt_line_2]
+        db = AsyncMock()
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch(
+                 "services.bank_reconciliation._load_matched_entries",
+                 new=AsyncMock(return_value={(entry.uuid, fiscal_year_uuid): entry}),
+             ):
+            findings = await detect_discrepancies(db, statement.uuid)
+
+        self.assertEqual(findings, [])
+        self.assertEqual(stmt_line_1.match_status, "auto_matched")
+        self.assertEqual(stmt_line_2.match_status, "auto_matched")
 
     async def test_manually_matched_line_with_timing_finding_is_not_downgraded(self):
         # A manual match is an explicit human confirmation — running matching (which

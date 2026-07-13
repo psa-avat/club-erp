@@ -8,11 +8,15 @@ by the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 
 Verify that VI realization entries (account 7067) have corresponding
-insurance expense (616) and payable (401) entries.
+insurance expense (6169) and payable (401) entries.
+
+Note: 616 (Primes d'assurances) is a non-postable header account in the PCG
+(is_posting_allowed=false) — actual VI insurance postings go to its sub-account
+6169 (Assurance VI/JD FFVP). Querying 616 directly always returns zero rows.
 
 Purpose:
   For each VI realization in 7067, check if there's a matching insurance
-  entry in 616 (expense) and 401 (payable) on the same date or nearby.
+  entry in 6169 (expense) and 401 (payable) on the same date or nearby.
   Identifies missing insurance entries and premium inconsistencies.
 
 Output files (in output/):
@@ -72,7 +76,7 @@ def _connect() -> psycopg2.extensions.connection:
 
 def load_vi_and_insurance_data(conn) -> dict:
     """
-    Load VI realizations (7067) and insurance entries (616, 401) from ERP.
+    Load VI realizations (7067) and insurance entries (6169, 401) from ERP.
     Returns structured data for matching.
     """
     cur = conn.cursor()
@@ -88,13 +92,13 @@ def load_vi_and_insurance_data(conn) -> dict:
 
     # Get account UUIDs
     cur.execute(
-        "SELECT uuid, code FROM accounting_accounts WHERE code IN ('7067', '616', '401')"
+        "SELECT uuid, code FROM accounting_accounts WHERE code IN ('7067', '6169', '401')"
     )
     accounts = {row[1]: row[0] for row in cur.fetchall()}
 
     data = {
         "vi_realizations": [],      # 7067 entries (credit = revenue)
-        "insurance_expense": [],     # 616 entries (debit = expense)
+        "insurance_expense": [],     # 6169 entries (debit = expense)
         "insurance_payable": [],     # 401 entries (credit = payable)
     }
 
@@ -123,7 +127,7 @@ def load_vi_and_insurance_data(conn) -> dict:
                 "entry_uuid": str(entry_uuid),
             })
 
-    # Load insurance expense (616) - debit = expense
+    # Load insurance expense (6169) - debit = expense
     cur.execute(
         """
         SELECT ae.entry_date, al.debit, al.credit, al.description,
@@ -133,7 +137,7 @@ def load_vi_and_insurance_data(conn) -> dict:
         WHERE al.account_uuid = %s AND al.fiscal_year_uuid = %s
         ORDER BY ae.entry_date
         """,
-        (accounts["616"], fy_uuid)
+        (accounts["6169"], fy_uuid)
     )
     for row in cur.fetchall():
         entry_date, debit, credit, description, reference, entry_uuid = row
@@ -265,13 +269,13 @@ def build_report(matched: list, unmatched: list, total_vi: int) -> str:
     if unmatched:
         lines.extend([
             "--- VI Entries WITHOUT Matching Insurance ---",
-            "(These should have both 616 expense and 401 payable entries)",
+            "(These should have both 6169 expense and 401 payable entries)",
             "",
         ])
         for item in unmatched[:30]:  # Show first 30
             status = []
             if not item["has_expense"]:
-                status.append("missing 616")
+                status.append("missing 6169")
             if not item["has_payable"]:
                 status.append("missing 401")
             lines.append(
@@ -377,7 +381,7 @@ def main() -> None:
     conn.close()
 
     print(f"  VI realizations (7067):     {len(data['vi_realizations'])} entries")
-    print(f"  Insurance expense (616):    {len(data['insurance_expense'])} entries")
+    print(f"  Insurance expense (6169):   {len(data['insurance_expense'])} entries")
     print(f"  Insurance payable (401):    {len(data['insurance_payable'])} entries")
 
     print("Matching VI to insurance...")

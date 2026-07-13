@@ -41,6 +41,7 @@ import {
   useDeleteAccountingEntryMutation,
   useFiscalYearsQuery,
   useJournalsQuery,
+  useMergeAccountingEntriesMutation,
   useReverseAccountingEntryMutation,
 } from '../api'
 import { apiClient, getAuthRequestConfig } from '../../../api/client'
@@ -48,8 +49,9 @@ import { useFiscalYearStore } from '../../../store/fiscalYearStore'
 import { entryStateLabel, totals, entryStateBadgeClass, bankMatchBadge, useDebounce, decimalOrZero, normalizeAmountFilter, toErrorMessage } from './journalShared'
 import { AccountingImportDialog } from './AccountingImportDialog'
 import { JournalEntryWorkspaceScreen } from './JournalEntryWorkspaceScreen'
+import { MergeEntriesDialog } from './MergeEntriesDialog'
 import { ReversalDialog } from './ReversalDialog'
-import type { AccountingEntry } from '../api'
+import type { AccountingEntry, AccountingEntryMergePayload } from '../api'
 
 type JournalPreset = 'drafts' | 'posted' | 'unreconciled' | 'discrepancies' | 'missing-tiers' | 'current-year'
 
@@ -157,6 +159,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
   const [reversalTarget, setReversalTarget] = useState<AccountingEntry | null>(null)
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
   // Entry editor Sheet — kept in-place over the list (rather than navigating to
   // /banque/journal/entry/:uuid) so filters/page/sort/scroll never get lost.
   const [entrySheet, setEntrySheet] = useState<{ open: boolean; entryUuid: string | null; fiscalYearUuid: string | null }>(
@@ -237,6 +240,7 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
   const bulkPostMutation = useBulkPostAccountingEntriesMutation()
   const deleteEntryMutation = useDeleteAccountingEntryMutation()
   const reverseEntryMutation = useReverseAccountingEntryMutation()
+  const mergeEntriesMutation = useMergeAccountingEntriesMutation()
 
   const journalByUuid = useMemo(
     () => new Map(journals.map((j) => [j.uuid, j])),
@@ -460,6 +464,18 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       })
       setSuccessMessage(t('journal.entries.reversed'))
       setReversalTarget(null)
+    } catch (error) {
+      setLocalError(toErrorMessage(error, t('journal.errors.generic')))
+    }
+  }
+
+  async function handleMergeConfirm(payload: AccountingEntryMergePayload) {
+    setLocalError(null)
+    try {
+      await mergeEntriesMutation.mutateAsync(payload)
+      setSelectedEntryUuids([])
+      setMergeDialogOpen(false)
+      setSuccessMessage(t('journal.entries.bulk.merged'))
     } catch (error) {
       setLocalError(toErrorMessage(error, t('journal.errors.generic')))
     }
@@ -1080,6 +1096,17 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
             ? t('journal.entries.bulk.postingSelected')
             : t('journal.entries.bulk.postSelected', { count: selectedEntryUuids.length })}
         </Button>
+        {selectedEntryUuids.length >= 2 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={mergeEntriesMutation.isPending}
+            onClick={() => setMergeDialogOpen(true)}
+          >
+            {t('journal.entries.bulk.mergeSelected', { count: selectedEntryUuids.length })}
+          </Button>
+        )}
       </StickyActionBar>
     )}
 
@@ -1098,6 +1125,16 @@ export function JournalEntriesScreen({ defaultState, lockState }: Props = {}) {
       isSubmitting={reverseEntryMutation.isPending}
       onClose={() => setReversalTarget(null)}
       onConfirm={confirmReversal}
+      t={t}
+    />
+
+    <MergeEntriesDialog
+      open={mergeDialogOpen}
+      entries={entries.filter((entry) => selectedEntryUuids.includes(entry.uuid) && entry.state === 1)}
+      accounts={accounts}
+      isSubmitting={mergeEntriesMutation.isPending}
+      onClose={() => setMergeDialogOpen(false)}
+      onConfirm={handleMergeConfirm}
       t={t}
     />
 
