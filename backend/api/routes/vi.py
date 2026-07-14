@@ -151,9 +151,16 @@ async def list_vi_entitlements_endpoint(
     )
     return [
         ViEntitlementResponse(
-            **{k: getattr(ent, k) for k in ViEntitlementResponse.model_fields if k not in ("vi_type_code", "flight_link_count")},
+            **{
+                k: getattr(ent, k)
+                for k in ViEntitlementResponse.model_fields
+                if k not in ("vi_type_code", "flight_link_count", "linked_flight_count")
+            },
             vi_type_code=ent.vi_type.code if ent.vi_type else None,
             flight_link_count=len(ent.flight_links),
+            # Excludes reserved-but-unmatched slots (flight_uuid IS NULL) — used to flag
+            # realized vouchers that were never actually attached to a real flight.
+            linked_flight_count=sum(1 for link in ent.flight_links if link.flight_uuid is not None),
         )
         for ent in rows
     ]

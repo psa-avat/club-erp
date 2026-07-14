@@ -970,6 +970,7 @@ export const en = {
         typePlaceholder: 'Type...',
         description: 'Filter by description',
         descriptionPlaceholder: 'Description...',
+        missingFlight: 'Realized without flight',
       },
       table: {
         code: 'Code',
@@ -982,6 +983,7 @@ export const en = {
         notes: 'Notes',
         actions: 'Actions',
         exportCsv: 'Export CSV',
+        missingFlightBadge: 'No flight',
       },
     },
   },

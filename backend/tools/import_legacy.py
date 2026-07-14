@@ -44,9 +44,9 @@ OUTPUT_DIR = TOOLS_DIR / "output"
 SOURCE_SYSTEM = "vulcain"
 IMPORT_BATCH_ID = "vulcain-2026"
 
-# Legacy journal code → ERP journal code (None = skip, flight-related)
+# Legacy journal code → ERP journal code (None = skip)
 JOURNAL_MAP: dict[str, str | None] = {
-    "VVO": None,   # flight entries — always skip
+    "VVO": "FL",   # flight entries
     "RPT": "AN",
     "VIN": "VT",
     "VDI": "VT",
@@ -114,11 +114,60 @@ def _connect() -> psycopg2.extensions.connection:
 # CSV helpers
 # ---------------------------------------------------------------------------
 
+_FREE_TEXT_COL_CANDIDATES = ("libellé", "libelle", "adresse_1")
+
+
 def _read_csv(path: Path) -> list[dict]:
-    """Read a legacy CSV (Latin-1, semicolon-separated)."""
+    """Read a legacy CSV (Latin-1, semicolon-separated).
+
+    The source export is unquoted, and free-text columns (e.g. `libellé`)
+    occasionally contain a literal, unescaped ';' — which splits one field
+    into two raw tokens and shifts every column after it. When a row has
+    more tokens than the header, this rejoins the overflow back into the
+    nearest known free-text column so downstream column lookups stay
+    aligned instead of silently reading garbage into `compte`/`débit`/etc.
+    """
     with open(path, encoding="latin-1", newline="") as f:
-        reader = csv.DictReader(f, delimiter=";")
-        return [row for row in reader]
+        reader = csv.reader(f, delimiter=";")
+        try:
+            header = next(reader)
+        except StopIteration:
+            return []
+        n_cols = len(header)
+        text_col_idx = next(
+            (i for i, name in enumerate(header) if name.strip().lower() in _FREE_TEXT_COL_CANDIDATES),
+            None,
+        )
+
+        rows: list[dict] = []
+        repaired = 0
+        malformed = 0
+        for raw_fields in reader:
+            if not raw_fields:
+                continue
+            excess = len(raw_fields) - n_cols
+            if excess > 0 and text_col_idx is not None:
+                merge_end = text_col_idx + excess + 1
+                raw_fields = (
+                    raw_fields[:text_col_idx]
+                    + [";".join(raw_fields[text_col_idx:merge_end])]
+                    + raw_fields[merge_end:]
+                )
+                repaired += 1
+            if len(raw_fields) != n_cols:
+                malformed += 1
+                if len(raw_fields) < n_cols:
+                    raw_fields = raw_fields + [None] * (n_cols - len(raw_fields))
+                else:
+                    raw_fields = raw_fields[:n_cols]
+            rows.append(dict(zip(header, raw_fields)))
+
+        if repaired:
+            print(f"  WARNING: {path.name}: repaired {repaired} row(s) with an unescaped ';' in a free-text column")
+        if malformed:
+            print(f"  WARNING: {path.name}: {malformed} row(s) still had the wrong field count after repair")
+
+        return rows
 
 
 def _clean_amount(val: str) -> Decimal:

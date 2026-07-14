@@ -28,6 +28,7 @@ import { exportRowsToCsv } from '../../../lib/exportCsv'
 import { Alert } from '../../../components/ui/alert'
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
+import { Checkbox } from '../../../components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -773,6 +774,7 @@ export function ViEntitlementsPage() {
   const [filterType, setFilterType] = useState('')
   const [filterDescription, setFilterDescription] = useState('')
   const [statusFilter, setStatusFilterVal] = useState<string>('active')
+  const [missingFlightOnly, setMissingFlightOnly] = useState(false)
 
   // Sort state
   const [sortField, setSortField] = useState<'code' | 'type' | 'validity' | 'status' | null>(null)
@@ -807,7 +809,11 @@ export function ViEntitlementsPage() {
   const filteredAndSortedRows = useMemo(() => {
     let rows = entitlementsQuery.data ?? []
 
-    if (statusFilter === 'active') {
+    if (missingFlightOnly) {
+      // Generic vouchers intentionally bypass individual flight-linking, so
+      // they're excluded rather than reported as orphaned.
+      rows = rows.filter((row) => row.status === 3 && !row.is_generic && row.linked_flight_count === 0)
+    } else if (statusFilter === 'active') {
       rows = rows.filter((row) => row.status <= 2)
     } else if (statusFilter !== 'all') {
       const n = Number(statusFilter)
@@ -837,7 +843,7 @@ export function ViEntitlementsPage() {
     }
 
     return rows
-  }, [entitlementsQuery.data, filterCode, filterType, filterDescription, statusFilter, sortField, sortDir])
+  }, [entitlementsQuery.data, filterCode, filterType, filterDescription, statusFilter, missingFlightOnly, sortField, sortDir])
 
   const statusBadgeClass = (status: number) =>
     status === 1 ? 'badge badge-info' :
@@ -931,7 +937,8 @@ export function ViEntitlementsPage() {
             id="vi-filter-status"
             value={statusFilter}
             onChange={(e) => setStatusFilterVal(e.target.value)}
-            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+            disabled={missingFlightOnly}
+            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm disabled:opacity-50"
           >
             <option value="active">Actifs (Chargé + Planifié)</option>
             <option value="all">Tous les statuts</option>
@@ -939,6 +946,16 @@ export function ViEntitlementsPage() {
               <option key={v} value={v}>{l}</option>
             ))}
           </select>
+        </div>
+        <div className="flex items-center gap-2 self-end pb-2">
+          <Checkbox
+            id="vi-filter-missing-flight"
+            checked={missingFlightOnly}
+            onCheckedChange={(checked) => setMissingFlightOnly(checked === true)}
+          />
+          <Label htmlFor="vi-filter-missing-flight" className="text-xs font-normal cursor-pointer">
+            {t('viEntitlements.filters.missingFlight')}
+          </Label>
         </div>
       </div>
 
@@ -986,6 +1003,11 @@ export function ViEntitlementsPage() {
                     <span className={statusBadgeClass(row.status)}>
                       {STATUS_LABELS[row.status] ?? String(row.status)}
                     </span>
+                    {row.status === 3 && !row.is_generic && row.linked_flight_count === 0 && (
+                      <span className="badge badge-warning text-xs ml-1">
+                        {t('viEntitlements.table.missingFlightBadge')}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{row.validity_date ?? '—'}</td>
                   <td className="px-3 py-2">

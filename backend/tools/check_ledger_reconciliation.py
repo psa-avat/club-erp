@@ -20,18 +20,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ---
 
 check_account.py compares account BALANCES (Vulcain CB/CR vs ERP, at the
-account level). This tool compares individual ENTRIES: for every non-flight
-Vulcain ledger entry, is there a matching ERP entry, and do the two agree?
-And conversely, does every ERP entry (outside the modules the ERP itself
-computes) trace back to a Vulcain entry?
-
-Flight (FL), pack discount (REM), and VI voucher (VI) journal entries are
-calculated by the ERP itself from flight/VI data. FL and REM are excluded from
-the "extra in ERP" side by default since they're never meant to have a 1:1 Vulcain
-counterpart (see --exclude-journals). However, VI is included by default to verify
-that the ERP's VI revenue calculation matches Vulcain's recorded VI revenue
-(Vulcain 411100610 realized flights vs ERP 7067). Vulcain VVO (flight) rows are
-always excluded from the Vulcain side.
+account level). This tool compares individual ENTRIES: for every Vulcain
+ledger entry, is there a matching ERP entry, and do the two agree? And
+conversely, does every ERP entry trace back to a Vulcain entry? No journal is
+skipped on either side — including VVO (flight) on the Vulcain side and
+FL/REM/VI (ERP-computed from flight/pack/VI data) on the ERP side — so a
+discrepancy anywhere always surfaces instead of being silently excluded from
+scope. --exclude-journals is still available for a narrower run, but the
+default excludes nothing (see DEFAULT_EXCLUDED_JOURNALS).
 
 Matching keys primarily on CONTENT (entry date + per-line account/debit/credit),
 not journal: journal placement has already drifted from content more than once
@@ -90,9 +86,9 @@ Usage:
                              backend/account_mapping.json — the curated, git-tracked
                              file — falling back to output/account_mapping.json)
   --exclude-journals CODES   comma-separated ERP journal codes excluded from
-                             the "extra in ERP" side (default: FL,REM,AMO,PRO
-                             — auto-computed modules. VI is included by default
-                             for verification against Vulcain.)
+                             the "extra in ERP" side (default: none — every
+                             journal is checked, including ERP-computed ones
+                             like FL/REM/VI)
   --pack-account CODE        ERP account for the pack-by-member check (default: 7066)
   --check-account CODE       focus on one ERP account (e.g. 512) — prints and writes
                              only the missing/extra/mismatched/journal-differs rows
@@ -140,7 +136,7 @@ from import_legacy import (  # noqa: E402
 # generic ERP account distinct from the curated "7066").
 CANONICAL_MAPPING_FILE = TOOLS_DIR.parent / "account_mapping.json"
 FALLBACK_MAPPING_FILE = OUTPUT_DIR / "account_mapping.json"
-DEFAULT_EXCLUDED_JOURNALS = {"FL", "REM"}
+DEFAULT_EXCLUDED_JOURNALS = set()
 DEFAULT_PACK_ACCOUNT = "7066"
 
 ENTRY_STATE_LABELS = {1: "Draft", 2: "Posted", 3: "Cancelled"}
@@ -377,11 +373,10 @@ def write_erp_duplicates_csv(groups: list[list[dict]], path: Path) -> None:
 # either side (external/HelloAsso buyers, not club members), and the ERP's
 # "VI" journal (realization: D 419100 / C 7067 + C 401) has NO Vulcain
 # counterpart at all — Vulcain recognizes VI flight revenue as ordinary
-# flight revenue (706xxx) inside VVO-journal entries, which are always
-# skipped on the Vulcain side (flights are reconciled separately). So the
-# exclude_journals set (which already includes "VI") keeps the ERP side of
-# this check to just the "purchase" side of 419100 (wherever that landed —
-# BQ/CS/AC/AN/...), which IS meant to have a Vulcain counterpart.
+# flight revenue (706xxx) inside VVO-journal entries. If "VI" is passed via
+# --exclude-journals, this keeps the ERP side of this check to just the
+# "purchase" side of 419100 (wherever that landed — BQ/CS/AC/AN/...), which
+# IS meant to have a Vulcain counterpart.
 #
 # Rather than matching individual transactions, this sums debit/credit/count
 # PER DAY for one account, on both sides, and flags days whose net diverges
@@ -418,12 +413,9 @@ def build_vulcain_daily_account_totals(
     col_compte = _find_col(sample, ["compte"])
     col_debit = _find_col(sample, ["débit", "debit", "dÃ©bit"])
     col_credit = _find_col(sample, ["crédit", "credit", "crÃ©dit"])
-    col_journal = _find_col(sample, ["journal"])
     col_date = _find_col(sample, ["date_de_valeur"])
 
     for row in accounting_rows:
-        if (row.get(col_journal) or "").strip() == "VVO":
-            continue
         raw_compte = (row.get(col_compte) or "").strip()
         if not raw_compte:
             continue
@@ -552,7 +544,6 @@ def build_vulcain_pack_summary(
     col_num_pilote = _find_col(sample, ["num_pilote"])
     col_num_ecriture = _find_col(sample, ["num_écriture", "num_ecriture", "num_Ã©criture"])
     col_date = _find_col(sample, ["date_de_valeur"])
-    col_journal = _find_col(sample, ["journal"])
     col_label = _find_col(sample, ["libellé", "libelle", "libellÃ©"])
 
     groups: dict[str, list[dict]] = {}
@@ -562,9 +553,6 @@ def build_vulcain_pack_summary(
             groups.setdefault(key, []).append(row)
 
     for num_ecriture, rows in groups.items():
-        if any((r.get(col_journal) or "").strip() == "VVO" for r in rows):
-            continue
-
         pack_amount = Decimal("0")
         has_pack_line = False
         n_pilote = ""
@@ -706,7 +694,7 @@ def reconcile_pack_by_member(
 def build_vulcain_entries(
     accounting_rows: list[dict], account_lookups: dict, account_mapping: dict | None, warnings: list[str]
 ) -> tuple[list[dict], dict]:
-    stats = {"total": 0, "skipped_vvo": 0, "compared": 0, "warnings": 0}
+    stats = {"total": 0, "compared": 0, "warnings": 0}
     if not accounting_rows:
         return [], stats
 
@@ -730,9 +718,6 @@ def build_vulcain_entries(
     for num_ecriture, lines in groups.items():
         stats["total"] += 1
         journals_in_group = {(r.get(col_journal) or "").strip() for r in lines}
-        if "VVO" in journals_in_group:
-            stats["skipped_vvo"] += 1
-            continue
 
         first_journal = next(iter(journals_in_group))
         mapped_journal_code = JOURNAL_MAP.get(first_journal)
@@ -1226,13 +1211,11 @@ def build_report(
         "=== ERP <-> Vulcain Ledger Reconciliation Report ===",
         "",
         "--- Scope ---",
-        "  Vulcain side: all non-VVO (non-flight) entries in V_comptabilité_validée_2026.csv",
+        "  Vulcain side: all entries in V_comptabilité_validée_2026.csv (no journal excluded)",
         f"  ERP side:     all FY2026 entries NOT cancelled, excluding journals {sorted(exclude_journals)}",
-        "                (those are computed by the ERP itself from flights/VI/packs)",
         "",
         "--- Vulcain source ---",
         f"  Total num_écriture groups:  {vulcain_stats['total']}",
-        f"  Skipped (VVO/flight):       {vulcain_stats['skipped_vvo']}",
         f"  Compared:                   {vulcain_stats['compared']}",
         f"  Warnings:                   {vulcain_stats['warnings']}",
         "",
@@ -1374,7 +1357,7 @@ def main() -> None:
     parser.add_argument(
         "--exclude-journals", metavar="CODES",
         help="Comma-separated ERP journal codes excluded from the 'extra in ERP' side "
-             "(default: FL,REM,AMO,PRO — VI is included by default for verification)",
+             "(default: none — every journal is checked)",
     )
     parser.add_argument(
         "--pack-account", metavar="CODE", default=DEFAULT_PACK_ACCOUNT,
@@ -1504,7 +1487,6 @@ def main() -> None:
     )
     print(
         f"  {vulcain_stats['total']} groups  "
-        f"| {vulcain_stats['skipped_vvo']} skipped (VVO)  "
         f"| {vulcain_stats['compared']} compared"
     )
 

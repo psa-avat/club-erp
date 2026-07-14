@@ -1192,6 +1192,16 @@
       "note": ""
     },
     {
+      "vulcain_code": "291800000",
+      "erp_code": "151801",
+      "asset_code": "TREUIL",
+      "vulcain_label": "prov. conso. treuil 2/t",
+      "vulcain_side": "",
+      "erp_name": "",
+      "count": 1,
+      "note": "Old-rate winch provision sub-account, liquidated into 151820000/151801 (same TREUIL asset) via num_ecriture=6549"
+    },
+    {
       "vulcain_code": "322110000",
       "erp_code": "322",
       "asset_code": null,
@@ -1573,7 +1583,7 @@
     },
     {
       "vulcain_code": "606510000",
-      "erp_code": "606",
+      "erp_code": "924",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -1583,7 +1593,7 @@
     },
     {
       "vulcain_code": "606530000",
-      "erp_code": "606",
+      "erp_code": "923",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -1593,7 +1603,7 @@
     },
     {
       "vulcain_code": "606550000",
-      "erp_code": "606",
+      "erp_code": "923",
       "asset_code": null,
       "vulcain_label": "",
       "vulcain_side": "",
@@ -2035,7 +2045,7 @@
       "vulcain_code": "706400100",
       "erp_code": "7063",
       "asset_code": null,
-      "vulcain_label": "",
+      "vulcain_label": "Treuil",
       "vulcain_side": "",
       "erp_name": "",
       "count": 936,

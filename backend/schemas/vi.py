@@ -115,6 +115,7 @@ class ViEntitlementResponse(BaseModel):
     realization_entry_uuid: UUID | None = None
     conversion_entry_uuid: UUID | None = None
     flight_link_count: int = 0
+    linked_flight_count: int = 0
     planche_synced_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
