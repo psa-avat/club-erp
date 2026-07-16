@@ -501,6 +501,9 @@ class FlightBillingPreviewService:
         errors: list[FlightBillingError] = []
         warnings: list[FlightBillingError] = []
 
+        if flight.erp_status == 3:
+            errors.append(_error("flight_deleted", "Flight is marked deleted and cannot be billed."))
+
         club = club_info or _ClubBillingInfo(
             is_club_billed=False, charge_account_uuid=None, charge_account_code=None
         )

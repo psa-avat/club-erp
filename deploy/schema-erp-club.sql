@@ -2308,8 +2308,8 @@ CREATE TABLE public.validated_flights (
     billing_quote_state character varying(32),
     charge_comment text,
     has_discount boolean,
-    CONSTRAINT chk_vf_erp_status CHECK ((erp_status = ANY (ARRAY[0, 1, 2]))),
-    CONSTRAINT chk_vf_landing_count CHECK ((landing_count >= 1)),
+    CONSTRAINT chk_vf_erp_status CHECK ((erp_status = ANY (ARRAY[0, 1, 2, 3]))),
+    CONSTRAINT chk_vf_landing_count CHECK ((((erp_status = 3) AND (landing_count >= 0)) OR ((erp_status <> 3) AND (landing_count >= 1)))),
     CONSTRAINT chk_vf_launch_method CHECK (((launch_method >= 0) AND (launch_method <= 3))),
     CONSTRAINT chk_vf_type_of_flight CHECK (((type_of_flight >= 0) AND (type_of_flight <= 7)))
 );

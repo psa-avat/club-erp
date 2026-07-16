@@ -56,6 +56,9 @@ export type FlightFetchResponse = {
   idempotent: number
   snapshots_created: number
   modified_after_transfer: number
+  deleted_billing_reversed: number
+  deleted_billing_reversal_created: number
+  deleted_billing_reversal_skipped: number
   next_cursor: string | null
   has_more: boolean
   error_details?: string[]

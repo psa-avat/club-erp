@@ -120,6 +120,24 @@ class CandidateEntryResponse(BaseModel):
     is_internal_transfer: bool
 
 
+class CloseAmountCandidateResponse(BaseModel):
+    entry_uuid: UUID
+    entry_line_uuid: UUID
+    fiscal_year_uuid: UUID
+    entry_date: date
+    description: Optional[str] = None
+    reference: Optional[str] = None
+    state: int
+    account_uuid: UUID
+    account_code: Optional[str] = None
+    account_name: Optional[str] = None
+    amount: Decimal = Field(decimal_places=4)
+    amount_diff: Decimal = Field(decimal_places=4)
+    date_diff: int
+    is_same_account: bool
+    already_claimed: bool
+
+
 class ManualMatchRequest(BaseModel):
     line_uuid: UUID
     entry_uuid: UUID

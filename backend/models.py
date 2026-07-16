@@ -1553,8 +1553,11 @@ class ValidatedFlight(Base):
         UniqueConstraint("planche_uuid", name="uq_validated_flights_planche_uuid"),
         CheckConstraint("type_of_flight BETWEEN 0 AND 7", name="chk_vf_type_of_flight"),
         CheckConstraint("launch_method BETWEEN 0 AND 3", name="chk_vf_launch_method"),
-        CheckConstraint("erp_status IN (0, 1, 2)", name="chk_vf_erp_status"),
-        CheckConstraint("landing_count >= 1", name="chk_vf_landing_count"),
+        CheckConstraint("erp_status IN (0, 1, 2, 3)", name="chk_vf_erp_status"),
+        CheckConstraint(
+            "(erp_status = 3 AND landing_count >= 0) OR (erp_status != 3 AND landing_count >= 1)",
+            name="chk_vf_landing_count",
+        ),
     )
 
     # Identifiers
@@ -1608,7 +1611,7 @@ class ValidatedFlight(Base):
     observations = Column(Text, nullable=True)  # Free text
 
     # ERP status and audit metadata
-    # 0=validated (draft), 1=transferred (locked), 2=modified_after_transfer
+    # 0=validated (draft), 1=transferred (locked), 2=modified_after_transfer, 3=deleted
     erp_status = Column(Integer, nullable=False, default=0, index=True)
     validated_at = Column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)

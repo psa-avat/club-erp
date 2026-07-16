@@ -55,6 +55,7 @@ from schemas.vi import (
     ViPromotionResponse,
     ViPurchaseEntryRequest,
     ViRealizationEntryRequest,
+    ViRealizedReportResponse,
     ViReimbursementEntryRequest,
     ViTypeCatalogPayload,
     ViTypeCatalogResponse,
@@ -87,6 +88,7 @@ from services.vi_accounting import (
     create_vi_realization_entry,
     create_vi_reimbursement_entry,
 )
+from services.vi_reports import get_vi_realized_report
 
 router = APIRouter(prefix="/api/v1/vi", tags=["vi"])
 
@@ -263,6 +265,16 @@ async def bulk_schedule_vi_endpoint(
         user_id=current_user.id,
     )
     return {"success": True, **result}
+
+
+@router.get("/reports/realized", response_model=ViRealizedReportResponse)
+async def get_vi_realized_report_endpoint(
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _: User = _plan_guard,
+):
+    return await get_vi_realized_report(db=db, date_from=date_from, date_to=date_to)
 
 
 @router.get("/staging", response_model=list[HelloAssoViStagingResponse])

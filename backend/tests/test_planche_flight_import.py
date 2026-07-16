@@ -114,6 +114,79 @@ class PlancheFlightImportTests(TestCase):
         self.assertEqual(flight.erp_status, 2)
         self.assertEqual(flight.validated_by, "tester")
 
+    def test_apply_planche_flight_data_nulls_launch_asset_fields_for_external_launch(self):
+        snapshot = PlancheFlightSnapshot(
+            uuid=uuid4(),
+            planche_uuid="flight-2",
+            planche_revision=1,
+            source_hash="hash-new",
+            status="updated",
+            payload_json={},
+        )
+        flight = ValidatedFlight()
+        change_item = {"planche_uuid": "flight-2", "revision": 1, "status": "updated"}
+        payload = {
+            "jour": "2026-05-25",
+            "glider_immat": "F-CABC",
+            "pilot_erp_id": "M001",
+            "typeOfFlight": 1,
+            "launchMethod": 0,
+            "launch_machine_immat": "F-TOW",
+            "launch_machine_erp_id": "asset-uuid",
+            "takeoffTime": "10:00",
+            "landingTime": "10:30",
+            "landingCount": 1,
+        }
+
+        self.service._apply_planche_flight_data(
+            flight_obj=flight,
+            flight_data=payload,
+            change_item=change_item,
+            snapshot=snapshot,
+            triggered_by="tester",
+            existing_status=None,
+            source_hash_changed=True,
+        )
+
+        self.assertEqual(flight.launch_method, 0)
+        self.assertIsNone(flight.launch_asset_code)
+        self.assertIsNone(flight.launch_machine_erp_id)
+
+    def test_apply_planche_flight_data_marks_zero_landing_zero_time_flight_deleted(self):
+        snapshot = PlancheFlightSnapshot(
+            uuid=uuid4(),
+            planche_uuid="flight-3",
+            planche_revision=1,
+            source_hash="hash-new",
+            status="updated",
+            payload_json={},
+        )
+        flight = ValidatedFlight(erp_status=1)
+        change_item = {"planche_uuid": "flight-3", "revision": 4, "status": "updated"}
+        payload = {
+            "jour": "2026-05-25",
+            "glider_immat": "F-CABC",
+            "pilot_erp_id": "M001",
+            "typeOfFlight": 1,
+            "launchMethod": 1,
+            "takeoffTime": "10:00",
+            "landingTime": "10:00",
+            "landingCount": 0,
+        }
+
+        self.service._apply_planche_flight_data(
+            flight_obj=flight,
+            flight_data=payload,
+            change_item=change_item,
+            snapshot=snapshot,
+            triggered_by="tester",
+            existing_status=1,
+            source_hash_changed=True,
+        )
+
+        self.assertEqual(flight.landing_count, 0)
+        self.assertEqual(flight.erp_status, 3)
+
     def test_flights_pull_route_has_capability_guard(self):
         route = None
         for candidate in flights_router.routes:

@@ -327,3 +327,50 @@ class ViAccountingSummaryResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+# ── VI Reports & KPIs (realized/converted vouchers) ────────────────────────
+
+class ViReportVoucherRow(BaseModel):
+    """One realized or converted voucher with its flights and accounting entries."""
+
+    entitlement_uuid: UUID
+    code: str
+    vi_type_code: Optional[str] = None
+    status: int
+    realisation_date: Optional[date] = None
+    amount_ttc: Optional[Decimal] = None
+    insurance_amount: Decimal = Decimal("0")  # effective: override ?? vi_type amount ?? 0
+    buyer_member_name: Optional[str] = None
+    registered_member_name: Optional[str] = None
+    flight_count: int = 0
+    flight_dates: list[date] = Field(default_factory=list)
+    realization: ViAccountingEntryRef = Field(default_factory=ViAccountingEntryRef)
+    conversion: ViAccountingEntryRef = Field(default_factory=ViAccountingEntryRef)
+
+
+class ViReportTopPilot(BaseModel):
+    member_uuid: Optional[UUID] = None
+    account_id: Optional[str] = None
+    member_name: str
+    flight_count: int
+
+
+class ViReportKpis(BaseModel):
+    realized_count: int = 0           # REALIZED + CONVERTED together (same tile)
+    converted_count: int = 0          # subset of realized_count that converted to a member
+    remaining_count: int = 0          # LOADED + SCHEDULED, non-generic — still to realize
+    conversion_rate: float = 0.0      # converted / realized_count
+    net_flight_revenue: Decimal = Decimal("0")     # net ledger balance of account 7067
+    insurance_collected: Decimal = Decimal("0")    # net ledger balance of account 7069 (from buyer)
+    insurance_paid: Decimal = Decimal("0")         # net ledger balance of account 6169 (owed to FFVP)
+    insurance_voucher_count: int = 0               # vouchers with insurance_amount > 0
+    flight_cost: Decimal = Decimal("0")            # sum of analytical (account 921) flight cost entries
+    margin: Decimal = Decimal("0")                 # net_flight_revenue - flight_cost
+    advances_unrealized: Decimal = Decimal("0")    # net ledger balance of account 419100 for pending vouchers
+    top_pilots: list[ViReportTopPilot] = Field(default_factory=list)
+
+
+class ViRealizedReportResponse(BaseModel):
+    vouchers: list[ViReportVoucherRow] = Field(default_factory=list)
+    kpis: ViReportKpis = Field(default_factory=ViReportKpis)
+

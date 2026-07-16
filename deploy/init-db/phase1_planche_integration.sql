@@ -82,8 +82,10 @@ CREATE TABLE validated_flights (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT chk_vf_typeOfFlight CHECK (typeOfFlight BETWEEN 0 AND 7),
     CONSTRAINT chk_vf_launchMethod CHECK (launchMethod BETWEEN 0 AND 3),
-    CONSTRAINT chk_vf_erp_status CHECK (erp_status IN (0, 1, 2)),
-    CONSTRAINT chk_vf_landingCount CHECK (landingCount >= 1)
+    CONSTRAINT chk_vf_erp_status CHECK (erp_status IN (0, 1, 2, 3)),
+    CONSTRAINT chk_vf_landingCount CHECK (
+        (erp_status = 3 AND landingCount >= 0) OR (erp_status != 3 AND landingCount >= 1)
+    )
 );
 
 CREATE INDEX idx_validated_flights_planche_uuid ON validated_flights(planche_uuid);

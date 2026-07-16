@@ -534,6 +534,44 @@ class RunAutoMatchTests(IsolatedAsyncioTestCase):
         self.assertEqual(line.match_status, "discrepancy")
         self.assertEqual(line.match_confidence, Decimal("0.60"))
 
+    async def test_near_amount_high_score_is_never_auto_matched(self):
+        # A candidate whose amount is within tolerance (not exact) but whose date and
+        # description are both perfect can still reach a weighted score >= the
+        # auto_accept_threshold — that must NEVER become 'auto_matched' on its own.
+        # A fully automatic match requires an exact amount; anything short of exact is
+        # always left as 'discrepancy' for a human to confirm, however high the score.
+        account_uuid = uuid4()
+        statement = BankStatement(
+            uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=account_uuid,
+            statement_date=date(2026, 6, 30), source_format="ofx", created_by=1, status="imported",
+        )
+        line = BankStatementLine(
+            uuid=uuid4(), statement_uuid=statement.uuid, line_index=0,
+            line_date=date(2026, 6, 3), amount=Decimal("1000.00"), match_status="unmatched",
+            description="Cotisation Dupont",
+        )
+        entry = _entry_with_bank_line(
+            account_uuid, debit=Decimal("1000.01"), entry_date=date(2026, 6, 3), description="Cotisation Dupont",
+        )
+        statement.lines = [line]
+
+        db = AsyncMock()
+
+        with patch("services.bank_reconciliation.get_statement", new=AsyncMock(return_value=statement)), \
+             patch("services.bank_reconciliation._load_eligible_entries", new=AsyncMock(return_value=[entry])), \
+             patch("services.bank_reconciliation._load_matched_line_uuids", new=AsyncMock(return_value=set())), \
+             patch("services.bank_reconciliation.get_matching_settings", new=AsyncMock(return_value=dict(_DEFAULT_MATCHING_SETTINGS))):
+            result = await run_auto_match(db, statement.uuid)
+
+        # Score reaches exactly the 0.90 auto_accept_threshold (0.8 amount + 1.0 date +
+        # 1.0 description, weighted 0.5/0.3/0.2) — high enough for the old score-only
+        # rule, but the 0.01 amount gap must still block auto-acceptance.
+        self.assertEqual(result, {"auto_matched": 0, "flagged_review": 1, "unmatched": 0})
+        self.assertEqual(line.match_status, "discrepancy")
+        self.assertEqual(line.match_confidence, Decimal("0.900"))
+        self.assertEqual(line.discrepancy_type, "amount_variance")
+        self.assertEqual(line.matched_entry_uuid, entry.uuid)
+
     async def test_include_drafts_flag_is_forwarded_to_eligible_entries_loader(self):
         statement = BankStatement(
             uuid=uuid4(), fiscal_year_uuid=uuid4(), journal_uuid=uuid4(), account_uuid=uuid4(),

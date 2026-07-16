@@ -1680,6 +1680,48 @@ export function useBillableFlightsQuery(
   })
 }
 
+/**
+ * Fetch every billable flight matching the given filters, across all pages
+ * (server page_size is capped at 200). Used for "export all filtered" CSV —
+ * not paginated in the UI, so a single click should capture the full result set.
+ */
+export async function fetchAllBillableFlights(filters: {
+  dateFrom?: string
+  dateTo?: string
+  typeOfFlight?: number
+  launchMethod?: number
+  status?: string
+  pilotQuery?: string
+  assetCode?: string
+}): Promise<BillableFlight[]> {
+  const pageSize = 200
+  const params = new URLSearchParams()
+  if (filters.dateFrom) params.set('date_from', filters.dateFrom)
+  if (filters.dateTo) params.set('date_to', filters.dateTo)
+  if (filters.typeOfFlight !== undefined) params.set('type_of_flight', String(filters.typeOfFlight))
+  if (filters.launchMethod !== undefined) params.set('launch_method', String(filters.launchMethod))
+  if (filters.status) params.set('status', filters.status)
+  if (filters.pilotQuery) params.set('pilot_query', filters.pilotQuery)
+  if (filters.assetCode) params.set('asset_code', filters.assetCode)
+  params.set('page_size', String(pageSize))
+
+  const items: BillableFlight[] = []
+  let page = 1
+  let totalPages = 1
+  do {
+    params.set('page', String(page))
+    const { data } = await apiClient.get<BillableFlightListResponse>(
+      `/api/v1/flights/billable?${params.toString()}`,
+      getAuthRequestConfig(),
+    )
+    items.push(...data.items)
+    totalPages = data.total_pages
+    page += 1
+  } while (page <= totalPages)
+
+  return items
+}
+
 // ── Raw Flight Details (DB-level dump) ────────────────────────────────────
 
 export type RawFlightDetails = {
@@ -2114,6 +2156,7 @@ export const reconciliationQueryKeys = {
     ['banque', 'reconciliation', 'lines', statementUuid, filters] as const,
   candidates: (lineUuid: string, includeDrafts: boolean) =>
     ['banque', 'reconciliation', 'candidates', lineUuid, includeDrafts] as const,
+  closeAmounts: (lineUuid: string) => ['banque', 'reconciliation', 'close-amounts', lineUuid] as const,
   report: (statementUuid: string) => ['banque', 'reconciliation', 'report', statementUuid] as const,
   csvMappings: ['banque', 'reconciliation', 'csv-mappings'] as const,
 }
@@ -2334,6 +2377,43 @@ export function useReconciliationCandidatesQuery(lineUuid: string | null, includ
       const { data } = await apiClient.get<ReconciliationCandidate[]>(
         `/api/v1/reconciliation/lines/${lineUuid}/candidates`,
         { ...getAuthRequestConfig(), params: { include_drafts: includeDrafts } },
+      )
+      return data
+    },
+  })
+}
+
+export type CloseAmountCandidate = {
+  entry_uuid: string
+  entry_line_uuid: string
+  fiscal_year_uuid: string
+  entry_date: string
+  description: string | null
+  reference: string | null
+  state: number
+  account_uuid: string
+  account_code: string | null
+  account_name: string | null
+  amount: string
+  amount_diff: string
+  date_diff: number
+  is_same_account: boolean
+  already_claimed: boolean
+}
+
+/**
+ * Fallback suggestions when useReconciliationCandidatesQuery returns nothing: the
+ * closest-amount ledger lines across every account (not just the statement's), so a
+ * misposted or wrong-account entry can be diagnosed instead of just showing an empty list.
+ */
+export function useReconciliationCloseAmountsQuery(lineUuid: string | null, enabled = true) {
+  return useQuery({
+    queryKey: reconciliationQueryKeys.closeAmounts(lineUuid ?? 'none'),
+    enabled: enabled && Boolean(lineUuid),
+    queryFn: async () => {
+      const { data } = await apiClient.get<CloseAmountCandidate[]>(
+        `/api/v1/reconciliation/lines/${lineUuid}/close-amounts`,
+        getAuthRequestConfig(),
       )
       return data
     },

@@ -36,6 +36,7 @@ import {
   useDetectDiscrepanciesMutation,
   useManualMatchMutation,
   useReconciliationCandidatesQuery,
+  useReconciliationCloseAmountsQuery,
   useReconciliationLinesQuery,
   useReconciliationStatementQuery,
   useResolveDiscrepancyMutation,
@@ -444,7 +445,9 @@ function ExpandedLineContent({
   const isMatched = line.match_status === 'auto_matched' || line.match_status === 'manually_matched'
   return (
     <div className="space-y-3 border-y bg-muted/30 px-4 py-3">
-      {line.match_status === 'discrepancy' && <DiscrepancyActions line={line} onResolved={onResolved} />}
+      {(line.match_status === 'discrepancy' || line.match_status === 'unmatched') && (
+        <DiscrepancyActions line={line} onResolved={onResolved} />
+      )}
       {isMatched ? (
         <MatchedEntrySummary line={line} accountUuid={statement.account_uuid} />
       ) : (
@@ -513,6 +516,7 @@ function DiscrepancyActions({ line, onResolved }: { line: BankStatementLine; onR
   const { data: accounts } = useAccountsQuery()
   const resolveMutation = useResolveDiscrepancyMutation()
   const [counterAccount, setCounterAccount] = useState('')
+  const [notes, setNotes] = useState('')
 
   async function resolve(action: 'accept' | 'exclude' | 'create_correcting_entry') {
     if (action === 'create_correcting_entry' && !counterAccount) {
@@ -524,6 +528,7 @@ function DiscrepancyActions({ line, onResolved }: { line: BankStatementLine; onR
         line_uuid: line.uuid,
         action,
         counter_account_uuid: action === 'create_correcting_entry' ? counterAccount : undefined,
+        notes: notes.trim() || undefined,
       })
       toast.success(t('reconciliation.discrepancies.resolved', 'Écart résolu'))
       onResolved()
@@ -545,6 +550,12 @@ function DiscrepancyActions({ line, onResolved }: { line: BankStatementLine; onR
         )}
         {line.discrepancy_notes && <span className="text-xs text-muted-foreground">{line.discrepancy_notes}</span>}
       </div>
+      <Input
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder={t('reconciliation.discrepancies.notesPlaceholder', 'Note (optionnel) — ex : s\'annule avec la ligne du ...')}
+        className="h-8 text-sm"
+      />
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" disabled={!line.matched_entry_uuid} onClick={() => void resolve('accept')}>
           {t('reconciliation.discrepancies.accept', 'Accepter')}
@@ -589,6 +600,14 @@ function CandidateEntriesList({
   // multiple 512 withdrawals) can surface more than one candidate here — one per
   // still-unclaimed line — each carrying its own entry_line_uuid.
   const { data: candidates, isLoading } = useReconciliationCandidatesQuery(line.uuid, includeDrafts)
+  const noExactCandidates = !isLoading && (candidates ?? []).length === 0
+  // Fallback only fetched once the exact-match list comes back empty — surfaces entries
+  // excluded by the hard account/fiscal-year/sign gates (e.g. posted to the wrong bank
+  // account) instead of leaving the user with a bare "no entry found" message.
+  const { data: closeAmounts, isLoading: isLoadingCloseAmounts } = useReconciliationCloseAmountsQuery(
+    line.uuid,
+    noExactCandidates,
+  )
   const manualMatchMutation = useManualMatchMutation()
 
   async function handlePick(entryUuid: string, entryLineUuid: string) {
@@ -617,7 +636,7 @@ function CandidateEntriesList({
       </p>
       <div className="max-h-64 space-y-1 overflow-y-auto">
         {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading', 'Chargement…')}</p>}
-        {!isLoading && (candidates ?? []).length === 0 && (
+        {noExactCandidates && (
           <p className="text-sm text-muted-foreground">
             {t('reconciliation.workspace.noEntries', 'Aucune écriture dans le seuil de montant configuré.')}
           </p>
@@ -654,6 +673,72 @@ function CandidateEntriesList({
           )
         })}
       </div>
+      {noExactCandidates && (
+        <div className="space-y-1 border-t pt-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            {t('reconciliation.workspace.closeAmounts.title', 'Montants proches (hors critères de rapprochement)')}
+          </p>
+          <div className="max-h-64 space-y-1 overflow-y-auto">
+            {isLoadingCloseAmounts && (
+              <p className="text-sm text-muted-foreground">{t('common.loading', 'Chargement…')}</p>
+            )}
+            {!isLoadingCloseAmounts && (closeAmounts ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t('reconciliation.workspace.closeAmounts.none', 'Aucune écriture avec un montant proche.')}
+              </p>
+            )}
+            {(closeAmounts ?? []).map((candidate) => {
+              const canAssociate = candidate.is_same_account && !candidate.already_claimed
+              const content = (
+                <>
+                  <span className="min-w-0 truncate">
+                    {candidate.entry_date} · {candidate.description}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {candidate.account_code} · {candidate.account_name}
+                    </span>
+                    {!candidate.is_same_account && (
+                      <Badge className="ml-2 badge-warning">
+                        {t('reconciliation.workspace.closeAmounts.differentAccount', 'Compte différent')}
+                      </Badge>
+                    )}
+                    {candidate.already_claimed && (
+                      <Badge className="ml-2 badge-info">
+                        {t('reconciliation.workspace.closeAmounts.alreadyClaimed', 'Déjà rapprochée ailleurs')}
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">
+                      Δ {new Decimal(candidate.amount_diff).toFixed(2)}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {new Decimal(candidate.amount).toFixed(2)}
+                    </span>
+                  </span>
+                </>
+              )
+              return canAssociate ? (
+                <button
+                  key={`${candidate.entry_uuid}-${candidate.entry_line_uuid}`}
+                  type="button"
+                  onClick={() => void handlePick(candidate.entry_uuid, candidate.entry_line_uuid)}
+                  disabled={manualMatchMutation.isPending}
+                  className="flex w-full items-center justify-between gap-2 rounded border bg-card px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+                >
+                  {content}
+                </button>
+              ) : (
+                <div
+                  key={`${candidate.entry_uuid}-${candidate.entry_line_uuid}`}
+                  className="flex w-full items-center justify-between gap-2 rounded border bg-muted/40 px-3 py-2 text-sm opacity-75"
+                >
+                  {content}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -273,6 +273,111 @@ class FlightBillingApplyService:
 
         await self.db.commit()
 
+    async def reverse_flight_billing_for_deletion(
+        self, flight_uuid: UUID, user_id: int | None
+    ) -> str:
+        """
+        Undo a flight's billing because the flight itself was detected as
+        deleted (erp_status=3: zero landings, zero elapsed time between
+        takeoff and landing).
+
+        - No existing billing: no-op.
+        - Draft entry: hard-deleted, same as unbill_flight (lines + entry,
+          pack consumption rows, REM entry patched/removed).
+        - Posted entry: cannot be deleted (posted-entry immutability), so a
+          Draft reversal entry is created instead (debit/credit swapped,
+          linked via reversal_of_entry_uuid) for a finance user to review and
+          post. The original posted entry and flight.accounting_entry_uuid
+          are left untouched so the audit trail stays intact.
+
+        Returns one of: "none", "deleted_draft", "reversal_created",
+        "skipped_no_user", "skipped_reversal_failed".
+        """
+        result = await self.db.execute(
+            select(ValidatedFlight).where(ValidatedFlight.uuid == flight_uuid)
+        )
+        flight = result.scalar_one_or_none()
+        if flight is None or flight.accounting_entry_uuid is None:
+            return "none"
+
+        entry_result = await self.db.execute(
+            select(AccountingEntry).where(AccountingEntry.uuid == flight.accounting_entry_uuid)
+        )
+        entry = entry_result.scalar_one_or_none()
+        if entry is None:
+            flight.accounting_entry_uuid = None
+            flight.billing_quote_state = "pending"
+            await self.db.commit()
+            return "none"
+
+        if entry.state != 2:
+            # Draft (or Cancelled) — safe to hard-delete, mirrors unbill_flight.
+            lines_result = await self.db.execute(
+                select(AccountingLine).where(AccountingLine.entry_uuid == entry.uuid)
+            )
+            for line in lines_result.scalars().all():
+                await self.db.delete(line)
+            await self.db.flush()
+            fiscal_year_uuid = entry.fiscal_year_uuid
+            await self.db.delete(entry)
+            await self.db.flush()
+
+            affected_members: list[UUID] = []
+            if flight.has_discount:
+                mpc_rows = await self.db.execute(
+                    select(MemberPackConsumption.tiers_uuid).where(
+                        MemberPackConsumption.flight_uuid == flight_uuid
+                    ).distinct()
+                )
+                affected_members = [row.tiers_uuid for row in mpc_rows.all()]
+
+            await self.db.execute(
+                delete(MemberPackConsumption).where(
+                    MemberPackConsumption.flight_uuid == flight_uuid
+                )
+            )
+
+            flight.accounting_entry_uuid = None
+            flight.billing_quote_state = "pending"
+            flight.has_discount = None
+            await self.db.flush()
+
+            for member_uuid in affected_members:
+                await self._patch_rem_entry(member_uuid, fiscal_year_uuid)
+
+            await self.db.commit()
+            return "deleted_draft"
+
+        # entry.state == 2 (Posted) — generate a reversal for finance to post.
+        if user_id is None:
+            logger.warning(
+                "reverse_flight_billing_for_deletion: no numeric user id available — "
+                "cannot create reversal entry for posted entry %s (flight %s)",
+                entry.uuid, flight_uuid,
+            )
+            return "skipped_no_user"
+
+        from services.accounting import create_reversal_entry
+
+        try:
+            await create_reversal_entry(
+                self.db,
+                entry.uuid,
+                entry.fiscal_year_uuid,
+                reversal_reason=f"Vol supprime (Planche) - {flight.planche_uuid or flight_uuid}",
+                user_id=user_id,
+            )
+        except HTTPException as exc:
+            logger.warning(
+                "reverse_flight_billing_for_deletion: could not create reversal for "
+                "entry %s (flight %s): %s", entry.uuid, flight_uuid, exc.detail,
+            )
+            return "skipped_reversal_failed"
+
+        flight.billing_quote_state = "reversed"
+        await self.db.commit()
+        return "reversal_created"
+
     async def _patch_rem_entry(self, member_uuid: UUID, fiscal_year_uuid: UUID) -> None:
         """
         Update the member's aggregated REM discount entry after one flight's

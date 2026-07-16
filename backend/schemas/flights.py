@@ -42,6 +42,9 @@ class FlightFetchResponse(BaseModel):
     idempotent: int = 0
     snapshots_created: int = 0
     modified_after_transfer: int = 0
+    deleted_billing_reversed: int = 0
+    deleted_billing_reversal_created: int = 0
+    deleted_billing_reversal_skipped: int = 0
     next_cursor: Optional[str] = None
     has_more: bool = False
     error_details: list[str] = Field(default_factory=list)

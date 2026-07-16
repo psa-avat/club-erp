@@ -1440,8 +1440,13 @@ class PlancheIntegrationService:
         flight_obj.type_of_flight = self._as_int(flight_data.get("typeOfFlight"), 0)
         flight_obj.launch_method = self._as_int(flight_data.get("launchMethod"), 0)
         flight_obj.launch_type = flight_data.get("launchType")
-        flight_obj.launch_asset_code = flight_data.get("launch_machine_immat")
-        flight_obj.launch_machine_erp_id = flight_data.get("launch_machine_erp_id")
+        is_external_launch = flight_obj.launch_method == 0
+        flight_obj.launch_asset_code = (
+            None if is_external_launch else flight_data.get("launch_machine_immat")
+        )
+        flight_obj.launch_machine_erp_id = (
+            None if is_external_launch else flight_data.get("launch_machine_erp_id")
+        )
         flight_obj.launch_pilot_trigram = flight_data.get("launch_pilot_trigram")
         flight_obj.launch_instructor_trigram = flight_data.get("launch_instructor_trigram")
         flight_obj.takeoff_time = flight_data.get("takeoffTime") or "00:00"
@@ -1463,7 +1468,12 @@ class PlancheIntegrationService:
         flight_obj.validated_at = datetime.now(timezone.utc)
         flight_obj.validated_by = triggered_by
 
-        if existing_status == 1 and source_hash_changed:
+        # A flight with no landings and no elapsed time between takeoff and
+        # landing is a Planche stub (e.g. a cancelled/deleted flight) rather
+        # than a real flight — mark it deleted instead of validated/transferred.
+        if flight_obj.landing_count == 0 and flight_obj.takeoff_time == flight_obj.landing_time:
+            flight_obj.erp_status = 3  # deleted
+        elif existing_status == 1 and source_hash_changed:
             flight_obj.erp_status = 2  # modified_after_transfer
         elif existing_status is None:
             flight_obj.erp_status = 0
@@ -1542,6 +1552,7 @@ class PlancheIntegrationService:
             idempotent_count = 0
             snapshots_created = 0
             modified_after_transfer_count = 0
+            deleted_flights_with_billing: list = []
             error_details: list[str] = []
             # Track UUIDs of flights that failed, for diagnostics
             failed_uuids: list[str] = []
@@ -1677,6 +1688,8 @@ class PlancheIntegrationService:
                             updated_count += 1
                             if sp_status == 1 and sp_hash_changed:
                                 modified_after_transfer_count += 1
+                            if flight_obj.erp_status == 3 and flight_obj.accounting_entry_uuid is not None:
+                                deleted_flights_with_billing.append(flight_obj.uuid)
                         else:
                             db.add(flight_obj)
                             created_count += 1
@@ -1706,6 +1719,40 @@ class PlancheIntegrationService:
                         constraint_violation_count += 1
 
             await db.commit()
+
+            # ── Reverse billing for flights just marked deleted ──────────────
+            # Runs after the main commit, not inside the per-flight savepoint
+            # above: unbilling/reversing an entry commits its own transaction,
+            # and doing that inside db.begin_nested() would end the outer
+            # transaction prematurely (see FlightBillingApplyService methods).
+            billing_deleted_count = 0
+            billing_reversal_created_count = 0
+            billing_reversal_skipped_count = 0
+            if deleted_flights_with_billing:
+                from services.flight_billing_apply import FlightBillingApplyService
+
+                try:
+                    reversal_user_id = int(triggered_by)
+                except (TypeError, ValueError):
+                    reversal_user_id = None
+                billing_service = FlightBillingApplyService(db)
+                for flight_uuid in deleted_flights_with_billing:
+                    try:
+                        outcome = await billing_service.reverse_flight_billing_for_deletion(
+                            flight_uuid, reversal_user_id
+                        )
+                    except Exception as e:
+                        await db.rollback()
+                        logger.warning(
+                            "Failed to reverse billing for deleted flight %s: %s", flight_uuid, e
+                        )
+                        outcome = "error"
+                    if outcome == "deleted_draft":
+                        billing_deleted_count += 1
+                    elif outcome == "reversal_created":
+                        billing_reversal_created_count += 1
+                    elif outcome != "none":
+                        billing_reversal_skipped_count += 1
 
             # ── Ack successfully processed revisions to Planche ──────────────
             # Ack regardless of endpoint — the ack endpoint is idempotent so
@@ -1754,6 +1801,9 @@ class PlancheIntegrationService:
                         "idempotent": idempotent_count,
                         "snapshots_created": snapshots_created,
                         "modified_after_transfer": modified_after_transfer_count,
+                        "deleted_billing_reversed": billing_deleted_count,
+                        "deleted_billing_reversal_created": billing_reversal_created_count,
+                        "deleted_billing_reversal_skipped": billing_reversal_skipped_count,
                         "next_cursor": next_cursor,
                         "has_more": has_more,
                         "missing_required_field_count": missing_required_field_count,
@@ -1774,6 +1824,9 @@ class PlancheIntegrationService:
                 "idempotent": idempotent_count,
                 "snapshots_created": snapshots_created,
                 "modified_after_transfer": modified_after_transfer_count,
+                "deleted_billing_reversed": billing_deleted_count,
+                "deleted_billing_reversal_created": billing_reversal_created_count,
+                "deleted_billing_reversal_skipped": billing_reversal_skipped_count,
                 "next_cursor": next_cursor,
                 "has_more": has_more,
                 "error_details": error_details,

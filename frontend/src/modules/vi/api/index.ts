@@ -29,6 +29,8 @@ export const viQueryKeys = {
   accounting: (uuid: string) => ['vi', 'accounting', uuid] as const,
   flightLinks: (uuid: string) => ['vi', 'flight-links', uuid] as const,
   staging: ['vi', 'staging'] as const,
+  realizedReport: (dateFrom?: string, dateTo?: string) =>
+    ['vi', 'reports', 'realized', dateFrom ?? null, dateTo ?? null] as const,
 }
 
 export type ViType = {
@@ -644,6 +646,68 @@ export function useRemoveViFlightLinkMutation() {
     },
     onSuccess: async (_data, { entitlementUuid }) => {
       await queryClient.invalidateQueries({ queryKey: viQueryKeys.accounting(entitlementUuid) })
+    },
+  })
+}
+
+// ── VI Reports (realized/converted vouchers) ──────────────────────────────
+
+export type ViReportTopPilot = {
+  member_uuid: string | null
+  account_id: string | null
+  member_name: string
+  flight_count: number
+}
+
+export type ViReportKpis = {
+  realized_count: number
+  converted_count: number
+  remaining_count: number
+  conversion_rate: number
+  net_flight_revenue: string
+  insurance_collected: string
+  insurance_paid: string
+  insurance_voucher_count: number
+  flight_cost: string
+  margin: string
+  advances_unrealized: string
+  top_pilots: ViReportTopPilot[]
+}
+
+export type ViReportVoucherRow = {
+  entitlement_uuid: string
+  code: string
+  vi_type_code: string | null
+  status: number
+  realisation_date: string | null
+  amount_ttc: string | null
+  insurance_amount: string
+  buyer_member_name: string | null
+  registered_member_name: string | null
+  flight_count: number
+  flight_dates: string[]
+  realization: ViAccountingEntryRef
+  conversion: ViAccountingEntryRef
+}
+
+export type ViRealizedReport = {
+  vouchers: ViReportVoucherRow[]
+  kpis: ViReportKpis
+}
+
+export function useViRealizedReportQuery(dateFrom?: string, dateTo?: string) {
+  return useQuery({
+    queryKey: viQueryKeys.realizedReport(dateFrom, dateTo),
+    queryFn: async () => {
+      const authConfig = getAuthRequestConfig()
+      const { data } = await apiClient.get<ViRealizedReport>('/api/v1/vi/reports/realized', {
+        ...(authConfig ?? {}),
+        params: {
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        },
+      })
+      return data
     },
   })
 }

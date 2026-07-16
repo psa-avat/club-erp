@@ -27,9 +27,10 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from models import (
+    AccountingAccount,
     AccountingEntry,
     AccountingFiscalYear,
     AccountingLine,
@@ -269,10 +270,14 @@ async def list_statement_lines(
 #             a candidate, since bank posting lag is common and expected.
 #   - description: fuzzy text similarity (difflib) between the statement line's
 #             description/counterparty/reference and the entry's description/reference.
-# The weighted average is compared against auto_accept_threshold (-> auto_matched)
-# and review_threshold (-> discrepancy, needs human review); below review_threshold
-# the line is left unmatched. All of the above are per-club parameters stored under
-# system_settings.module_name = "bank_reconciliation" (see DEFAULT_SYSTEM_SETTINGS).
+# The weighted average is compared against review_threshold (-> discrepancy, needs
+# human review); below review_threshold the line is left unmatched. Reaching
+# auto_accept_threshold additionally requires an EXACT amount match (amount_diff == 0)
+# to become 'auto_matched' — a fully automatic match must never rest on an amount that
+# merely falls within amount_tolerance; anything short of exact is assigned but always
+# surfaced as 'discrepancy' for a human to confirm. All of the above are per-club
+# parameters stored under system_settings.module_name = "bank_reconciliation" (see
+# DEFAULT_SYSTEM_SETTINGS).
 # ---------------------------------------------------------------------------
 
 async def get_matching_settings(db: AsyncSession) -> dict:
@@ -465,7 +470,7 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
     review_threshold = Decimal(str(settings["review_threshold"]))
     internal_transfer_cap = Decimal(str(settings["internal_transfer_cap"]))
 
-    candidates: list[tuple[Decimal, BankStatementLine, AccountingEntry, AccountingLine]] = []
+    candidates: list[tuple[Decimal, BankStatementLine, AccountingEntry, AccountingLine, Decimal]] = []
     for entry in entries:
         # An entry may carry several lines on the reconciled account (e.g. a payroll
         # entry with multiple distinct 512 withdrawals) — each unclaimed one is scored
@@ -493,13 +498,13 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
                 if score < review_threshold:
                     continue
 
-                candidates.append((score, line, entry, bank_line))
+                candidates.append((score, line, entry, bank_line, amount_diff))
 
     candidates.sort(key=lambda c: c[0], reverse=True)
 
     assigned_lines: set[UUID] = set()
     assigned_bank_lines: set[UUID] = set()
-    for score, line, entry, bank_line in candidates:
+    for score, line, entry, bank_line, amount_diff in candidates:
         if line.uuid in assigned_lines or bank_line.uuid in assigned_bank_lines:
             continue
         assigned_lines.add(line.uuid)
@@ -509,12 +514,15 @@ async def run_auto_match(db: AsyncSession, statement_uuid: UUID, *, include_draf
         line.matched_entry_uuid = entry.uuid
         line.matched_line_uuid = bank_line.uuid
         line.matched_fiscal_year_uuid = entry.fiscal_year_uuid
-        if score >= auto_accept_threshold:
+        # auto_matched (fully automatic, no human review) requires an EXACT amount —
+        # a candidate within amount_tolerance but not exact is still assigned so it's
+        # visible for review, but only ever as 'discrepancy', never silently accepted.
+        if score >= auto_accept_threshold and amount_diff == 0:
             line.match_status = "auto_matched"
             line.discrepancy_type = None
         else:
             line.match_status = "discrepancy"
-            line.discrepancy_type = "amount_variance"
+            line.discrepancy_type = "amount_variance" if amount_diff != 0 else "timing"
 
     for line in lines:
         if line.uuid not in assigned_lines:
@@ -599,6 +607,79 @@ async def get_match_candidates(db: AsyncSession, line_uuid: UUID, *, include_dra
             )
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
+    return candidates
+
+
+async def get_close_amount_candidates(db: AsyncSession, line_uuid: UUID, *, limit: int = 10) -> list[dict]:
+    """Fallback suggestions for a line get_match_candidates returned nothing for: the
+    closest-amount lines in the statement's fiscal year, on ANY treasury (PCG class 5 —
+    Banque/Caisse/etc., see _is_treasury_account) account rather than just
+    statement.account_uuid, with the same debit/credit direction as the statement line.
+
+    get_match_candidates enforces hard gates (same account, amount within tolerance) so
+    a genuinely wrong-account entry never shows up there at all — the user just sees an
+    empty list with no way to tell why. This relaxes the account gate to "some treasury
+    account" and drops the amount tolerance, but keeps direction and fiscal year/state
+    fixed — a "close amount" suggestion in the wrong direction (e.g. a withdrawal
+    proposed for a deposit) or on a non-cash account (e.g. a pure expense/revenue line
+    that never touched treasury) is never actually the same transaction, so surfacing it
+    would just be noise. Each result is flagged already_claimed / is_same_account so the
+    user can diagnose a misposted entry (e.g. booked to the wrong bank account) instead
+    of concluding no matching entry exists.
+    """
+    line = await db.get(BankStatementLine, line_uuid)
+    if not line:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Statement line {line_uuid} not found")
+    statement = await get_statement(db, line.statement_uuid)
+    matched_line_uuids = await _load_matched_line_uuids(db)
+
+    target_abs = abs(line.amount)
+    signed_amount = AccountingLine.debit - AccountingLine.credit
+    amount_diff = func.abs(signed_amount - line.amount)
+    direction_matches = (signed_amount > 0) if line.amount > 0 else (signed_amount < 0)
+
+    stmt = (
+        select(AccountingLine, AccountingEntry, AccountingAccount, amount_diff.label("amount_diff"))
+        .join(
+            AccountingEntry,
+            (AccountingEntry.uuid == AccountingLine.entry_uuid)
+            & (AccountingEntry.fiscal_year_uuid == AccountingLine.fiscal_year_uuid),
+        )
+        .join(AccountingAccount, AccountingAccount.uuid == AccountingLine.account_uuid)
+        .where(
+            AccountingEntry.fiscal_year_uuid == statement.fiscal_year_uuid,
+            AccountingEntry.state.in_((1, 2)),
+            AccountingEntry.reversal_of_entry_uuid.is_(None),
+            AccountingAccount.code.like("5%"),
+            direction_matches,
+        )
+        .order_by(amount_diff.asc(), func.abs(AccountingEntry.entry_date - line.line_date).asc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+
+    candidates: list[dict] = []
+    for accounting_line, entry, account, diff in result.all():
+        entry_signed_amount = accounting_line.debit - accounting_line.credit
+        candidates.append(
+            {
+                "entry_uuid": entry.uuid,
+                "entry_line_uuid": accounting_line.uuid,
+                "fiscal_year_uuid": entry.fiscal_year_uuid,
+                "entry_date": entry.entry_date,
+                "description": entry.description,
+                "reference": entry.reference,
+                "state": entry.state,
+                "account_uuid": accounting_line.account_uuid,
+                "account_code": account.code,
+                "account_name": account.name,
+                "amount": entry_signed_amount,
+                "amount_diff": diff,
+                "date_diff": abs((line.line_date - entry.entry_date).days),
+                "is_same_account": accounting_line.account_uuid == statement.account_uuid,
+                "already_claimed": accounting_line.uuid in matched_line_uuids,
+            }
+        )
     return candidates
 
 

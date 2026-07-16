@@ -46,6 +46,7 @@ import {
   Percent,
   Info,
   Undo2,
+  Download,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useCapability } from "@/auth/hooks/useCapability";
 import { useFiscalYearStore } from "@/store/fiscalYearStore";
+import { exportRowsToCsv } from "@/lib/exportCsv";
 import {
   useBillableFlightsQuery,
   useFlightBillingPreviewMutation,
@@ -63,6 +65,7 @@ import {
   useFlightBillingPostMutation,
   useFlightBillingBatchApplyMutation,
   useFlightBillingUnbillMutation,
+  fetchAllBillableFlights,
   type BillableFlight,
   type FlightBillingPreviewResponse,
   type FlightBillingBatchPreviewResponse,
@@ -584,6 +587,7 @@ export function FlightsBillingPage() {
   const [applyFlightUuid, setApplyFlightUuid] = useState<string | null>(null);
   const [postFlightUuid, setPostFlightUuid] = useState<string | null>(null);
   const [unbillFlightUuid, setUnbillFlightUuid] = useState<string | null>(null);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
 
   // ── Data ────────────────────────────────────────────────────────────
   const resolvedPilot = filterPilot || undefined;
@@ -767,6 +771,52 @@ export function FlightsBillingPage() {
     setFilterPilot("");
     setFilterAsset("");
     setFlightPage(1);
+  }
+
+  async function handleExportCsv() {
+    setIsExportingCsv(true);
+    try {
+      const allFlights = await fetchAllBillableFlights({
+        dateFrom: filterDateFrom || undefined,
+        dateTo: filterDateTo || undefined,
+        typeOfFlight: filterType,
+        launchMethod: filterLaunch,
+        status: filterStatus !== "pending" ? filterStatus : undefined,
+        pilotQuery: resolvedPilot,
+        assetCode: resolvedAsset,
+      });
+      const headers = [
+        t("flights:table.date", "Date"),
+        t("flights:table.pilot", "Pilote"),
+        t("flights:table.secondPilot", "Second"),
+        t("flights:table.glider", "Planeur"),
+        t("flights:table.type", "Type vol"),
+        t("flights:table.duration", "Durée"),
+        t("flights:table.launch", "Lancement"),
+        t("flights:table.amount", "Montant"),
+        t("flights:table.status", "Statut"),
+        t("flights:table.observations", "Observations"),
+      ];
+      const rows = allFlights.map((f) => [
+        f.jour ? new Date(f.jour).toLocaleDateString("fr-FR") : "",
+        f.pilot_name ?? f.pilot_erp_id ?? "",
+        f.second_pilot_name
+          ? formatSecondPilot(f)
+          : f.charge_to_name
+            ? `Fact: ${f.charge_to_name}`
+            : "",
+        f.asset_code ?? "",
+        f.type_label ?? String(f.type_of_flight ?? ""),
+        formatDuration(f.takeoff_time, f.landing_time),
+        formatLaunchMethod(f),
+        formatMoney(f.total_preview),
+        f.status,
+        f.observations ?? "",
+      ]);
+      exportRowsToCsv("vols.csv", headers, rows);
+    } finally {
+      setIsExportingCsv(false);
+    }
   }
 
   // ── Derived state ───────────────────────────────────────────────────
@@ -968,6 +1018,19 @@ export function FlightsBillingPage() {
                 })}
               </span>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportCsv}
+              disabled={isExportingCsv || (flightsQuery.data?.total ?? 0) === 0}
+            >
+              {isExportingCsv ? (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="mr-1 h-3.5 w-3.5" />
+              )}
+              {t("flights:table.exportCsv", "Exporter CSV")}
+            </Button>
           </div>
           <div className="flex items-center gap-2">
             {canEditFlights && flights.length > 0 && (

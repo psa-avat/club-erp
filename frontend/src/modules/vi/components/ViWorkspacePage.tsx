@@ -26,6 +26,7 @@ import {
   Database,
   ArrowLeftRight,
   Plane,
+  BarChart3,
 } from "lucide-react";
 
 import { WorkspaceShell } from "@/components/ui/workspace-shell";
@@ -33,6 +34,7 @@ import { ViEntitlementsPage } from "./ViEntitlementsPage";
 import { ViTypesPage } from "./ViTypesPage";
 import { ViPlanningPage } from "./ViPlanningPage";
 import { ViReconciliationPage } from "./ViReconciliationPage";
+import { ViReportsPage } from "./ViReportsPage";
 import { HelloAssoViImportPage } from "../../helloasso";
 import { PlancheViSyncPage } from "../../planche";
 
@@ -44,6 +46,7 @@ import { PlancheViSyncPage } from "../../planche";
  * - types     → Catalogue des types VI (ViTypesPage)
  * - planning  → Planification des Bons VI (ViPlanningPage)
  * - finance   → Réalisations comptables VI (ViFinancePage)
+ * - reports   → Rapports et KPIs (ViReportsPage)
  * - import    → Import VI depuis HelloAsso (HelloAssoViImportPage)
  * - sync      → Sync VI Planche (PlancheViSyncPage)
  */
@@ -76,6 +79,12 @@ export function ViWorkspacePage() {
           label: t("workspace.tabs.vols", "Vols"),
           icon: Plane,
           content: <ViReconciliationPage />,
+        },
+        {
+          value: "reports",
+          label: t("workspace.tabs.reports", "Rapports"),
+          icon: BarChart3,
+          content: <ViReportsPage />,
         },
         {
           value: "import",

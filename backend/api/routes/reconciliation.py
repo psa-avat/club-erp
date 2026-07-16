@@ -40,6 +40,7 @@ from schemas.reconciliation import (
     BankStatementResponse,
     BankStatementSummaryListResponse,
     CandidateEntryResponse,
+    CloseAmountCandidateResponse,
     DiscrepancyResponse,
     ManualMatchRequest,
     MatchResultResponse,
@@ -54,6 +55,7 @@ from services.bank_reconciliation import (
     delete_csv_mapping,
     delete_statement,
     detect_discrepancies,
+    get_close_amount_candidates,
     get_match_candidates,
     get_reconciliation_report,
     get_statement,
@@ -185,6 +187,16 @@ async def get_match_candidates_endpoint(
     _: User = view_guard,
 ):
     return await get_match_candidates(db, line_uuid, include_drafts=include_drafts)
+
+
+@router.get("/lines/{line_uuid}/close-amounts", response_model=list[CloseAmountCandidateResponse])
+async def get_close_amount_candidates_endpoint(
+    line_uuid: UUID,
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    _: User = view_guard,
+):
+    return await get_close_amount_candidates(db, line_uuid, limit=limit)
 
 
 @router.post("/manual-match", response_model=BankStatementLineResponse)

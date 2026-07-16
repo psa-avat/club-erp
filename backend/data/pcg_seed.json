@@ -792,6 +792,14 @@
         "require_id": 0
     },
     {
+        "code": "6273",
+        "name": "Frais ANCV",
+        "type": 4,
+        "is_posting_allowed": true,
+        "is_reconcilable": false,
+        "require_id": 0
+    },
+    {
         "code": "628",
         "name": "Divers (Cotisations techniques, G-NAV)",
         "type": 4,

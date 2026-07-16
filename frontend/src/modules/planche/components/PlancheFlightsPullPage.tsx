@@ -377,6 +377,21 @@ export function PlancheFlightsPullPage() {
                 variant={lastResult.modified_after_transfer > 0 ? 'warning' : 'neutral'}
               />
               <ResultStat
+                label={t('flightsFetch.result.deletedBillingReversed')}
+                value={lastResult.deleted_billing_reversed}
+                variant={lastResult.deleted_billing_reversed > 0 ? 'warning' : 'neutral'}
+              />
+              <ResultStat
+                label={t('flightsFetch.result.deletedBillingReversalCreated')}
+                value={lastResult.deleted_billing_reversal_created}
+                variant={lastResult.deleted_billing_reversal_created > 0 ? 'warning' : 'neutral'}
+              />
+              <ResultStat
+                label={t('flightsFetch.result.deletedBillingReversalSkipped')}
+                value={lastResult.deleted_billing_reversal_skipped}
+                variant={lastResult.deleted_billing_reversal_skipped > 0 ? 'warning' : 'neutral'}
+              />
+              <ResultStat
                 label={t('flightsFetch.result.hasMore')}
                 value={lastResult.has_more ? t('flightsFetch.result.yes') : t('flightsFetch.result.no')}
               />

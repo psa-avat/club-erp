@@ -112,7 +112,7 @@ async def list_validated_flights(
     launch_method: Optional[int] = Query(default=None, ge=0, le=3, description="Filter: launch_method (0-3)"),
     pilot_query: Optional[str] = Query(default=None, min_length=2, description="Search pilot by name or trigram"),
     asset_code: Optional[str] = Query(default=None, min_length=1, description="Filter: glider registration (partial match)"),
-    erp_status: Optional[int] = Query(default=None, ge=0, le=2, description="Filter: erp_status (0=validated, 1=transferred, 2=modified)"),
+    erp_status: Optional[int] = Query(default=None, ge=0, le=3, description="Filter: erp_status (0=validated, 1=transferred, 2=modified, 3=deleted)"),
     unlinked_vi: Optional[bool] = Query(default=None, description="If true, exclude flights already linked to a VI entitlement"),
     db: AsyncSession = Depends(get_db),
     _: User = flights_guard,
@@ -300,7 +300,7 @@ TYPE_OF_FLIGHT_LABELS: dict[int, str] = {
 LAUNCH_METHOD_LABELS: dict[int, str] = {
     0: "exterieur", 1: "treuil", 2: "remorqueur", 3: "autonome",
 }
-STATUS_LABELS: dict[int, str] = {0: "validated", 1: "transferred", 2: "modified"}
+STATUS_LABELS: dict[int, str] = {0: "validated", 1: "transferred", 2: "modified", 3: "deleted"}
 
 
 @router.get("/stats", response_model=FlightStatsResponse)
@@ -318,7 +318,7 @@ async def flight_stats(
         select(ValidatedFlight.erp_status, func.count(ValidatedFlight.uuid))
         .group_by(ValidatedFlight.erp_status)
     )
-    by_status: dict[str, int] = {"validated": 0, "transferred": 0, "modified": 0}
+    by_status: dict[str, int] = {"validated": 0, "transferred": 0, "modified": 0, "deleted": 0}
     for row in status_rows.all():
         label = STATUS_LABELS.get(int(row[0]), "unknown")
         by_status[label] = int(row[1])
@@ -500,7 +500,7 @@ async def list_billable_flights(
     _: User = flights_guard,
 ):
     """List flights with billing status info. Default returns only unbilled (pending) flights."""
-    filters: list = []
+    filters: list = [ValidatedFlight.erp_status != 3]
     if status is None or status == "pending":
         filters.append(ValidatedFlight.accounting_entry_uuid.is_(None))
     elif status == "applied":
@@ -796,6 +796,7 @@ ERP_STATUS_LABELS: dict[int, str] = {
     0: "validated",
     1: "transferred",
     2: "modified_after_transfer",
+    3: "deleted",
 }
 
 
