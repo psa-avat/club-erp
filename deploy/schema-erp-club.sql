@@ -1081,6 +1081,66 @@ CREATE TABLE public.bank_statements (
 
 
 --
+-- Name: carburant_mouvements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.carburant_mouvements (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    pompe_uuid uuid NOT NULL,
+    asset_uuid uuid NOT NULL,
+    quantite_l numeric(8,2) NOT NULL,
+    index_compteur numeric(10,2),
+    membre_declarant character varying(150) NOT NULL,
+    date_saisie timestamp with time zone DEFAULT now() NOT NULL,
+    statut smallint DEFAULT 1 NOT NULL,
+    ip_source character varying(64),
+    user_agent character varying(255),
+    flag_anomalie boolean DEFAULT false NOT NULL,
+    commentaire_validation text,
+    validated_by integer,
+    validated_at timestamp with time zone,
+    CONSTRAINT chk_mvt_carburant_quantite_positive CHECK ((quantite_l > (0)::numeric)),
+    CONSTRAINT chk_mvt_carburant_statut CHECK ((statut = ANY (ARRAY[1, 2, 3])))
+);
+
+
+--
+-- Name: carburant_pompes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.carburant_pompes (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    nom character varying(100) NOT NULL,
+    type_carburant smallint NOT NULL,
+    token character varying(64) NOT NULL,
+    actif boolean DEFAULT true NOT NULL,
+    capacite_cuve_l numeric(10,2),
+    index_initial numeric(10,2),
+    index_initial_date date,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_pompe_capacite_positive CHECK (((capacite_cuve_l IS NULL) OR (capacite_cuve_l > (0)::numeric))),
+    CONSTRAINT chk_pompe_type_carburant CHECK ((type_carburant = ANY (ARRAY[1, 2, 3])))
+);
+
+
+--
+-- Name: carburant_ravitaillements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.carburant_ravitaillements (
+    uuid uuid DEFAULT gen_random_uuid() NOT NULL,
+    pompe_uuid uuid NOT NULL,
+    quantite_l numeric(10,2) NOT NULL,
+    date_ravitaillement date NOT NULL,
+    note text,
+    created_by integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_ravitaillement_quantite_positive CHECK ((quantite_l > (0)::numeric))
+);
+
+
+--
 -- Name: capabilities; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2870,6 +2930,30 @@ ALTER TABLE ONLY public.bank_statements
 
 
 --
+-- Name: carburant_mouvements carburant_mouvements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_mouvements
+    ADD CONSTRAINT carburant_mouvements_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: carburant_pompes carburant_pompes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_pompes
+    ADD CONSTRAINT carburant_pompes_pkey PRIMARY KEY (uuid);
+
+
+--
+-- Name: carburant_ravitaillements carburant_ravitaillements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_ravitaillements
+    ADD CONSTRAINT carburant_ravitaillements_pkey PRIMARY KEY (uuid);
+
+
+--
 -- Name: capabilities capabilities_code_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3608,6 +3692,41 @@ CREATE INDEX idx_auth_challenges_user_id ON public.auth_challenges USING btree (
 --
 
 CREATE INDEX idx_capabilities_code ON public.capabilities USING btree (code);
+
+
+--
+-- Name: idx_carburant_mouvements_asset; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_carburant_mouvements_asset ON public.carburant_mouvements USING btree (asset_uuid);
+
+
+--
+-- Name: idx_carburant_mouvements_pompe; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_carburant_mouvements_pompe ON public.carburant_mouvements USING btree (pompe_uuid);
+
+
+--
+-- Name: idx_carburant_mouvements_pompe_ip_date; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_carburant_mouvements_pompe_ip_date ON public.carburant_mouvements USING btree (pompe_uuid, ip_source, date_saisie);
+
+
+--
+-- Name: idx_carburant_mouvements_statut; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_carburant_mouvements_statut ON public.carburant_mouvements USING btree (statut);
+
+
+--
+-- Name: idx_carburant_ravitaillements_pompe; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_carburant_ravitaillements_pompe ON public.carburant_ravitaillements USING btree (pompe_uuid);
 
 
 --
@@ -4486,6 +4605,13 @@ CREATE INDEX ix_validated_flights_accounting_entry ON public.validated_flights U
 
 
 --
+-- Name: uq_carburant_pompes_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_carburant_pompes_token ON public.carburant_pompes USING btree (token);
+
+
+--
 -- Name: uq_cost_rules_active_unique; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5235,6 +5361,46 @@ ALTER TABLE ONLY public.bank_statements
 
 ALTER TABLE ONLY public.bank_statements
     ADD CONSTRAINT bank_statements_reconciled_by_fkey FOREIGN KEY (reconciled_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: carburant_mouvements carburant_mouvements_asset_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_mouvements
+    ADD CONSTRAINT carburant_mouvements_asset_uuid_fkey FOREIGN KEY (asset_uuid) REFERENCES public.assets(uuid);
+
+
+--
+-- Name: carburant_mouvements carburant_mouvements_pompe_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_mouvements
+    ADD CONSTRAINT carburant_mouvements_pompe_uuid_fkey FOREIGN KEY (pompe_uuid) REFERENCES public.carburant_pompes(uuid);
+
+
+--
+-- Name: carburant_mouvements carburant_mouvements_validated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_mouvements
+    ADD CONSTRAINT carburant_mouvements_validated_by_fkey FOREIGN KEY (validated_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: carburant_ravitaillements carburant_ravitaillements_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_ravitaillements
+    ADD CONSTRAINT carburant_ravitaillements_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: carburant_ravitaillements carburant_ravitaillements_pompe_uuid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.carburant_ravitaillements
+    ADD CONSTRAINT carburant_ravitaillements_pompe_uuid_fkey FOREIGN KEY (pompe_uuid) REFERENCES public.carburant_pompes(uuid);
 
 
 --

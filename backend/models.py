@@ -2325,3 +2325,105 @@ class HrEmployeeCalendarAssignment(Base):
 
     def __repr__(self):
         return f"<HrEmployeeCalendarAssignment member={self.member_uuid} calendar={self.calendar_uuid}>"
+
+
+# ---- Carburant (fuel) module ----
+
+
+class Pompe(Base):
+    """Fuel pump/tank dispensing point, identified by an opaque QR token used on the public declaration page."""
+
+    __tablename__ = "carburant_pompes"
+    __table_args__ = (
+        CheckConstraint("type_carburant IN (1, 2, 3)", name="chk_pompe_type_carburant"),
+        CheckConstraint("capacite_cuve_l IS NULL OR capacite_cuve_l > 0", name="chk_pompe_capacite_positive"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    nom = Column(String(100), nullable=False)
+    # 1=100LL, 2=MOGAS, 3=JETA1
+    type_carburant = Column(SmallInteger, nullable=False)
+    token = Column(String(64), nullable=False, unique=True, index=True)
+    actif = Column(Boolean, nullable=False, default=True)
+    capacite_cuve_l = Column(Numeric(10, 2), nullable=True)
+    # Baseline mechanical counter reading captured when the pump is onboarded into the app,
+    # used to cross-check later index_compteur readings — not part of the stock volume calc.
+    index_initial = Column(Numeric(10, 2), nullable=True)
+    index_initial_date = Column(Date, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    mouvements = relationship("MouvementCarburant", back_populates="pompe")
+    ravitaillements = relationship("RavitaillementCarburant", back_populates="pompe")
+
+    def __repr__(self):
+        return f"<Pompe nom={self.nom} type_carburant={self.type_carburant} actif={self.actif}>"
+
+
+class MouvementCarburant(Base):
+    """Declared fuel fill-up. Immutable journal: corrections are new rows, never UPDATEs of quantite_l/asset_uuid."""
+
+    __tablename__ = "carburant_mouvements"
+    __table_args__ = (
+        CheckConstraint("statut IN (1, 2, 3)", name="chk_mvt_carburant_statut"),  # 1=brouillon, 2=valide, 3=rejete
+        CheckConstraint("quantite_l > 0", name="chk_mvt_carburant_quantite_positive"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    pompe_uuid = Column(UUID(as_uuid=True), ForeignKey("carburant_pompes.uuid"), nullable=False, index=True)
+    asset_uuid = Column(UUID(as_uuid=True), ForeignKey("assets.uuid"), nullable=False, index=True)
+    quantite_l = Column(Numeric(8, 2), nullable=False)
+    index_compteur = Column(Numeric(10, 2), nullable=True)
+    # Free-text, declarative only — captured on an unauthenticated public page, never resolved to a Member.
+    membre_declarant = Column(String(150), nullable=False)
+    date_saisie = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    statut = Column(SmallInteger, nullable=False, default=1)  # 1=brouillon
+    ip_source = Column(String(64), nullable=True)
+    user_agent = Column(String(255), nullable=True)
+    # Set when quantite_l exceeds the pompe's capacite_cuve_l — informational only, does not block validation.
+    flag_anomalie = Column(Boolean, nullable=False, default=False)
+    commentaire_validation = Column(Text, nullable=True)
+    validated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    validated_at = Column(DateTime(timezone=True), nullable=True)
+
+    pompe = relationship("Pompe", back_populates="mouvements")
+    asset = relationship("Asset")
+    validated_by_user = relationship("User")
+
+    def __repr__(self):
+        return (
+            f"<MouvementCarburant pompe={self.pompe_uuid} asset={self.asset_uuid} "
+            f"quantite_l={self.quantite_l} statut={self.statut}>"
+        )
+
+
+class RavitaillementCarburant(Base):
+    """Pump/tank replenishment (e.g. a supplier delivery), entered directly by an admin.
+
+    Unlike MouvementCarburant, this is admin-entered only (never via the public form) and
+    counts toward stock immediately — no brouillon/valide/rejete workflow.
+    """
+
+    __tablename__ = "carburant_ravitaillements"
+    __table_args__ = (
+        CheckConstraint("quantite_l > 0", name="chk_ravitaillement_quantite_positive"),
+    )
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    pompe_uuid = Column(UUID(as_uuid=True), ForeignKey("carburant_pompes.uuid"), nullable=False, index=True)
+    quantite_l = Column(Numeric(10, 2), nullable=False)
+    date_ravitaillement = Column(Date, nullable=False)
+    note = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    pompe = relationship("Pompe", back_populates="ravitaillements")
+    created_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<RavitaillementCarburant pompe={self.pompe_uuid} quantite_l={self.quantite_l} date={self.date_ravitaillement}>"
