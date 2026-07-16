@@ -20,15 +20,20 @@
 
 from __future__ import annotations
 
+import io
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 
+import qrcode
+import qrcode.image.svg
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Asset, MouvementCarburant, Pompe
-from schemas.carburant import MouvementCarburantCreateRequest
+from schemas.carburant import MouvementCarburantCreateRequest, PompeCreateRequest, PompeUpdateRequest
 
 # Minimum delay between two submissions from the same IP for the same pump.
 RATE_LIMIT_WINDOW_MINUTES = 10
@@ -110,3 +115,71 @@ async def create_mouvement(
     await db.commit()
     await db.refresh(mouvement)
     return mouvement
+
+
+# ---------------------------------------------------------------------------
+# Admin: pompes
+# ---------------------------------------------------------------------------
+
+async def list_pompes(db: AsyncSession) -> list[Pompe]:
+    result = await db.execute(select(Pompe).order_by(Pompe.nom))
+    return list(result.scalars().all())
+
+
+async def get_pompe(db: AsyncSession, pompe_uuid: UUID) -> Pompe:
+    """Resolve a pump by uuid for admin use (no actif filter), 404 if missing."""
+    result = await db.execute(select(Pompe).where(Pompe.uuid == pompe_uuid))
+    pompe = result.scalar_one_or_none()
+    if pompe is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pompe introuvable")
+    return pompe
+
+
+async def create_pompe(db: AsyncSession, request: PompeCreateRequest) -> Pompe:
+    pompe = Pompe(
+        nom=request.nom,
+        type_carburant=request.type_carburant,
+        actif=request.actif,
+        capacite_cuve_l=request.capacite_cuve_l,
+        index_initial=request.index_initial,
+        index_initial_date=request.index_initial_date,
+        token=secrets.token_urlsafe(24),
+    )
+    db.add(pompe)
+    await db.commit()
+    await db.refresh(pompe)
+    return pompe
+
+
+async def update_pompe(db: AsyncSession, pompe_uuid: UUID, request: PompeUpdateRequest) -> Pompe:
+    pompe = await get_pompe(db, pompe_uuid)
+    updates = request.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(pompe, field, value)
+    await db.commit()
+    await db.refresh(pompe)
+    return pompe
+
+
+async def rotate_pompe_token(db: AsyncSession, pompe_uuid: UUID) -> Pompe:
+    """Issue a new opaque token, invalidating the old QR code/URL."""
+    pompe = await get_pompe(db, pompe_uuid)
+    pompe.token = secrets.token_urlsafe(24)
+    await db.commit()
+    await db.refresh(pompe)
+    return pompe
+
+
+def generate_pompe_qrcode_svg(pompe: Pompe, base_url: str) -> bytes:
+    """Render an SVG QR code encoding the pump's public declaration URL."""
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        image_factory=qrcode.image.svg.SvgPathImage,
+    )
+    qr.add_data(f"{base_url.rstrip('/')}/plein/{pompe.token}")
+    qr.make(fit=True)
+    image = qr.make_image()
+
+    buffer = io.BytesIO()
+    image.save(buffer)
+    return buffer.getvalue()

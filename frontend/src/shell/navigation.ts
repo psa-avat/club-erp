@@ -109,6 +109,16 @@ export const shellNavItems: ShellNavItem[] = [
     ],
   },
 
+  // ── 9b. Carburant ──────────────────────────────────────────────────────────
+  {
+    to: '/workspace/carburant',
+    labelKey: 'nav.carburant',
+    requiredCapability: 'MANAGE_CARBURANT',
+    children: [
+      { to: '/workspace/carburant', labelKey: 'nav.carburantPompes', requiredCapability: 'MANAGE_CARBURANT' },
+    ],
+  },
+
   // ── 7. Tarifs (priorité #7) ───────────────────────────────────────────────
   // Regroupe les quatre facettes de la tarification :
   //   - Génériques (versions non liées à un type d'actif)

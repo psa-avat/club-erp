@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -58,3 +59,42 @@ class MouvementCarburantCreateResponse(BaseModel):
     uuid: UUID
     statut: int
     flag_anomalie: bool
+
+
+# ---------------------------------------------------------------------------
+# Admin: pompes (/api/v1/admin/carburant/pompes) — MANAGE_CARBURANT
+# ---------------------------------------------------------------------------
+
+class PompeCreateRequest(BaseModel):
+    nom: str = Field(..., min_length=1, max_length=100)
+    type_carburant: int = Field(..., ge=1, le=3)
+    actif: bool = True
+    capacite_cuve_l: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
+    index_initial: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    index_initial_date: Optional[date] = None
+
+
+class PompeUpdateRequest(BaseModel):
+    nom: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    type_carburant: Optional[int] = Field(default=None, ge=1, le=3)
+    actif: Optional[bool] = None
+    capacite_cuve_l: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
+    index_initial: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    index_initial_date: Optional[date] = None
+
+
+class PompeResponse(BaseModel):
+    uuid: UUID
+    nom: str
+    type_carburant: int
+    token: str
+    actif: bool
+    capacite_cuve_l: Optional[Decimal] = None
+    index_initial: Optional[Decimal] = None
+    index_initial_date: Optional[date] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PompeListResponse(BaseModel):
+    items: list[PompeResponse]

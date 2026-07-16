@@ -66,6 +66,8 @@ export const en = {
       portalPacks: 'Packs',
       portalAvailability: 'Availability',
       rh: 'HR',
+      carburant: 'Fuel',
+      carburantPompes: 'Pumps',
       integrations: 'Integrations',
       administration: 'Administration',
 
@@ -3527,6 +3529,52 @@ export const en = {
         message: 'Your declaration has been recorded. It will be reviewed by the fuel manager.',
         anomalyNote: 'The declared quantity exceeds the usual tank capacity — it will be checked by the fuel manager.',
         again: 'Declare another fill-up',
+      },
+    },
+    admin: {
+      workspace: {
+        title: 'Fuel',
+        description: 'Pumps, fill-up declarations, and stock tracking.',
+        tabs: {
+          pompes: 'Pumps',
+        },
+      },
+      pompes: {
+        title: 'Pumps',
+        add: 'Add a pump',
+        edit: 'Edit pump',
+        noResults: 'No pumps.',
+        fields: {
+          nom: 'Name',
+          typeCarburant: 'Fuel type',
+          actif: 'Active',
+          capaciteCuveL: 'Tank capacity (L)',
+          indexInitial: 'Initial index',
+          indexInitialDate: 'Initial index date',
+        },
+        columns: {
+          nom: 'Name',
+          typeCarburant: 'Type',
+          actif: 'Status',
+        },
+        actions: {
+          qrcode: 'QR code',
+          rotateToken: 'Rotate token',
+        },
+        rotateConfirm: {
+          title: 'Rotate this pump\'s token?',
+          body: 'The old QR code will stop working immediately. The new QR code will need to be reprinted.',
+        },
+        qrDialog: {
+          title: 'QR code — {{nom}}',
+          url: 'Public URL',
+          download: 'Download SVG',
+          copyLink: 'Copy link',
+          linkCopied: 'Link copied',
+        },
+        save: 'Save',
+        saving: 'Saving…',
+        cancel: 'Cancel',
       },
     },
   },

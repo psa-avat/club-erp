@@ -66,6 +66,8 @@ export const fr = {
       portalPacks: 'Packs',
       portalAvailability: 'Disponibilités',
       rh: 'RH',
+      carburant: 'Carburant',
+      carburantPompes: 'Pompes',
       integrations: 'Intégrations',
       administration: 'Administration',
 
@@ -3547,6 +3549,52 @@ export const fr = {
         message: 'Votre déclaration a bien été enregistrée. Elle sera validée par le responsable carburant.',
         anomalyNote: 'La quantité déclarée dépasse la capacité habituelle de la cuve — elle sera vérifiée par le responsable carburant.',
         again: 'Déclarer un autre plein',
+      },
+    },
+    admin: {
+      workspace: {
+        title: 'Carburant',
+        description: 'Pompes, déclarations de pleins et suivi de stock.',
+        tabs: {
+          pompes: 'Pompes',
+        },
+      },
+      pompes: {
+        title: 'Pompes',
+        add: 'Ajouter une pompe',
+        edit: 'Modifier la pompe',
+        noResults: 'Aucune pompe.',
+        fields: {
+          nom: 'Nom',
+          typeCarburant: 'Type de carburant',
+          actif: 'Active',
+          capaciteCuveL: 'Capacité de la cuve (L)',
+          indexInitial: 'Index initial',
+          indexInitialDate: "Date de l'index initial",
+        },
+        columns: {
+          nom: 'Nom',
+          typeCarburant: 'Type',
+          actif: 'Statut',
+        },
+        actions: {
+          qrcode: 'QR code',
+          rotateToken: 'Régénérer le token',
+        },
+        rotateConfirm: {
+          title: 'Régénérer le token de cette pompe ?',
+          body: "L'ancien QR code cessera de fonctionner immédiatement. Le nouveau QR code devra être réimprimé.",
+        },
+        qrDialog: {
+          title: 'QR code — {{nom}}',
+          url: 'URL publique',
+          download: 'Télécharger le SVG',
+          copyLink: 'Copier le lien',
+          linkCopied: 'Lien copié',
+        },
+        save: 'Enregistrer',
+        saving: 'Enregistrement…',
+        cancel: 'Annuler',
       },
     },
   },

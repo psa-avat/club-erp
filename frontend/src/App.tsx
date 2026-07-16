@@ -24,7 +24,7 @@ import { FlightsWorkspacePage } from './modules/flights'
 import { PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
 import { ViWorkspacePage } from './modules/vi'
 import { RhWorkspacePage } from './modules/rh'
-import { FuelDeclarePage } from './modules/carburant'
+import { FuelDeclarePage, CarburantWorkspacePage } from './modules/carburant'
 import { HelpCenterPage } from './modules/help'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
@@ -154,6 +154,7 @@ function App() {
           <Route path="/admin/audit" element={<PlaceholderPage title="Journal d'audit" description="Consultez l'historique complet des actions et modifications dans le système." eta="Phase 11" />} />
           <Route path="/rh" element={<PlaceholderPage title="RH" description="Planning des congés, gestion des présences et tableau de bord RH." eta="Phase 10" />} />
           <Route path="/workspace/rh" element={<RhWorkspacePage />} />
+          <Route path="/workspace/carburant" element={<CarburantWorkspacePage />} />
           <Route path="/workspace/finance" element={<FinanceWorkspacePage />} />
           <Route path="/workspace/reports" element={<ReportsWorkspacePage />} />
           <Route path="/workspace/tarifs" element={<TarifsWorkspacePage />} />
