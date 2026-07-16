@@ -3496,4 +3496,38 @@ export const en = {
       faq: 'Frequently Asked Questions',
     },
   },
+  carburant: {
+    typeCarburant: {
+      '1': '100LL',
+      '2': 'MOGAS',
+      '3': 'JET A1',
+    },
+    public: {
+      loading: 'Loading…',
+      pompeNotFound: 'Pump not found or inactive. Check the QR code.',
+      form: {
+        title: 'Fuel fill-up declaration',
+        pompeSubtitle: '{{nom}} — {{typeCarburant}}',
+        asset: 'Aircraft',
+        assetPlaceholder: 'Select an aircraft…',
+        quantite: 'Quantity (L)',
+        indexCompteur: 'Meter index (optional)',
+        declarant: 'Your name',
+        declarantPlaceholder: 'First Last',
+        submit: 'Declare fill-up',
+        submitting: 'Sending…',
+      },
+      errors: {
+        required: 'Please fill in all required fields.',
+        rateLimited: 'A declaration was already recorded recently for this pump. Please wait a moment.',
+        generic: 'Something went wrong. Please try again or contact the fuel manager.',
+      },
+      success: {
+        title: 'Thank you!',
+        message: 'Your declaration has been recorded. It will be reviewed by the fuel manager.',
+        anomalyNote: 'The declared quantity exceeds the usual tank capacity — it will be checked by the fuel manager.',
+        again: 'Declare another fill-up',
+      },
+    },
+  },
 } as const

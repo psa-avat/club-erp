@@ -3516,4 +3516,38 @@ export const fr = {
       faq: 'Questions fréquentes',
     },
   },
+  carburant: {
+    typeCarburant: {
+      '1': '100LL',
+      '2': 'MOGAS',
+      '3': 'JET A1',
+    },
+    public: {
+      loading: 'Chargement…',
+      pompeNotFound: 'Pompe introuvable ou inactive. Vérifiez le QR code.',
+      form: {
+        title: 'Déclaration de plein',
+        pompeSubtitle: '{{nom}} — {{typeCarburant}}',
+        asset: 'Avion',
+        assetPlaceholder: 'Sélectionner un avion…',
+        quantite: 'Quantité (L)',
+        indexCompteur: 'Index compteur (optionnel)',
+        declarant: 'Votre nom',
+        declarantPlaceholder: 'Prénom Nom',
+        submit: 'Déclarer le plein',
+        submitting: 'Envoi…',
+      },
+      errors: {
+        required: 'Veuillez remplir tous les champs obligatoires.',
+        rateLimited: 'Une déclaration a déjà été enregistrée récemment pour cette pompe. Merci de patienter.',
+        generic: "Une erreur est survenue. Merci de réessayer ou de contacter le responsable carburant.",
+      },
+      success: {
+        title: 'Merci !',
+        message: 'Votre déclaration a bien été enregistrée. Elle sera validée par le responsable carburant.',
+        anomalyNote: 'La quantité déclarée dépasse la capacité habituelle de la cuve — elle sera vérifiée par le responsable carburant.',
+        again: 'Déclarer un autre plein',
+      },
+    },
+  },
 } as const

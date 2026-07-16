@@ -24,6 +24,7 @@ import { FlightsWorkspacePage } from './modules/flights'
 import { PlancheMachinesPushPage, PlancheMembersPushPage } from './modules/planche'
 import { ViWorkspacePage } from './modules/vi'
 import { RhWorkspacePage } from './modules/rh'
+import { FuelDeclarePage } from './modules/carburant'
 import { HelpCenterPage } from './modules/help'
 import { PlaceholderPage } from './components/ui/PlaceholderPage'
 import { AppShell } from './shell/components'
@@ -50,6 +51,9 @@ function App() {
       <Route element={<PublicOnlyRoute />}>
         <Route path="/login" element={<LoginPage />} />
       </Route>
+
+      {/* ── Carburant public declaration (standalone, no auth — reached by scanning a pump QR code) ── */}
+      <Route path="/plein/:token" element={<FuelDeclarePage />} />
 
       {/* ── Member portal (standalone, outside ERP auth guard) ── */}
       <Route path="/member-portal/login" element={<MemberPortalLoginPage />} />
