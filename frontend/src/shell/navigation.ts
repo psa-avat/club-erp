@@ -115,7 +115,9 @@ export const shellNavItems: ShellNavItem[] = [
     labelKey: 'nav.carburant',
     requiredCapability: 'MANAGE_CARBURANT',
     children: [
-      { to: '/workspace/carburant', labelKey: 'nav.carburantPompes', requiredCapability: 'MANAGE_CARBURANT' },
+      { to: '/workspace/carburant', labelKey: 'nav.carburantValidation', requiredCapability: 'MANAGE_CARBURANT' },
+      { to: '/workspace/carburant?tab=pompes', labelKey: 'nav.carburantPompes', requiredCapability: 'MANAGE_CARBURANT' },
+      { to: '/workspace/carburant?tab=stock', labelKey: 'nav.carburantStock', requiredCapability: 'MANAGE_CARBURANT' },
     ],
   },
 

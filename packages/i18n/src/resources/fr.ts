@@ -67,7 +67,9 @@ export const fr = {
       portalAvailability: 'Disponibilités',
       rh: 'RH',
       carburant: 'Carburant',
+      carburantValidation: 'File de validation',
       carburantPompes: 'Pompes',
+      carburantStock: 'Stock',
       integrations: 'Intégrations',
       administration: 'Administration',
 
@@ -3557,7 +3559,67 @@ export const fr = {
         description: 'Pompes, déclarations de pleins et suivi de stock.',
         tabs: {
           pompes: 'Pompes',
+          validation: 'File de validation',
+          stock: 'Stock',
         },
+      },
+      statut: {
+        '1': 'Brouillon',
+        '2': 'Validé',
+        '3': 'Rejeté',
+      },
+      validation: {
+        title: 'File de validation',
+        noResults: 'Aucune déclaration.',
+        filterStatut: 'Statut',
+        columns: {
+          pompe: 'Pompe',
+          avion: 'Avion',
+          quantite: 'Quantité (L)',
+          declarant: 'Déclarant',
+          date: 'Date',
+          statut: 'Statut',
+        },
+        anomalyBadge: 'Anomalie',
+        actions: {
+          valider: 'Valider',
+          rejeter: 'Rejeter',
+        },
+        validateDialog: {
+          title: 'Valider ce plein ?',
+          comment: 'Commentaire (optionnel)',
+        },
+        rejectDialog: {
+          title: 'Rejeter ce plein ?',
+          commentRequired: 'Motif du rejet',
+        },
+        confirm: 'Confirmer',
+        cancel: 'Annuler',
+      },
+      stock: {
+        title: 'Stock',
+        noResults: 'Aucune pompe.',
+        addRavitaillement: 'Enregistrer un ravitaillement',
+        columns: {
+          pompe: 'Pompe',
+          type: 'Type',
+          ravitaillements: 'Ravitaillements (L)',
+          consommation: 'Consommation validée (L)',
+          stock: 'Stock (L)',
+          derniereActivite: 'Dernière activité',
+        },
+        ravitaillementDialog: {
+          title: 'Nouveau ravitaillement',
+          fields: {
+            pompe: 'Pompe',
+            quantite: 'Quantité (L)',
+            date: 'Date',
+            note: 'Note (optionnelle)',
+          },
+        },
+        save: 'Enregistrer',
+        saving: 'Enregistrement…',
+        cancel: 'Annuler',
       },
       pompes: {
         title: 'Pompes',

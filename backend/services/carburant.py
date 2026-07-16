@@ -29,11 +29,20 @@ from uuid import UUID
 import qrcode
 import qrcode.image.svg
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from models import Asset, MouvementCarburant, Pompe
-from schemas.carburant import MouvementCarburantCreateRequest, PompeCreateRequest, PompeUpdateRequest
+from models import Asset, MouvementCarburant, Pompe, RavitaillementCarburant
+from schemas.carburant import (
+    MouvementCarburantCreateRequest,
+    MouvementCarburantResponse,
+    PompeCreateRequest,
+    PompeUpdateRequest,
+    RavitaillementCreateRequest,
+    RavitaillementResponse,
+    StockCarburantEntry,
+)
 
 # Minimum delay between two submissions from the same IP for the same pump.
 RATE_LIMIT_WINDOW_MINUTES = 10
@@ -183,3 +192,221 @@ def generate_pompe_qrcode_svg(pompe: Pompe, base_url: str) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer)
     return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Admin: validation queue
+# ---------------------------------------------------------------------------
+
+def _mouvement_eager_options():
+    return (selectinload(MouvementCarburant.pompe), selectinload(MouvementCarburant.asset))
+
+
+def _build_mouvement_response(mouvement: MouvementCarburant) -> MouvementCarburantResponse:
+    return MouvementCarburantResponse(
+        uuid=mouvement.uuid,
+        pompe_uuid=mouvement.pompe_uuid,
+        pompe_nom=mouvement.pompe.nom,
+        asset_uuid=mouvement.asset_uuid,
+        asset_registration=mouvement.asset.registration if mouvement.asset else None,
+        asset_name=mouvement.asset.name if mouvement.asset else "",
+        quantite_l=mouvement.quantite_l,
+        index_compteur=mouvement.index_compteur,
+        membre_declarant=mouvement.membre_declarant,
+        date_saisie=mouvement.date_saisie,
+        statut=mouvement.statut,
+        ip_source=mouvement.ip_source,
+        flag_anomalie=mouvement.flag_anomalie,
+        commentaire_validation=mouvement.commentaire_validation,
+        validated_at=mouvement.validated_at,
+    )
+
+
+async def _get_mouvement_orm(db: AsyncSession, mouvement_uuid: UUID) -> MouvementCarburant:
+    stmt = (
+        select(MouvementCarburant)
+        .where(MouvementCarburant.uuid == mouvement_uuid)
+        .options(*_mouvement_eager_options())
+    )
+    result = await db.execute(stmt)
+    mouvement = result.scalar_one_or_none()
+    if mouvement is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mouvement introuvable")
+    return mouvement
+
+
+async def list_mouvements(
+    db: AsyncSession,
+    statut: Optional[int] = None,
+    pompe_uuid: Optional[UUID] = None,
+) -> list[MouvementCarburantResponse]:
+    stmt = select(MouvementCarburant).options(*_mouvement_eager_options())
+    if statut is not None:
+        stmt = stmt.where(MouvementCarburant.statut == statut)
+    if pompe_uuid is not None:
+        stmt = stmt.where(MouvementCarburant.pompe_uuid == pompe_uuid)
+    stmt = stmt.order_by(MouvementCarburant.date_saisie.desc())
+    result = await db.execute(stmt)
+    mouvements = result.scalars().all()
+    return [_build_mouvement_response(m) for m in mouvements]
+
+
+async def get_mouvement(db: AsyncSession, mouvement_uuid: UUID) -> MouvementCarburantResponse:
+    mouvement = await _get_mouvement_orm(db, mouvement_uuid)
+    return _build_mouvement_response(mouvement)
+
+
+async def valider_mouvement(
+    db: AsyncSession,
+    mouvement_uuid: UUID,
+    user_id: int,
+    commentaire: Optional[str] = None,
+) -> MouvementCarburantResponse:
+    """Brouillon -> valide. Immutable otherwise: only statut and validation metadata change."""
+    mouvement = await _get_mouvement_orm(db, mouvement_uuid)
+    if mouvement.statut != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ce mouvement n'est plus en attente de validation",
+        )
+    mouvement.statut = 2
+    mouvement.validated_by = user_id
+    mouvement.validated_at = datetime.now(timezone.utc)
+    if commentaire:
+        mouvement.commentaire_validation = commentaire
+    response = _build_mouvement_response(mouvement)
+    await db.commit()
+    return response
+
+
+async def rejeter_mouvement(
+    db: AsyncSession,
+    mouvement_uuid: UUID,
+    user_id: int,
+    commentaire: str,
+) -> MouvementCarburantResponse:
+    """Brouillon -> rejete. A rejected movement stays rejected; corrections are new declarations."""
+    mouvement = await _get_mouvement_orm(db, mouvement_uuid)
+    if mouvement.statut != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ce mouvement n'est plus en attente de validation",
+        )
+    mouvement.statut = 3
+    mouvement.validated_by = user_id
+    mouvement.validated_at = datetime.now(timezone.utc)
+    mouvement.commentaire_validation = commentaire
+    response = _build_mouvement_response(mouvement)
+    await db.commit()
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Admin: ravitaillements (pump replenishments — count toward stock immediately)
+# ---------------------------------------------------------------------------
+
+async def list_ravitaillements(
+    db: AsyncSession, pompe_uuid: Optional[UUID] = None
+) -> list[RavitaillementResponse]:
+    stmt = select(RavitaillementCarburant).options(selectinload(RavitaillementCarburant.pompe))
+    if pompe_uuid is not None:
+        stmt = stmt.where(RavitaillementCarburant.pompe_uuid == pompe_uuid)
+    stmt = stmt.order_by(RavitaillementCarburant.date_ravitaillement.desc())
+    result = await db.execute(stmt)
+    ravitaillements = result.scalars().all()
+    return [
+        RavitaillementResponse(
+            uuid=r.uuid,
+            pompe_uuid=r.pompe_uuid,
+            pompe_nom=r.pompe.nom,
+            quantite_l=r.quantite_l,
+            date_ravitaillement=r.date_ravitaillement,
+            note=r.note,
+            created_at=r.created_at,
+        )
+        for r in ravitaillements
+    ]
+
+
+async def create_ravitaillement(
+    db: AsyncSession, request: RavitaillementCreateRequest, user_id: int
+) -> RavitaillementResponse:
+    pompe = await get_pompe(db, request.pompe_uuid)
+    ravitaillement = RavitaillementCarburant(
+        pompe_uuid=request.pompe_uuid,
+        quantite_l=request.quantite_l,
+        date_ravitaillement=request.date_ravitaillement,
+        note=request.note,
+        created_by=user_id,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(ravitaillement)
+    await db.flush()
+    response = RavitaillementResponse(
+        uuid=ravitaillement.uuid,
+        pompe_uuid=ravitaillement.pompe_uuid,
+        pompe_nom=pompe.nom,
+        quantite_l=ravitaillement.quantite_l,
+        date_ravitaillement=ravitaillement.date_ravitaillement,
+        note=ravitaillement.note,
+        created_at=ravitaillement.created_at,
+    )
+    await db.commit()
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Admin: stock (cumulative per pompe: ravitaillements - validated mouvements)
+# ---------------------------------------------------------------------------
+
+async def get_stock_carburant(db: AsyncSession) -> list[StockCarburantEntry]:
+    ravitaillements_totals = dict(
+        (
+            await db.execute(
+                select(
+                    RavitaillementCarburant.pompe_uuid,
+                    func.coalesce(func.sum(RavitaillementCarburant.quantite_l), 0),
+                ).group_by(RavitaillementCarburant.pompe_uuid)
+            )
+        ).all()
+    )
+    consommation_totals = dict(
+        (
+            await db.execute(
+                select(
+                    MouvementCarburant.pompe_uuid,
+                    func.coalesce(func.sum(MouvementCarburant.quantite_l), 0),
+                )
+                .where(MouvementCarburant.statut == 2)
+                .group_by(MouvementCarburant.pompe_uuid)
+            )
+        ).all()
+    )
+    derniere_activite: dict[UUID, datetime] = {}
+    for pompe_uuid, last_date in (
+        await db.execute(
+            select(MouvementCarburant.pompe_uuid, func.max(MouvementCarburant.date_saisie))
+            .where(MouvementCarburant.statut == 2)
+            .group_by(MouvementCarburant.pompe_uuid)
+        )
+    ).all():
+        derniere_activite[pompe_uuid] = last_date
+
+    pompes = await list_pompes(db)
+    entries = []
+    for pompe in pompes:
+        total_ravitaillements = ravitaillements_totals.get(pompe.uuid, 0)
+        total_consommation = consommation_totals.get(pompe.uuid, 0)
+        entries.append(
+            StockCarburantEntry(
+                pompe_uuid=pompe.uuid,
+                pompe_nom=pompe.nom,
+                type_carburant=pompe.type_carburant,
+                actif=pompe.actif,
+                total_ravitaillements_l=total_ravitaillements,
+                total_consommation_l=total_consommation,
+                stock_l=total_ravitaillements - total_consommation,
+                derniere_activite=derniere_activite.get(pompe.uuid),
+            )
+        )
+    return entries

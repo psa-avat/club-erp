@@ -67,7 +67,9 @@ export const en = {
       portalAvailability: 'Availability',
       rh: 'HR',
       carburant: 'Fuel',
+      carburantValidation: 'Validation queue',
       carburantPompes: 'Pumps',
+      carburantStock: 'Stock',
       integrations: 'Integrations',
       administration: 'Administration',
 
@@ -3537,7 +3539,67 @@ export const en = {
         description: 'Pumps, fill-up declarations, and stock tracking.',
         tabs: {
           pompes: 'Pumps',
+          validation: 'Validation queue',
+          stock: 'Stock',
         },
+      },
+      statut: {
+        '1': 'Draft',
+        '2': 'Validated',
+        '3': 'Rejected',
+      },
+      validation: {
+        title: 'Validation queue',
+        noResults: 'No declarations.',
+        filterStatut: 'Status',
+        columns: {
+          pompe: 'Pump',
+          avion: 'Aircraft',
+          quantite: 'Quantity (L)',
+          declarant: 'Declared by',
+          date: 'Date',
+          statut: 'Status',
+        },
+        anomalyBadge: 'Anomaly',
+        actions: {
+          valider: 'Validate',
+          rejeter: 'Reject',
+        },
+        validateDialog: {
+          title: 'Validate this fill-up?',
+          comment: 'Comment (optional)',
+        },
+        rejectDialog: {
+          title: 'Reject this fill-up?',
+          commentRequired: 'Rejection reason',
+        },
+        confirm: 'Confirm',
+        cancel: 'Cancel',
+      },
+      stock: {
+        title: 'Stock',
+        noResults: 'No pumps.',
+        addRavitaillement: 'Record a refill',
+        columns: {
+          pompe: 'Pump',
+          type: 'Type',
+          ravitaillements: 'Refills (L)',
+          consommation: 'Validated consumption (L)',
+          stock: 'Stock (L)',
+          derniereActivite: 'Last activity',
+        },
+        ravitaillementDialog: {
+          title: 'New refill',
+          fields: {
+            pompe: 'Pump',
+            quantite: 'Quantity (L)',
+            date: 'Date',
+            note: 'Note (optional)',
+          },
+        },
+        save: 'Save',
+        saving: 'Saving…',
+        cancel: 'Cancel',
       },
       pompes: {
         title: 'Pumps',

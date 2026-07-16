@@ -1,7 +1,7 @@
 /*
     ERP-CLUB - ERP pour Club de vol à voile
     - Logiciel libre de gestion d'un club de vol à voile
-    - CarburantWorkspacePage: Workspace Carburant (tabs: pompes)
+    - CarburantWorkspacePage: Workspace Carburant (tabs: validation, pompes, stock)
     Copyright (C) 2026  SAFORCADA Patrick
 
     This program is free software: you can redistribute it and/or modify
@@ -19,11 +19,13 @@
  */
 
 import { useTranslation } from 'react-i18next'
-import { Fuel } from 'lucide-react'
+import { ClipboardCheck, Fuel, Gauge } from 'lucide-react'
 
 import { WorkspaceShell } from '@/components/ui/workspace-shell'
 
 import { PompesAdminPage } from './PompesAdminPage'
+import { ValidationQueuePage } from './ValidationQueuePage'
+import { StockPage } from './StockPage'
 
 export function CarburantWorkspacePage() {
   const { t } = useTranslation('carburant')
@@ -34,10 +36,22 @@ export function CarburantWorkspacePage() {
       description={t('admin.workspace.description')}
       tabs={[
         {
+          value: 'validation',
+          label: t('admin.workspace.tabs.validation'),
+          icon: ClipboardCheck,
+          content: <ValidationQueuePage />,
+        },
+        {
           value: 'pompes',
           label: t('admin.workspace.tabs.pompes'),
           icon: Fuel,
           content: <PompesAdminPage />,
+        },
+        {
+          value: 'stock',
+          label: t('admin.workspace.tabs.stock'),
+          icon: Gauge,
+          content: <StockPage />,
         },
       ]}
     />

@@ -98,3 +98,81 @@ class PompeResponse(BaseModel):
 
 class PompeListResponse(BaseModel):
     items: list[PompeResponse]
+
+
+# ---------------------------------------------------------------------------
+# Admin: validation queue (/api/v1/admin/carburant/mouvements) — MANAGE_CARBURANT
+# ---------------------------------------------------------------------------
+
+class MouvementCarburantResponse(BaseModel):
+    uuid: UUID
+    pompe_uuid: UUID
+    pompe_nom: str
+    asset_uuid: UUID
+    asset_registration: Optional[str] = None
+    asset_name: str
+    quantite_l: Decimal
+    index_compteur: Optional[Decimal] = None
+    membre_declarant: str
+    date_saisie: datetime
+    statut: int
+    ip_source: Optional[str] = None
+    flag_anomalie: bool
+    commentaire_validation: Optional[str] = None
+    validated_at: Optional[datetime] = None
+
+
+class MouvementCarburantListResponse(BaseModel):
+    items: list[MouvementCarburantResponse]
+
+
+class MouvementCarburantValidateRequest(BaseModel):
+    commentaire_validation: Optional[str] = Field(default=None, max_length=500)
+
+
+class MouvementCarburantRejectRequest(BaseModel):
+    commentaire_validation: str = Field(..., min_length=1, max_length=500)
+
+
+# ---------------------------------------------------------------------------
+# Admin: ravitaillements (/api/v1/admin/carburant/ravitaillements) — MANAGE_CARBURANT
+# ---------------------------------------------------------------------------
+
+class RavitaillementCreateRequest(BaseModel):
+    pompe_uuid: UUID
+    quantite_l: Decimal = Field(..., gt=0, decimal_places=2)
+    date_ravitaillement: date
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class RavitaillementResponse(BaseModel):
+    uuid: UUID
+    pompe_uuid: UUID
+    pompe_nom: str
+    quantite_l: Decimal
+    date_ravitaillement: date
+    note: Optional[str] = None
+    created_at: datetime
+
+
+class RavitaillementListResponse(BaseModel):
+    items: list[RavitaillementResponse]
+
+
+# ---------------------------------------------------------------------------
+# Admin: stock (/api/v1/admin/carburant/stock) — MANAGE_CARBURANT
+# ---------------------------------------------------------------------------
+
+class StockCarburantEntry(BaseModel):
+    pompe_uuid: UUID
+    pompe_nom: str
+    type_carburant: int
+    actif: bool
+    total_ravitaillements_l: Decimal
+    total_consommation_l: Decimal
+    stock_l: Decimal
+    derniere_activite: Optional[datetime] = None
+
+
+class StockCarburantResponse(BaseModel):
+    items: list[StockCarburantEntry]
