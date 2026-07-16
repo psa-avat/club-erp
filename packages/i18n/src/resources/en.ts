@@ -3503,8 +3503,7 @@ export const en = {
   carburant: {
     typeCarburant: {
       '1': '100LL',
-      '2': 'MOGAS',
-      '3': 'JET A1',
+      '2': 'UL91',
     },
     public: {
       loading: 'Loading…',

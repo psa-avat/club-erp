@@ -45,7 +45,7 @@ import {
   type PompeCreateRequest,
 } from '../api'
 
-const TYPE_CARBURANT_VALUES = [1, 2, 3] as const
+const TYPE_CARBURANT_VALUES = [1, 2] as const
 
 type PompeFormState = {
   nom: string

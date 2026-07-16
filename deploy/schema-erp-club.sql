@@ -1120,7 +1120,7 @@ CREATE TABLE public.carburant_pompes (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT chk_pompe_capacite_positive CHECK (((capacite_cuve_l IS NULL) OR (capacite_cuve_l > (0)::numeric))),
-    CONSTRAINT chk_pompe_type_carburant CHECK ((type_carburant = ANY (ARRAY[1, 2, 3])))
+    CONSTRAINT chk_pompe_type_carburant CHECK ((type_carburant = ANY (ARRAY[1, 2])))
 );
 
 

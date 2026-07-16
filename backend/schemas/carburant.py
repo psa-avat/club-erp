@@ -67,7 +67,7 @@ class MouvementCarburantCreateResponse(BaseModel):
 
 class PompeCreateRequest(BaseModel):
     nom: str = Field(..., min_length=1, max_length=100)
-    type_carburant: int = Field(..., ge=1, le=3)
+    type_carburant: int = Field(..., ge=1, le=2)
     actif: bool = True
     capacite_cuve_l: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     index_initial: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
@@ -76,7 +76,7 @@ class PompeCreateRequest(BaseModel):
 
 class PompeUpdateRequest(BaseModel):
     nom: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    type_carburant: Optional[int] = Field(default=None, ge=1, le=3)
+    type_carburant: Optional[int] = Field(default=None, ge=1, le=2)
     actif: Optional[bool] = None
     capacite_cuve_l: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
     index_initial: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)

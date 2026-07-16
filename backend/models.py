@@ -2335,13 +2335,13 @@ class Pompe(Base):
 
     __tablename__ = "carburant_pompes"
     __table_args__ = (
-        CheckConstraint("type_carburant IN (1, 2, 3)", name="chk_pompe_type_carburant"),
+        CheckConstraint("type_carburant IN (1, 2)", name="chk_pompe_type_carburant"),
         CheckConstraint("capacite_cuve_l IS NULL OR capacite_cuve_l > 0", name="chk_pompe_capacite_positive"),
     )
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     nom = Column(String(100), nullable=False)
-    # 1=100LL, 2=MOGAS, 3=JETA1
+    # 1=100LL, 2=UL91
     type_carburant = Column(SmallInteger, nullable=False)
     token = Column(String(64), nullable=False, unique=True, index=True)
     actif = Column(Boolean, nullable=False, default=True)
