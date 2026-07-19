@@ -36,6 +36,7 @@ class AssetFamilyCreateRequest(BaseModel):
     pricing_strategy: int = Field(ge=1, le=6, default=1)
     is_active: bool = True
     is_priced: bool = Field(default=True, description="Whether this family is expected to carry a flight tariff (pricing_versions).")
+    uses_fuel: bool = Field(default=False, description="Whether assets in this family consume fuel (tow planes, ULMs, …).")
     acquisition_account_uuid: Optional[UUID] = None
     depreciation_account_uuid: Optional[UUID] = None
     charge_account_uuid: Optional[UUID] = None
@@ -47,6 +48,7 @@ class AssetFamilyUpdateRequest(BaseModel):
     pricing_strategy: Optional[int] = Field(default=None, ge=1, le=6)
     is_active: Optional[bool] = None
     is_priced: Optional[bool] = None
+    uses_fuel: Optional[bool] = None
     acquisition_account_uuid: Optional[UUID] = None
     depreciation_account_uuid: Optional[UUID] = None
     charge_account_uuid: Optional[UUID] = None
@@ -60,6 +62,7 @@ class AssetFamilyResponse(BaseModel):
     pricing_strategy: int
     is_active: bool
     is_priced: bool
+    uses_fuel: bool
     acquisition_account_uuid: Optional[UUID] = None
     acquisition_account_code: Optional[str] = None
     depreciation_account_uuid: Optional[UUID] = None

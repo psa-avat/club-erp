@@ -33,7 +33,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models import Asset, MouvementCarburant, Pompe, RavitaillementCarburant
+from models import Asset, AssetFamily, MouvementCarburant, Pompe, RavitaillementCarburant
 from schemas.carburant import (
     MouvementCarburantCreateRequest,
     MouvementCarburantResponse,
@@ -58,10 +58,15 @@ async def get_pompe_by_token(db: AsyncSession, token: str) -> Pompe:
 
 
 async def list_active_assets(db: AsyncSession) -> list[Asset]:
-    """List bookable, active assets for the public fill-up form's aircraft picker."""
+    """List bookable, active, fuel-consuming assets for the public fill-up form's aircraft picker."""
     result = await db.execute(
         select(Asset)
-        .where(Asset.is_active.is_(True), Asset.is_bookable.is_(True))
+        .join(AssetFamily, Asset.asset_family_uuid == AssetFamily.uuid)
+        .where(
+            Asset.is_active.is_(True),
+            Asset.is_bookable.is_(True),
+            AssetFamily.uses_fuel.is_(True),
+        )
         .order_by(Asset.registration, Asset.name)
     )
     return list(result.scalars().all())

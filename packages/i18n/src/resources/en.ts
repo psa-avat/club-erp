@@ -2967,6 +2967,8 @@ export const en = {
       isPriced: 'Priced family',
       isPricedHint: 'Uncheck for a purely accounting family (trailers, refits, engines, ground vehicles...) that does not carry a flight tariff.',
       notPriced: 'Not priced',
+      usesFuel: 'Uses fuel',
+      usesFuelHint: 'Check for families that consume fuel (tow planes, ULMs...). Controls which assets appear in the Carburant module fill-up picker.',
       accountsSectionTitle: 'Accounting accounts',
       acquisitionAccount: 'Acquisition account',
       acquisitionAccountHelp: 'Fixed-asset account debited at purchase (class 2, e.g. 218xxx). Default for assets in this family, overridable per-asset.',

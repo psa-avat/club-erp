@@ -802,6 +802,7 @@ CREATE TABLE public.asset_families (
     charge_account_uuid uuid,
     revenue_account_uuid uuid,
     is_priced boolean DEFAULT true NOT NULL,
+    uses_fuel boolean DEFAULT false NOT NULL,
     CONSTRAINT chk_asset_families_pricing_strategy CHECK ((pricing_strategy = ANY (ARRAY[1, 2, 3, 4, 5, 6]))),
     CONSTRAINT chk_asset_types_depr_years CHECK (((standard_depreciation_years IS NULL) OR (standard_depreciation_years > 0)))
 );

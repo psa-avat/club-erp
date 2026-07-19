@@ -1194,7 +1194,9 @@ class AssetFamily(Base):
     Carries 4 optional GL account defaults (acquisition/depreciation/charge/revenue) used by
     individual assets in the family unless overridden per-asset, and an `is_priced` flag marking
     whether the family is expected to carry a flight tariff (pricing_versions) at all — most
-    accounting-only families (trailers, refits, ground equipment) are not priced.
+    accounting-only families (trailers, refits, ground equipment) are not priced. `uses_fuel`
+    marks whether assets in the family burn fuel (tow planes, ULMs, …), used to scope the
+    Carburant module's asset picker to fuel-consuming equipment only.
     """
 
     __tablename__ = "asset_families"
@@ -1209,6 +1211,7 @@ class AssetFamily(Base):
     pricing_strategy = Column(SmallInteger, nullable=False, default=1)
     is_active = Column(Boolean, nullable=False, default=True)
     is_priced = Column(Boolean, nullable=False, default=True, comment="Whether this family is expected to carry a flight tariff (pricing_versions).")
+    uses_fuel = Column(Boolean, nullable=False, default=False, comment="Whether assets in this family consume fuel (tow planes, ULMs, …) — gates the Carburant module asset picker.")
 
     acquisition_account_uuid = Column(
         UUID(as_uuid=True), ForeignKey("accounting_accounts.uuid", ondelete="SET NULL"), nullable=True,

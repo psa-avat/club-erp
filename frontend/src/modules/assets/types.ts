@@ -29,6 +29,8 @@ export type AssetFamily = {
   is_active: boolean
   /** Whether this family is expected to carry a flight tariff (pricing_versions). */
   is_priced: boolean
+  /** Whether assets in this family consume fuel (tow planes, ULMs, …). */
+  uses_fuel: boolean
   acquisition_account_uuid: string | null
   acquisition_account_code: string | null
   depreciation_account_uuid: string | null
@@ -161,6 +163,7 @@ export type CreateAssetFamilyPayload = {
   name: string
   is_active?: boolean
   is_priced?: boolean
+  uses_fuel?: boolean
   acquisition_account_uuid?: string | null
   depreciation_account_uuid?: string | null
   charge_account_uuid?: string | null
@@ -171,6 +174,7 @@ export type UpdateAssetFamilyPayload = {
   name?: string
   is_active?: boolean
   is_priced?: boolean
+  uses_fuel?: boolean
   acquisition_account_uuid?: string | null
   depreciation_account_uuid?: string | null
   charge_account_uuid?: string | null

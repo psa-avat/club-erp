@@ -69,6 +69,7 @@ type FamilyFormState = {
   name: string
   is_active: boolean
   is_priced: boolean
+  uses_fuel: boolean
   acquisition_account_uuid: string
   depreciation_account_uuid: string
   charge_account_uuid: string
@@ -80,6 +81,7 @@ const EMPTY_FORM: FamilyFormState = {
   name: '',
   is_active: true,
   is_priced: true,
+  uses_fuel: false,
   acquisition_account_uuid: '',
   depreciation_account_uuid: '',
   charge_account_uuid: '',
@@ -92,6 +94,7 @@ function familyToForm(af: AssetFamily): FamilyFormState {
     name: af.name,
     is_active: af.is_active,
     is_priced: af.is_priced,
+    uses_fuel: af.uses_fuel,
     acquisition_account_uuid: af.acquisition_account_uuid ?? '',
     depreciation_account_uuid: af.depreciation_account_uuid ?? '',
     charge_account_uuid: af.charge_account_uuid ?? '',
@@ -175,8 +178,18 @@ function FamilyForm({
           />
           {t('assetFamilies.isPriced')}
         </label>
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={form.uses_fuel}
+            onChange={(e) => set('uses_fuel', e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          {t('assetFamilies.usesFuel')}
+        </label>
       </div>
       <p className="text-xs text-slate-500">{t('assetFamilies.isPricedHint')}</p>
+      <p className="text-xs text-slate-500">{t('assetFamilies.usesFuelHint')}</p>
 
       <div className="space-y-3 border-t border-outline-variant pt-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -276,6 +289,11 @@ function FamilyRow({
                 {t('assetFamilies.notPriced')}
               </span>
             )}
+            {assetFamily.uses_fuel && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                {t('assetFamilies.usesFuel')}
+              </span>
+            )}
           </div>
         </div>
         {canManage && (
@@ -331,6 +349,7 @@ export function AssetFamiliesPage() {
       name: form.name.trim(),
       is_active: form.is_active,
       is_priced: form.is_priced,
+      uses_fuel: form.uses_fuel,
       acquisition_account_uuid: form.acquisition_account_uuid || null,
       depreciation_account_uuid: form.depreciation_account_uuid || null,
       charge_account_uuid: form.charge_account_uuid || null,

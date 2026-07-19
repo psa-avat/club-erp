@@ -78,6 +78,7 @@ def _fake_family(
         pricing_strategy=1,
         is_active=True,
         is_priced=True,
+        uses_fuel=False,
         pricing_versions=[],
         acquisition_account_uuid=acquisition_account_uuid,
         acquisition_account_code="21821" if acquisition_account_uuid else None,

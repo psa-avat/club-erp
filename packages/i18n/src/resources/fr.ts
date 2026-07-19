@@ -2986,6 +2986,8 @@ export const fr = {
       isPriced: 'Famille tarifée',
       isPricedHint: 'Décochez pour une famille purement comptable (remorques, réfections, moteurs, véhicules de piste...) qui ne porte pas de tarif de vol.',
       notPriced: 'Non tarifé',
+      usesFuel: 'Utilise du carburant',
+      usesFuelHint: 'Cochez pour les familles qui consomment du carburant (avions remorqueurs, ULM...). Détermine les équipements proposés dans le sélecteur de plein du module Carburant.',
       accountsSectionTitle: 'Comptes comptables',
       acquisitionAccount: 'Compte d\'acquisition',
       acquisitionAccountHelp: 'Compte d\'immobilisation débité à l\'achat (classe 2, ex: 218xxx). Valeur par défaut pour les actifs de cette famille, personnalisable par actif.',

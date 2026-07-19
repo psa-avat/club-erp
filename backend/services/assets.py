@@ -133,6 +133,7 @@ def _serialize_asset(asset: Asset) -> AssetResponse:
         pricing_strategy=family.pricing_strategy,
         is_active=family.is_active,
         is_priced=family.is_priced,
+        uses_fuel=family.uses_fuel,
         acquisition_account_uuid=family.acquisition_account_uuid,
         acquisition_account_code=family.acquisition_account_code,
         depreciation_account_uuid=family.depreciation_account_uuid,
