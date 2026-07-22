@@ -254,7 +254,7 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
 
   if (!haJournal && !journalsQuery.isLoading) {
     return (
-      <div className="rounded-lg bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+      <div className="rounded-lg bg-warning/15 px-4 py-3 text-sm text-warning">
         {t('ops.suppliers.noHaJournal')}
       </div>
     )
@@ -293,7 +293,7 @@ export function OpsSupplierTab({ fiscalYearUuid }: OpsSupplierTabProps) {
       </div>
 
       {postError && (
-        <p role="alert" className="rounded-lg bg-error-container px-4 py-2 text-sm text-on-error-container">
+        <p role="alert" className="rounded-lg bg-destructive/15 px-4 py-2 text-sm text-destructive">
           {postError}
         </p>
       )}

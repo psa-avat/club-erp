@@ -76,7 +76,7 @@ function Tabs({ items, activeKey, onChange, className }: TabsProps) {
     <div
       ref={listRef}
       role="tablist"
-      className={cn('flex gap-1 border-b border-outline-variant', className)}
+      className={cn('flex gap-1 border-b border-border', className)}
     >
       {items.map(item => {
         const isActive = activeKey === item.key
@@ -95,8 +95,8 @@ function Tabs({ items, activeKey, onChange, className }: TabsProps) {
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
               'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:transition-colors',
               isActive
-                ? 'text-on-surface after:bg-primary'
-                : 'text-on-surface-variant hover:text-on-surface after:bg-transparent',
+                ? 'text-foreground after:bg-primary'
+                : 'text-muted-foreground hover:text-foreground after:bg-transparent',
               item.disabled && 'cursor-not-allowed opacity-40',
             )}
           >

@@ -33,7 +33,7 @@ function StickyActionBar({ children, className }: StickyActionBarProps) {
       className={cn(
         // Mobile: fixed bottom strip
         'fixed bottom-0 left-0 right-0 z-30 flex items-center justify-end gap-2',
-        'border-t border-outline-variant bg-surface px-4 py-3 shadow-surface-3',
+        'border-t border-border bg-card px-4 py-3 shadow-surface-3',
         // Desktop: static inline row (no fixed positioning)
         'md:static md:z-auto md:border-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none',
         className,

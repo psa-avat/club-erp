@@ -474,9 +474,14 @@ class SendRecapEmailRequest(BaseModel):
 
 
 class SendRecapEmailsBulkRequest(BaseModel):
-    """Payload for bulk-sending recap emails to all members with an email on file."""
+    """Payload for bulk-sending recap emails.
+
+    When `member_uuids` is omitted, the email goes to every active member with
+    an email on file. When provided, it goes only to the selected members.
+    """
 
     message_text: str = Field(min_length=1)
+    member_uuids: Optional[list[UUID]] = None
 
 
 class RecapEmailBulkResult(BaseModel):

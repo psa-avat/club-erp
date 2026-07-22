@@ -455,7 +455,7 @@ export function MemberFormPage() {
                 </>
               )}
               {isPermanentCategory ? (
-                <p className="md:col-span-2 text-xs text-on-surface-variant">
+                <p className="md:col-span-2 text-xs text-muted-foreground">
                   Permanent member category: annual registration periods are not required. Manage lifecycle and registration statuses directly on this page.
                 </p>
               ) : null}
@@ -473,7 +473,7 @@ export function MemberFormPage() {
                 </Label>
                 <textarea
                   id="member-notes"
-                  className="min-h-28 w-full rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
+                  className="min-h-28 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm outline-none focus:border-primary"
                   value={memberForm.notes}
                   onChange={(event) => setMemberForm({ ...memberForm, notes: event.target.value })}
                 />
@@ -527,7 +527,7 @@ export function MemberFormPage() {
                   <CardDescription>Photo et informations système</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-shape-full border border-outline-variant bg-surface-container text-xs text-on-surface-variant">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full border border-border bg-muted text-xs text-muted-foreground">
                     PHOTO
                   </div>
                   <div className="space-y-2">
@@ -538,14 +538,14 @@ export function MemberFormPage() {
                       onChange={(event) => setMemberForm({ ...memberForm, photo_url: event.target.value })}
                     />
                   </div>
-                  <div className="space-y-2 rounded-shape-sm border border-outline-variant bg-surface-variant p-3">
-                    <p className="text-xs text-on-surface-variant">Vérification système</p>
+                  <div className="space-y-2 rounded-sm border border-border bg-muted p-3">
+                    <p className="text-xs text-muted-foreground">Vérification système</p>
                     <span
                       className={[
-                        'inline-flex rounded-shape-full px-2 py-0.5 text-xs font-medium',
+                        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
                         verification.ready
-                          ? 'bg-primary-container text-on-primary-container'
-                          : 'bg-surface-container text-on-surface-variant',
+                          ? 'bg-primary/15 text-primary'
+                          : 'bg-muted text-muted-foreground',
                       ].join(' ')}
                     >
                       {verification.ready ? 'Prêt pour enregistrement' : 'Données incomplètes'}

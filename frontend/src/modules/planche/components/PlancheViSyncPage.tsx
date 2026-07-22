@@ -203,7 +203,7 @@ export function PlancheViSyncPage() {
       </div>
 
       {/* Action bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <Button
           disabled={selectedIds.length === 0 || pushMutation.isPending}
           onClick={() => { void runPush() }}
@@ -317,7 +317,7 @@ export function PlancheViSyncPage() {
 
       {/* Push result */}
       {pushMutation.data && (
-        <div className="flex items-start gap-3 rounded-lg border border-outline-variant bg-slate-50 p-3 text-sm">
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-slate-50 p-3 text-sm">
           {pushMutation.data.failed_count > 0
             ? <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
             : <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
@@ -338,7 +338,7 @@ export function PlancheViSyncPage() {
 
       {/* Full resync result */}
       {fullSyncMutation.data && (
-        <div className="flex items-start gap-3 rounded-lg border border-outline-variant bg-slate-50 p-3 text-sm">
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-slate-50 p-3 text-sm">
           {!fullSyncMutation.data.success
             ? <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
             : <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
@@ -384,7 +384,7 @@ export function PlancheViSyncPage() {
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>

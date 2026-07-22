@@ -143,7 +143,7 @@ const ROLE_FLAGS: RoleFlagConfig[] = [
 export function RoleFlagBadges({ member }: { member: MemberSummary }) {
   const active = ROLE_FLAGS.filter((f) => member[f.key])
   if (active.length === 0) {
-    return <span className="text-xs text-on-surface-variant">—</span>
+    return <span className="text-xs text-muted-foreground">—</span>
   }
   return (
     <span className="flex flex-wrap gap-1">
@@ -166,7 +166,7 @@ export function RoleFlagBadges({ member }: { member: MemberSummary }) {
 
 export function CommissionBadge({ committeeCount }: { committeeCount: number }) {
   if (committeeCount === 0) {
-    return <span className="text-xs text-on-surface-variant">—</span>
+    return <span className="text-xs text-muted-foreground">—</span>
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">

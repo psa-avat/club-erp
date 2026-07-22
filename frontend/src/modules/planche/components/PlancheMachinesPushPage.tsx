@@ -102,21 +102,21 @@ export function PlancheMachinesPushPage() {
 
   return (
     <section className="space-y-4">
-      <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">{t('machinesPush.card.title')}</h2>
           <p className="text-sm text-slate-600">{t('machinesPush.card.description')}</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('machinesPush.status.settings')}</p>
             <p className={canPush ? 'text-sm font-medium text-green-700' : 'text-sm font-medium text-amber-700'}>
               {canPush ? t('machinesPush.status.ready') : t('machinesPush.status.missing')}
             </p>
           </div>
 
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('machinesPush.status.lastSync')}</p>
             <p className="text-sm font-medium text-slate-900">
               {(lastResult?.last_synced_at ?? previewLastSync)
@@ -126,7 +126,7 @@ export function PlancheMachinesPushPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+        <div className="rounded-lg border border-border bg-slate-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('machinesPush.preview.eligible')}</p>
           <p className="text-xl font-semibold text-slate-900">{eligibleCount}</p>
         </div>
@@ -150,7 +150,7 @@ export function PlancheMachinesPushPage() {
         {pushMutation.isError ? <Alert>{toErrorMessage(pushMutation.error)}</Alert> : null}
 
         {lastResult ? (
-          <div className="space-y-2 rounded-lg border border-outline-variant bg-slate-50 p-4">
+          <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-900">{t('machinesPush.result.title')}</p>
             <p className="text-sm text-slate-700">
               {t('machinesPush.result.summary', {
@@ -186,7 +186,7 @@ export function PlancheMachinesPushPage() {
             {t('machinesPush.confirm.description')}
           </p>
 
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('machinesPush.preview.eligible')}</p>
             <p className="text-lg font-semibold text-slate-900">{eligibleCount}</p>
           </div>

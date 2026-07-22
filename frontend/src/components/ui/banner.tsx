@@ -25,10 +25,10 @@ import { cn } from '../../lib/utils'
 type BannerVariant = 'success' | 'info' | 'warning' | 'error'
 
 const variantClasses: Record<BannerVariant, string> = {
-  success: 'bg-success-container border-success-container text-on-success-container',
-  info:    'bg-info-container    border-info-container    text-on-info-container',
-  warning: 'bg-warning-container border-warning-container text-on-warning-container',
-  error:   'bg-error-container   border-error-container   text-on-error-container',
+  success: 'bg-success/15 border-success/30 text-success',
+  info:    'bg-accent/15    border-accent/30    text-accent',
+  warning: 'bg-warning/15 border-warning/30 text-warning',
+  error:   'bg-destructive/15   border-destructive/30   text-destructive',
 }
 
 const variantIcons: Record<BannerVariant, string> = {
@@ -51,7 +51,7 @@ function Banner({ variant = 'info', message, onDismiss, className }: BannerProps
       role="status"
       aria-live="polite"
       className={cn(
-        'flex items-start gap-3 rounded-shape-sm border px-4 py-3 text-sm',
+        'flex items-start gap-3 rounded-sm border px-4 py-3 text-sm',
         variantClasses[variant],
         className,
       )}

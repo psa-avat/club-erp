@@ -603,10 +603,16 @@ export function useSendMemberRecapEmailMutation() {
 
 export function useSendRecapEmailsBulkMutation() {
   return useMutation({
-    mutationFn: async (messageText: string) => {
+    mutationFn: async ({
+      messageText,
+      memberUuids,
+    }: {
+      messageText: string
+      memberUuids?: string[]
+    }) => {
       const { data } = await apiClient.post<RecapEmailBulkResult>(
         '/api/v1/members/recap-emails/send-bulk',
-        { message_text: messageText },
+        { message_text: messageText, member_uuids: memberUuids },
         getAuthRequestConfig(),
       )
       return data

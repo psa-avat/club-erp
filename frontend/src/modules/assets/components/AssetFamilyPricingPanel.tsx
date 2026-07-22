@@ -65,9 +65,9 @@ function extractError(e: unknown, fallback: string): string {
 }
 
 function versionStatusClass(status: number): string {
-  if (status === VERSION_STATUS_DRAFT) return 'bg-warning-container text-on-warning-container'
-  if (status === VERSION_STATUS_ACTIVE) return 'bg-success-container text-on-success-container'
-  return 'bg-surface-container text-on-surface-variant'
+  if (status === VERSION_STATUS_DRAFT) return 'bg-warning/15 text-warning'
+  if (status === VERSION_STATUS_ACTIVE) return 'bg-success/15 text-success'
+  return 'bg-muted text-muted-foreground'
 }
 
 function formatPrice(value: string | null | undefined): string {
@@ -130,7 +130,7 @@ function VersionForm({
   }
 
   return (
-    <div className="grid gap-3 rounded-shape-md border border-outline-variant bg-surface-variant p-4 sm:grid-cols-4">
+    <div className="grid gap-3 rounded-md border border-border bg-muted p-4 sm:grid-cols-4">
       <div className="space-y-1 sm:col-span-2">
         <Label className="text-xs">{t('version.name')}</Label>
         <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="h-8 text-sm" />
@@ -149,17 +149,17 @@ function VersionForm({
           type="checkbox"
           checked={form.use_pack}
           onChange={(e) => set('use_pack', e.target.checked)}
-          className="h-4 w-4 rounded border-outline"
+          className="h-4 w-4 rounded border-border"
         />
         <Label htmlFor="use-pack" className="text-xs">{t('version.usePack')}</Label>
-        <span className="text-[11px] text-on-surface-variant">{t('version.usePackHelp')}</span>
+        <span className="text-[11px] text-muted-foreground">{t('version.usePackHelp')}</span>
       </div>
       <div className="flex items-end gap-2 sm:col-span-3">
         <Button className="h-8 rounded-md px-3 text-xs" onClick={() => onSave(form)} disabled={saving || !form.name || !form.from_date}>
           <Check className="mr-1 h-3 w-3" />
           {saving ? t('version.saving') : t('version.save')}
         </Button>
-        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container" onClick={onCancel}>
+        <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-foreground hover:bg-muted" onClick={onCancel}>
           <X className="mr-1 h-3 w-3" />
           {t('version.cancel')}
         </Button>
@@ -233,11 +233,11 @@ function PricingItemsPanel({
   const editable = canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT
 
   return (
-    <div className="mt-4 space-y-3 border-t border-outline-variant pt-4">
+    <div className="mt-4 space-y-3 border-t border-border pt-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-on-surface-variant">{t('items')}</h3>
+        <h3 className="text-xs font-semibold text-muted-foreground">{t('items')}</h3>
         {editable && !showForm && !editingItem && (
-          <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container" onClick={() => setShowForm(true)}>
+          <Button className="h-8 rounded-md bg-transparent px-3 text-xs text-foreground hover:bg-muted" onClick={() => setShowForm(true)}>
             <Plus className="mr-1 h-3 w-3" />
             {t('addItem')}
           </Button>
@@ -259,9 +259,9 @@ function PricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-on-surface-variant">{t('loading')}</p>
+        <p className="text-xs text-muted-foreground">{t('loading')}</p>
       ) : items.length === 0 && !showForm ? (
-        <p className="rounded-shape-sm border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
+        <p className="rounded-sm border border-dashed border-border py-3 text-center text-xs text-muted-foreground">
           {t('noItems')}
         </p>
       ) : (
@@ -281,11 +281,11 @@ function PricingItemsPanel({
             ) : (
               <div
                 key={item.uuid}
-                className="flex items-center gap-3 rounded-shape-sm border border-outline-variant bg-surface px-4 py-2"
+                className="flex items-center gap-3 rounded-sm border border-border bg-card px-4 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
-                  <p className="text-xs text-on-surface-variant">
+                  <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">
                     {t(`unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
                     {formatPrice(item.base_price)}
                     {item.tiers.length > 0 && ` · ${item.tiers.map((tier) => `${tier.from_qty}→${formatPrice(tier.price)}`).join(' · ')}`}
@@ -295,14 +295,14 @@ function PricingItemsPanel({
                   <div className="flex shrink-0 gap-1">
                     <button
                       type="button"
-                      className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                       onClick={() => setEditingItem(item)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
                       onClick={() => setConfirmDeleteItem(item)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -494,8 +494,8 @@ export function AssetFamilyPricingPanel({
 
   if (!canView) {
     return (
-      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6">
-        <p className="text-sm text-on-surface-variant">{t('noPermission')}</p>
+      <section className="rounded-lg border border-border bg-card p-6">
+        <p className="text-sm text-muted-foreground">{t('noPermission')}</p>
       </section>
     )
   }
@@ -510,9 +510,9 @@ export function AssetFamilyPricingPanel({
         </Alert>
       )}
 
-      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+      <div className="rounded-lg border border-border bg-card p-6 shadow-surface-1">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-on-surface-variant">
+          <h2 className="text-sm font-semibold text-muted-foreground">
             {t('version.listTitle')}
           </h2>
           {canEdit && !showNewVersionForm && !editingVersion && (
@@ -542,9 +542,9 @@ export function AssetFamilyPricingPanel({
         )}
 
         {versionsQuery.isLoading ? (
-          <p className="text-sm text-on-surface-variant">{t('loading')}</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : versions.length === 0 && !showNewVersionForm ? (
-          <p className="rounded-shape-md border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
+          <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             {t('version.empty')}
           </p>
         ) : (
@@ -568,7 +568,7 @@ export function AssetFamilyPricingPanel({
               ) : (
                 <div
                   key={v.uuid}
-                  className="rounded-shape-md border border-outline-variant bg-surface"
+                  className="rounded-md border border-border bg-card"
                 >
                   <div
                     className="flex cursor-pointer items-center gap-3 px-4 py-2.5"
@@ -577,14 +577,14 @@ export function AssetFamilyPricingPanel({
                     }
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-on-surface">{v.name}</p>
-                      <p className="text-xs text-on-surface-variant">
+                      <p className="text-sm font-medium text-foreground">{v.name}</p>
+                      <p className="text-xs text-muted-foreground">
                         {v.from_date} → {v.to_date ?? t('version.openEnd')}
                       </p>
                     </div>
                     <VersionBadge status={v.status} t={t} />
                     {v.is_locked && (
-                      <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
+                      <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-error">
                         {t('version.locked')}
                       </span>
                     )}
@@ -592,21 +592,21 @@ export function AssetFamilyPricingPanel({
                       <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          className="rounded px-2 py-1 text-xs text-success hover:bg-success-container"
+                          className="rounded px-2 py-1 text-xs text-success hover:bg-success/15"
                           onClick={() => setConfirmActivateVersion(v)}
                         >
                           {t('version.activate')}
                         </button>
                         <button
                           type="button"
-                          className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                           onClick={() => setEditingVersion(v)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
-                          className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                          className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
                           onClick={() => setConfirmDeleteVersion(v)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -617,21 +617,21 @@ export function AssetFamilyPricingPanel({
                       <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                          className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                           onClick={() => openCloneDialog(v)}
                         >
                           {t('version.clone')}
                         </button>
                         <button
                           type="button"
-                          className="rounded px-2 py-1 text-xs text-warning hover:bg-warning-container"
+                          className="rounded px-2 py-1 text-xs text-warning hover:bg-warning/15"
                           onClick={() => openArchiveDialog(v)}
                         >
                           {t('version.archive')}
                         </button>
                         <button
                           type="button"
-                          className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                          className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                           onClick={() => setConfirmRevertVersion(v)}
                         >
                           {t('version.revert')}
@@ -695,8 +695,8 @@ export function AssetFamilyPricingPanel({
         <DialogContent>
           <div className="space-y-4 p-1">
             <div>
-              <h3 className="text-sm font-semibold text-on-surface">{t('version.cloneDialogTitle')}</h3>
-              <p className="mt-1 text-xs text-on-surface-variant">{t('version.cloneDialogBody')}</p>
+              <h3 className="text-sm font-semibold text-foreground">{t('version.cloneDialogTitle')}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{t('version.cloneDialogBody')}</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t('version.name')}</Label>
@@ -732,17 +732,17 @@ export function AssetFamilyPricingPanel({
         <DialogContent>
           <div className="space-y-4 p-1">
             <div>
-              <h3 className="text-sm font-semibold text-on-surface">{t('version.archiveDialogTitle')}</h3>
-              <p className="mt-1 text-xs text-on-surface-variant">{t('version.archiveDialogBody')}</p>
+              <h3 className="text-sm font-semibold text-foreground">{t('version.archiveDialogTitle')}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{t('version.archiveDialogBody')}</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t('version.archiveEndDate')}</Label>
               <Input type="date" value={archiveEndDate} onChange={(e) => setArchiveEndDate(e.target.value)} className="h-8 text-sm" />
             </div>
-            <label className="flex items-center gap-2 text-xs text-on-surface">
+            <label className="flex items-center gap-2 text-xs text-foreground">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-outline"
+                className="h-4 w-4 rounded border-border"
                 checked={archiveCreateNext}
                 onChange={(e) => setArchiveCreateNext(e.target.checked)}
               />

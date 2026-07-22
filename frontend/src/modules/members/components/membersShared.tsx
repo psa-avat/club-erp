@@ -339,7 +339,7 @@ export function SelectField({
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
-        className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
+        className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus:border-primary"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -365,7 +365,7 @@ export function CheckboxField({
   disabled?: boolean
 }) {
   return (
-    <label className={`flex items-center gap-2 text-sm ${disabled ? 'text-outline' : 'text-on-surface-variant'}`}>
+    <label className={`flex items-center gap-2 text-sm ${disabled ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
       <input disabled={disabled} checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
@@ -375,7 +375,7 @@ export function CheckboxField({
 export function Pill({ active, children }: { active: boolean; children: string }) {
   if (!active) return null
   return (
-    <span className="rounded-full bg-primary-container px-2 py-1 text-xs font-medium text-on-surface-variant">
+    <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-medium text-muted-foreground">
       {children}
     </span>
   )

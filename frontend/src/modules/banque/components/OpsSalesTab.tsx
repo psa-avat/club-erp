@@ -222,7 +222,7 @@ export function OpsSalesTab({ fiscalYearUuid }: OpsSalesTabProps) {
 
   if (!vtJournal && !journalsQuery.isLoading) {
     return (
-      <div className="rounded-lg bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+      <div className="rounded-lg bg-warning/15 px-4 py-3 text-sm text-warning">
         {t('ops.sales.noVtJournal')}
       </div>
     )

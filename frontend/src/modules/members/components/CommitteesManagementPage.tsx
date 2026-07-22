@@ -94,11 +94,11 @@ function RosterPanel({ open, onClose, committee, year }: RosterPanelProps) {
         aria-labelledby="roster-panel-title"
       >
         <div className="flex h-full flex-col">
-        <div className="border-b border-outline-variant px-6 py-4">
-          <h2 id="roster-panel-title" className="text-base font-semibold text-on-surface">
+        <div className="border-b border-border px-6 py-4">
+          <h2 id="roster-panel-title" className="text-base font-semibold text-foreground">
             {t('committees.rosterTitle')} — {committee?.code}
           </h2>
-          <p className="text-sm text-on-surface-variant">
+          <p className="text-sm text-muted-foreground">
             {t('committees.rosterDescription', { year })}
           </p>
         </div>
@@ -123,7 +123,7 @@ function RosterPanel({ open, onClose, committee, year }: RosterPanelProps) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-outline-variant px-6 py-4">
+        <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('registrationPanel.actions.cancel')}
           </Button>
@@ -186,8 +186,8 @@ function CommitteeFormPanel({ open, onClose, committee, members }: CommitteeForm
         aria-labelledby="committee-form-title"
       >
         <div className="flex h-full flex-col">
-          <div className="border-b border-outline-variant px-6 py-4">
-            <h2 id="committee-form-title" className="text-base font-semibold text-on-surface">
+          <div className="border-b border-border px-6 py-4">
+            <h2 id="committee-form-title" className="text-base font-semibold text-foreground">
               {committee ? t('actions.saveCommittee') : t('actions.createCommittee')}
             </h2>
           </div>
@@ -259,7 +259,7 @@ function CommitteeFormPanel({ open, onClose, committee, members }: CommitteeForm
           </form>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-outline-variant px-6 py-4">
+        <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('registrationPanel.actions.cancel')}
           </Button>
@@ -305,13 +305,13 @@ function exportCsv(committees: Committee[], membersByUuid: Map<string, string>) 
 function committeeBadgeClasses(code: string): string {
   const prefix = code.toUpperCase().slice(0, 3)
   const map: Record<string, string> = {
-    SAF: 'bg-error-container text-on-error-container',
-    INS: 'bg-primary-container text-on-primary-container',
-    EVT: 'bg-secondary-container text-on-secondary-container',
-    MNT: 'bg-tertiary-container text-on-tertiary-container',
-    SOC: 'bg-surface-container text-on-surface-variant',
+    SAF: 'bg-destructive/15 text-destructive',
+    INS: 'bg-primary/15 text-primary',
+    EVT: 'bg-secondary text-secondary-foreground',
+    MNT: 'bg-accent/15 text-accent',
+    SOC: 'bg-muted text-muted-foreground',
   }
-  return map[prefix] ?? 'bg-surface-container text-on-surface-variant'
+  return map[prefix] ?? 'bg-muted text-muted-foreground'
 }
 
 function initials(name: string): string {
@@ -323,12 +323,12 @@ function initials(name: string): string {
 
 function budgetStatus(committee: Committee): { labelKey: string; className: string } {
   if (committee.budget_status === 1) {
-    return { labelKey: 'committees.statusOnTrack', className: 'bg-tertiary-container text-on-tertiary-container' }
+    return { labelKey: 'committees.statusOnTrack', className: 'bg-accent/15 text-accent' }
   }
   if (committee.budget_status === 3) {
-    return { labelKey: 'committees.statusOverBudget', className: 'bg-error-container text-on-error-container' }
+    return { labelKey: 'committees.statusOverBudget', className: 'bg-destructive/15 text-destructive' }
   }
-  return { labelKey: 'committees.statusPendingReview', className: 'bg-secondary-container text-on-secondary-container' }
+  return { labelKey: 'committees.statusPendingReview', className: 'bg-secondary text-secondary-foreground' }
 }
 
 // ---------------------------------------------------------------------------
@@ -350,11 +350,11 @@ function CommitteeAvatarStack({ committeeUuid, year }: CommitteeAvatarStackProps
   const overflow = members.length - AVATAR_MAX_VISIBLE
 
   if (query.isLoading) {
-    return <p className="mt-1 text-xs text-on-surface-variant">…</p>
+    return <p className="mt-1 text-xs text-muted-foreground">…</p>
   }
 
   if (members.length === 0) {
-    return <p className="mt-1 text-xs text-on-surface-variant">{t('committees.noMembers')}</p>
+    return <p className="mt-1 text-xs text-muted-foreground">{t('committees.noMembers')}</p>
   }
 
   return (
@@ -364,18 +364,18 @@ function CommitteeAvatarStack({ committeeUuid, year }: CommitteeAvatarStackProps
           <span
             key={member.uuid}
             title={`${member.first_name} ${member.last_name}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-shape-full border-2 border-surface bg-secondary-container text-[10px] font-semibold text-on-secondary-container"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-border bg-secondary text-[10px] font-semibold text-secondary-foreground"
           >
             {initials(`${member.first_name} ${member.last_name}`)}
           </span>
         ))}
         {overflow > 0 && (
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-shape-full border-2 border-surface bg-surface-container text-[10px] font-semibold text-on-surface-variant">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-border bg-muted text-[10px] font-semibold text-muted-foreground">
             +{overflow}
           </span>
         )}
       </div>
-      <span className="text-xs text-on-surface-variant">
+      <span className="text-xs text-muted-foreground">
         {t('committees.membersAssigned', { count: members.length })}
       </span>
     </div>
@@ -424,11 +424,11 @@ export function CommitteesManagementPage() {
 
       {/* ── Card grid ──────────────────────────────────────────────────── */}
       <section>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-on-surface-variant">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           {t('sections.committees.title')}
         </h2>
         {committees.length === 0 && !committeesQuery.isLoading ? (
-          <p className="rounded-shape-md border border-outline-variant bg-surface p-8 text-center text-sm text-on-surface-variant">
+          <p className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">
             Aucune commission. Créez la première commission pour commencer.
           </p>
         ) : (
@@ -441,21 +441,21 @@ export function CommitteesManagementPage() {
               return (
                 <div
                   key={committee.uuid}
-                  className="flex flex-col gap-3 rounded-shape-md border border-outline-variant bg-surface p-4"
+                  className="flex flex-col gap-3 rounded-md border border-border bg-card p-4"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className={[
-                      'rounded-shape-sm px-2 py-0.5 text-xs font-bold',
+                      'rounded-sm px-2 py-0.5 text-xs font-bold',
                       committeeBadgeClasses(committee.code),
                     ].join(' ')}>
                       {committee.code}
                     </span>
                     <span
                       className={[
-                        'rounded-shape-full px-2 py-0.5 text-xs font-medium',
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
                         committee.is_active
-                          ? 'bg-primary-container text-on-primary-container'
-                          : 'bg-surface-container text-on-surface-variant',
+                          ? 'bg-primary/15 text-primary'
+                          : 'bg-muted text-muted-foreground',
                       ].join(' ')}
                     >
                       {committee.is_active ? t('statuses.active') : t('states.inactive')}
@@ -463,22 +463,22 @@ export function CommitteesManagementPage() {
                   </div>
 
                   <div className="flex-1 space-y-2">
-                    <p className="text-sm font-semibold text-on-surface">{committee.description}</p>
-                    <div className="rounded-shape-sm border border-outline-variant bg-surface-container p-2">
-                      <p className="text-[11px] uppercase tracking-wide text-on-surface-variant">Manager</p>
+                    <p className="text-sm font-semibold text-foreground">{committee.description}</p>
+                    <div className="rounded-sm border border-border bg-muted p-2">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Manager</p>
                       <div className="mt-1 flex items-center gap-2">
-                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-shape-full bg-primary-container text-[11px] font-semibold text-on-primary-container">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
                           {initials(managerName ?? 'N/A')}
                         </span>
-                        <span className="text-xs text-on-surface">{managerName ?? 'Non assigné'}</span>
+                        <span className="text-xs text-foreground">{managerName ?? 'Non assigné'}</span>
                       </div>
                     </div>
-                    <div className="rounded-shape-sm border border-outline-variant bg-surface-container p-2">
-                      <p className="text-[11px] uppercase tracking-wide text-on-surface-variant">Active members</p>
+                    <div className="rounded-sm border border-border bg-muted p-2">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Active members</p>
                       <CommitteeAvatarStack committeeUuid={committee.uuid} year={selectedYear} />
                     </div>
                     {committee.budget_amount ? (
-                      <p className="mt-0.5 text-xs text-on-surface-variant">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {t('committees.budget')} : {committee.budget_amount} €
                       </p>
                     ) : null}
@@ -526,8 +526,8 @@ export function CommitteesManagementPage() {
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-surface-container">
-                <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
+              <thead className="bg-muted">
+                <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2">{t('committees.code')}</th>
                   <th className="px-3 py-2">{t('sections.committees.title')}</th>
                   <th className="px-3 py-2">{t('committees.manager')}</th>
@@ -541,24 +541,24 @@ export function CommitteesManagementPage() {
                   <tr>
                     <td
                       colSpan={6}
-                      className="px-3 py-6 text-center text-on-surface-variant"
+                      className="px-3 py-6 text-center text-muted-foreground"
                     >
                       Aucune commission.
                     </td>
                   </tr>
                 ) : (
                   committees.map((committee) => (
-                    <tr key={`tbl-${committee.uuid}`} className="border-t border-outline-variant">
-                      <td className="px-3 py-2 font-mono font-medium text-on-surface">
+                    <tr key={`tbl-${committee.uuid}`} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono font-medium text-foreground">
                         {committee.code}
                       </td>
-                      <td className="px-3 py-2 text-on-surface">{committee.description}</td>
-                      <td className="px-3 py-2 text-on-surface-variant">
+                      <td className="px-3 py-2 text-foreground">{committee.description}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
                         {committee.manager_member_uuid
                           ? (membersByUuid.get(committee.manager_member_uuid) ?? '—')
                           : '—'}
                       </td>
-                      <td className="px-3 py-2 text-on-surface-variant">
+                      <td className="px-3 py-2 text-muted-foreground">
                         {committee.last_meeting_date ?? '—'}
                       </td>
                       <td className="px-3 py-2">
@@ -567,7 +567,7 @@ export function CommitteesManagementPage() {
                           return (
                         <span
                           className={[
-                            'rounded-shape-full px-2 py-0.5 text-xs font-medium',
+                            'rounded-full px-2 py-0.5 text-xs font-medium',
                                 status.className,
                           ].join(' ')}
                         >
@@ -580,7 +580,7 @@ export function CommitteesManagementPage() {
                         <button
                           type="button"
                           onClick={() => setEditingCommittee(committee)}
-                          className="text-xs text-on-surface-variant underline underline-offset-2 hover:text-on-surface"
+                          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                         >
                           Modifier
                         </button>

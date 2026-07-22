@@ -533,7 +533,7 @@ function VoucherSheet({
           )}
 
           {/* ── Informations ── */}
-          <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+          <fieldset className="space-y-3 rounded-lg border border-border p-4">
             <legend className="text-sm font-medium px-1">Informations</legend>
 
             <div className="grid grid-cols-2 gap-3">
@@ -625,7 +625,7 @@ function VoucherSheet({
           </fieldset>
 
           {/* ── Planification ── */}
-          <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+          <fieldset className="space-y-3 rounded-lg border border-border p-4">
             <legend className="text-sm font-medium px-1">Planification</legend>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -650,7 +650,7 @@ function VoucherSheet({
           </fieldset>
 
           {/* ── Options & notes ── */}
-          <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+          <fieldset className="space-y-3 rounded-lg border border-border p-4">
             <legend className="text-sm font-medium px-1">Options</legend>
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
@@ -675,7 +675,7 @@ function VoucherSheet({
 
           {/* ── Encaissement (create mode only) ── */}
           {!isEdit && (
-            <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+            <fieldset className="space-y-3 rounded-lg border border-border p-4">
               <legend className="text-sm font-medium px-1">Encaissement</legend>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
@@ -903,7 +903,7 @@ export function ViEntitlementsPage() {
       )}
 
       {/* Filters */}
-      <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-4 md:grid-cols-4">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
         <div className="space-y-1">
           <Label htmlFor="vi-filter-code" className="text-xs">{t('viEntitlements.filters.code')}</Label>
           <Input
@@ -960,7 +960,7 @@ export function ViEntitlementsPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>

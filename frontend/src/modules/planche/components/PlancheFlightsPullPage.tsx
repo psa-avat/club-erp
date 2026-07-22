@@ -174,7 +174,7 @@ export function PlancheFlightsPullPage() {
     <section className="space-y-4">
       {/* KPI Dashboard */}
       {statsQuery.isLoading ? (
-        <div className="rounded-2xl border border-outline-variant bg-surface p-4 text-sm text-slate-500">
+        <div className="rounded-2xl border border-border bg-card p-4 text-sm text-slate-500">
           {t('flightsFetch.stats.loading')}
         </div>
       ) : stats ? (
@@ -224,7 +224,7 @@ export function PlancheFlightsPullPage() {
       ) : null}
 
       {/* Main Card */}
-      <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">{t('flightsFetch.card.title')}</h2>
           <p className="text-sm text-slate-600">{t('flightsFetch.card.description')}</p>
@@ -232,7 +232,7 @@ export function PlancheFlightsPullPage() {
 
         {/* Status Indicators */}
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               {t('flightsFetch.status.settings')}
             </p>
@@ -241,7 +241,7 @@ export function PlancheFlightsPullPage() {
             </p>
           </div>
 
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               {t('flightsFetch.status.cursor')}
             </p>
@@ -252,7 +252,7 @@ export function PlancheFlightsPullPage() {
             </p>
           </div>
 
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               {t('flightsFetch.status.lastSync')}
             </p>
@@ -275,7 +275,7 @@ export function PlancheFlightsPullPage() {
               className={`rounded-lg border p-4 text-left transition-all ${
                 mode === 'incremental'
                   ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
-                  : 'border-outline-variant bg-slate-50 hover:bg-slate-100'
+                  : 'border-border bg-slate-50 hover:bg-slate-100'
               }`}
               onClick={() => handleModeChange('incremental')}
             >
@@ -287,7 +287,7 @@ export function PlancheFlightsPullPage() {
               className={`rounded-lg border p-4 text-left transition-all ${
                 mode === 'daterange'
                   ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
-                  : 'border-outline-variant bg-slate-50 hover:bg-slate-100'
+                  : 'border-border bg-slate-50 hover:bg-slate-100'
               }`}
               onClick={() => handleModeChange('daterange')}
             >
@@ -361,7 +361,7 @@ export function PlancheFlightsPullPage() {
 
         {/* Results Section */}
         {lastResult && (
-          <div className="space-y-3 rounded-lg border border-outline-variant bg-slate-50 p-4">
+          <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-900">{t('flightsFetch.result.title')}</p>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -486,7 +486,7 @@ export function PlancheFlightsPullPage() {
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+            <div className="rounded-lg border border-border bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                 {t('flightsFetch.mode.label')}
               </p>
@@ -498,7 +498,7 @@ export function PlancheFlightsPullPage() {
                     : t('flightsFetch.mode.dateRange')}
               </p>
             </div>
-            <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+            <div className="rounded-lg border border-border bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                 {t('flightsFetch.status.cursor')}
               </p>
@@ -550,7 +550,7 @@ function ResultStat({
   }
 
   return (
-    <div className="rounded-lg border border-outline-variant bg-white p-3">
+    <div className="rounded-lg border border-border bg-white p-3">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
       <p className={`text-lg font-bold ${colorMap[variant]}`}>{value}</p>
     </div>
@@ -561,7 +561,7 @@ type SubItem = { label: string; value: string | number; variant?: 'neutral' | 's
 
 function KpiCard({ label, value, subItems }: { label: string; value?: string | number; subItems?: SubItem[] }) {
   return (
-    <div className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm">
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
       {value !== undefined && (
         <p className="text-2xl font-bold text-slate-900">{value}</p>

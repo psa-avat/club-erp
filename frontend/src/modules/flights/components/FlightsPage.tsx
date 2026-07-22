@@ -130,7 +130,7 @@ function BillingPreviewPanel({ preview }: { preview: FlightBillingPreviewRespons
   const blockingErrors = preview.errors.filter((error) => error.blocking)
 
   return (
-    <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('billing.title')}</p>
@@ -389,7 +389,7 @@ export function FlightsPage() {
   return (
     <section className="space-y-4">
       {/* Filters bar */}
-      <div className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Date from */}
           <div className="space-y-1">
@@ -482,7 +482,7 @@ export function FlightsPage() {
       </div>
 
       {/* Flights table */}
-      <div className="rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">{t('table.title')}</h2>
@@ -499,7 +499,7 @@ export function FlightsPage() {
           <Alert>{t('table.loadError')}</Alert>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-outline-variant">
+            <div className="overflow-x-auto rounded-xl border border-border">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50">
                   <tr>

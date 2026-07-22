@@ -105,8 +105,8 @@ export function BankPricingVersionEditPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
-        <p className="text-sm text-on-surface-variant">{tp('noPermission')}</p>
+      <section className="rounded-xl border border-border bg-white p-6 shadow-sm">
+        <p className="text-sm text-muted-foreground">{tp('noPermission')}</p>
       </section>
     )
   }
@@ -116,11 +116,11 @@ export function BankPricingVersionEditPage() {
   return (
     <section className="space-y-4">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-sm text-on-surface-variant" aria-label="breadcrumb">
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground" aria-label="breadcrumb">
         <button
           type="button"
           onClick={() => navigate('/banque/pricing')}
-          className="hover:text-on-surface hover:underline"
+          className="hover:text-foreground hover:underline"
         >
           {tp('title')}
         </button>
@@ -128,18 +128,18 @@ export function BankPricingVersionEditPage() {
         <button
           type="button"
           onClick={() => navigate('/banque/pricing')}
-          className="hover:text-on-surface hover:underline"
+          className="hover:text-foreground hover:underline"
         >
           {selectedFy?.code ?? '…'}
         </button>
         <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-        <span className="font-medium text-on-surface">{version?.name ?? '…'}</span>
+        <span className="font-medium text-foreground">{version?.name ?? '…'}</span>
       </nav>
 
       {/* Version metadata card */}
-      <div className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
         {versionsQuery.isLoading || fiscalYearsQuery.isLoading ? (
-          <p className="text-sm text-on-surface-variant">{tp('loading')}</p>
+          <p className="text-sm text-muted-foreground">{tp('loading')}</p>
         ) : !version ? (
           <div className="space-y-3">
             <p className="text-sm text-error">{tp('version.notFound')}</p>
@@ -152,7 +152,7 @@ export function BankPricingVersionEditPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-semibold text-on-surface">{version.name}</h1>
+                  <h1 className="text-xl font-semibold text-foreground">{version.name}</h1>
                   {scope && (
                     <span className={`rounded-full px-2 py-0.5 text-xs ${scope.className}`}>
                       {scope.label}
@@ -160,12 +160,12 @@ export function BankPricingVersionEditPage() {
                   )}
                   <VersionBadge status={version.status} />
                   {version.is_locked && (
-                    <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
+                    <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-error">
                       {tp('version.locked')}
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-on-surface-variant">
+                <p className="text-sm text-muted-foreground">
                   {version.from_date} → {version.to_date ?? tp('version.openEnd')}
                   {selectedFy && <> · {selectedFy.label}</>}
                 </p>
@@ -187,7 +187,7 @@ export function BankPricingVersionEditPage() {
             </div>
 
             {error && (
-              <div className="mt-4 rounded-lg border border-error bg-error-container px-4 py-2 text-sm text-error">
+              <div className="mt-4 rounded-lg border border-error bg-destructive/15 px-4 py-2 text-sm text-error">
                 {error}
                 <button
                   type="button"
@@ -220,7 +220,7 @@ export function BankPricingVersionEditPage() {
 
       {/* Items card */}
       {version && (
-        <div className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
           <PricingItemsPanel version={version} canEdit={!!canEdit} />
         </div>
       )}

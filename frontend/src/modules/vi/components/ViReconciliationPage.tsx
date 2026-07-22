@@ -304,7 +304,7 @@ export function ViReconciliationPage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>

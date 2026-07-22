@@ -39,12 +39,12 @@ function MachinesPricingTab() {
   const activeFamily = families.find((af) => af.uuid === selectedFamilyUuid) ?? families[0] ?? null
 
   if (familiesQuery.isLoading) {
-    return <p className="text-sm text-on-surface-variant">{t('states.loading')}</p>
+    return <p className="text-sm text-muted-foreground">{t('states.loading')}</p>
   }
 
   if (families.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
+      <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         {t('workspace.tarifs.machines.noFamilies')}
       </p>
     )
@@ -53,7 +53,7 @@ function MachinesPricingTab() {
   return (
     <div className="space-y-4">
       {/* Sub-tabs selector */}
-      <div className="flex flex-wrap gap-2 rounded-xl border border-outline-variant bg-surface px-4 py-3 shadow-sm">
+      <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
         {families.map((af) => (
           <button
             key={af.uuid}
@@ -61,8 +61,8 @@ function MachinesPricingTab() {
             onClick={() => setSelectedFamilyUuid(af.uuid)}
             className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
               (selectedFamilyUuid ?? families[0]?.uuid) === af.uuid
-                ? 'bg-primary-container text-on-primary-container font-semibold'
-                : 'bg-surface-container text-on-surface hover:bg-surface-container-highest'
+                ? 'bg-primary/15 text-primary font-semibold'
+                : 'bg-muted text-foreground hover:bg-muted'
             }`}
           >
             {af.name}

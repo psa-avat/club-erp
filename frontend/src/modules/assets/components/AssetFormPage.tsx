@@ -476,13 +476,13 @@ export function AssetFormPage() {
                     {selectedOwners.map((owner) => (
                       <span
                         key={owner.uuid}
-                        className="inline-flex items-center gap-2 rounded-full bg-surface-container px-2.5 py-1 text-xs text-on-surface"
+                        className="inline-flex items-center gap-2 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
                       >
                         <span>{owner.first_name} {owner.last_name} · {owner.account_id}</span>
                         <button
                           type="button"
                           onClick={() => removeOwner(owner.uuid)}
-                          className="text-on-surface-variant hover:text-on-surface"
+                          className="text-muted-foreground hover:text-foreground"
                           aria-label={t('form.removeOwner')}
                         >
                           ×

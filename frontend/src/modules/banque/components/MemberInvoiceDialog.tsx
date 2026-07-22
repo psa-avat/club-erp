@@ -176,7 +176,7 @@ export function MemberInvoiceDialog({
         </h2>
 
         {errorMsg && (
-          <p role="alert" className="rounded-lg bg-error-container px-4 py-2 text-sm text-on-error-container">
+          <p role="alert" className="rounded-lg bg-destructive/15 px-4 py-2 text-sm text-destructive">
             {errorMsg}
           </p>
         )}
@@ -276,7 +276,7 @@ export function MemberInvoiceDialog({
 
         {/* Accounting preview */}
         {isValid && amount && (
-          <div className="rounded-lg bg-surface-container p-3 font-mono text-xs text-slate-700">
+          <div className="rounded-lg bg-muted p-3 font-mono text-xs text-slate-700">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
               {t('ops.sales.preview.title')}
             </p>

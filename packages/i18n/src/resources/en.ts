@@ -794,6 +794,10 @@ export const en = {
       sendToAllTitle: 'Send a recap to all members',
       sendToAllDescription:
         'A recap email (flight count, flight hours, account balance) will be sent to every active member with an email on file.',
+      sendToSelected: 'Send recap ({{count}})',
+      sendToSelectedTitle: 'Send a recap to {{count}} selected member(s)',
+      sendToSelectedDescription:
+        'A recap email (flight count, flight hours, account balance) will be sent to the {{count}} selected member(s) with an email on file.',
       templatePicker: 'Message template',
       templatePickerPlaceholder: 'Choose a template (optional)',
       noTemplate: 'No template',
@@ -808,6 +812,9 @@ export const en = {
       confirmBulkTitle: 'Confirm bulk send',
       confirmBulkBody:
         'This email will be sent to every active member with an email on file. This action cannot be undone. Continue?',
+      confirmSelectedTitle: 'Confirm send to {{count}} member(s)',
+      confirmSelectedBody:
+        'This email will be sent to the {{count}} selected member(s) with an email on file. This action cannot be undone. Continue?',
       bulkResult: '{{sent}} sent, {{skipped}} skipped (no email), {{failed}} failed.',
       templates: {
         manage: 'Message templates',

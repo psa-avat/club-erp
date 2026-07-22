@@ -44,12 +44,12 @@ type KpiItem = {
 
 function KpiTile({ label, value, subLabel, highlight = false }: KpiTileProps) {
   return (
-    <div className="rounded-shape-md border border-outline-variant bg-surface p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-on-surface-variant">{label}</p>
-      <p className={['mt-1 text-2xl font-semibold tabular-nums', highlight ? 'text-orange-600' : 'text-on-surface'].join(' ')}>
+    <div className="rounded-md border border-border bg-card p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={['mt-1 text-2xl font-semibold tabular-nums', highlight ? 'text-orange-600' : 'text-foreground'].join(' ')}>
         {value}
       </p>
-      {subLabel ? <p className="mt-0.5 text-xs text-on-surface-variant">{subLabel}</p> : null}
+      {subLabel ? <p className="mt-0.5 text-xs text-muted-foreground">{subLabel}</p> : null}
     </div>
   )
 }

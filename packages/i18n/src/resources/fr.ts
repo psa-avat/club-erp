@@ -794,6 +794,10 @@ export const fr = {
       sendToAllTitle: 'Envoyer un récapitulatif à tous les membres',
       sendToAllDescription:
         "Un email récapitulatif (vols, heures de vol, solde du compte) sera envoyé à tous les membres actifs disposant d'un email.",
+      sendToSelected: 'Envoyer un récapitulatif ({{count}})',
+      sendToSelectedTitle: 'Envoyer un récapitulatif à {{count}} membre(s) sélectionné(s)',
+      sendToSelectedDescription:
+        "Un email récapitulatif (vols, heures de vol, solde du compte) sera envoyé aux {{count}} membre(s) sélectionné(s) disposant d'un email.",
       templatePicker: 'Modèle de message',
       templatePickerPlaceholder: 'Choisir un modèle (optionnel)',
       noTemplate: 'Aucun modèle',
@@ -808,6 +812,9 @@ export const fr = {
       confirmBulkTitle: 'Confirmer l envoi en masse',
       confirmBulkBody:
         'Cet email sera envoyé à tous les membres actifs disposant d un email. Cette action ne peut pas être annulée. Continuer ?',
+      confirmSelectedTitle: 'Confirmer l envoi à {{count}} membre(s)',
+      confirmSelectedBody:
+        'Cet email sera envoyé aux {{count}} membre(s) sélectionné(s) disposant d un email. Cette action ne peut pas être annulée. Continuer ?',
       bulkResult: '{{sent}} envoyé(s), {{skipped}} sans email, {{failed}} échec(s).',
       templates: {
         manage: 'Modèles de message',

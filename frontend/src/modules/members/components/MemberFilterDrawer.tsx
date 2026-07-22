@@ -83,26 +83,26 @@ export function MemberFilterDrawer({
       >
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="border-b border-outline-variant px-6 py-4">
-            <h2 id="filter-drawer-title" className="text-base font-semibold text-on-surface">
+          <div className="border-b border-border px-6 py-4">
+            <h2 id="filter-drawer-title" className="text-base font-semibold text-foreground">
               {t('filters.advancedTitle')}
             </h2>
           </div>
 
           {/* Body */}
           <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
-            <section className="rounded-shape-sm border border-outline-variant bg-surface-container px-3 py-2">
-              <p className="text-xs font-medium text-on-surface">
+            <section className="rounded-sm border border-border bg-muted px-3 py-2">
+              <p className="text-xs font-medium text-foreground">
                 Scope: {screenTitle}
               </p>
-              <p className="mt-1 text-xs text-on-surface-variant">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Categories: {screenCategoryLabels.join(', ')}
               </p>
             </section>
 
             {/* Registration section */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {t('filters.registration')}
               </p>
 
@@ -131,7 +131,7 @@ export function MemberFilterDrawer({
                       registration_state: (event.target.value as 'registered' | 'unregistered') || undefined,
                     })
                   }
-                  className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                  className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
                 >
                   <option value="">{t('filters.allStates')}</option>
                   <option value="registered">{t('filters.registrationStateRegistered')}</option>
@@ -145,7 +145,7 @@ export function MemberFilterDrawer({
 
             {/* Committee section */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {t('filters.committee')}
               </p>
               <div className="space-y-1.5">
@@ -156,7 +156,7 @@ export function MemberFilterDrawer({
                   onChange={(event) =>
                     setDraft({ ...draft, committee_uuid: event.target.value || undefined })
                   }
-                  className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                  className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
                 >
                   <option value="">{t('filters.allCommittees')}</option>
                   {committees.map((committee) => (
@@ -170,7 +170,7 @@ export function MemberFilterDrawer({
 
             {/* Member flags section */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {t('filters.roleFlags')}
               </p>
               <div className="space-y-2">
@@ -209,7 +209,7 @@ export function MemberFilterDrawer({
 
             {/* Activity & Balance section */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Activité &amp; Solde
               </p>
 
@@ -222,7 +222,7 @@ export function MemberFilterDrawer({
                   onChange={(e) =>
                     setDraft({ ...draft, has_flown_since: e.target.value || undefined })
                   }
-                  className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                  className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
                 />
               </div>
 
@@ -238,7 +238,7 @@ export function MemberFilterDrawer({
                     onChange={(e) =>
                       setDraft({ ...draft, balance_min: e.target.value || undefined })
                     }
-                    className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                    className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -252,7 +252,7 @@ export function MemberFilterDrawer({
                     onChange={(e) =>
                       setDraft({ ...draft, balance_max: e.target.value || undefined })
                     }
-                    className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                    className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
                   />
                 </div>
               </div>
@@ -260,7 +260,7 @@ export function MemberFilterDrawer({
           </div>
 
           {/* Footer */}
-          <div className="border-t border-outline-variant px-6 py-4">
+          <div className="border-t border-border px-6 py-4">
             <div className="flex justify-between gap-2">
               <Button type="button" variant="ghost" onClick={handleClear}>
                 {t('filters.clear')}

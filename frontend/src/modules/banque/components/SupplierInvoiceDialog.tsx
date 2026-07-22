@@ -196,7 +196,7 @@ export function SupplierInvoiceDialog({
         </h2>
 
         {errorMsg && (
-          <p role="alert" className="rounded-lg bg-error-container px-4 py-2 text-sm text-on-error-container">
+          <p role="alert" className="rounded-lg bg-destructive/15 px-4 py-2 text-sm text-destructive">
             {errorMsg}
           </p>
         )}
@@ -307,7 +307,7 @@ export function SupplierInvoiceDialog({
 
         {/* Preview */}
         {isValid && amount && (
-          <div className="rounded-lg bg-surface-container p-3 font-mono text-xs text-slate-700">
+          <div className="rounded-lg bg-muted p-3 font-mono text-xs text-slate-700">
             <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1">
               <span>{t('ops.suppliers.preview.account')}</span>
               <span className="text-right">{t('ops.suppliers.preview.debit')}</span>

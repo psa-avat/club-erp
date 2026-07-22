@@ -58,22 +58,22 @@ export const UNIT_LABELS: Record<number, string> = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 export function fyStateLabel(state: number, t: (k: string) => string): { label: string; className: string } {
-  if (state === FY_STATE_OPEN) return { label: t('fy.stateOpen'), className: 'bg-success-container text-on-success-container' }
-  if (state === FY_STATE_CLOSED) return { label: t('fy.stateClosed'), className: 'bg-surface-container text-on-surface-variant' }
-  return { label: t('fy.stateReopened'), className: 'bg-warning-container text-on-warning-container' }
+  if (state === FY_STATE_OPEN) return { label: t('fy.stateOpen'), className: 'bg-success/15 text-success' }
+  if (state === FY_STATE_CLOSED) return { label: t('fy.stateClosed'), className: 'bg-muted text-muted-foreground' }
+  return { label: t('fy.stateReopened'), className: 'bg-warning/15 text-warning' }
 }
 
 export function versionStatusLabel(status: number, t: (k: string) => string): { label: string; className: string } {
-  if (status === VERSION_STATUS_DRAFT) return { label: t('version.statusDraft'), className: 'bg-warning-container text-on-warning-container' }
-  if (status === VERSION_STATUS_ACTIVE) return { label: t('version.statusActive'), className: 'bg-success-container text-on-success-container' }
-  return { label: t('version.statusArchived'), className: 'bg-surface-container text-on-surface-variant' }
+  if (status === VERSION_STATUS_DRAFT) return { label: t('version.statusDraft'), className: 'bg-warning/15 text-warning' }
+  if (status === VERSION_STATUS_ACTIVE) return { label: t('version.statusActive'), className: 'bg-success/15 text-success' }
+  return { label: t('version.statusArchived'), className: 'bg-muted text-muted-foreground' }
 }
 
 export function versionScopeLabel(version: PricingVersion, t: (k: string) => string): { label: string; className: string } {
   if (version.asset_family_uuid !== null) {
-    return { label: t('version.assetScope'), className: 'bg-primary-container text-on-primary-container' }
+    return { label: t('version.assetScope'), className: 'bg-primary/15 text-primary' }
   }
-  return { label: t('version.genericScope'), className: 'bg-surface-container-high text-on-surface-variant' }
+  return { label: t('version.genericScope'), className: 'bg-muted text-muted-foreground' }
 }
 
 export function formatPrice(value: string | null | undefined): string {
@@ -223,8 +223,8 @@ export function ActivateVersionButton({
         disabled={!canActivate}
         className={`rounded px-2 py-1 text-xs transition-colors ${
           canActivate
-            ? 'text-on-success-container hover:bg-success-container'
-            : 'text-on-surface-variant cursor-not-allowed opacity-50'
+            ? 'text-success hover:bg-success/15'
+            : 'text-muted-foreground cursor-not-allowed opacity-50'
         }`}
         title={t('version.activateTitle')}
         onClick={() => onActivate(version)}
@@ -232,18 +232,18 @@ export function ActivateVersionButton({
         {t('version.activate')}
       </button>
       <div className="w-44 space-y-1">
-        <div className="h-1.5 overflow-hidden rounded-full bg-surface-container">
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
           <div
             className={`h-full rounded-full transition-all ${
-              missingGlCount === 0 && totalCount > 0 ? 'bg-success-container' : 'bg-warning-container'
+              missingGlCount === 0 && totalCount > 0 ? 'bg-success/15' : 'bg-warning/15'
             }`}
             style={{ width: `${readinessPct}%` }}
           />
         </div>
-        <p className="text-[11px] text-on-surface-variant">
+        <p className="text-[11px] text-muted-foreground">
           {t('version.guard.progress', { complete: completeCount, total: totalCount, pct: readinessPct })}
         </p>
-        <p className={`text-[11px] ${missingGlCount === 0 && totalCount > 0 ? 'text-success' : 'text-on-surface-variant'}`}>
+        <p className={`text-[11px] ${missingGlCount === 0 && totalCount > 0 ? 'text-success' : 'text-muted-foreground'}`}>
           {helperText}
         </p>
       </div>
@@ -272,7 +272,7 @@ export function VersionForm({
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4 md:grid-cols-4">
+    <div className="grid gap-3 rounded-lg border border-border bg-card p-4 md:grid-cols-4">
       <div className="space-y-1 md:col-span-2">
         <Label className="text-xs">{t('version.name')}</Label>
         <Input
@@ -305,7 +305,7 @@ export function VersionForm({
         <select
           value={form.status}
           onChange={(e) => set('status', Number(e.target.value))}
-          className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
+          className="h-8 w-full rounded-sm border border-border bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
         >
           <option value={VERSION_STATUS_DRAFT}>{t('version.statusDraft')}</option>
           <option value={VERSION_STATUS_ACTIVE}>{t('version.statusActive')}</option>
@@ -374,8 +374,8 @@ export function PricingItemForm({
   const progressiveDisabled = !isAssetScoped || form.unit === 6 || form.unit === 7
 
   return (
-    <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
-      <p className="text-xs text-on-surface-variant">
+    <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+      <p className="text-xs text-muted-foreground">
         {isAssetScoped ? t('tiersHelp') : t('genericItemHelp')}
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -389,7 +389,7 @@ export function PricingItemForm({
             <select
               value={form.unit}
               onChange={(e) => set('unit', Number(e.target.value))}
-              className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
+              className="h-8 w-full rounded-sm border border-border bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
             >
               {Object.entries(UNIT_LABELS).map(([unit, label]) => (
                 <option key={unit} value={Number(unit)}>
@@ -401,7 +401,7 @@ export function PricingItemForm({
         ) : (
           <div className="space-y-1">
             <Label className="text-xs">{t('itemMode')}</Label>
-            <div className="flex h-8 items-center rounded-shape-sm border border-outline-variant bg-white px-2 text-sm text-on-surface">
+            <div className="flex h-8 items-center rounded-sm border border-border bg-white px-2 text-sm text-foreground">
               {t('genericItemMode')}
             </div>
           </div>
@@ -415,7 +415,7 @@ export function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-on-surface-variant">{t('basePriceHelp')}</p>
+          <p className="text-[11px] text-muted-foreground">{t('basePriceHelp')}</p>
         </div>
 
         <div className="space-y-1">
@@ -427,21 +427,21 @@ export function PricingItemForm({
             placeholder="0.00"
             className="h-8 text-sm font-mono"
           />
-          <p className="text-[11px] text-on-surface-variant">{t('ageDiscountPercentHelp')}</p>
+          <p className="text-[11px] text-muted-foreground">{t('ageDiscountPercentHelp')}</p>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">{t('glAccountCredit')}</Label>
           <select
             value={form.gl_account_credit_uuid}
             onChange={(e) => set('gl_account_credit_uuid', e.target.value)}
-            className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
+            className="h-8 w-full rounded-sm border border-border bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
           >
             <option value="">{t('noAccount')}</option>
             {revenueAccounts.map((a) => (
               <option key={a.uuid} value={a.uuid}>{a.code} — {a.name}</option>
             ))}
           </select>
-          <p className="text-[11px] text-on-surface-variant">{t('glAccountCreditHelp')}</p>
+          <p className="text-[11px] text-muted-foreground">{t('glAccountCreditHelp')}</p>
         </div>
         {isAssetScoped && (
           <div className="space-y-1">
@@ -449,7 +449,7 @@ export function PricingItemForm({
             <select
               value={form.flight_type_uuid}
               onChange={(e) => set('flight_type_uuid', e.target.value)}
-              className="h-8 w-full rounded-shape-sm border border-outline-variant bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-outline-variant"
+              className="h-8 w-full rounded-sm border border-border bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-border"
             >
               <option value="">{t('noFlightType')}</option>
               {flightTypes.map((flightType) => (
@@ -461,20 +461,20 @@ export function PricingItemForm({
           </div>
         )}
         {isAssetScoped && (
-          <div className="col-span-full rounded-shape-sm border border-outline-variant bg-white px-3 py-2">
-            <label className={`flex items-center gap-2 text-xs ${progressiveDisabled ? 'cursor-not-allowed text-on-surface-variant' : 'cursor-pointer text-on-surface'}`}>
+          <div className="col-span-full rounded-sm border border-border bg-white px-3 py-2">
+            <label className={`flex items-center gap-2 text-xs ${progressiveDisabled ? 'cursor-not-allowed text-muted-foreground' : 'cursor-pointer text-foreground'}`}>
               <input
                 id="is-progressive"
                 type="checkbox"
                 checked={form.is_progressive}
                 disabled={progressiveDisabled}
                 onChange={(e) => set('is_progressive', e.target.checked)}
-                className="h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary disabled:cursor-not-allowed"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary disabled:cursor-not-allowed"
               />
               <span>{t('isProgressive')}</span>
             </label>
             {progressiveDisabled && (
-              <p className="mt-1 text-[11px] text-on-surface-variant">{t('isProgressiveHelp')}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{t('isProgressiveHelp')}</p>
             )}
           </div>
         )}
@@ -483,13 +483,13 @@ export function PricingItemForm({
       {isAssetScoped && (
         <div className="space-y-2">
           <Label className="text-xs">{t('tiers')}</Label>
-          <p className="text-[11px] text-on-surface-variant">{t('tiersHelp')}</p>
+          <p className="text-[11px] text-muted-foreground">{t('tiersHelp')}</p>
           {form.tiers.length === 0 && (
-            <p className="text-xs text-on-surface-variant">{t('noTiers')}</p>
+            <p className="text-xs text-muted-foreground">{t('noTiers')}</p>
           )}
           {form.tiers.length > 0 && (
             <div className="space-y-1">
-              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-on-surface-variant">
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-xs font-medium text-muted-foreground">
                 <span>{t('tierFrom')}</span>
                 <span>{t('tierPrice')}</span>
                 <span />
@@ -514,7 +514,7 @@ export function PricingItemForm({
                   />
                   <button
                     type="button"
-                    className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                    className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
                     onClick={() => removeTier(index)}
                   >
                     <X className="h-3.5 w-3.5" />
@@ -608,11 +608,11 @@ export function PricingItemsPanel({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-on-surface">{t('items')}</p>
+        <p className="text-sm font-semibold text-foreground">{t('items')}</p>
         {editable && !showForm && !editingItem && (
           <button
             type="button"
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground"
             onClick={() => setShowForm(true)}
           >
             <Plus className="h-3 w-3" />
@@ -636,9 +636,9 @@ export function PricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-on-surface-variant">{t('loading')}</p>
+        <p className="text-xs text-muted-foreground">{t('loading')}</p>
       ) : items.length === 0 && !showForm ? (
-        <p className="rounded border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
+        <p className="rounded border border-dashed border-border py-3 text-center text-xs text-muted-foreground">
           {t('noItems')}
         </p>
       ) : (
@@ -658,11 +658,11 @@ export function PricingItemsPanel({
             ) : (
               <div
                 key={item.uuid}
-                className="flex items-center gap-3 rounded-shape-sm border border-outline-variant bg-surface-container-lowest px-3 py-1.5"
+                className="flex items-center gap-3 rounded-sm border border-border bg-card px-3 py-1.5"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-on-surface-variant">
+                  <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {isAssetScoped ? (
                       <>
                         {t(`unit${UNIT_LABELS[item.unit] ?? ''}`)}{' · '}
@@ -685,14 +685,14 @@ export function PricingItemsPanel({
                   <div className="flex shrink-0 gap-0.5">
                     <button
                       type="button"
-                      className="rounded p-1 text-on-surface-variant hover:bg-white hover:text-on-surface"
+                      className="rounded p-1 text-muted-foreground hover:bg-white hover:text-foreground"
                       onClick={() => setEditingItem(item)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
                       onClick={() => handleDelete(item)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />

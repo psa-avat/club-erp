@@ -126,7 +126,7 @@ export function RecapMessageComposer({ open, title, description, submitLabel, on
             </Label>
             <textarea
               id="recap-message-text"
-              className="min-h-32 w-full rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
+              className="min-h-32 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm outline-none focus:border-primary"
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}
               placeholder={t('recapEmail.messagePlaceholder')}

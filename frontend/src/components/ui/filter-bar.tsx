@@ -37,11 +37,11 @@ function FilterChip({ label, active, onToggle, className }: FilterChipProps) {
       aria-pressed={active}
       onClick={onToggle}
       className={cn(
-        'inline-flex items-center rounded-shape-full border px-3 py-1 text-xs font-medium transition-colors',
+        'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
         active
-          ? 'border-primary bg-primary text-on-primary'
-          : 'border-outline bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface',
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
         className,
       )}
     >
@@ -70,7 +70,7 @@ function FilterBar({ chips, onReset, resultCount, children, className }: FilterB
         </Button>
       )}
       {resultCount !== undefined && (
-        <span className="ml-auto text-xs text-on-surface-variant">
+        <span className="ml-auto text-xs text-muted-foreground">
           {resultCount} résultat{resultCount !== 1 ? 's' : ''}
         </span>
       )}

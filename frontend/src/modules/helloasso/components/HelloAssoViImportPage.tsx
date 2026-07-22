@@ -191,7 +191,7 @@ export function HelloAssoViImportPage() {
 
   return (
     <section className="space-y-4">
-      <div className="grid gap-3 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-5 md:items-end">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-6 md:grid-cols-5 md:items-end">
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">{t('viImport.form.source')}</label>
           <input
@@ -235,7 +235,7 @@ export function HelloAssoViImportPage() {
       </div>
 
       {previewMutation.data ? (
-        <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
+        <div className="rounded-xl border border-border bg-slate-50 p-4 text-sm text-slate-700">
           <p>{t('viImport.preview.fetched')}: {previewMutation.data.fetched_count}</p>
           <p>{t('viImport.preview.new')}: {previewMutation.data.net_new_count}</p>
           <p>{t('viImport.preview.alreadyStaged')}: {previewMutation.data.already_staged_count}</p>
@@ -243,7 +243,7 @@ export function HelloAssoViImportPage() {
       ) : null}
 
       {importMutation.data ? (
-        <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
+        <div className="rounded-xl border border-border bg-slate-50 p-4 text-sm text-slate-700">
           <p>{t('viImport.importResult.created')}: {importMutation.data.created_count}</p>
           <p>{t('viImport.importResult.duplicates')}: {importMutation.data.duplicate_count}</p>
           <p>{t('viImport.importResult.totalStaging')}: {importMutation.data.staging_total_count}</p>
@@ -257,7 +257,7 @@ export function HelloAssoViImportPage() {
       {itemDetailsMutation.error ? <Alert>{toErrorMessage(itemDetailsMutation.error)}</Alert> : null}
       {stagingQuery.error ? <Alert>{toErrorMessage(stagingQuery.error)}</Alert> : null}
 
-      <div className="rounded-xl border border-outline-variant bg-surface p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold text-slate-900">{t('viImport.staging.title')}</h2>
           <div className="flex-1" />
@@ -381,7 +381,7 @@ export function HelloAssoViImportPage() {
       </div>
 
       {detailsData ? (
-        <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
+        <div className="rounded-xl border border-border bg-slate-50 p-4 text-sm text-slate-700">
           <div className="mb-2 flex flex-wrap items-center gap-3">
             <h3 className="text-sm font-semibold text-slate-900">{t('viImport.details.title')}</h3>
             <span>{t('viImport.details.item')}: {detailsItemId ?? '-'}</span>

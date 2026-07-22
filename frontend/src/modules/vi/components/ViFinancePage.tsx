@@ -137,7 +137,7 @@ function FlightPicker({
     : allFlights
 
   return (
-    <div className="rounded-lg border border-outline-variant bg-muted/30 p-3 space-y-3">
+    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Choisir un vol VI</span>
         <Button size="sm" variant="ghost" onClick={onClose}><X className="h-3 w-3" /></Button>
@@ -424,7 +424,7 @@ export function ViEntitlementSheet({
           )}
 
           {/* Section 1 — Informations bon */}
-          <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+          <fieldset className="space-y-3 rounded-lg border border-border p-4">
             <legend className="text-sm font-medium px-1">Informations bon</legend>
 
             {/* Editable amount — locked once realization entry is posted */}
@@ -489,7 +489,7 @@ export function ViEntitlementSheet({
 
           {/* Section 2 — Vols liés (non-generic only) */}
           {!isGeneric && (
-            <fieldset className="space-y-2 rounded-lg border border-outline-variant p-4">
+            <fieldset className="space-y-2 rounded-lg border border-border p-4">
               <legend className="text-sm font-medium px-1 flex items-center gap-2">
                 Vols liés
                 <span className="text-muted-foreground font-normal">{links.length}/{maxFlights}</span>
@@ -548,7 +548,7 @@ export function ViEntitlementSheet({
 
           {/* Section 3 — Écriture de réalisation */}
           {!isGeneric && (
-            <fieldset className="space-y-3 rounded-lg border border-outline-variant p-4">
+            <fieldset className="space-y-3 rounded-lg border border-border p-4">
               <legend className="text-sm font-medium px-1">Écriture VI (réalisation)</legend>
 
               {/* Config warnings */}
@@ -725,7 +725,7 @@ export function ViEntitlementSheet({
           )}
 
           {isGeneric && (
-            <p className="text-sm text-muted-foreground rounded-lg border border-outline-variant p-4">
+            <p className="text-sm text-muted-foreground rounded-lg border border-border p-4">
               Bon générique — pas d'écriture de réalisation individuelle.
               Les vols facturés contre ce bon sont visibles dans le journal VI.
             </p>
@@ -733,7 +733,7 @@ export function ViEntitlementSheet({
 
           {/* Section 4 — Archivage */}
           {hasRealization && entitlement.status !== 3 && entitlement.status !== 6 && (
-            <fieldset className="space-y-2 rounded-lg border border-outline-variant p-4">
+            <fieldset className="space-y-2 rounded-lg border border-border p-4">
               <legend className="text-sm font-medium px-1">Archivage</legend>
               <p className="text-xs text-muted-foreground">
                 Marque le bon comme réalisé (statut Réalisé). Il ne pourra plus être utilisé.
@@ -831,7 +831,7 @@ export function ViFinancePage() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>

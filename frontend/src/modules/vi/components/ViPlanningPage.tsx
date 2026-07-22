@@ -353,7 +353,7 @@ export function ViPlanningPage() {
       )}
 
       {/* Calendar grid */}
-      <div className="rounded-xl border border-outline-variant overflow-hidden">
+      <div className="rounded-xl border border-border overflow-hidden">
         {/* Column headers */}
         <div className="grid grid-cols-7 divide-x border-b bg-slate-50">
           {DAY_NAMES.map((d) => (

@@ -42,7 +42,7 @@ function SegmentedButton<T extends string>({
   return (
     <div
       role="radiogroup"
-      className={cn('inline-flex overflow-hidden rounded-shape-sm border border-outline', className)}
+      className={cn('inline-flex overflow-hidden rounded-sm border border-border', className)}
     >
       {options.map((opt, i) => (
         <button
@@ -55,10 +55,10 @@ function SegmentedButton<T extends string>({
           className={cn(
             'px-4 py-2 text-sm font-medium transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
-            i > 0 && 'border-l border-outline',
+            i > 0 && 'border-l border-border',
             value === opt.value
-              ? 'bg-primary text-on-primary'
-              : 'bg-surface text-on-surface-variant hover:bg-surface-container hover:text-on-surface',
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
             opt.disabled && 'cursor-not-allowed opacity-40',
           )}
         >

@@ -185,12 +185,12 @@ function StepConfig({
           <label className="block text-xs font-medium text-slate-600" htmlFor="bb-price">
             {t('billing.config.unitPrice')} (€) *
             {priceFromTariff && (
-              <span className="ml-2 rounded bg-success-container px-1.5 py-0.5 text-[10px] font-normal text-on-success-container">
+              <span className="ml-2 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-normal text-success">
                 {t('billing.config.fromTariff')}
               </span>
             )}
             {selectedItemUuid && !priceFromTariff && (
-              <span className="ml-2 rounded bg-warning-container px-1.5 py-0.5 text-[10px] font-normal text-on-warning-container">
+              <span className="ml-2 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-normal text-warning">
                 {t('billing.config.manualPrice')}
               </span>
             )}
@@ -503,20 +503,20 @@ function SummaryPanel({
         </dl>
 
         {/* Info box */}
-        <div className="mt-4 rounded-lg bg-surface-container p-3 text-xs text-slate-600">
+        <div className="mt-4 rounded-lg bg-muted p-3 text-xs text-slate-600">
           {t('billing.summary.infoText')}
         </div>
       </div>
 
       {/* Alerts */}
       {errorMsg && (
-        <div role="alert" className="rounded-lg bg-error-container px-4 py-3 text-sm text-on-error-container">
+        <div role="alert" className="rounded-lg bg-destructive/15 px-4 py-3 text-sm text-destructive">
           {errorMsg}
         </div>
       )}
 
       {successMsg && (
-        <div role="status" className="rounded-lg bg-success-container px-4 py-3 text-sm text-on-success-container">
+        <div role="status" className="rounded-lg bg-success/15 px-4 py-3 text-sm text-success">
           {successMsg}
         </div>
       )}

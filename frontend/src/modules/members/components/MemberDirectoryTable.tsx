@@ -18,8 +18,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { MoreVertical, Pencil, ScrollText } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ClipboardCheck, Pencil, ScrollText } from 'lucide-react'
 
 import { DataTable } from '../../../components/ui/data-table'
 import type { ColumnDef } from '../../../components/ui/data-table'
@@ -33,66 +33,6 @@ import {
   RoleFlagBadges,
   StatusBadge,
 } from './MemberRowBadges'
-
-// ---------------------------------------------------------------------------
-// Kebab dropdown
-// ---------------------------------------------------------------------------
-
-type KebabItem = { label: string; onClick: () => void; disabled?: boolean }
-
-function KebabMenu({ items }: { items: KebabItem[] }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-label="Plus d'actions"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface"
-      >
-        <MoreVertical className="h-4 w-4" />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-10 mt-1 min-w-[180px] rounded-shape-sm border border-outline-variant bg-surface py-1 shadow-lg"
-        >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              className="w-full px-3 py-2 text-left text-sm text-on-surface transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => {
-                if (item.disabled) {
-                  return
-                }
-                item.onClick()
-                setOpen(false)
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // MemberDirectoryTable
@@ -109,6 +49,10 @@ type Props = {
   onOpenPilotSheet: (uuid: string) => void
   onOpenLogbook?: (uuid: string) => void
   onOpenBalance?: (uuid: string) => void
+  /** Present to enable a leading checkbox column for bulk selection (e.g. recap emails). */
+  selectedForBulk?: Set<string>
+  onToggleSelectedForBulk?: (uuid: string) => void
+  onToggleSelectAllForBulk?: (uuids: string[]) => void
 }
 
 const PAGE_SIZE = 25
@@ -137,6 +81,9 @@ export function MemberDirectoryTable({
   onOpenPilotSheet,
   onOpenLogbook,
   onOpenBalance,
+  selectedForBulk,
+  onToggleSelectedForBulk,
+  onToggleSelectAllForBulk,
 }: Props) {
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -149,7 +96,36 @@ export function MemberDirectoryTable({
   const pageStart = (currentPage - 1) * PAGE_SIZE
   const pageEnd = Math.min(pageStart + PAGE_SIZE, members.length)
   const visibleMembers = members.slice(pageStart, pageEnd)
+  const bulkSelectionEnabled = selectedForBulk !== undefined && onToggleSelectedForBulk !== undefined
+  const visibleIds = visibleMembers.map((row) => row.uuid)
+  const allVisibleSelected =
+    bulkSelectionEnabled && visibleIds.length > 0 && visibleIds.every((uuid) => selectedForBulk!.has(uuid))
   const columns: ColumnDef<MemberSummary>[] = [
+    ...(bulkSelectionEnabled
+      ? [
+          {
+            key: 'select',
+            header: (
+              <input
+                type="checkbox"
+                aria-label="Sélectionner tous les membres visibles"
+                checked={allVisibleSelected}
+                onChange={() => onToggleSelectAllForBulk?.(visibleIds)}
+              />
+            ),
+            className: 'w-8',
+            cell: (row: MemberSummary) => (
+              <input
+                type="checkbox"
+                aria-label={`Sélectionner ${row.first_name} ${row.last_name}`}
+                checked={selectedForBulk!.has(row.uuid)}
+                onChange={() => onToggleSelectedForBulk?.(row.uuid)}
+                onClick={(event) => event.stopPropagation()}
+              />
+            ),
+          } satisfies ColumnDef<MemberSummary>,
+        ]
+      : []),
     {
       key: 'name',
       header: 'Nom & Identifiant',
@@ -163,12 +139,12 @@ export function MemberDirectoryTable({
             <InitialsAvatar firstName={row.first_name} lastName={row.last_name} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="truncate font-medium text-on-surface">
+                <span className="truncate font-medium text-foreground">
                   {row.first_name} {row.last_name}
                 </span>
                 {needsRenewal ? <RenewalWarningIcon /> : null}
               </div>
-              <span className="font-mono text-xs text-on-surface-variant">
+              <span className="font-mono text-xs text-muted-foreground">
                 {row.account_id}
                 {row.ffvp_id ? (
                   <>
@@ -189,7 +165,7 @@ export function MemberDirectoryTable({
       sortable: true,
       className: 'min-w-[120px]',
       cell: (row) => (
-        <span className="text-sm text-on-surface">{memberCategoryLabel(row.member_category)}</span>
+        <span className="text-sm text-foreground">{memberCategoryLabel(row.member_category)}</span>
       ),
     },
     {
@@ -218,11 +194,11 @@ export function MemberDirectoryTable({
         <div className="space-y-1">
           <RegistrationBadge registrationStatus={row.registration_status} />
           {row.is_registered_for_year && row.registration_start_date_for_year && row.registration_end_date_for_year ? (
-            <p className="text-xs text-on-surface-variant">
+            <p className="text-xs text-muted-foreground">
               {formatIsoDate(row.registration_start_date_for_year)} - {formatIsoDate(row.registration_end_date_for_year)}
             </p>
           ) : (
-            <p className="text-xs text-on-surface-variant">—</p>
+            <p className="text-xs text-muted-foreground">—</p>
           )}
         </div>
       ),
@@ -233,7 +209,7 @@ export function MemberDirectoryTable({
       sortable: true,
       headerClassName: 'hidden lg:table-cell',
       className: 'hidden lg:table-cell min-w-[120px]',
-      cell: (row) => <span className="text-sm text-on-surface">{row.last_registration_year ?? '—'}</span>,
+      cell: (row) => <span className="text-sm text-foreground">{row.last_registration_year ?? '—'}</span>,
     },
     {
       key: 'commission',
@@ -294,14 +270,14 @@ export function MemberDirectoryTable({
 
   if (isLoading) {
     return (
-      <div className="rounded-shape-md border border-outline-variant bg-surface p-8 text-center text-sm text-on-surface-variant">
+      <div className="rounded-md border border-border bg-card p-8 text-center text-sm text-muted-foreground">
         Chargement de l'annuaire…
       </div>
     )
   }
 
   return (
-    <div className="overflow-hidden rounded-shape-md border border-outline-variant bg-surface">
+    <div className="overflow-hidden rounded-md border border-border bg-card">
       <DataTable
         columns={columns}
         data={visibleMembers}
@@ -309,7 +285,7 @@ export function MemberDirectoryTable({
         defaultSortKey="name"
         className={undefined}
         emptyState={
-          <p className="p-8 text-center text-sm text-on-surface-variant">
+          <p className="p-8 text-center text-sm text-muted-foreground">
             Aucun membre trouvé pour les filtres sélectionnés.
           </p>
         }
@@ -319,7 +295,7 @@ export function MemberDirectoryTable({
               type="button"
               aria-label={`Espace membre ${row.first_name} ${row.last_name}`}
               onClick={() => onOpenPilotSheet(row.uuid)}
-              className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
               title="Espace membre"
             >
               <ScrollText className="h-4 w-4" />
@@ -331,28 +307,29 @@ export function MemberDirectoryTable({
               className={[
                 'rounded p-1 transition-colors',
                 selectedMemberId === row.uuid
-                  ? 'bg-primary text-on-primary'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface',
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               ].join(' ')}
             >
               <Pencil className="h-4 w-4" />
             </button>
             {allowRegistrationWorkflow ? (
-              <KebabMenu
-                items={[
-                  {
-                    label: "Finaliser l'inscription",
-                    disabled: row.is_registered_for_year,
-                    onClick: () => onFinalizeRegistration(row.uuid),
-                  },
-                ]}
-              />
+              <button
+                type="button"
+                aria-label={`Finaliser l'inscription de ${row.first_name} ${row.last_name}`}
+                title="Finaliser l'inscription"
+                disabled={row.is_registered_for_year}
+                onClick={() => onFinalizeRegistration(row.uuid)}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ClipboardCheck className="h-4 w-4" />
+              </button>
             ) : null}
           </div>
         )}
       />
       {/* Pagination footer */}
-      <div className="flex items-center justify-between border-t border-outline-variant px-4 py-2 text-xs text-on-surface-variant">
+      <div className="flex items-center justify-between border-t border-border px-4 py-2 text-xs text-muted-foreground">
         <span>
           {members.length === 0
             ? 'Aucun membre'
@@ -364,7 +341,7 @@ export function MemberDirectoryTable({
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="rounded px-2 py-1 transition-colors hover:bg-surface-container disabled:opacity-40"
+              className="rounded px-2 py-1 transition-colors hover:bg-muted disabled:opacity-40"
               aria-label="Page précédente"
             >
               ‹
@@ -376,7 +353,7 @@ export function MemberDirectoryTable({
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="rounded px-2 py-1 transition-colors hover:bg-surface-container disabled:opacity-40"
+              className="rounded px-2 py-1 transition-colors hover:bg-muted disabled:opacity-40"
               aria-label="Page suivante"
             >
               ›

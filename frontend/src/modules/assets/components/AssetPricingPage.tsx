@@ -37,21 +37,21 @@ export function AssetPricingPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-3">
         <Button
-          className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container"
+          className="h-8 rounded-md bg-transparent px-3 text-xs text-foreground hover:bg-muted"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft className="mr-1 h-3.5 w-3.5" />
           {t('back')}
         </Button>
-        <h1 className="text-lg font-semibold text-on-surface">
+        <h1 className="text-lg font-semibold text-foreground">
           {asset ? `${asset.registration} — ${t('title')}` : t('title')}
         </h1>
       </div>
 
       {assetQuery.isLoading ? (
-        <p className="text-sm text-on-surface-variant">{t('states.loading')}</p>
+        <p className="text-sm text-muted-foreground">{t('states.loading')}</p>
       ) : !asset?.asset_family_uuid ? (
-        <p className="text-sm text-on-surface-variant">{t('noAssetFamily')}</p>
+        <p className="text-sm text-muted-foreground">{t('noAssetFamily')}</p>
       ) : (
         <AssetFamilyPricingPanel assetFamilyUuid={asset.asset_family_uuid} />
       )}

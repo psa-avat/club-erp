@@ -118,7 +118,9 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
   const [registrationActionError, setRegistrationActionError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const [recapComposerOpen, setRecapComposerOpen] = useState(false)
+  const [recapSendMode, setRecapSendMode] = useState<'all' | 'selected'>('all')
   const [pendingRecapMessage, setPendingRecapMessage] = useState<string | null>(null)
+  const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set())
   const canSendRecapEmails = useCapability('SEND_MEMBER_EMAILS')
   const sendRecapEmailsBulkMutation = useSendRecapEmailsBulkMutation()
 
@@ -260,10 +262,41 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
     }
   }
 
+  function toggleSelectedForBulk(uuid: string) {
+    setSelectedForBulk((current) => {
+      const next = new Set(current)
+      if (next.has(uuid)) {
+        next.delete(uuid)
+      } else {
+        next.add(uuid)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllForBulk(uuids: string[]) {
+    setSelectedForBulk((current) => {
+      const allSelected = uuids.length > 0 && uuids.every((uuid) => current.has(uuid))
+      const next = new Set(current)
+      uuids.forEach((uuid) => {
+        if (allSelected) {
+          next.delete(uuid)
+        } else {
+          next.add(uuid)
+        }
+      })
+      return next
+    })
+  }
+
   async function handleConfirmBulkRecapSend() {
     if (pendingRecapMessage === null) return
+    const memberUuids = recapSendMode === 'selected' ? Array.from(selectedForBulk) : undefined
     try {
-      const result = await sendRecapEmailsBulkMutation.mutateAsync(pendingRecapMessage)
+      const result = await sendRecapEmailsBulkMutation.mutateAsync({
+        messageText: pendingRecapMessage,
+        memberUuids,
+      })
       toast.success(
         t('recapEmail.bulkResult', {
           sent: result.sent,
@@ -271,6 +304,9 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
           failed: result.failed,
         }),
       )
+      if (recapSendMode === 'selected') {
+        setSelectedForBulk(new Set())
+      }
     } catch (error) {
       toast.error(toErrorMessage(error))
     } finally {
@@ -303,7 +339,25 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
             <Button type="button" variant="secondary" onClick={() => navigate('/club/members/recap-templates')}>
               {t('recapEmail.templates.manage')}
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setRecapComposerOpen(true)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setRecapSendMode('selected')
+                setRecapComposerOpen(true)
+              }}
+              disabled={selectedForBulk.size === 0}
+            >
+              {t('recapEmail.sendToSelected', { count: selectedForBulk.size })}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setRecapSendMode('all')
+                setRecapComposerOpen(true)
+              }}
+            >
               {t('recapEmail.sendToAll')}
             </Button>
           </>
@@ -463,6 +517,9 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
         onOpenPilotSheet={handleOpenPilotSheet}
         onOpenLogbook={handleOpenLogbook}
         onOpenBalance={handleOpenBalance}
+        selectedForBulk={canSendRecapEmails ? selectedForBulk : undefined}
+        onToggleSelectedForBulk={canSendRecapEmails ? toggleSelectedForBulk : undefined}
+        onToggleSelectAllForBulk={canSendRecapEmails ? toggleSelectAllForBulk : undefined}
       />
 
       {totalMembers > PAGE_SIZE ? (
@@ -547,8 +604,16 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
       {/* ── Bulk recap email ─────────────────────────────────────────── */}
       <RecapMessageComposer
         open={recapComposerOpen}
-        title={t('recapEmail.sendToAllTitle')}
-        description={t('recapEmail.sendToAllDescription')}
+        title={
+          recapSendMode === 'selected'
+            ? t('recapEmail.sendToSelectedTitle', { count: selectedForBulk.size })
+            : t('recapEmail.sendToAllTitle')
+        }
+        description={
+          recapSendMode === 'selected'
+            ? t('recapEmail.sendToSelectedDescription', { count: selectedForBulk.size })
+            : t('recapEmail.sendToAllDescription')
+        }
         submitLabel={t('recapEmail.next')}
         onClose={() => setRecapComposerOpen(false)}
         onSubmit={async (messageText) => {
@@ -558,8 +623,16 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
 
       <ConfirmDialog
         open={pendingRecapMessage !== null}
-        title={t('recapEmail.confirmBulkTitle')}
-        body={t('recapEmail.confirmBulkBody')}
+        title={
+          recapSendMode === 'selected'
+            ? t('recapEmail.confirmSelectedTitle', { count: selectedForBulk.size })
+            : t('recapEmail.confirmBulkTitle')
+        }
+        body={
+          recapSendMode === 'selected'
+            ? t('recapEmail.confirmSelectedBody', { count: selectedForBulk.size })
+            : t('recapEmail.confirmBulkBody')
+        }
         confirmLabel={t('recapEmail.send')}
         onConfirm={() => void handleConfirmBulkRecapSend()}
         onCancel={() => setPendingRecapMessage(null)}

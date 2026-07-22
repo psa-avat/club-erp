@@ -106,11 +106,20 @@ async def send_recap_emails_bulk(
     db: AsyncSession,
     message_text: str,
     *,
+    member_uuids: Optional[list[UUID]] = None,
     portal_base_url: str = PORTAL_BASE_URL,
 ) -> RecapEmailBulkResult:
-    """Send recap emails to every active member with an email on file."""
+    """Send recap emails.
 
-    result = await db.execute(select(Member).where(Member.status == 1))
+    With `member_uuids`, sends only to those members (explicit selection).
+    Otherwise sends to every active member with an email on file.
+    """
+
+    if member_uuids is not None:
+        stmt = select(Member).where(Member.uuid.in_(member_uuids))
+    else:
+        stmt = select(Member).where(Member.status == 1)
+    result = await db.execute(stmt)
     members = result.scalars().all()
 
     sent = 0

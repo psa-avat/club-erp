@@ -236,7 +236,7 @@ export function HelloAssoPurchasesPage() {
 
   return (
     <section className="space-y-4">
-      <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="helloasso-purchases-status">{t('purchases.filters.status')}</Label>
@@ -347,7 +347,7 @@ export function HelloAssoPurchasesPage() {
         {purchasesQuery.isLoading ? <p className="text-sm text-slate-600">{t('purchases.state.loading')}</p> : null}
         {purchasesQuery.error ? <Alert>{toErrorMessage(purchasesQuery.error)}</Alert> : null}
 
-        <div className="overflow-x-auto rounded-xl border border-outline-variant">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
@@ -411,7 +411,7 @@ export function HelloAssoPurchasesPage() {
         </div>
 
         {detailsData ? (
-          <div className="rounded-xl border border-outline-variant bg-slate-50 p-4 text-sm text-slate-700">
+          <div className="rounded-xl border border-border bg-slate-50 p-4 text-sm text-slate-700">
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <h3 className="text-sm font-semibold text-slate-900">{t('purchases.table.details')}</h3>
               <span>{source === 'orders' ? t('purchases.details.order') : t('purchases.details.item')}: {detailsId ?? '-'}</span>

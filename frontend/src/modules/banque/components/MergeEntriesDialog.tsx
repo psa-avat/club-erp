@@ -174,10 +174,10 @@ export function MergeEntriesDialog({
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 id="merge-dialog-title" className="text-lg font-semibold text-on-surface">
+              <h2 id="merge-dialog-title" className="text-lg font-semibold text-foreground">
                 {t('journal.entries.merge.title')}
               </h2>
-              <p id="merge-dialog-description" className="mt-1 text-sm text-on-surface-variant">
+              <p id="merge-dialog-description" className="mt-1 text-sm text-muted-foreground">
                 {t('journal.entries.merge.description')}
               </p>
             </div>
@@ -187,13 +187,13 @@ export function MergeEntriesDialog({
           </div>
 
           {differentJournals && (
-            <p className="rounded-shape-md border border-error bg-error-container p-3 text-sm text-error">
+            <p className="rounded-md border border-error bg-destructive/15 p-3 text-sm text-error">
               {t('journal.entries.merge.differentJournalsError')}
             </p>
           )}
 
           {!differentJournals && candidates.length === 0 && entries.length >= 2 && (
-            <p className="rounded-shape-md border border-error bg-error-container p-3 text-sm text-error">
+            <p className="rounded-md border border-error bg-destructive/15 p-3 text-sm text-error">
               {t('journal.entries.merge.noCommonAccountError')}
             </p>
           )}
@@ -237,27 +237,27 @@ export function MergeEntriesDialog({
           </div>
 
           {selectedCandidate && (
-            <div className="rounded-shape-md border border-outline-variant bg-surface-container p-4">
-              <p className="mb-2 text-sm font-medium text-on-surface">
+            <div className="rounded-md border border-border bg-muted p-4">
+              <p className="mb-2 text-sm font-medium text-foreground">
                 {t('journal.entries.merge.previewConsolidatedLine')}: {accountLabelByUuid.get(selectedCandidate.accountUuid) ?? selectedCandidate.accountUuid} —{' '}
                 {formatAmount(selectedCandidate.total.toFixed(4))} ({selectedCandidate.side === 'debit' ? t('journal.forms.debit') : t('journal.forms.credit')})
               </p>
-              <p className="mb-2 text-sm font-medium text-on-surface">{t('journal.entries.merge.previewOtherLines')}</p>
-              <div className="max-h-48 overflow-y-auto overflow-x-auto rounded-shape-sm border border-outline-variant bg-surface">
+              <p className="mb-2 text-sm font-medium text-foreground">{t('journal.entries.merge.previewOtherLines')}</p>
+              <div className="max-h-48 overflow-y-auto overflow-x-auto rounded-sm border border-border bg-card">
                 <table className="min-w-full divide-y divide-outline-variant text-sm">
-                  <thead className="bg-surface-container">
+                  <thead className="bg-muted">
                     <tr>
-                      <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.account')}</th>
-                      <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.debit')}</th>
-                      <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.credit')}</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.account')}</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.debit')}</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.credit')}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-outline-variant bg-surface">
+                  <tbody className="divide-y divide-outline-variant bg-card">
                     {otherLines.map((line) => (
                       <tr key={line.uuid}>
-                        <td className="px-3 py-2 text-on-surface">{accountLabelByUuid.get(line.account_uuid) ?? line.account_uuid}</td>
-                        <td className="px-3 py-2 text-on-surface">{formatAmount(line.debit)}</td>
-                        <td className="px-3 py-2 text-on-surface">{formatAmount(line.credit)}</td>
+                        <td className="px-3 py-2 text-foreground">{accountLabelByUuid.get(line.account_uuid) ?? line.account_uuid}</td>
+                        <td className="px-3 py-2 text-foreground">{formatAmount(line.debit)}</td>
+                        <td className="px-3 py-2 text-foreground">{formatAmount(line.credit)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -266,7 +266,7 @@ export function MergeEntriesDialog({
             </div>
           )}
 
-          <p className="text-sm text-on-surface-variant">
+          <p className="text-sm text-muted-foreground">
             {t('journal.entries.merge.deleteSourcesNotice', { count: entries.length })}
           </p>
 

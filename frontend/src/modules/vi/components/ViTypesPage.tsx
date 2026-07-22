@@ -155,7 +155,7 @@ function ViTypeAccountingDialog({
         <div className="space-y-6 pt-2">
           {/* Analytical accounts (class 9) — FL billing */}
           <fieldset className="space-y-4">
-            <legend className="text-sm font-medium text-foreground border-b border-outline-variant pb-1 w-full">
+            <legend className="text-sm font-medium text-foreground border-b border-border pb-1 w-full">
               Comptes analytiques (classe 9) — facturation FL
             </legend>
             <div className="grid gap-4 md:grid-cols-2">
@@ -194,7 +194,7 @@ function ViTypeAccountingDialog({
 
           {/* VI management accounts (Steps 1–4) */}
           <fieldset className="space-y-4">
-            <legend className="text-sm font-medium text-foreground border-b border-outline-variant pb-1 w-full">
+            <legend className="text-sm font-medium text-foreground border-b border-border pb-1 w-full">
               Gestion VI — étapes 1 à 4 (419 → produit)
             </legend>
             <div className="grid gap-4 md:grid-cols-2">
@@ -311,7 +311,7 @@ function ViTypeAccountingDialog({
           </fieldset>
 
           {/* Footer */}
-          <div className="flex items-center gap-3 pt-2 border-t border-outline-variant">
+          <div className="flex items-center gap-3 pt-2 border-t border-border">
             <Button
               onClick={() => { void handleSave() }}
               disabled={updateMutation.isPending}
@@ -383,7 +383,7 @@ export function ViTypesPage() {
 
   return (
     <section className="space-y-4">
-      <form className="grid gap-4 rounded-xl border border-outline-variant bg-surface p-6 md:grid-cols-3" onSubmit={handleCreate}>
+      <form className="grid gap-4 rounded-xl border border-border bg-card p-6 md:grid-cols-3" onSubmit={handleCreate}>
         <div className="space-y-2">
           <Label htmlFor="vi-type-code">Code</Label>
           <Input id="vi-type-code" required value={code} onChange={(event) => setCode(event.target.value)} />
@@ -417,7 +417,7 @@ export function ViTypesPage() {
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>

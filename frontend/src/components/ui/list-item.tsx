@@ -59,18 +59,18 @@ function ListItem({
       className={cn(
         'flex items-center gap-3 px-4 py-3 text-sm',
         onClick &&
-          'cursor-pointer transition-colors hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+          'cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
         className,
       )}
     >
-      {leading && <div className="shrink-0 text-on-surface-variant">{leading}</div>}
+      {leading && <div className="shrink-0 text-muted-foreground">{leading}</div>}
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium text-on-surface">{headline}</div>
+        <div className="truncate font-medium text-foreground">{headline}</div>
         {supporting && (
-          <div className="mt-0.5 truncate text-xs text-on-surface-variant">{supporting}</div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">{supporting}</div>
         )}
       </div>
-      {trailing && <div className="shrink-0 text-on-surface-variant">{trailing}</div>}
+      {trailing && <div className="shrink-0 text-muted-foreground">{trailing}</div>}
     </Tag>
   )
 }

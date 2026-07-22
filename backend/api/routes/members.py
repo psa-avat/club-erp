@@ -307,7 +307,7 @@ async def send_recap_emails_bulk_endpoint(
     _: User = recap_email_guard,
     db: AsyncSession = Depends(get_db),
 ):
-    return await send_recap_emails_bulk(db, payload.message_text)
+    return await send_recap_emails_bulk(db, payload.message_text, member_uuids=payload.member_uuids)
 
 
 @router.post("/{member_uuid:uuid}/send-recap-email")

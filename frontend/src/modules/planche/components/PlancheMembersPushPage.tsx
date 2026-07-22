@@ -110,21 +110,21 @@ export function PlancheMembersPushPage() {
 
   return (
     <section className="space-y-4">
-      <div className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+      <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">{t('membersPush.card.title')}</h2>
           <p className="text-sm text-slate-600">{t('membersPush.card.description')}</p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('membersPush.status.settings')}</p>
             <p className={canPush ? 'text-sm font-medium text-green-700' : 'text-sm font-medium text-amber-700'}>
               {canPush ? t('membersPush.status.ready') : t('membersPush.status.missing')}
             </p>
           </div>
 
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('membersPush.status.lastSync')}</p>
             <p className="text-sm font-medium text-slate-900">
               {(lastResult?.last_synced_at ?? previewLastSync)
@@ -135,11 +135,11 @@ export function PlancheMembersPushPage() {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('membersPush.preview.eligible')}</p>
             <p className="text-xl font-semibold text-slate-900">{eligibleCount}</p>
           </div>
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+          <div className="rounded-lg border border-border bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('membersPush.preview.excluded')}</p>
             <p className="text-xl font-semibold text-slate-900">{excludedCount}</p>
           </div>
@@ -198,7 +198,7 @@ export function PlancheMembersPushPage() {
         {pushMutation.isError ? <Alert>{toErrorMessage(pushMutation.error)}</Alert> : null}
 
         {lastResult ? (
-          <div className="space-y-2 rounded-lg border border-outline-variant bg-slate-50 p-4">
+          <div className="space-y-2 rounded-lg border border-border bg-slate-50 p-4">
             <p className="text-sm font-semibold text-slate-900">{t('membersPush.result.title')}</p>
             {lastResult.dry_run ? (
               <p className="text-sm text-slate-700">
@@ -271,17 +271,17 @@ export function PlancheMembersPushPage() {
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+            <div className="rounded-lg border border-border bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('membersPush.preview.eligible')}</p>
               <p className="text-lg font-semibold text-slate-900">{eligibleCount}</p>
             </div>
-            <div className="rounded-lg border border-outline-variant bg-slate-50 p-3">
+            <div className="rounded-lg border border-border bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{t('membersPush.preview.excluded')}</p>
               <p className="text-lg font-semibold text-slate-900">{excludedCount}</p>
             </div>
           </div>
 
-          <div className="rounded-lg border border-outline-variant bg-slate-50 p-3 text-sm text-slate-700">
+          <div className="rounded-lg border border-border bg-slate-50 p-3 text-sm text-slate-700">
             <p>
               {t('membersPush.preview.excludedInactive')}: {preview?.excluded_inactive_count ?? 0}
             </p>
@@ -290,7 +290,7 @@ export function PlancheMembersPushPage() {
             </p>
           </div>
 
-          <label className="flex items-center gap-2 rounded-lg border border-outline-variant bg-slate-50 p-3 text-sm text-slate-800">
+          <label className="flex items-center gap-2 rounded-lg border border-border bg-slate-50 p-3 text-sm text-slate-800">
             <input
               checked={dryRunEnabled}
               type="checkbox"

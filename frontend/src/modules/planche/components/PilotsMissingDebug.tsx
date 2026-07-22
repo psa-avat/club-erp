@@ -27,9 +27,9 @@ function PilotTable({ pilots, title }: { pilots: PlanchePilot[]; title: string }
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-slate-900">{title}</p>
-      <div className="overflow-x-auto rounded border border-outline-variant">
+      <div className="overflow-x-auto rounded border border-border">
         <table className="w-full text-sm">
-          <thead className="border-b border-outline-variant bg-slate-50">
+          <thead className="border-b border-border bg-slate-50">
             <tr>
               <th className="px-3 py-2 text-left font-semibold text-slate-900">{t('membersPush.debug.tableNo')}</th>
               <th className="px-3 py-2 text-left font-semibold text-slate-900">{t('membersPush.debug.tableNom')}</th>
@@ -42,7 +42,7 @@ function PilotTable({ pilots, title }: { pilots: PlanchePilot[]; title: string }
           </thead>
           <tbody>
             {pilots.map((pilot, index) => (
-              <tr key={`${pilot.no}-${index}`} className="border-b border-outline-variant hover:bg-slate-50">
+              <tr key={`${pilot.no}-${index}`} className="border-b border-border hover:bg-slate-50">
                 <td className="px-3 py-2 text-slate-900">{pilot.no}</td>
                 <td className="px-3 py-2 text-slate-900">{pilot.nom}</td>
                 <td className="px-3 py-2 text-slate-900">{pilot.prenom}</td>

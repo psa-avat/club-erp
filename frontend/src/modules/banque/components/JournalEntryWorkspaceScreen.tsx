@@ -341,8 +341,8 @@ export function JournalEntryWorkspaceScreen({
 
   if (!canView) {
     return (
-      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
-        <p className="text-sm text-on-surface-variant">{t('journal.noPermission')}</p>
+      <section className="rounded-lg border border-border bg-card p-6 shadow-surface-1">
+        <p className="text-sm text-muted-foreground">{t('journal.noPermission')}</p>
       </section>
     )
   }
@@ -366,10 +366,10 @@ export function JournalEntryWorkspaceScreen({
         <Banner variant="success" message={successMessage} onDismiss={() => setSuccessMessage(null)} />
       )}
 
-      <div className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
+      <div className="rounded-lg border border-border bg-card p-6 shadow-surface-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-on-surface">
+            <h2 className="text-lg font-semibold text-foreground">
               {selectedEntryUuid ? t('journal.entries.editDraft') : t('journal.entries.newDraft')}
             </h2>
             {selectedEntry && !isPostedEntry && (
@@ -378,7 +378,7 @@ export function JournalEntryWorkspaceScreen({
               </span>
             )}
             {selectedEntry && isPostedEntry && (
-              <span className="shrink-0 rounded-full bg-success-container px-3 py-1 text-xs font-semibold text-on-success-container">
+              <span className="shrink-0 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
                 {t('journal.entries.locked.badge')}
               </span>
             )}
@@ -389,7 +389,7 @@ export function JournalEntryWorkspaceScreen({
         </div>
 
         {selectedEntry && isPostedEntry && (
-          <div className="mt-4 space-y-2 rounded-shape-md border border-success-container bg-success-container p-4 text-on-success-container">
+          <div className="mt-4 space-y-2 rounded-md border border-success/30 bg-success/15 p-4 text-success">
             <p className="text-base font-semibold">{t('journal.entries.locked.badge')}</p>
             <p className="text-sm">
               {t('journal.entries.locked.meta', {
@@ -401,7 +401,7 @@ export function JournalEntryWorkspaceScreen({
         )}
 
         {selectedEntry && selectedEntry.state === ENTRY_STATE_DRAFT && (
-          <div className="mt-4 space-y-2 rounded-shape-md border border-warning-container bg-warning-container p-4 text-on-warning-container">
+          <div className="mt-4 space-y-2 rounded-md border border-warning/30 bg-warning/15 p-4 text-warning">
             <p className="text-base font-semibold">{t('journal.entries.draftStatus.badge')}</p>
             <p className="text-sm">{t('journal.entries.draftStatus.subtext')}</p>
           </div>
@@ -412,17 +412,17 @@ export function JournalEntryWorkspaceScreen({
         )}
 
         {/* Prefill helpers — FA-01: visually separated from core entry */}
-        <div className="mt-4 border-t border-outline-variant pt-4">
+        <div className="mt-4 border-t border-border pt-4">
           <SectionHeader title={t('journal.entries.helpersTitle')} className="mb-3" />
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
-            <h3 className="text-sm font-semibold text-on-surface">{t('journal.entries.modelSourceTitle')}</h3>
+          <div className="space-y-3 rounded-md border border-border bg-muted p-4">
+            <h3 className="text-sm font-semibold text-foreground">{t('journal.entries.modelSourceTitle')}</h3>
             <select
               value={applyModelUuid}
               disabled={isPostedEntry}
               onChange={(event) => setApplyModelUuid(event.target.value)}
-              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
             >
               <option value="">{t('journal.entries.selectModel')}</option>
               {models.filter((model) => model.is_active).map((model) => (
@@ -434,13 +434,13 @@ export function JournalEntryWorkspaceScreen({
             </Button>
           </div>
 
-          <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface-container p-4">
-            <h3 className="text-sm font-semibold text-on-surface">{t('journal.entries.pricing.title')}</h3>
+          <div className="space-y-3 rounded-md border border-border bg-muted p-4">
+            <h3 className="text-sm font-semibold text-foreground">{t('journal.entries.pricing.title')}</h3>
             <select
               value={selectedPriceVersionUuid}
               disabled={isPostedEntry}
               onChange={(event) => { setSelectedPriceVersionUuid(event.target.value); setSelectedPriceItemUuid('') }}
-              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
             >
               <option value="">{t('journal.entries.pricing.selectVersion')}</option>
               {pricingVersions.map((version) => (
@@ -451,7 +451,7 @@ export function JournalEntryWorkspaceScreen({
               value={selectedPriceItemUuid}
               disabled={isPostedEntry}
               onChange={(event) => setSelectedPriceItemUuid(event.target.value)}
-              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
             >
               <option value="">{t('journal.entries.pricing.selectItem')}</option>
               {pricingItems.map((item) => (
@@ -469,7 +469,7 @@ export function JournalEntryWorkspaceScreen({
                 value={priceDebitAccountUuid}
                 disabled={isPostedEntry}
                 onChange={(event) => setPriceDebitAccountUuid(event.target.value)}
-                className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+                className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
               >
                 <option value="">{t('journal.entries.pricing.selectDebit')}</option>
                 {accounts.map((account) => (
@@ -488,7 +488,7 @@ export function JournalEntryWorkspaceScreen({
         </div>
 
         {/* Core entry — FA-01: visually separated from helpers */}
-        <div className="mt-4 border-t border-outline-variant pt-4">
+        <div className="mt-4 border-t border-border pt-4">
           <SectionHeader title={t('journal.entries.coreTitle')} className="mb-3" />
         </div>
         <div className="grid gap-3 md:grid-cols-4">
@@ -498,7 +498,7 @@ export function JournalEntryWorkspaceScreen({
               value={entryForm.fiscal_year_uuid}
               disabled={isPostedEntry}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, fiscal_year_uuid: event.target.value }))}
-              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
             >
               <option value="">{t('journal.entries.selectFiscalYear')}</option>
               {fiscalYears.map((year: FiscalYear) => (
@@ -512,7 +512,7 @@ export function JournalEntryWorkspaceScreen({
               value={entryForm.journal_uuid}
               disabled={isPostedEntry}
               onChange={(event) => setEntryForm((prev) => ({ ...prev, journal_uuid: event.target.value }))}
-              className="h-10 w-full rounded-shape-sm border border-outline bg-surface px-3 text-sm text-on-surface"
+              className="h-10 w-full rounded-sm border border-border bg-card px-3 text-sm text-foreground"
             >
               <option value="">{t('journal.entries.selectJournal')}</option>
               {journals.map((journal) => (
@@ -566,7 +566,7 @@ export function JournalEntryWorkspaceScreen({
 
         {/* Balance indicator */}
         {!isPostedEntry && entryForm.lines.length > 0 && (
-          <div className="mt-4 rounded-shape-md border border-outline-variant bg-surface-container p-4">
+          <div className="mt-4 rounded-md border border-border bg-muted p-4">
             {(() => {
               const { debit: debitStr, credit: creditStr } = (() => {
                 const debit = entryForm.lines.reduce((sum, line) => {
@@ -588,32 +588,32 @@ export function JournalEntryWorkspaceScreen({
                   <div className="flex items-center gap-3">
                     {isBalanced ? (
                       <>
-                        <span className="rounded-full bg-success-container px-3 py-1 text-xs font-semibold text-on-success-container">
+                        <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
                           ✓ {t('journal.entries.balanceStatus.balanced')}
                         </span>
-                        <p className="text-xs text-on-surface-variant">
+                        <p className="text-xs text-muted-foreground">
                           {t('journal.entries.balanceStatus.bothSidesMatch', { amount: debitStr })}
                         </p>
                       </>
                     ) : (
                       <>
-                        <span className="rounded-full bg-warning-container px-3 py-1 text-xs font-semibold text-on-warning-container">
+                        <span className="rounded-full bg-warning/15 px-3 py-1 text-xs font-semibold text-warning">
                           ⚠ {t('journal.entries.balanceStatus.unbalanced')}
                         </span>
-                        <p className="text-xs text-on-surface-variant">
+                        <p className="text-xs text-muted-foreground">
                           {t('journal.entries.balanceStatus.delta', { diff })}
                         </p>
                       </>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded border border-outline-variant bg-surface px-2 py-1">
-                      <p className="text-on-surface-variant">{t('journal.entries.balanceStatus.debit')}</p>
-                      <p className="font-semibold text-on-surface">{debitStr} €</p>
+                    <div className="rounded border border-border bg-card px-2 py-1">
+                      <p className="text-muted-foreground">{t('journal.entries.balanceStatus.debit')}</p>
+                      <p className="font-semibold text-foreground">{debitStr} €</p>
                     </div>
-                    <div className="rounded border border-outline-variant bg-surface px-2 py-1">
-                      <p className="text-on-surface-variant">{t('journal.entries.balanceStatus.credit')}</p>
-                      <p className="font-semibold text-on-surface">{creditStr} €</p>
+                    <div className="rounded border border-border bg-card px-2 py-1">
+                      <p className="text-muted-foreground">{t('journal.entries.balanceStatus.credit')}</p>
+                      <p className="font-semibold text-foreground">{creditStr} €</p>
                     </div>
                   </div>
                 </div>

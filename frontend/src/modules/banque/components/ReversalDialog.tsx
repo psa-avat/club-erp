@@ -81,10 +81,10 @@ export function ReversalDialog({
         <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 id="reversal-dialog-title" className="text-lg font-semibold text-on-surface">
+            <h2 id="reversal-dialog-title" className="text-lg font-semibold text-foreground">
               {t('journal.entries.reversal.title')}
             </h2>
-            <p id="reversal-dialog-description" className="mt-1 text-sm text-on-surface-variant">
+            <p id="reversal-dialog-description" className="mt-1 text-sm text-muted-foreground">
               {t('journal.entries.reversal.description')}
             </p>
           </div>
@@ -94,8 +94,8 @@ export function ReversalDialog({
         </div>
 
         {entry && (
-          <div className="mt-4 rounded-shape-md border border-outline-variant bg-surface-container p-4">
-            <div className="grid gap-2 text-sm text-on-surface sm:grid-cols-4">
+          <div className="mt-4 rounded-md border border-border bg-muted p-4">
+            <div className="grid gap-2 text-sm text-foreground sm:grid-cols-4">
               <p>
                 <span className="font-medium">{t('journal.entries.reversal.entry')}:</span> {entry.sequence_number ?? entry.uuid.slice(0, 8)}
               </p>
@@ -110,25 +110,25 @@ export function ReversalDialog({
               </p>
             </div>
 
-            <div className="mt-3 overflow-x-auto rounded-shape-sm border border-outline-variant bg-surface">
+            <div className="mt-3 overflow-x-auto rounded-sm border border-border bg-card">
               <table className="min-w-full divide-y divide-outline-variant text-sm">
-                <thead className="bg-surface-container">
+                <thead className="bg-muted">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.forms.account')}</th>
-                    <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.entries.reversal.originalDebit')}</th>
-                    <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.entries.reversal.originalCredit')}</th>
-                    <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.entries.reversal.reversalDebit')}</th>
-                    <th className="px-3 py-2 text-left font-medium text-on-surface-variant">{t('journal.entries.reversal.reversalCredit')}</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.forms.account')}</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.entries.reversal.originalDebit')}</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.entries.reversal.originalCredit')}</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.entries.reversal.reversalDebit')}</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">{t('journal.entries.reversal.reversalCredit')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-outline-variant bg-surface">
+                <tbody className="divide-y divide-outline-variant bg-card">
                   {lines.map((line) => (
                     <tr key={line.uuid}>
-                      <td className="px-3 py-2 text-on-surface">{accountLabelByUuid.get(line.account_uuid) ?? line.account_uuid}</td>
-                      <td className="px-3 py-2 text-on-surface">{formatAmount(line.debit)}</td>
-                      <td className="px-3 py-2 text-on-surface">{formatAmount(line.credit)}</td>
-                      <td className="px-3 py-2 text-on-surface">{formatAmount(line.credit)}</td>
-                      <td className="px-3 py-2 text-on-surface">{formatAmount(line.debit)}</td>
+                      <td className="px-3 py-2 text-foreground">{accountLabelByUuid.get(line.account_uuid) ?? line.account_uuid}</td>
+                      <td className="px-3 py-2 text-foreground">{formatAmount(line.debit)}</td>
+                      <td className="px-3 py-2 text-foreground">{formatAmount(line.credit)}</td>
+                      <td className="px-3 py-2 text-foreground">{formatAmount(line.credit)}</td>
+                      <td className="px-3 py-2 text-foreground">{formatAmount(line.debit)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -147,7 +147,7 @@ export function ReversalDialog({
           />
         </div>
 
-        <div className="mt-4 rounded-shape-md border border-success-container bg-success-container p-4 text-sm text-on-success-container">
+        <div className="mt-4 rounded-md border border-success/30 bg-success/15 p-4 text-sm text-success">
           <p className="mb-2 font-semibold">{t('journal.entries.reversal.previewTitle')}</p>
           <p>✓ {t('journal.entries.reversal.previewOriginal', { ref: entryRef })}</p>
           <p>✓ {t('journal.entries.reversal.previewNewDraft')}</p>

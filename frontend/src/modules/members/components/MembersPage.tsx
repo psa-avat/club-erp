@@ -513,7 +513,7 @@ export function MembersPage() {
 
   return (
     <section className="space-y-6">
-      <div className="rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[1.8fr,1fr]">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t('hero.title')}</h1>

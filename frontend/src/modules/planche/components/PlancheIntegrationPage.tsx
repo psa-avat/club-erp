@@ -119,7 +119,7 @@ export function PlancheIntegrationPage() {
 
   return (
     <section className="space-y-4">
-      <form className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm" onSubmit={(event) => { void handleSave(event) }}>
+      <form className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm" onSubmit={(event) => { void handleSave(event) }}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">{t('form.title')}</h2>

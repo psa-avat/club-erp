@@ -58,17 +58,17 @@ function statusLabel(
 ): { label: string; className: string } {
   switch (status) {
     case ASSET_STATUS_OPERATIONAL:
-      return { label: t('status.operational'), className: 'bg-success-container text-on-success-container' }
+      return { label: t('status.operational'), className: 'bg-success/15 text-success' }
     case ASSET_STATUS_MAINTENANCE:
-      return { label: t('status.maintenance'), className: 'bg-warning-container text-on-warning-container' }
+      return { label: t('status.maintenance'), className: 'bg-warning/15 text-warning' }
     case ASSET_STATUS_OUT_OF_SERVICE:
-      return { label: t('status.outOfService'), className: 'bg-error-container text-on-error-container' }
+      return { label: t('status.outOfService'), className: 'bg-destructive/15 text-destructive' }
     case ASSET_STATUS_DISPOSED:
-      return { label: t('status.disposed'), className: 'bg-surface-container text-on-surface-variant' }
+      return { label: t('status.disposed'), className: 'bg-muted text-muted-foreground' }
     case ASSET_STATUS_SOLD:
-      return { label: t('status.sold'), className: 'bg-secondary-container text-on-secondary-container' }
+      return { label: t('status.sold'), className: 'bg-secondary text-secondary-foreground' }
     default:
-      return { label: String(status), className: 'bg-surface-container text-on-surface-variant' }
+      return { label: String(status), className: 'bg-muted text-muted-foreground' }
   }
 }
 
@@ -127,7 +127,7 @@ function StatusActions({
           type="button"
           title={t('actions.setOperational')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OPERATIONAL)}
-          className="rounded p-1 text-on-surface-variant hover:bg-success-container hover:text-success"
+          className="rounded p-1 text-muted-foreground hover:bg-success/15 hover:text-success"
         >
           <CheckCircle2 className="h-4 w-4" />
         </button>
@@ -137,7 +137,7 @@ function StatusActions({
           type="button"
           title={t('actions.setMaintenance')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_MAINTENANCE)}
-          className="rounded p-1 text-on-surface-variant hover:bg-warning-container hover:text-warning"
+          className="rounded p-1 text-muted-foreground hover:bg-warning/15 hover:text-warning"
         >
           <Wrench className="h-4 w-4" />
         </button>
@@ -147,7 +147,7 @@ function StatusActions({
           type="button"
           title={t('actions.setOutOfService')}
           onClick={() => onTransition(asset.uuid, ASSET_STATUS_OUT_OF_SERVICE)}
-          className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+          className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
         >
           <Ban className="h-4 w-4" />
         </button>
@@ -156,7 +156,7 @@ function StatusActions({
         type="button"
         title={t('actions.setDisposed')}
         onClick={() => onTransition(asset.uuid, ASSET_STATUS_DISPOSED)}
-        className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -164,7 +164,7 @@ function StatusActions({
         type="button"
         title={t('actions.setSold')}
         onClick={() => onTransition(asset.uuid, ASSET_STATUS_SOLD)}
-        className="rounded p-1 text-on-surface-variant hover:bg-secondary-container hover:text-secondary"
+        className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-secondary"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -234,8 +234,8 @@ export function AssetsListPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-shape-lg border border-outline-variant bg-surface p-6 shadow-surface-1">
-        <p className="text-sm text-on-surface-variant">{t('noPermission')}</p>
+      <section className="rounded-lg border border-border bg-card p-6 shadow-surface-1">
+        <p className="text-sm text-muted-foreground">{t('noPermission')}</p>
       </section>
     )
   }
@@ -259,7 +259,7 @@ export function AssetsListPage() {
       )}
 
       {/* Filters */}
-      <div className="rounded-shape-lg border border-outline-variant bg-surface p-4 shadow-surface-1">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-surface-1">
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
           {/* Text search */}
           <div className="space-y-1">
@@ -278,7 +278,7 @@ export function AssetsListPage() {
             <select
               value={filters.asset_family_uuid ?? ''}
               onChange={(e) => setFilter('asset_family_uuid', e.target.value || undefined)}
-              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
+              className="h-8 w-full rounded-sm border border-border bg-card px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allFamilies')}</option>
               {families.map((family) => (
@@ -292,12 +292,12 @@ export function AssetsListPage() {
           {/* Show sub-components toggle */}
           <div className="space-y-1">
             <Label className="text-xs">{t('filters.subComponents')}</Label>
-            <label className="flex h-8 cursor-pointer items-center gap-2 text-xs text-on-surface-variant">
+            <label className="flex h-8 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={showChildren}
                 onChange={(e) => setShowChildren(e.target.checked)}
-                className="h-4 w-4 rounded border-outline"
+                className="h-4 w-4 rounded border-border"
               />
               {t('filters.showSubComponents')}
             </label>
@@ -311,7 +311,7 @@ export function AssetsListPage() {
               onChange={(e) =>
                 setFilter('status', e.target.value ? Number(e.target.value) : undefined)
               }
-              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
+              className="h-8 w-full rounded-sm border border-border bg-card px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allStatuses')}</option>
               <option value={ASSET_STATUS_OPERATIONAL}>{t('status.operational')}</option>
@@ -330,7 +330,7 @@ export function AssetsListPage() {
               onChange={(e) =>
                 setFilter('ownership', e.target.value ? Number(e.target.value) : undefined)
               }
-              className="h-8 w-full rounded-shape-sm border border-outline bg-surface px-2 text-sm outline-none focus:border-primary"
+              className="h-8 w-full rounded-sm border border-border bg-card px-2 text-sm outline-none focus:border-primary"
             >
               <option value="">{t('filters.allOwnership')}</option>
               <option value={ASSET_OWNERSHIP_CLUB}>{t('ownership.club')}</option>
@@ -347,7 +347,7 @@ export function AssetsListPage() {
               type="checkbox"
               checked={filters.is_active ?? false}
               onChange={(e) => setFilter('is_active', e.target.checked ? true : undefined)}
-              className="h-4 w-4 rounded border-outline"
+              className="h-4 w-4 rounded border-border"
             />
             <Label htmlFor="active-filter" className="cursor-pointer text-xs">
               {t('filters.activeOnly')}
@@ -370,9 +370,9 @@ export function AssetsListPage() {
       )}
 
       {/* List */}
-      <div className="rounded-shape-lg border border-outline-variant bg-surface shadow-surface-1">
+      <div className="rounded-lg border border-border bg-card shadow-surface-1">
         {assetsQuery.isLoading ? (
-          <p className="p-6 text-sm text-on-surface-variant">{t('states.loading')}</p>
+          <p className="p-6 text-sm text-muted-foreground">{t('states.loading')}</p>
         ) : sortedAssets.length === 0 ? (
           <EmptyState title={t('states.empty')} description="" action={
             <Button type="button" variant="ghost" size="sm" onClick={() => { setFilters({ is_active: true }); setSearch('') }}>{t('filters.reset')}</Button>
@@ -384,7 +384,7 @@ export function AssetsListPage() {
                 key={asset.uuid}
                 className={`flex items-center gap-4 px-4 py-3 ${
                   asset.ownership === ASSET_OWNERSHIP_PRIVATE
-                    ? 'bg-secondary-container/35'
+                    ? 'bg-secondary/35'
                     : ''
                 }`}
               >
@@ -392,17 +392,17 @@ export function AssetsListPage() {
                 <div className="min-w-0 flex-1">
                   <button
                     type="button"
-                    className="truncate text-sm font-medium text-on-surface hover:text-primary"
+                    className="truncate text-sm font-medium text-foreground hover:text-primary"
                     onClick={() => navigate(`/assets/${asset.uuid}`)}
                   >
                     {asset.name}
                   </button>
                   {asset.parent_asset_uuid && (
-                    <span className="ml-2 rounded-full bg-surface-container px-2 py-0.5 text-[10px] text-on-surface-variant">
+                    <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                       {t('list.subComponent')}
                     </span>
                   )}
-                  <p className="truncate text-xs text-on-surface-variant">
+                  <p className="truncate text-xs text-muted-foreground">
                     {asset.code} · {assetFamilyLabel(asset)} ·{' '}
                     {ownershipLabel(asset.ownership, t)}
                     {asset.ownership === ASSET_OWNERSHIP_PRIVATE && (asset.owner_members?.length ?? 0) > 0
@@ -410,7 +410,7 @@ export function AssetsListPage() {
                       : ''}
                   </p>
                   {pricingVersionLabel(asset) && (
-                    <p className="truncate text-xs text-on-surface-variant">
+                    <p className="truncate text-xs text-muted-foreground">
                       {t('list.currentPricingVersion')}: {pricingVersionLabel(asset)}
                     </p>
                   )}
@@ -425,7 +425,7 @@ export function AssetsListPage() {
                 {canManage && (
                   <button
                     type="button"
-                    className="shrink-0 rounded px-2 py-1 text-xs text-primary hover:bg-primary-container"
+                    className="shrink-0 rounded px-2 py-1 text-xs text-primary hover:bg-primary/15"
                     onClick={() => navigate(`/assets/${asset.uuid}/edit`)}
                   >
                     {t('actions.edit')}
@@ -435,7 +435,7 @@ export function AssetsListPage() {
                 {asset.is_bookable && (
                   <button
                     type="button"
-                    className="shrink-0 rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container"
+                    className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
                     onClick={() => navigate(`/assets/${asset.uuid}/pricing`)}
                   >
                     {t('actions.pricing')}

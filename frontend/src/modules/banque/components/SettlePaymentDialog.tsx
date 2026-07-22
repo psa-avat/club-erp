@@ -184,13 +184,13 @@ export function SettlePaymentDialog({
         </div>
 
         {errorMsg && (
-          <p role="alert" className="rounded-lg bg-error-container px-4 py-2 text-sm text-on-error-container">
+          <p role="alert" className="rounded-lg bg-destructive/15 px-4 py-2 text-sm text-destructive">
             {errorMsg}
           </p>
         )}
 
         {bqJournal === null && (
-          <p className="rounded-lg bg-warning-container px-4 py-2 text-sm text-on-warning-container">
+          <p className="rounded-lg bg-warning/15 px-4 py-2 text-sm text-warning">
             {t('ops.suppliers.noBqJournal')}
           </p>
         )}

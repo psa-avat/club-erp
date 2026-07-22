@@ -200,13 +200,13 @@ export function SupplierInvoicePage() {
       </div>
 
       {haJournal === null && !journalsQuery.isLoading && (
-        <div className="rounded-lg bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+        <div className="rounded-lg bg-warning/15 px-4 py-3 text-sm text-warning">
           {t('ops.suppliers.noHaJournal')}
         </div>
       )}
 
       {fiscalYearUuid === null && (
-        <div className="rounded-lg bg-warning-container px-4 py-3 text-sm text-on-warning-container">
+        <div className="rounded-lg bg-warning/15 px-4 py-3 text-sm text-warning">
           {t('ops.suppliers.saveError')}
         </div>
       )}
@@ -214,7 +214,7 @@ export function SupplierInvoicePage() {
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="space-y-5">
           {errorMsg && (
-            <p role="alert" className="rounded-lg bg-error-container px-4 py-2 text-sm text-on-error-container">
+            <p role="alert" className="rounded-lg bg-destructive/15 px-4 py-2 text-sm text-destructive">
               {errorMsg}
             </p>
           )}
@@ -320,7 +320,7 @@ export function SupplierInvoicePage() {
           </div>
 
           {amount !== null && amount.gt(0) && expenseAccountUuid && supplierAccountUuid && (
-            <div className="rounded-lg bg-surface-container p-3 font-mono text-xs text-slate-700">
+            <div className="rounded-lg bg-muted p-3 font-mono text-xs text-slate-700">
               <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1">
                 <span>{t('ops.suppliers.preview.account')}</span>
                 <span className="text-right">{t('ops.suppliers.preview.debit')}</span>

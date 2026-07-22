@@ -212,7 +212,7 @@ function MemberRecapTemplatesScreen() {
             <div className="space-y-1.5">
               <Label className="text-xs">{t('recapEmail.templates.body')}</Label>
               <textarea
-                className="min-h-32 w-full rounded-shape-sm border border-outline bg-surface px-3 py-2 text-sm text-on-surface shadow-sm outline-none focus:border-primary"
+                className="min-h-32 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm outline-none focus:border-primary"
                 value={form.body}
                 onChange={(event) => setForm((prev) => ({ ...prev, body: event.target.value }))}
               />

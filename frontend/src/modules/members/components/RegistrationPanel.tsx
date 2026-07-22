@@ -93,14 +93,14 @@ type ChecklistState = 'valid' | 'pending'
 function ChecklistChip({ state, t }: { state: ChecklistState; t: (key: string) => string }) {
   if (state === 'valid') {
     return (
-      <span className="rounded-shape-full bg-tertiary-container px-2 py-0.5 text-xs font-medium text-on-tertiary-container">
+      <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
         {t('registrationPanel.checklist.valid')}
       </span>
     )
   }
 
   return (
-    <span className="rounded-shape-full bg-secondary-container px-2 py-0.5 text-xs font-medium text-on-secondary-container">
+    <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
       {t('registrationPanel.checklist.required')}
     </span>
   )
@@ -268,18 +268,18 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="space-y-6">
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-on-surface">{t('registrationPanel.step1')}</h3>
-                <div className="space-y-2 rounded-shape-md border border-outline-variant bg-surface-container p-3">
+                <h3 className="text-sm font-semibold text-foreground">{t('registrationPanel.step1')}</h3>
+                <div className="space-y-2 rounded-md border border-border bg-muted p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-on-surface">{t('registrationPanel.checklist.profile')}</span>
+                    <span className="text-sm text-foreground">{t('registrationPanel.checklist.profile')}</span>
                     <ChecklistChip state={checklistProfileState} t={t} />
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-on-surface">{t('registrationPanel.checklist.ffvp')}</span>
+                    <span className="text-sm text-foreground">{t('registrationPanel.checklist.ffvp')}</span>
                     <ChecklistChip state={checklistFfvpState} t={t} />
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-on-surface">{t('registrationPanel.checklist.identity')}</span>
+                    <span className="text-sm text-foreground">{t('registrationPanel.checklist.identity')}</span>
                     <ChecklistChip state={checklistIdentityState} t={t} />
                   </div>
                 </div>
@@ -287,12 +287,12 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
 
               {currentYearRegistration ? (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between gap-3 rounded-shape-md border border-outline-variant bg-surface-container p-3">
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted p-3">
                     <div>
-                      <p className="text-sm font-semibold text-on-surface">
+                      <p className="text-sm font-semibold text-foreground">
                         {t('registrationPanel.currentYear.title', { year })}
                       </p>
-                      <p className="text-xs text-on-surface-variant">
+                      <p className="text-xs text-muted-foreground">
                         {t('registrationPanel.currentYear.statusLabel', {
                           status:
                             currentYearRegistration.status === 1
@@ -321,15 +321,15 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
 
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-on-surface">{t('registrationPanel.step2')}</h3>
-                  <span className="rounded-shape-full bg-primary-container px-3 py-1 text-xs font-medium text-on-primary-container">
+                  <h3 className="text-sm font-semibold text-foreground">{t('registrationPanel.step2')}</h3>
+                  <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary">
                     {t('registrationPanel.fares.total', { amount: totalAmountDue })}
                   </span>
                 </div>
-                <div className="overflow-hidden rounded-shape-md border border-outline-variant">
+                <div className="overflow-hidden rounded-md border border-border">
                   <table className="w-full text-sm">
-                    <thead className="bg-surface-container">
-                      <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
+                    <thead className="bg-muted">
+                      <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="px-3 py-2">{t('registrationPanel.fares.colDescription')}</th>
                         <th className="px-3 py-2">{t('registrationPanel.fares.colCategory')}</th>
                         <th className="px-3 py-2">{t('registrationPanel.fares.colAmount')}</th>
@@ -339,7 +339,7 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
                     <tbody>
                       {pricingItems.length === 0 ? (
                         <tr>
-                          <td className="px-3 py-3 text-on-surface-variant" colSpan={4}>
+                          <td className="px-3 py-3 text-muted-foreground" colSpan={4}>
                             {t('registrationPanel.fares.empty')}
                           </td>
                         </tr>
@@ -347,10 +347,10 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
                         pricingItems.map((item) => {
                           const checked = selectedPricingItemUuids.includes(item.uuid)
                           return (
-                            <tr key={item.uuid} className="border-t border-outline-variant">
-                              <td className="px-3 py-2 text-on-surface">{item.name}</td>
-                              <td className="px-3 py-2 text-on-surface-variant">{unitLabel(item.unit)}</td>
-                              <td className="px-3 py-2 text-on-surface">{item.base_price} €</td>
+                            <tr key={item.uuid} className="border-t border-border">
+                              <td className="px-3 py-2 text-foreground">{item.name}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{unitLabel(item.unit)}</td>
+                              <td className="px-3 py-2 text-foreground">{item.base_price} €</td>
                               <td className="px-3 py-2 text-right">
                                 <input
                                   type="checkbox"
@@ -369,8 +369,8 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-on-surface">{t('registrationPanel.step4')}</h3>
-                <p className="text-sm text-on-surface-variant">
+                <h3 className="text-sm font-semibold text-foreground">{t('registrationPanel.step4')}</h3>
+                <p className="text-sm text-muted-foreground">
                   {t('registrationPanel.committees.helper')}
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -383,14 +383,14 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
                         onClick={() => toggleCommittee(committee.uuid)}
                         disabled={completeRegistrationMutation.isPending}
                         className={[
-                          'rounded-shape-md border p-3 text-left transition-colors',
+                          'rounded-md border p-3 text-left transition-colors',
                           selected
-                            ? 'border-primary bg-primary-container text-on-primary-container'
-                            : 'border-outline-variant bg-surface hover:bg-surface-container',
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-border bg-card hover:bg-muted',
                         ].join(' ')}
                       >
                         <p className="text-sm font-semibold">{committee.code}</p>
-                        <p className="text-xs text-on-surface-variant">{committee.description}</p>
+                        <p className="text-xs text-muted-foreground">{committee.description}</p>
                       </button>
                     )
                   })}
@@ -399,8 +399,8 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
             </div>
 
             <aside className="space-y-3 lg:sticky lg:top-0 lg:self-start">
-              <h3 className="text-sm font-semibold text-on-surface">{t('registrationPanel.step3')}</h3>
-              <div className="space-y-3 rounded-shape-md border border-outline-variant bg-surface p-3">
+              <h3 className="text-sm font-semibold text-foreground">{t('registrationPanel.step3')}</h3>
+              <div className="space-y-3 rounded-md border border-border bg-card p-3">
                 <div className="space-y-2">
                   <Label htmlFor="registration-notes">{t('registrationPanel.accounting.notes')}</Label>
                   <Input
@@ -411,44 +411,44 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
                   />
                 </div>
 
-                <div className="overflow-hidden rounded-shape-md border border-outline-variant">
+                <div className="overflow-hidden rounded-md border border-border">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-surface-container">
-                        <tr className="text-left text-xs uppercase tracking-wide text-on-surface-variant">
+                      <thead className="bg-muted">
+                        <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                           <th className="px-3 py-2">{t('registrationPanel.accounting.colAccount')}</th>
                           <th className="px-3 py-2 text-right">{t('registrationPanel.accounting.colDebit')}</th>
                           <th className="px-3 py-2 text-right">{t('registrationPanel.accounting.colCredit')}</th>
                         </tr>
                       </thead>
                       <tbody>
-                      <tr className="border-t border-outline-variant">
-                        <td className="px-3 py-2 text-on-surface">
+                      <tr className="border-t border-border">
+                        <td className="px-3 py-2 text-foreground">
                           {t('registrationPanel.accounting.memberAccount', { accountId: member?.account_id ?? '—' })}
                         </td>
-                        <td className="px-3 py-2 text-right text-on-surface">{totalAmountDue}</td>
-                        <td className="px-3 py-2 text-right text-on-surface">0.00</td>
+                        <td className="px-3 py-2 text-right text-foreground">{totalAmountDue}</td>
+                        <td className="px-3 py-2 text-right text-foreground">0.00</td>
                       </tr>
                       {pricingItems
                         .filter((item) => selectedPricingItemUuids.includes(item.uuid))
                         .map((item) => (
-                          <tr key={`gl-${item.uuid}`} className="border-t border-outline-variant">
-                            <td className="px-3 py-2 text-on-surface">
+                          <tr key={`gl-${item.uuid}`} className="border-t border-border">
+                            <td className="px-3 py-2 text-foreground">
                               {t('registrationPanel.accounting.product', {
                                 ref: item.gl_account_credit_uuid
                                   ? item.gl_account_credit_uuid.slice(0, 8)
                                   : t('registrationPanel.accounting.undefinedAccount'),
                               })}
                             </td>
-                            <td className="px-3 py-2 text-right text-on-surface">0.00</td>
-                            <td className="px-3 py-2 text-right text-on-surface">{item.base_price}</td>
+                            <td className="px-3 py-2 text-right text-foreground">0.00</td>
+                            <td className="px-3 py-2 text-right text-foreground">{item.base_price}</td>
                           </tr>
                         ))}
                     </tbody>
                     </table>
                   </div>
                 </div>
-                <p className="text-xs text-on-surface-variant">
+                <p className="text-xs text-muted-foreground">
                   {t('registrationPanel.accounting.invoiceRef', { ref: invoiceReference })}
                 </p>
               </div>
@@ -458,7 +458,7 @@ export function RegistrationPanel({ open, onClose, member, year, allowWorkflow, 
           {combinedError ? <Alert>{toErrorMessage(combinedError)}</Alert> : null}
         </div>
 
-        <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-outline-variant bg-surface p-4">
+        <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border bg-card p-4">
           <div className="space-y-2">
             <Label htmlFor="registration-effective-date">{t('registrationPanel.accounting.effectiveDate')}</Label>
             <Input

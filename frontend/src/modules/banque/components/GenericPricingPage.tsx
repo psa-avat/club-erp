@@ -126,12 +126,12 @@ function GenericPricingItemsPanel({
   const editable = canEdit && !version.is_locked && version.status === VERSION_STATUS_DRAFT
 
   return (
-    <div className="mt-4 space-y-3 border-t border-outline-variant pt-4">
+    <div className="mt-4 space-y-3 border-t border-border pt-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-on-surface-variant">{tp('items')}</h3>
+        <h3 className="text-xs font-semibold text-muted-foreground">{tp('items')}</h3>
         {editable && !showForm && !editingItem && (
           <Button
-            className="h-8 rounded-md bg-transparent px-3 text-xs text-on-surface hover:bg-surface-container"
+            className="h-8 rounded-md bg-transparent px-3 text-xs text-foreground hover:bg-muted"
             onClick={() => setShowForm(true)}
           >
             <Plus className="mr-1 h-3 w-3" />
@@ -155,9 +155,9 @@ function GenericPricingItemsPanel({
       )}
 
       {itemsQuery.isLoading ? (
-        <p className="text-xs text-on-surface-variant">{t('states.loading')}</p>
+        <p className="text-xs text-muted-foreground">{t('states.loading')}</p>
       ) : items.length === 0 && !showForm ? (
-        <p className="rounded-shape-sm border border-dashed border-outline-variant py-3 text-center text-xs text-on-surface-variant">
+        <p className="rounded-sm border border-dashed border-border py-3 text-center text-xs text-muted-foreground">
           {tp('noItems')}
         </p>
       ) : (
@@ -177,11 +177,11 @@ function GenericPricingItemsPanel({
             ) : (
               <div
                 key={item.uuid}
-                className="flex items-center gap-3 rounded-shape-sm border border-outline-variant bg-surface px-4 py-2"
+                className="flex items-center gap-3 rounded-sm border border-border bg-card px-4 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-on-surface">{item.name}</p>
-                  <p className="text-xs text-on-surface-variant">
+                  <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">
                     {item.base_price} €
                   </p>
                 </div>
@@ -189,14 +189,14 @@ function GenericPricingItemsPanel({
                   <div className="flex shrink-0 gap-1">
                     <button
                       type="button"
-                      className="rounded p-1 text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                       onClick={() => setEditingItem(item)}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
                       onClick={() => setConfirmDeleteItem(item)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -376,8 +376,8 @@ export function GenericPricingPage() {
 
   if (!canView) {
     return (
-      <section className="rounded-xl border border-outline-variant bg-white p-6 shadow-sm">
-        <p className="text-sm text-on-surface-variant">{tp('noPermission')}</p>
+      <section className="rounded-xl border border-border bg-white p-6 shadow-sm">
+        <p className="text-sm text-muted-foreground">{tp('noPermission')}</p>
       </section>
     )
   }
@@ -387,15 +387,15 @@ export function GenericPricingPage() {
   return (
     <section className="space-y-4">
       {error && (
-        <div className="rounded-lg border border-error bg-error-container px-4 py-2 text-sm text-error">
+        <div className="rounded-lg border border-error bg-destructive/15 px-4 py-2 text-sm text-error">
           {error}
           <button type="button" className="ml-2 opacity-60 hover:opacity-100" onClick={() => setError(null)}>×</button>
         </div>
       )}
 
-      <div className="rounded-xl border border-outline-variant bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
-          <h2 className="text-sm font-semibold text-on-surface-variant">
+      <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="text-sm font-semibold text-muted-foreground">
             {tp('version.listTitle')}
           </h2>
           {canEdit && (
@@ -408,9 +408,9 @@ export function GenericPricingPage() {
 
         <div className="space-y-0 p-4">
           {versionsQuery.isLoading ? (
-            <p className="py-6 text-center text-sm text-on-surface-variant">{tp('loading')}</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">{tp('loading')}</p>
           ) : versions.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
+            <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
               {tp('version.empty')}
             </p>
           ) : (
@@ -430,7 +430,7 @@ export function GenericPricingPage() {
                     saving={updateVersionMutation.isPending}
                   />
                 ) : (
-                  <div key={v.uuid} className="rounded-lg border border-outline-variant bg-white">
+                  <div key={v.uuid} className="rounded-lg border border-border bg-white">
                     <div
                       className="flex cursor-pointer items-center gap-3 px-4 py-2.5"
                       onClick={() =>
@@ -438,14 +438,14 @@ export function GenericPricingPage() {
                       }
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-on-surface">{v.name}</p>
-                        <p className="text-xs text-on-surface-variant">
+                        <p className="text-sm font-medium text-foreground">{v.name}</p>
+                        <p className="text-xs text-muted-foreground">
                           {v.from_date} → {v.to_date ?? tp('version.openEnd')}
                         </p>
                       </div>
                       <VersionBadge status={v.status} />
                       {v.is_locked && (
-                        <span className="rounded-full bg-error-container px-2 py-0.5 text-xs text-error">
+                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-error">
                           {tp('version.locked')}
                         </span>
                       )}
@@ -458,14 +458,14 @@ export function GenericPricingPage() {
                           />
                           <button
                             type="button"
-                            className="rounded p-1 text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
+                            className="rounded p-1 text-muted-foreground hover:bg-card hover:text-foreground"
                             onClick={() => setEditingVersion(v)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
-                            className="rounded p-1 text-on-surface-variant hover:bg-error-container hover:text-error"
+                            className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-error"
                             onClick={() => setConfirmDeleteVersion(v)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -476,21 +476,21 @@ export function GenericPricingPage() {
                         <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
+                            className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground"
                             onClick={() => openCloneDialog(v)}
                           >
                             {tp('version.clone')}
                           </button>
                           <button
                             type="button"
-                            className="rounded px-2 py-1 text-xs text-on-warning-container hover:bg-warning-container"
+                            className="rounded px-2 py-1 text-xs text-warning hover:bg-warning/15"
                             onClick={() => openArchiveDialog(v)}
                           >
                             {tp('version.archive')}
                           </button>
                           <button
                             type="button"
-                            className="rounded px-2 py-1 text-xs text-on-surface-variant hover:bg-surface-container-lowest hover:text-on-surface"
+                            className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground"
                             onClick={() => setConfirmRevertVersion(v)}
                           >
                             {tp('version.revert')}
@@ -516,8 +516,8 @@ export function GenericPricingPage() {
         <DialogContent>
           <div className="space-y-4 p-1">
             <div>
-              <h3 className="text-sm font-semibold text-on-surface">{tp('version.new')}</h3>
-              <p className="mt-1 text-xs text-on-surface-variant">{tp('version.genericScope')}</p>
+              <h3 className="text-sm font-semibold text-foreground">{tp('version.new')}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{tp('version.genericScope')}</p>
             </div>
             <VersionForm
               initial={{ name: '', from_date: todayIsoDate(), to_date: '', status: VERSION_STATUS_DRAFT }}
@@ -579,8 +579,8 @@ export function GenericPricingPage() {
         <DialogContent>
           <div className="space-y-4 p-1">
             <div>
-              <h3 className="text-sm font-semibold text-on-surface">{tp('version.cloneDialogTitle')}</h3>
-              <p className="mt-1 text-xs text-on-surface-variant">{tp('version.cloneDialogBody')}</p>
+              <h3 className="text-sm font-semibold text-foreground">{tp('version.cloneDialogTitle')}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{tp('version.cloneDialogBody')}</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{tp('version.name')}</Label>
@@ -617,17 +617,17 @@ export function GenericPricingPage() {
         <DialogContent>
           <div className="space-y-4 p-1">
             <div>
-              <h3 className="text-sm font-semibold text-on-surface">{tp('version.archiveDialogTitle')}</h3>
-              <p className="mt-1 text-xs text-on-surface-variant">{tp('version.archiveDialogBody')}</p>
+              <h3 className="text-sm font-semibold text-foreground">{tp('version.archiveDialogTitle')}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{tp('version.archiveDialogBody')}</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{tp('version.archiveEndDate')}</Label>
               <Input type="date" value={archiveEndDate} onChange={(e) => setArchiveEndDate(e.target.value)} className="h-8 text-sm" />
             </div>
-            <label className="flex items-center gap-2 text-xs text-on-surface">
+            <label className="flex items-center gap-2 text-xs text-foreground">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-outline-variant"
+                className="h-4 w-4 rounded border-border"
                 checked={archiveCreateNext}
                 onChange={(e) => setArchiveCreateNext(e.target.checked)}
               />

@@ -90,8 +90,10 @@ class _FakeDb:
         self.added = []
         self.deleted = []
         self.committed = 0
+        self.executed_statements = []
 
-    async def execute(self, *_args, **_kwargs):
+    async def execute(self, stmt, *_args, **_kwargs):
+        self.executed_statements.append(stmt)
         return self.execute_results.pop(0)
 
     async def commit(self):
@@ -212,6 +214,28 @@ class SendRecapEmailsBulkTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.sent, 1)
         self.assertEqual(result.skipped_no_email, 1)
         self.assertEqual(result.failed, 1)
+
+    async def test_member_uuids_filters_to_selection_instead_of_active_status(self):
+        members = [_member(email="a@example.com")]
+        db = _FakeDb([_FakeResult(members)])
+
+        async def _fake_send_recap_email(_db, _member, _message, **_kwargs):
+            return True
+
+        original = member_recap.send_recap_email
+        member_recap.send_recap_email = _fake_send_recap_email
+        try:
+            result = await member_recap.send_recap_emails_bulk(
+                db, "Bonjour", member_uuids=[members[0].uuid]
+            )
+        finally:
+            member_recap.send_recap_email = original
+
+        self.assertEqual(result.sent, 1)
+        compiled = str(db.executed_statements[0].compile(compile_kwargs={"literal_binds": True}))
+        where_clause = compiled.split("WHERE", 1)[1]
+        self.assertIn("uuid IN", where_clause)
+        self.assertNotIn("status", where_clause)
 
 
 class RecapTemplateCrudTests(IsolatedAsyncioTestCase):

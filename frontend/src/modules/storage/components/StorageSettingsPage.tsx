@@ -100,7 +100,7 @@ export function StorageSettingsPage() {
   return (
     <section className="space-y-4">
       <form
-        className="space-y-4 rounded-2xl border border-outline-variant bg-surface p-6 shadow-sm"
+        className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm"
         onSubmit={(event) => { void handleSave(event) }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -141,7 +141,7 @@ export function MemberSheetsPage() {
 
       {/* Year selector */}
       <div className="flex items-center gap-3">
-        <Label className="whitespace-nowrap text-xs text-on-surface-variant" htmlFor="sheets-year">
+        <Label className="whitespace-nowrap text-xs text-muted-foreground" htmlFor="sheets-year">
           {t('filters.year')}
         </Label>
         <Input
@@ -158,7 +158,7 @@ export function MemberSheetsPage() {
         <div className="md:hidden">
           <button
             type="button"
-            className="text-sm text-on-surface-variant hover:text-on-surface"
+            className="text-sm text-muted-foreground hover:text-foreground"
             onClick={handleBackToList}
           >
             ← {t('sheet.backToList')}
@@ -169,34 +169,34 @@ export function MemberSheetsPage() {
       <div className="grid gap-6 md:grid-cols-[1.1fr,1fr]">
         {/* Member picker — hidden on mobile when form is shown */}
         <div className={mobileView === 'form' ? 'hidden md:block' : ''}>
-          <div className="rounded-shape-lg border border-outline-variant bg-surface shadow-surface-1">
-            <div className="border-b border-outline-variant px-4 py-3">
-              <h2 className="font-semibold text-on-surface">{t('list.title')}</h2>
-              <p className="text-sm text-on-surface-variant">{t('sheet.pickMember')}</p>
+          <div className="rounded-lg border border-border bg-card shadow-surface-1">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="font-semibold text-foreground">{t('list.title')}</h2>
+              <p className="text-sm text-muted-foreground">{t('sheet.pickMember')}</p>
             </div>
             <div className="p-3">
               {membersQuery.isLoading ? (
-                <p className="px-2 py-4 text-sm text-on-surface-variant">{t('states.loading')}</p>
+                <p className="px-2 py-4 text-sm text-muted-foreground">{t('states.loading')}</p>
               ) : null}
               <div className="space-y-2">
                 {members.map((member) => (
                   <button
                     key={member.uuid}
                     className={[
-                      'w-full rounded-shape-md border px-4 py-3 text-left transition-colors',
+                      'w-full rounded-md border px-4 py-3 text-left transition-colors',
                       selectedMemberId === member.uuid
-                        ? 'border-primary bg-primary-container'
-                        : 'border-outline-variant bg-surface hover:border-outline hover:bg-surface-variant',
+                        ? 'border-primary bg-primary/15'
+                        : 'border-border bg-card hover:border-border hover:bg-muted',
                     ].join(' ')}
                     type="button"
                     onClick={() => handleSelectMember(member.uuid)}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-medium text-on-surface">
+                        <p className="font-medium text-foreground">
                           {member.first_name} {member.last_name}
                         </p>
-                        <p className="text-xs uppercase tracking-wide text-on-surface-variant">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
                           {member.account_id}
                         </p>
                       </div>
@@ -211,20 +211,20 @@ export function MemberSheetsPage() {
 
         {/* Sheet form — hidden on mobile when list is shown */}
         <div className={mobileView === 'list' ? 'hidden md:block' : ''}>
-          <div className="rounded-shape-lg border border-outline-variant bg-surface shadow-surface-1">
-            <div className="border-b border-outline-variant px-4 py-3">
-              <h2 className="font-semibold text-on-surface">
+          <div className="rounded-lg border border-border bg-card shadow-surface-1">
+            <div className="border-b border-border px-4 py-3">
+              <h2 className="font-semibold text-foreground">
                 {selectedMember
                   ? `${selectedMember.first_name} ${selectedMember.last_name}`
                   : t('sheet.title')}
               </h2>
-              <p className="text-sm text-on-surface-variant">{t('sheet.description')}</p>
+              <p className="text-sm text-muted-foreground">{t('sheet.description')}</p>
             </div>
             <div className="p-4">
               {!selectedMemberId ? (
-                <p className="text-sm text-on-surface-variant">{t('sheet.selectMember')}</p>
+                <p className="text-sm text-muted-foreground">{t('sheet.selectMember')}</p>
               ) : !selectedMember?.can_fly ? (
-                <p className="text-sm text-on-surface-variant">{t('sheet.notEligible')}</p>
+                <p className="text-sm text-muted-foreground">{t('sheet.notEligible')}</p>
               ) : (
                 <form className="space-y-4" onSubmit={handleSheetSubmit}>
                   <TextField

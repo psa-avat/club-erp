@@ -139,7 +139,7 @@ function PortalAccessTab({ memberUuid }: { memberUuid: string }) {
     <div className="space-y-4">
       {/* Year selector */}
       <div className="flex items-center gap-3">
-        <Label className="whitespace-nowrap text-xs text-on-surface-variant" htmlFor="portal-year">
+        <Label className="whitespace-nowrap text-xs text-muted-foreground" htmlFor="portal-year">
           {t('filters.year')}
         </Label>
         <Input

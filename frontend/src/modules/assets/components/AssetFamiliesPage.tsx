@@ -191,7 +191,7 @@ function FamilyForm({
       <p className="text-xs text-slate-500">{t('assetFamilies.isPricedHint')}</p>
       <p className="text-xs text-slate-500">{t('assetFamilies.usesFuelHint')}</p>
 
-      <div className="space-y-3 border-t border-outline-variant pt-3">
+      <div className="space-y-3 border-t border-border pt-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           {t('assetFamilies.accountsSectionTitle')}
         </h4>

@@ -204,7 +204,7 @@ function SearchableSelect({
                     close()
                   }
                 }}
-                className="inline-flex h-4 w-4 items-center justify-center rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                className="inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
                   <path fillRule="evenodd" d="M4.22 4.22a.75.75 0 011.06 0L10 8.94l4.72-4.72a.75.75 0 111.06 1.06L11.06 10l4.72 4.72a.75.75 0 11-1.06 1.06L10 11.06l-4.72 4.72a.75.75 0 11-1.06-1.06L8.94 10 4.22 5.28a.75.75 0 010-1.06z" clipRule="evenodd" />
@@ -214,7 +214,7 @@ function SearchableSelect({
             <svg
               aria-hidden="true"
               className={cn(
-                'h-4 w-4 shrink-0 text-on-surface-variant transition-transform',
+                'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
                 open && 'rotate-180',
               )}
               xmlns="http://www.w3.org/2000/svg"
@@ -246,7 +246,7 @@ function SearchableSelect({
           )}
         >
           {/* Search */}
-          <div className="border-b border-outline-variant p-2">
+          <div className="border-b border-border p-2">
             <input
               ref={searchRef}
               type="text"
@@ -263,7 +263,7 @@ function SearchableSelect({
           {/* Options */}
           <ul ref={listRef} className="overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-on-surface-variant">{noResultsText}</li>
+              <li className="px-3 py-2 text-sm text-muted-foreground">{noResultsText}</li>
             ) : (
               filtered.map((opt, index) => (
                 <li
