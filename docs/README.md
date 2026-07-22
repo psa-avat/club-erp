@@ -53,8 +53,8 @@ Each doc below has been verified against the current codebase; only plans with g
 | `plan-flightsAccountingFinalization.prompt.md` | Discount review, machine financial dashboard, scheduled ops |
 | `plan-hr_and_planning_implementation.md` | Leave workflow, attendance validation, committee-linked planning |
 | `plan-importflights.md` | Billing-quote/correction workflow layer |
+| `plan-membersManagementConsolidated.prompt.md` | Registration default end-date rule, anonymization review screen; self-registration design only |
 | `plan-membersModuleRefactoring.prompt.md` | Expenses, Volunteer Fiscal, Documents tabs |
-| `plan-membersUxSplitByCategoryGroup.prompt.md` | Core/External/Business member screen split — not started |
 | `plan-phase0-frontend-foundation.md` | `packages/ui` component suite, i18n nav completion (Storybook was intentionally removed, not pending — see note in the doc) |
 | `plan-planche-integration-phase1.md` | `FlightCharges` model + split-charge/multi-beneficiary billing |
 | `plan-synchro-ffvp-osrt.md` | `GesAssoSyncPage.tsx` batch member-sync page |
@@ -66,6 +66,7 @@ Not maintained. Kept for design rationale and history. Includes:
 
 - Original PRDs (`PRD_*.md`, `PRD GESTION CLUB*.md`) — superseded by `product/` specs.
 - Completed build plans (`plan-recurringAccounting`, `plan-symplifyMembers`, `plan-viworkflow`, `plan-plancheErpIntegration`, `MEMBERS_UI`) — fully shipped.
+- `plan-membersUxSplitByCategoryGroup.prompt.md` — fully shipped (Core/External/Business split verified in `MembersListPage.tsx`) and `plan-membersRegistrationLifecycleAndSelfService.prompt.md` — superseded by `plan-membersManagementConsolidated.prompt.md` (which tracks its remaining scope plus the shipped recap-email feature).
 - One-time audits/checklists (`a11y-audit-phase0`, `ux-audit-phase1`, `ASSESSMENT_MEMBER_REGISTRATION_FLOW`, `CHECKLIST_ACCOUNTING_IMPLEMENTATION`, `EXECUTIVE_SUMMARY_ACCOUNTING_UXUI`, `CHALLENGE_ACCOUNTING_UXUI_DESIGN`) — findings already acted on or absorbed elsewhere.
 - Superseded UI-refactor sources (`plan-uiRefactoring.prompt.md`, `plan-ux-ui-navigation.md`, `plan-visualHarmonization.prompt.md`, `ERP_UI_Refactoring.md`) — consolidated into `plans/ui-refactoring.md`.
 - Misc superseded (`PROMPT_MIGRATION_DESIGN.md`, `compta.md`, `Flight_Billing_Specification_And_User_Manual.md`, `ai-agents-prompt.md`) — content merged into `product/` specs or fully redundant with `.claude/CLAUDE.md`.

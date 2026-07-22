@@ -323,6 +323,30 @@ export type DepositRequest = {
   deposit_date?: string
 }
 
+export type MemberRecapMessageTemplate = {
+  uuid: string
+  label: string
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export type CreateMemberRecapMessageTemplatePayload = {
+  label: string
+  body: string
+}
+
+export type UpdateMemberRecapMessageTemplatePayload = {
+  label?: string
+  body?: string
+}
+
+export type RecapEmailBulkResult = {
+  sent: number
+  skipped_no_email: number
+  failed: number
+}
+
 export type DepositResponse = {
   deposit_uuid: string
   entry_uuid: string

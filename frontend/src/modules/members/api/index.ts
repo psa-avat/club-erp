@@ -8,6 +8,7 @@ import type {
   CommitteeMembership,
   CreateCommitteePayload,
   CreateMemberPayload,
+  CreateMemberRecapMessageTemplatePayload,
   DepositRequest,
   DepositResponse,
   ExpenseAccessResponse,
@@ -17,11 +18,14 @@ import type {
   MemberDetail,
   MemberFilters,
   MemberOption,
+  MemberRecapMessageTemplate,
   MemberRegistration,
   MemberSheet,
   MemberSummary,
+  RecapEmailBulkResult,
   RegistrationCompletionPayload,
   UpdateMemberRegistrationPayload,
+  UpdateMemberRecapMessageTemplatePayload,
   ReplaceCommitteeMembersPayload,
   UpdateCommitteePayload,
   UpdateMemberPayload,
@@ -510,4 +514,103 @@ export function useCreateMemberDepositMutation() {
 }
 
 export type { AccountSummary, AccountEntriesResponse, AccountEntryItem, DepositResponse } from '../types'
+
+// ── Recap emails ─────────────────────────────────────────────────────────
+
+export const recapTemplatesQueryKey = ['members', 'recap-message-templates'] as const
+
+export function useRecapMessageTemplatesQuery(enabled = true) {
+  return useQuery({
+    queryKey: recapTemplatesQueryKey,
+    enabled,
+    queryFn: async () => {
+      const { data } = await apiClient.get<MemberRecapMessageTemplate[]>(
+        '/api/v1/members/recap-message-templates',
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useCreateRecapMessageTemplateMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: CreateMemberRecapMessageTemplatePayload) => {
+      const { data } = await apiClient.post<MemberRecapMessageTemplate>(
+        '/api/v1/members/recap-message-templates',
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: recapTemplatesQueryKey })
+    },
+  })
+}
+
+export function useUpdateRecapMessageTemplateMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      templateUuid,
+      payload,
+    }: {
+      templateUuid: string
+      payload: UpdateMemberRecapMessageTemplatePayload
+    }) => {
+      const { data } = await apiClient.patch<MemberRecapMessageTemplate>(
+        `/api/v1/members/recap-message-templates/${templateUuid}`,
+        payload,
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: recapTemplatesQueryKey })
+    },
+  })
+}
+
+export function useDeleteRecapMessageTemplateMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (templateUuid: string) => {
+      await apiClient.delete(`/api/v1/members/recap-message-templates/${templateUuid}`, getAuthRequestConfig())
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: recapTemplatesQueryKey })
+    },
+  })
+}
+
+export function useSendMemberRecapEmailMutation() {
+  return useMutation({
+    mutationFn: async ({ memberUuid, messageText }: { memberUuid: string; messageText: string }) => {
+      const { data } = await apiClient.post<{ sent: boolean }>(
+        `/api/v1/members/${memberUuid}/send-recap-email`,
+        { message_text: messageText },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
+
+export function useSendRecapEmailsBulkMutation() {
+  return useMutation({
+    mutationFn: async (messageText: string) => {
+      const { data } = await apiClient.post<RecapEmailBulkResult>(
+        '/api/v1/members/recap-emails/send-bulk',
+        { message_text: messageText },
+        getAuthRequestConfig(),
+      )
+      return data
+    },
+  })
+}
 

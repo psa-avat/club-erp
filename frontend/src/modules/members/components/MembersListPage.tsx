@@ -21,13 +21,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Alert } from '../../../components/ui/alert'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card'
+import { ConfirmDialog } from '../../../components/ui/confirmation-dialog'
 import { ImportDialog } from '../../../components/ui/ImportDialog'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
+import { useCapability } from '../../../auth/hooks/useCapability'
 
 import {
   exportMembersToCSV,
@@ -35,6 +38,7 @@ import {
   useMembersCountQuery,
   useMemberQuery,
   useMembersQuery,
+  useSendRecapEmailsBulkMutation,
 } from '../api'
 import { useMembersStore } from '../store'
 import { useFiscalYearStore } from '../../../store/fiscalYearStore'
@@ -46,6 +50,7 @@ import {
 import { MemberDirectoryTable } from './MemberDirectoryTable'
 import { MemberFilterDrawer } from './MemberFilterDrawer'
 import { MemberKpiStrip } from './MemberKpiStrip'
+import { RecapMessageComposer } from './RecapMessageComposer'
 import { RegistrationPanel } from './RegistrationPanel'
 import type { MembersScreen } from '../types'
 
@@ -112,6 +117,10 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
   const [exportError, setExportError] = useState<string | null>(null)
   const [registrationActionError, setRegistrationActionError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
+  const [recapComposerOpen, setRecapComposerOpen] = useState(false)
+  const [pendingRecapMessage, setPendingRecapMessage] = useState<string | null>(null)
+  const canSendRecapEmails = useCapability('SEND_MEMBER_EMAILS')
+  const sendRecapEmailsBulkMutation = useSendRecapEmailsBulkMutation()
 
   const PAGE_SIZE = 50
 
@@ -251,6 +260,24 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
     }
   }
 
+  async function handleConfirmBulkRecapSend() {
+    if (pendingRecapMessage === null) return
+    try {
+      const result = await sendRecapEmailsBulkMutation.mutateAsync(pendingRecapMessage)
+      toast.success(
+        t('recapEmail.bulkResult', {
+          sent: result.sent,
+          skipped: result.skipped_no_email,
+          failed: result.failed,
+        }),
+      )
+    } catch (error) {
+      toast.error(toErrorMessage(error))
+    } finally {
+      setPendingRecapMessage(null)
+    }
+  }
+
   const combinedError =
     membersQuery.error ??
     membersCountQuery.error ??
@@ -271,6 +298,16 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
         <Button type="button" variant="secondary" onClick={() => setShowImportDialog(true)}>
           {tCommon('import.button')}
         </Button>
+        {canSendRecapEmails && (
+          <>
+            <Button type="button" variant="secondary" onClick={() => navigate('/club/members/recap-templates')}>
+              {t('recapEmail.templates.manage')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setRecapComposerOpen(true)}>
+              {t('recapEmail.sendToAll')}
+            </Button>
+          </>
+        )}
         <Button type="button" onClick={handleNewMember}>
           {t('actions.newMember')}
         </Button>
@@ -506,6 +543,27 @@ export function MembersListPage({ defaultScreen }: { defaultScreen?: MembersScre
           onClose={() => setShowImportDialog(false)}
         />
       ) : null}
+
+      {/* ── Bulk recap email ─────────────────────────────────────────── */}
+      <RecapMessageComposer
+        open={recapComposerOpen}
+        title={t('recapEmail.sendToAllTitle')}
+        description={t('recapEmail.sendToAllDescription')}
+        submitLabel={t('recapEmail.next')}
+        onClose={() => setRecapComposerOpen(false)}
+        onSubmit={async (messageText) => {
+          setPendingRecapMessage(messageText)
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingRecapMessage !== null}
+        title={t('recapEmail.confirmBulkTitle')}
+        body={t('recapEmail.confirmBulkBody')}
+        confirmLabel={t('recapEmail.send')}
+        onConfirm={() => void handleConfirmBulkRecapSend()}
+        onCancel={() => setPendingRecapMessage(null)}
+      />
     </section>
   )
 }

@@ -21,17 +21,21 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, BookOpen, FileText, FolderOpen, Key, Mail, Receipt, ShoppingBag, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
+import { useCapability } from '../../../auth/hooks/useCapability';
 import { InitialsAvatar } from './MemberRowBadges';
 import { memberCategoryLabel } from './membersShared';
+import { RecapMessageComposer } from './RecapMessageComposer';
 import {
   useDisableExpenseAccessMutation,
   useEnableExpenseAccessMutation,
   useMemberQuery,
   useMemberSheetsQuery,
+  useSendMemberRecapEmailMutation,
 } from '../api';
 import { getPortalProfile } from '../../member-portal/api/client';
 import { useChangePortalPasswordMutation } from '../../member-portal/api';
@@ -263,6 +267,7 @@ function TabButton({
 export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('common');
+  const { t: tMembers } = useTranslation('members');
 
   const visibleTabs = ALL_TABS.filter((tab) => !tab.clubOnly || mode === 'club');
 
@@ -282,6 +287,9 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState(false);
   const changePasswordMutation = useChangePortalPasswordMutation();
+  const [showRecapDialog, setShowRecapDialog] = useState(false);
+  const canSendRecapEmails = useCapability('SEND_MEMBER_EMAILS');
+  const sendRecapEmailMutation = useSendMemberRecapEmailMutation();
 
   const memberQuery = useMemberQuery(mode === 'club' ? memberUuid : null);
   const portalProfile = getPortalProfile<MemberPortalProfile>();
@@ -334,28 +342,26 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
 
           {/* ── Header actions ── */}
           <div className="flex items-center gap-2">
+            {mode === 'club' && member && canSendRecapEmails && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowRecapDialog(true)}
+                disabled={!member.email}
+                title={!member.email ? t('workspaceNoEmail') : undefined}
+              >
+                <Mail className="mr-1.5 h-4 w-4" />
+                {t('workspaceSendAccess')}
+              </Button>
+            )}
             {mode === 'club' && member && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    /* Phase 8 — send portal access email */
-                  }}
-                  disabled={!member.email}
-                  title={!member.email ? t('workspaceNoEmail') : undefined}
-                >
-                  <Mail className="mr-1.5 h-4 w-4" />
-                  {t('workspaceSendAccess')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate(`/club/members/${memberUuid}/edit`)}
-                >
-                  {t('workspaceEdit')}
-                </Button>
-              </>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => navigate(`/club/members/${memberUuid}/edit`)}
+              >
+                {t('workspaceEdit')}
+              </Button>
             )}
             {mode === 'portal' && (
               <Button
@@ -462,6 +468,24 @@ export function MemberWorkspaceShell({ memberUuid, mode }: MemberWorkspaceShellP
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Recap email dialog (club mode) ── */}
+      {mode === 'club' && member && (
+        <RecapMessageComposer
+          open={showRecapDialog}
+          title={tMembers('recapEmail.sendToMemberTitle', { name: `${member.first_name} ${member.last_name}` })}
+          submitLabel={tMembers('recapEmail.send')}
+          onClose={() => setShowRecapDialog(false)}
+          onSubmit={async (messageText) => {
+            const result = await sendRecapEmailMutation.mutateAsync({ memberUuid, messageText });
+            if (result.sent) {
+              toast.success(tMembers('recapEmail.sentSuccess'));
+            } else {
+              toast.error(tMembers('recapEmail.sentFailed'));
+            }
+          }}
+        />
       )}
     </section>
   );

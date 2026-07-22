@@ -51,6 +51,7 @@ cp deploy/.env.example deploy/.env
 | `CLUB_SLUG` | `avat` | `avat` |
 | `ERP_HOST` | — | `avat.erp-club.psa-avat.fr` |
 | `CORS_ORIGINS` | `http://localhost:*` | `https://avat.erp-club.psa-avat.fr` |
+| `PORTAL_BASE_URL` | `http://localhost:8080` | `https://avat.erp-club.psa-avat.fr` — used to build the member portal link in recap emails |
 | `JWT_SECRET_KEY` | any string | generated strong key |
 | `RUSTFS_ACCESS_KEY` | `rustfsadmin` | strong key |
 | `RUSTFS_SECRET_KEY` | `ChangeMe123!` | strong secret |

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db
 from api.security import require_capability
-from constants import CAP_MANAGE_PRICES, CAP_MANAGE_USERS
+from constants import CAP_MANAGE_PRICES, CAP_MANAGE_USERS, CAP_SEND_MEMBER_EMAILS
 from models import FlightBillingSettings, User
 from schemas.members import (
     AccountEntriesResponse,
@@ -37,6 +37,9 @@ from schemas.members import (
     MemberDetailResponse,
     MemberListFilters,
     MemberOptionResponse,
+    MemberRecapMessageTemplateCreateRequest,
+    MemberRecapMessageTemplateResponse,
+    MemberRecapMessageTemplateUpdateRequest,
     MemberRegistrationCreateRequest,
     MemberRegistrationResponse,
     MemberRegistrationUpdateRequest,
@@ -44,7 +47,18 @@ from schemas.members import (
     MemberSheetUpsertRequest,
     MemberSummaryResponse,
     MemberUpdateRequest,
+    RecapEmailBulkResult,
     RegistrationCompletionRequest,
+    SendRecapEmailRequest,
+    SendRecapEmailsBulkRequest,
+)
+from services.member_recap import (
+    create_recap_template,
+    delete_recap_template,
+    list_recap_templates,
+    send_recap_email,
+    send_recap_emails_bulk,
+    update_recap_template,
 )
 from services.members import (
         count_members,
@@ -79,6 +93,7 @@ from services.members import (
 
 router = APIRouter()
 members_guard = Depends(require_capability(CAP_MANAGE_USERS))
+recap_email_guard = Depends(require_capability(CAP_SEND_MEMBER_EMAILS))
 
 
 @router.get("", response_model=list[MemberSummaryResponse])
@@ -246,6 +261,70 @@ async def anonymize_inactive_members_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     return await anonymize_inactive_members(db=db, reference_year=reference_year)
+
+
+# ── Recap emails ─────────────────────────────────────────────────────────
+
+@router.get("/recap-message-templates", response_model=list[MemberRecapMessageTemplateResponse])
+async def list_recap_message_templates_endpoint(
+    _: User = recap_email_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_recap_templates(db)
+
+
+@router.post("/recap-message-templates", response_model=MemberRecapMessageTemplateResponse)
+async def create_recap_message_template_endpoint(
+    payload: MemberRecapMessageTemplateCreateRequest,
+    current_user: User = recap_email_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await create_recap_template(db, payload, created_by_user_id=current_user.id)
+
+
+@router.patch("/recap-message-templates/{template_uuid:uuid}", response_model=MemberRecapMessageTemplateResponse)
+async def update_recap_message_template_endpoint(
+    template_uuid: UUID,
+    payload: MemberRecapMessageTemplateUpdateRequest,
+    _: User = recap_email_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await update_recap_template(db, template_uuid, payload)
+
+
+@router.delete("/recap-message-templates/{template_uuid:uuid}", status_code=http_status.HTTP_204_NO_CONTENT)
+async def delete_recap_message_template_endpoint(
+    template_uuid: UUID,
+    _: User = recap_email_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    await delete_recap_template(db, template_uuid)
+
+
+@router.post("/recap-emails/send-bulk", response_model=RecapEmailBulkResult)
+async def send_recap_emails_bulk_endpoint(
+    payload: SendRecapEmailsBulkRequest,
+    _: User = recap_email_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    return await send_recap_emails_bulk(db, payload.message_text)
+
+
+@router.post("/{member_uuid:uuid}/send-recap-email")
+async def send_member_recap_email_endpoint(
+    member_uuid: UUID,
+    payload: SendRecapEmailRequest,
+    _: User = recap_email_guard,
+    db: AsyncSession = Depends(get_db),
+):
+    member = await get_member_or_404(db, member_uuid)
+    if not member.email:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Member has no email on file",
+        )
+    sent = await send_recap_email(db, member, payload.message_text)
+    return {"sent": sent}
 
 
 @router.post("", response_model=MemberDetailResponse)

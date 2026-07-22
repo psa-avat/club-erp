@@ -77,6 +77,7 @@ Les capacités sont les permissions atomiques. Chaque route API protégée décl
 | `CAP_SYNC_VI_PLANCHE` | `SYNC_VI_PLANCHE` | Synchronisation VI vers Planche |
 | `CAP_FEDERAL_SYNC` | `FEDERAL_SYNC` | Synchronisation fédérale (GesAsso / OSRT) |
 | `CAP_MANAGE_HR` | `MANAGE_HR` | Gestion RH (profils, congés, présences) |
+| `CAP_SEND_MEMBER_EMAILS` | `SEND_MEMBER_EMAILS` | Envoi d'emails aux adhérents (récapitulatifs) |
 
 ### 4.2 Matrice rôle / capacité recommandée
 
@@ -98,6 +99,7 @@ Les capacités sont les permissions atomiques. Chaque route API protégée décl
 | `SYNC_VI_PLANCHE` | ✓ | | ✓ | | |
 | `FEDERAL_SYNC` | ✓ | ✓ | | | |
 | `MANAGE_HR` | ✓ | | | | |
+| `SEND_MEMBER_EMAILS` | ✓ | ✓ | | | |
 
 > Cette matrice est indicative. L'affectation réelle se configure dans **Admin → Rôles → Capacités**.
 
