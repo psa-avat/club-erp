@@ -2,7 +2,7 @@
 
 ### TL;DR
 
-Consolidates two prior efforts into one plan: `plan-membersRegistrationLifecycleAndSelfService.prompt.md` (registration end-date rule, anonymization review, supplier UX split, self-registration design) and the ad-hoc member recap email feature. Two of the four original items are now **done** (supplier UX split, recap emails). This document tracks what's actually left: the Oct-1 registration end-date rule and the anonymization review screen, plus the still-deferred self-registration design.
+Consolidates two prior efforts into one plan: `plan-membersRegistrationLifecycleAndSelfService.prompt.md` (registration end-date rule, anonymization review, supplier UX split, self-registration design) and the ad-hoc member recap email feature. Two of the four original items are now **done** (supplier UX split, recap emails). This document tracks what's actually left: the Oct-1 registration end-date rule and the anonymization review screen, plus the still-deferred self-registration design. It also adds a new Phase 4 for member KPIs and reports (negative-balance visibility, outstanding balances, renewal reminders, committee compliance, data quality) that was proposed but never written down before this doc.
 
 This supersedes and replaces `plan-membersRegistrationLifecycleAndSelfService.prompt.md` and `plan-membersUxSplitByCategoryGroup.prompt.md`, both moved to `docs/archive/` as completed/consolidated.
 
@@ -17,6 +17,7 @@ This supersedes and replaces `plan-membersRegistrationLifecycleAndSelfService.pr
 | Registration default end-date rule (Oct 1 → covers through next year) | ❌ Remaining | Phase 1 below |
 | Anonymization review screen (preview + selective anonymize) | ❌ Remaining | Phase 2 below |
 | Self-registration (public sign-up, form, committee pick, account entry config) | 📝 Spec only | Phase 3 below — design intentionally not built yet |
+| Member KPIs & reports (negative balance, outstanding balances, renewal reminders, committee compliance, data quality) | ❌ Remaining | Phase 4 below — proposed earlier, never written down until now |
 
 ---
 
@@ -122,6 +123,47 @@ Wires the previously-dead "send portal access" stub button into a real flow: a m
 
 ---
 
+#### Phase 4 — Member KPIs & Reports
+
+**Goal**: give staff a quick-glance view of registration/financial health beyond the existing per-screen KPI strip (which is client-computed from the loaded list and has no balance visibility), plus a few deeper filterable reports. Proposed earlier in this conversation, not built.
+
+**Why a new backend aggregate is needed**: today, a member's balance is only computed on demand for one member at a time (`get_member_account_summary`, `backend/services/members.py`, groups `AccountingLine`/`AccountingEntry` by `tiers_uuid`). None of the "negative balance" style KPIs/reports can be answered from the currently loaded member list without a bulk aggregate query.
+
+**New/changed KPI tiles** (`MemberKpiStrip.tsx`, currently fully client-side per screen):
+
+| KPI | Computation | Backend work |
+|---|---|---|
+| Members with negative balance | count + total owed, bulk `SUM(credit-debit)` grouped by `tiers_uuid`, filtered `< 0` | New aggregate query |
+| Members with positive/credit balance | same aggregate, `> 0` | Same query |
+| Expiring soon | active registrations with `end_date` within next N days | Small date-range query |
+| Committee compliance gap | active/"Completed" members with zero committee row for the year | Small join query |
+| Can-fly, no sheet this year | `can_fly=true` with no `member_sheets` row for selected year | Small join query |
+| New members this year | `created_at` in current year | No backend change — client-computable from loaded list |
+
+**New reports** (currently-empty `frontend/src/modules/reporting/` stub, marked "Phase 7" in its own header comment — this would be its first real content):
+
+1. **Outstanding Balances** — members with negative balance, amount owed, sorted worst-first.
+2. **Registration Status** — registered / not-registered / pending-renewal for a chosen year, with balance column.
+3. **Renewal Reminders** — active registrations expiring within N days or already lapsed.
+4. **Committee Compliance** — members missing a committee assignment despite being registered "Completed" (a rule violation per `docs/product/SPEC_MEMBERS.md`).
+5. **Anonymization Candidates** — reuses the Phase 2 preview endpoint above.
+6. **Data Quality** — missing email/phone/FFVP id.
+
+**Steps**:
+1. Backend: add a bulk balance aggregate (e.g. `list_member_balances(db, member_uuids: list[UUID] | None = None) -> dict[UUID, Decimal]`) in `backend/services/members.py`, grouping `AccountingLine`/`AccountingEntry` by `tiers_uuid` the same way `get_member_account_summary` does for one member.
+2. Backend: add the small join queries for expiring-soon, committee-compliance-gap, and no-sheet-this-year.
+3. Backend: new endpoints under `/api/v1/members/reports/*` (or reuse `/api/v1/members` with `include_balance`-style opt-in params, following the existing `include_balance`/`include_last_flight` pattern already on the list endpoint).
+4. Frontend: extend `MemberKpiStrip.tsx` with the new tiles per screen.
+5. Frontend: build out `frontend/src/modules/reporting/` with the six report views (filterable, CSV-exportable, reusing `DataTable`).
+
+**Relation to the shipped bulk recap email**: the shipped bulk-send targets *all* active members with an email on file (`send_recap_emails_bulk`), not a filtered subset. If a future need arises to email only members matching a report (e.g. "email everyone with a negative balance"), that would extend `send_recap_emails_bulk` to accept an optional `member_uuids` filter — a small addition, not a rebuild — rather than duplicating the send logic.
+
+**Files**: `backend/services/members.py`, `backend/api/routes/members.py`, `backend/schemas/members.py`, `frontend/src/modules/members/components/MemberKpiStrip.tsx`, `frontend/src/modules/reporting/` (new report components), i18n files.
+
+**Verification**: KPI tiles show correct counts against known seeded data; each report's filters narrow results correctly; CSV export produces valid output; negative-balance KPI total matches a manual sum over `accounting_lines`.
+
+---
+
 ### Decisions (Answered, carried forward)
 
 | Question | Decision |
@@ -142,3 +184,4 @@ Wires the previously-dead "send portal access" stub button into a real flow: a m
 1. **Phase 1**: Registration dialog proposes correct default `end_date`/`registered_for_year` across the Sep30/Oct1/Dec31/Jan1 boundaries; overrides still work; permanent categories still rejected.
 2. **Phase 2**: Preview lists exactly the expected members for a given cutoff date; selective anonymize only affects chosen members; existing full-sweep call path unaffected.
 3. **Phase 3**: Design review only — no runtime verification in this pass.
+4. **Phase 4**: KPI tiles show correct counts against known seeded data; report filters narrow results correctly; CSV export produces valid output.
