@@ -68,6 +68,7 @@ CAP_HELLOASSO = "HELLOASSO"
 CAP_FEDERAL_SYNC = "FEDERAL_SYNC"
 CAP_MANAGE_HR = "MANAGE_HR"
 CAP_MANAGE_CARBURANT = "MANAGE_CARBURANT"
+CAP_SEND_MEMBER_EMAILS = "SEND_MEMBER_EMAILS"
 
 # Flight type labels (Planche enum)
 TYPE_OF_FLIGHT_LABELS: dict[int, str] = {
@@ -101,4 +102,5 @@ CAPABILITY_SEEDS = (
     (CAP_FEDERAL_SYNC, "Synchronisation fédérale (GesAsso/OSRT)"),
     (CAP_MANAGE_HR, "Gestion RH (profils, congés, présences)"),
     (CAP_MANAGE_CARBURANT, "Gestion du carburant (pompes, validation, stock)"),
+    (CAP_SEND_MEMBER_EMAILS, "Envoi d'emails aux adhérents (récapitulatifs)"),
 )

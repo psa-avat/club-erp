@@ -103,3 +103,75 @@ async def send_pin_email(email_to: EmailStr, pin_code: str):
         loguru.logger.error(f"Erreur lors de l'envoi du PIN à {email_to}: {type(e).__name__}: {str(e)}")
         return False
 
+
+async def send_member_recap_email(
+    email_to: EmailStr,
+    member_name: str,
+    message_text: str,
+    flight_count: int,
+    flight_hours: str,
+    balance: str,
+    portal_url: str,
+) -> bool:
+    """
+    Envoie un récapitulatif (vols, solde) à un adhérent, avec un message libre.
+    `message_text` est déjà échappé HTML par l'appelant.
+    """
+    try:
+        email_config = load_config()
+        if email_config is None:
+            loguru.logger.warning(f"Configuration email non disponible, récapitulatif non envoyé à {email_to}")
+            return False
+
+        conf = ConnectionConfig(
+            MAIL_USERNAME=email_config.username,
+            MAIL_PASSWORD=email_config.password,
+            MAIL_FROM=email_config.username,
+            MAIL_PORT=email_config.port,
+            MAIL_SERVER=email_config.smtp_server,
+            MAIL_STARTTLS=not email_config.tls,
+            MAIL_SSL_TLS=email_config.tls,
+            USE_CREDENTIALS=True,
+            VALIDATE_CERTS=True,
+        )
+
+        message_html = message_text.replace("\n", "<br>")
+
+        html = f"""
+        <h3>Bonjour {member_name},</h3>
+        <p>{message_html}</p>
+        <table style="border-collapse: collapse; margin: 16px 0;">
+            <tr>
+                <td style="padding: 4px 12px 4px 0; color: #555;">Vols effectués</td>
+                <td style="padding: 4px 0; font-weight: bold;">{flight_count}</td>
+            </tr>
+            <tr>
+                <td style="padding: 4px 12px 4px 0; color: #555;">Heures de vol</td>
+                <td style="padding: 4px 0; font-weight: bold;">{flight_hours}</td>
+            </tr>
+            <tr>
+                <td style="padding: 4px 12px 4px 0; color: #555;">Solde du compte</td>
+                <td style="padding: 4px 0; font-weight: bold;">{balance}</td>
+            </tr>
+        </table>
+        <p><a href="{portal_url}">Accéder à mon espace membre</a></p>
+        """
+
+        message = MessageSchema(
+            subject="ERP-CLUB : Votre récapitulatif",
+            recipients=[email_to],
+            body=html,
+            subtype=MessageType.html,
+        )
+
+        fm = FastMail(conf)
+
+        loguru.logger.info(f"Envoi email récapitulatif à {email_to}")
+
+        await fm.send_message(message)
+        return True
+
+    except Exception as e:
+        loguru.logger.error(f"Erreur lors de l'envoi du récapitulatif à {email_to}: {type(e).__name__}: {str(e)}")
+        return False
+

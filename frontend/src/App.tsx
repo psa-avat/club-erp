@@ -17,7 +17,7 @@ import {
   TarifsWorkspacePage,
 } from './modules/banque'
 import { DashboardPage } from './modules/dashboard'
-import { MembersListPage, MemberFormPage, MemberWorkspaceShell, MembersWorkspacePage } from './modules/members'
+import { MembersListPage, MemberFormPage, MemberRecapTemplatesPage, MemberWorkspaceShell, MembersWorkspacePage } from './modules/members'
 import { AssetDetailPage, AssetFormPage, AssetPricingPage, MachinesWorkspacePage } from './modules/assets'
 import { PlanningPage } from './modules/planning'
 import { FlightsWorkspacePage } from './modules/flights'
@@ -76,6 +76,7 @@ function App() {
           <Route path="/club/members" element={<Navigate replace to="/workspace/members" />} />
           <Route path="/workspace/members" element={<MembersWorkspacePage />} />
           <Route path="/club/members/:screen" element={<MembersListPage />} />
+          <Route path="/club/members/recap-templates" element={<MemberRecapTemplatesPage />} />
           <Route path="/club/members/new" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/edit" element={<MemberFormPage />} />
           <Route path="/club/members/:memberUuid/workspace" element={<MemberWorkspaceClubRoute />} />

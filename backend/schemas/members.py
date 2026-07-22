@@ -461,3 +461,53 @@ class DepositResponse(BaseModel):
     amount: Decimal
     status: str
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Recap emails
+# ---------------------------------------------------------------------------
+
+class SendRecapEmailRequest(BaseModel):
+    """Payload for sending a single member's recap email."""
+
+    message_text: str = Field(min_length=1)
+
+
+class SendRecapEmailsBulkRequest(BaseModel):
+    """Payload for bulk-sending recap emails to all members with an email on file."""
+
+    message_text: str = Field(min_length=1)
+
+
+class RecapEmailBulkResult(BaseModel):
+    """Tally of a bulk recap email send."""
+
+    sent: int
+    skipped_no_email: int
+    failed: int
+
+
+class MemberRecapMessageTemplateResponse(BaseModel):
+    """Serialized recap message template."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    uuid: UUID
+    label: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MemberRecapMessageTemplateCreateRequest(BaseModel):
+    """Payload for creating a recap message template."""
+
+    label: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1)
+
+
+class MemberRecapMessageTemplateUpdateRequest(BaseModel):
+    """Payload for updating a recap message template."""
+
+    label: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    body: Optional[str] = Field(default=None, min_length=1)

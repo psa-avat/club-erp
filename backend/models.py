@@ -652,6 +652,29 @@ class MemberRegistration(Base):
         )
 
 
+class MemberRecapMessageTemplate(Base):
+    """Predefined free-text message prefill for member recap emails."""
+
+    __tablename__ = "member_recap_message_templates"
+
+    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    label = Column(String(120), nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_by_user = relationship("User")
+
+    def __repr__(self):
+        return f"<MemberRecapMessageTemplate uuid={self.uuid} label={self.label}>"
+
+
 # ============================================================================
 # Accounting Module Models
 # ============================================================================
