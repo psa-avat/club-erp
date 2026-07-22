@@ -140,12 +140,9 @@ Recommendation: a separate staging table, `member_self_registration_requests`, h
 - Admin review queue page (pending requests → approve/reject), reusing `RegistrationPanel`-style fare/committee selection UI where possible
 - Admin settings page for `member_self_registration_settings`
 
-#### Open question to confirm before building
+#### Planche push trigger on approval
 
-**Planche push trigger on approval.** Today, pushing members to Planche is a manual admin action (`POST /api/v1/planche/pilots/push`). For self-registration, should approval:
-(a) leave it manual — the new member is simply included next time staff click "Push to Planche" (simplest, consistent with today's behavior), or
-(b) auto-trigger a push for that one member right after approval?
-Recommendation: (a) for v1 — no code path changes needed, lowest risk — revisit (b) once the manual flow's reliability in production is confirmed.
+Confirmed: stays **manual**. Approving a self-registration request only creates the `Member` + registration + committee + accounting rows — it does not call the Planche push. The new member is simply included the next time staff click "Push to Planche" (`POST /api/v1/planche/pilots/push`, `backend/api/routes/planche.py:152`), same as any admin-created member today. No new code path needed for this.
 
 **Files (future build, not this pass)**: `backend/models.py`, new `docs/migrations/0XX_member_self_registration.sql`, `backend/schemas/member_self_registration.py`, `backend/services/member_self_registration.py`, `backend/api/routes/member_self_registration.py`, new `frontend/src/modules/member-self-registration/` module, `frontend/src/App.tsx` (public route), i18n files.
 
@@ -184,7 +181,4 @@ Recommendation: (a) for v1 — no code path changes needed, lowest risk — revi
 | End-date default rule basis | Chosen `start_date`, not today's date |
 | Self-registration scope now | Design/spec only in this plan; build later |
 | Anonymization review | Add manual preview + selective anonymize screen |
-
-### Remaining Open Question
-
-- Self-registration approval → Planche push: manual (recommended, no change needed) vs. automatic single-member push. Needs a decision before Phase 4 implementation begins.
+| Self-registration approval → Planche push | Manual — no new push trigger, included in the existing manual "Push to Planche" action |
